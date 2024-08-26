@@ -63,7 +63,9 @@ class Sequence():
         _ds_tran_combo (str): combination of driving system and transducer serial numbers.
         _conv_param (dict): Conversion parameters to compensate for decreasing pressure with
         increasing focal depth.
-            max_v (float): maximum voltage [V] at 100% amplitude.
+            voltage [V] vs. amplitude [%] equation (A = a*V + b)
+            V2A_a (float): 1st order coefficient of voltage [V] vs. amplitude [%] equation.
+            V2A_b (float): 0-order coefficient of voltage [V] vs. amplitude [%] equation.
             normalized pressure vs. focal depth [mm] equation (Pnorm = a0 + a1*f + a2*f^2 + a3*f^3 +
                                                                a4*f^4 + a5*f^5).
             a0 (float): 0-order coefficient of normalized pressure vs. focal depth [mm] equation.
@@ -74,8 +76,8 @@ class Sequence():
             a5 (float): 5th order coefficient of normalized pressure vs. focal depth [mm] equation.
 
             pressure [MPa] vs. voltage [V] equation (P = a*V + b)
-            a (float): 1st order coefficient of pressure [MPa] vs. voltage [V] equation.
-            b (float): 0-order coefficient of pressure [MPa] vs. voltage [V] equation.
+            V2P_a (float): 1st order coefficient of pressure [MPa] vs. voltage [V] equation.
+            V2P_b (float): 0-order coefficient of pressure [MPa] vs. voltage [V] equation.
         _norm_press (float): [IGT] normalized pressure based on chosen focal depth [-].
         _timing_param (dict.):
             _pulse_dur (float): Pulse duration of the sequence [ms].
@@ -161,8 +163,8 @@ class Sequence():
         """
         info = ''
 
-        info = str(self._driving_sys)
-        info = str(self._transducer)
+        info += str(self._driving_sys)
+        info += str(self._transducer)
 
         if self._driving_sys.manufact == config['Equipment.Manufacturer.IGT']['Name']:
             if self._ds_tran_combo in self._equip_combos:
@@ -170,7 +172,8 @@ class Sequence():
                 info += f"Voltage [V]: {self._volt} \n "
                 info += f"Amplitude [%]: {self._ampl} \n "
 
-                info += f"Maximum voltage at 100% amplitude [V]: {self.max_v} \n "
+                info += ("Voltage [V] vs. amplitude [%] equation (A = a*V + b): A = " +
+                         f"{self.V2A_a}*V + {self.V2A_b} \n ")
                 info += ("Normalized pressure [-] vs. focal depth [mm] equation (Pnorm = a0 + " +
                          f"a1*f + a2*f^2 + a3*f^3 + a4*f^4 + a5*f^5): Pnorm = {self.a0} + " +
                          f"{self.a1}*f + {self.a2}*f^2 + {self.a3}*f^3 + {self.a4}*f^4 + " +
@@ -178,7 +181,7 @@ class Sequence():
                 info += (f"Normalized pressure [-] based on chosen focal depth of {self._focus}" +
                          f" [mm]: {self._norm_press} \n ")
                 info += ("Pressure [MPa] vs. voltage [V] equation (P = a*V + b): P = " +
-                         f"{self.a}*V + {self.b} \n ")
+                         f"{self.V2P_a}*V + {self.V2P_b} \n ")
             else:
                 info += ("Pressure correction with an increasing focal depth not available in the" +
                          " configuration file for this driving system and transducer combination!" +
@@ -363,14 +366,12 @@ class Sequence():
             # Calculate required voltage
             self._calc_volt()
 
-            # Convert required to amplitude, prevent division by zero
-            self._ampl = 0
-            if self.max_v != 0:
-                self._ampl = (self._volt / self.max_v) * 100
+            # Convert required voltage to amplitude
+            self._calc_ampl()
 
-                logger.info(f'New maximum pressure in free water value of {self._press} [MPa] ' +
-                            f'results in a voltage of {self._volt} [V] and an amplitude ' +
-                            'of {self._ampl} [%].')
+            logger.info(f'New maximum pressure in free water value of {self._press} [MPa] ' +
+                        f'results in a voltage of {self._volt} [V] and an amplitude ' +
+                        'of {self._ampl} [%].')
         else:
             logger.warning('No pressure compensation parameters available in the configuration' +
                            ' file for chosen equipment combination. Enter amplitude [%].')
@@ -404,14 +405,12 @@ class Sequence():
             # Calculate maximum pressure in free water for logging purposes
             self._calc_press()
 
-            # Convert required to amplitude, prevent division by zero
-            self._ampl = 0
-            if self.max_v != 0:
-                self._ampl = (self._volt / self.max_v) * 100
+            # Convert required to amplitude
+            self._calc_ampl()
 
-                logger.info(f'New voltage value of {self._volt} [V] results in a maximum' +
-                            f' pressure in free water of {self._press} [MPa] and an amplitude ' +
-                            'of {self._ampl} [%].')
+            logger.info(f'New voltage value of {self._volt} [V] results in a maximum' +
+                        f' pressure in free water of {self._press} [MPa] and an amplitude ' +
+                        f'of {self._ampl} [%].')
 
         else:
             logger.warning('No pressure compensation parameters available in the configuration' +
@@ -444,7 +443,7 @@ class Sequence():
                 self._ampl = ampl
 
                 # Convert amplitude to voltage for logging
-                self._volt = (self._ampl / 100) * self.max_v
+                self._volt = (self._ampl - self.V2A_b) / self.V2A_a
 
                 # Convert voltage to pressure for logging
                 self._calc_press()
@@ -526,15 +525,26 @@ class Sequence():
         self._dephasing_degree = dephasing_degree
 
     @property
-    def max_v(self):
+    def V2A_a(self):
         """
-        Getter method for the maximum voltage [V] at 100% amplitude.
+        Getter method for the 1st order coefficient of voltage [V] vs. amplitude [%] equation.
 
         Returns:
-            float: The maximum voltage [V] at 100% amplitude.
+            float: The 1st order coefficient of voltage [V] vs. amplitude [%] equation.
         """
 
-        return float(self._conv_param['max_v'])
+        return float(self._conv_param['V2A_a'])
+
+    @property
+    def V2A_b(self):
+        """
+        Getter method for the 0-order coefficient of voltage [V] vs. amplitude [%] equation.
+
+        Returns:
+            float: The 0-order coefficient of voltage [V] vs. amplitude [%] equation.
+        """
+
+        return float(self._conv_param['V2A_b'])
 
     @property
     def a0(self):
@@ -609,7 +619,7 @@ class Sequence():
         return float(self._conv_param['a5'])
 
     @property
-    def a(self):
+    def V2P_a(self):
         """
         Getter method for the 1st order coefficient of pressure [MPa] vs. voltage [V] equation.
 
@@ -617,10 +627,10 @@ class Sequence():
             float: The 1st order coefficient of pressure [MPa] vs. voltage [V] equation.
         """
 
-        return float(self._conv_param['a'])
+        return float(self._conv_param['V2P_a'])
 
     @property
-    def b(self):
+    def V2P_b(self):
         """
         Getter method for the 0-order coefficient of pressure [MPa] vs. voltage [V] equation.
 
@@ -628,7 +638,7 @@ class Sequence():
             float: The 0-order coefficient of pressure [MPa] vs. voltage [V] equation.
         """
 
-        return float(self._conv_param['b'])
+        return float(self._conv_param['V2P_b'])
 
     @property
     def norm_press(self):
@@ -813,16 +823,16 @@ class Sequence():
         """
 
         self._conv_param = {
-            "max_v": config['Equipment.Combination.' + self._ds_tran_combo]
-            ['Maximum voltage [V] at 100% amplitude'],
+            "V2A_a": config['Equipment.Combination.' + self._ds_tran_combo]['V2A a-coeff'],
+            "V2A_b": config['Equipment.Combination.' + self._ds_tran_combo]['V2A b-coeff'],
             "a0": config['Equipment.Combination.' + self._ds_tran_combo]['F2NP a0-coeff'],
             "a1": config['Equipment.Combination.' + self._ds_tran_combo]['F2NP a1-coeff'],
             "a2": config['Equipment.Combination.' + self._ds_tran_combo]['F2NP a2-coeff'],
             "a3": config['Equipment.Combination.' + self._ds_tran_combo]['F2NP a3-coeff'],
             "a4": config['Equipment.Combination.' + self._ds_tran_combo]['F2NP a4-coeff'],
             "a5": config['Equipment.Combination.' + self._ds_tran_combo]['F2NP a5-coeff'],
-            "a": config['Equipment.Combination.' + self._ds_tran_combo]['V2P a-coeff'],
-            "b": config['Equipment.Combination.' + self._ds_tran_combo]['V2P b-coeff']
+            "V2P_a": config['Equipment.Combination.' + self._ds_tran_combo]['V2P a-coeff'],
+            "V2P_b": config['Equipment.Combination.' + self._ds_tran_combo]['V2P b-coeff']
             }
 
         self._calc_norm_press()
@@ -830,14 +840,12 @@ class Sequence():
         # Assumption that the maximum pressure in free water remains the same
         self._calc_volt()
 
-        # Convert required to amplitude, prevent division by zero
-        self._ampl = 0
-        if self.max_v != 0:
-            self._ampl = (self._volt / self.max_v) * 100
+        # Convert required to amplitude
+        self._calc_ampl()
 
-            logger.info('New equipment pressure compensation coefficients result in a maximum' +
-                        f' pressure in free water of {self._press} [MPa], a voltage of ' +
-                        f'{self._volt} [V] and an amplitude of {self._ampl} [%].')
+        logger.info('New equipment pressure compensation coefficients result in a maximum' +
+                    f' pressure in free water of {self._press} [MPa], a voltage of ' +
+                    f'{self._volt} [V] and an amplitude of {self._ampl} [%].')
 
     def _calc_norm_press(self):
         """
@@ -859,8 +867,16 @@ class Sequence():
         if self._norm_press == 0:
             self._volt = 0
         else:
-            self._volt = (((self._press / self._norm_press) - self.b)
-                          / self.a)
+            self._volt = (((self._press / self._norm_press) - self.V2P_a)
+                          / self.V2P_a)
+
+    def _calc_ampl(self):
+        """
+        Calculate voltage [V] vs. amplitude [%] equation (A = a*V + b) when voltage is
+        updated.
+        """
+
+        self._ampl = self.V2A_a * self._volt + self.V2A_b
 
     def _calc_press(self):
         """
@@ -868,5 +884,5 @@ class Sequence():
         updated.
         """
 
-        self._press = ((self.a * self._volt + self.b)
+        self._press = ((self.V2P_a * self._volt + self.V2P_b)
                        * self._norm_press)

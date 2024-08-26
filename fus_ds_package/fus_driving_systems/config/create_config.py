@@ -519,7 +519,8 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['Driving system serial'] = 
                                                                                  .split('~')[0])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['Transducer serial'] = (DS_TRAN_COMBOS[0]
                                                                              .split('~')[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['Maximum voltage [V] at 100% amplitude'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['V2A a-coeff'] = str(6.1122)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['V2A b-coeff'] = str(-0.4917)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['V2P a-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['V2P b-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2NP a0-coeff'] = str(0)
@@ -534,7 +535,8 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['Driving system serial'] = 
                                                                                  .split('~')[0])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['Transducer serial'] = (DS_TRAN_COMBOS[1]
                                                                              .split('~')[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['Maximum voltage [V] at 100% amplitude'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['V2A a-coeff'] = str(6.1122)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['V2A b-coeff'] = str(-0.4917)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['V2P a-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['V2P b-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2NP a0-coeff'] = str(0)
@@ -549,7 +551,8 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['Driving system serial'] = 
                                                                                  .split('~')[0])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['Transducer serial'] = (DS_TRAN_COMBOS[2]
                                                                              .split('~')[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['Maximum voltage [V] at 100% amplitude'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['V2A a-coeff'] = str(6.1122)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['V2A b-coeff'] = str(-0.4917)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['V2P a-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['V2P b-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2NP a0-coeff'] = str(0)
@@ -564,7 +567,8 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['Driving system serial'] = 
                                                                                  .split('~')[0])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['Transducer serial'] = (DS_TRAN_COMBOS[3]
                                                                              .split('~')[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['Maximum voltage [V] at 100% amplitude'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['V2A a-coeff'] = str(6.1122)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['V2A b-coeff'] = str(-0.4917)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['V2P a-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['V2P b-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2NP a0-coeff'] = str(0)
@@ -579,7 +583,8 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['Driving system serial'] = 
                                                                                  .split('~')[0])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['Transducer serial'] = (DS_TRAN_COMBOS[4]
                                                                              .split('~')[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['Maximum voltage [V] at 100% amplitude'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['V2A a-coeff'] = str(6.1122)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['V2A b-coeff'] = str(-0.4917)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['V2P a-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['V2P b-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2NP a0-coeff'] = str(0)
@@ -594,7 +599,8 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['Driving system serial'] = 
                                                                                  .split('~')[0])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['Transducer serial'] = (DS_TRAN_COMBOS[5]
                                                                              .split('~')[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['Maximum voltage [V] at 100% amplitude'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['V2A a-coeff'] = str(6.1122)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['V2A b-coeff'] = str(-0.4917)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['V2P a-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['V2P b-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2NP a0-coeff'] = str(0)
@@ -609,7 +615,8 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['Driving system serial'] = 
                                                                                  .split('~')[0])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['Transducer serial'] = (DS_TRAN_COMBOS[6]
                                                                              .split('~')[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['Maximum voltage [V] at 100% amplitude'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['V2A a-coeff'] = str(6.1122)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['V2A b-coeff'] = str(-0.4917)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['V2P a-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['V2P b-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2NP a0-coeff'] = str(0)
@@ -624,7 +631,8 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['Driving system serial'] = 
                                                                                  .split('~')[0])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['Transducer serial'] = (DS_TRAN_COMBOS[7]
                                                                              .split('~')[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['Maximum voltage [V] at 100% amplitude'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['V2A a-coeff'] = str(6.1122)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['V2A b-coeff'] = str(-0.4917)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['V2P a-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['V2P b-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2NP a0-coeff'] = str(0)
@@ -639,7 +647,8 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['Driving system serial'] = 
                                                                                  .split('~')[0])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['Transducer serial'] = (DS_TRAN_COMBOS[8]
                                                                              .split('~')[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['Maximum voltage [V] at 100% amplitude'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['V2A a-coeff'] = str(6.1393)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['V2A b-coeff'] = str(-0.7172)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['V2P a-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['V2P b-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2NP a0-coeff'] = str(0)
@@ -654,7 +663,8 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['Driving system serial'] = 
                                                                                  .split('~')[0])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['Transducer serial'] = (DS_TRAN_COMBOS[9]
                                                                              .split('~')[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['Maximum voltage [V] at 100% amplitude'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['V2A a-coeff'] = str(6.1393)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['V2A b-coeff'] = str(-0.7172)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['V2P a-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['V2P b-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2NP a0-coeff'] = str(0)
@@ -669,7 +679,8 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['Driving system serial'] =
                                                                                   .split('~')[0])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['Transducer serial'] = (DS_TRAN_COMBOS[10]
                                                                               .split('~')[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['Maximum voltage [V] at 100% amplitude'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['V2A a-coeff'] = str(6.1393)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['V2A b-coeff'] = str(-0.7172)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['V2P a-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['V2P b-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2NP a0-coeff'] = str(0)
@@ -684,7 +695,8 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['Driving system serial'] =
                                                                                   .split('~')[0])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['Transducer serial'] = (DS_TRAN_COMBOS[11]
                                                                               .split('~')[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['Maximum voltage [V] at 100% amplitude'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['V2A a-coeff'] = str(6.1393)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['V2A b-coeff'] = str(-0.7172)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['V2P a-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['V2P b-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2NP a0-coeff'] = str(0)
@@ -699,7 +711,8 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['Driving system serial'] =
                                                                                   .split('~')[0])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['Transducer serial'] = (DS_TRAN_COMBOS[12]
                                                                               .split('~')[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['Maximum voltage [V] at 100% amplitude'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['V2A a-coeff'] = str(6.1393)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['V2A b-coeff'] = str(-0.7172)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['V2P a-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['V2P b-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2NP a0-coeff'] = str(0)
@@ -714,7 +727,8 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['Driving system serial'] =
                                                                                   .split('~')[0])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['Transducer serial'] = (DS_TRAN_COMBOS[13]
                                                                               .split('~')[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['Maximum voltage [V] at 100% amplitude'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['V2A a-coeff'] = str(6.1393)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['V2A b-coeff'] = str(-0.7172)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['V2P a-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['V2P b-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2NP a0-coeff'] = str(0)
@@ -729,7 +743,8 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['Driving system serial'] =
                                                                                   .split('~')[0])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['Transducer serial'] = (DS_TRAN_COMBOS[14]
                                                                               .split('~')[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['Maximum voltage [V] at 100% amplitude'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['V2A a-coeff'] = str(6.1393)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['V2A b-coeff'] = str(-0.7172)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['V2P a-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['V2P b-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2NP a0-coeff'] = str(0)
@@ -744,7 +759,8 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['Driving system serial'] =
                                                                                   .split('~')[0])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['Transducer serial'] = (DS_TRAN_COMBOS[15]
                                                                               .split('~')[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['Maximum voltage [V] at 100% amplitude'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['V2A a-coeff'] = str(6.1393)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['V2A b-coeff'] = str(-0.7172)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['V2P a-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['V2P b-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2NP a0-coeff'] = str(0)
