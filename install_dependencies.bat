@@ -4,7 +4,7 @@
 set PYTHON_PATH="C:\Program Files\Python310\python.exe"
 
 :: Set a default virtual environment name (can be overridden by input)
-set VENV_NAME=FUS_DS_PACKAGE_TEST
+set VENV_NAME=FUS_DS_PACKAGE
 
 :: Check if a virtual environment name was passed as an argument
 if "%~1"=="" (
