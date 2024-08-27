@@ -10,16 +10,23 @@
   
 </div>
 
+
 <!-- TABLE OF CONTENTS -->
 
 # 📗 Table of Contents
 
 - [📖 About the Project](#about-project)
+  - [Features](#features)
+  - [Important note](#important_note)
   - [👥 Authors](#authors)
+  - [✒️ How to cite](#how-to-cite)
 - [💻 Getting Started](#getting-started)
   - [Setup](#setup)
   - [Install](#install)
   - [Usage](#usage)
+- [🔭 Future Features](#future-features)
+- [🤝 Contributing](#contributing)
+- [📝 License](#license)
   
 <!-- PROJECT DESCRIPTION -->
 
@@ -29,12 +36,17 @@
 
 The **Radboud FUS driving system software** is designed to streamline the integration of new focused ultrasound equipment into your workflow. It enables control of the equipment while limiting the need for users to familiarize themselves with new software interfaces. 
 
-## Features
+## Features <a name="features"></a>
 - Seamless Integration: The current version offers essential functionality that can be easily integrated into your experimental code to control the system during your experiments.
 - Compatibility: This package is also a prerequisite for the latest version of the [SonoRover One software](https://github.com/Donders-Institute/Radboud-FUS-measurement-kit), which utilizes it to communicate with your focused ultrasound equipment. 
 By adhering to a standardized communication structure, the characterization software does not need to directly handle communication protocols. Instead, it uses the same codebase for both standalone, characterization and experimental settings, ensuring consistent and centralized updates to equipment communication.
 
 This project is facilitated by the Radboud Focused Ultrasound Initiative. For more information, please visit the [website](https://www.ru.nl/en/donders-institute/research/research-facilities/focused-ultrasound-initiative-fus).
+
+## Important Note <a name="important_note"></a>
+
+**This package is developed specifically for Windows operating systems.** While it might work in other environments with some modifications, full support is provided only for Windows.
+
 
 <!-- AUTHORS -->
 
@@ -64,11 +76,11 @@ Margely Cornelissen, Stein Fekkes (Radboud University, Nijmegen, The Netherlands
 
 <!-- GETTING STARTED -->
 
-## 💻 Getting Started <a name="getting-started"></a>
+# 💻 Getting Started <a name="getting-started"></a>
 
 To get a local copy up and running, follow these steps.
 
-### Setup
+## Setup <a name="setup"></a>
 
 Clone this repository to your desired folder:
 
@@ -85,7 +97,7 @@ Clone this repository to your desired folder:
 	3. Choose 'URL' and paste the following repository URL: [https://github.com/Donders-Institute/Radboud-FUS-driving-system-software.git](https://github.com/Donders-Institute/Radboud-FUS-driving-system-software.git)
 	4. Choose your desired folder and clone the repository.
 
-### Install
+## Install <a name="install"></a>
 
 1. Open your command prompt and run the following batch file to set up the virtual environment and install the necessary dependencies. You can use input parameters to customize the environment name or Python interpreter location.
 
@@ -108,17 +120,17 @@ After running the batch file, ensure that the virtual environment is activated a
 - Checking for the FUS_DS_PACKAGE virtual environment in your WORKON_HOME directory.
 - Confirming that the required packages are installed.
 
-#### Notes
+### Notes
 - Python Version: The script assumes that Python 3.10 is installed. If you have a different version, make sure to adjust the script accordingly or install Python 3.10.
 - Environment Variables: The batch file sets environment variables temporarily for the session and permanently if they are not already set. Ensure that WORKON_HOME and PROJECT_HOME are correctly configured as needed.
 
-#### Troubleshooting
+### Troubleshooting
 If you encounter issues with the batch file not being recognized or errors during execution, ensure that:
 
 - The batch file has the correct permissions to execute.
 - The repository has been cloned correctly and contains the necessary files.
 
-### Usage
+## Usage <a name="usage"></a>
 
 With the fus_driving_systems package installed, activate your environment to create and execute sequences. 
 
@@ -142,7 +154,7 @@ Open one of the Python scripts provided in the 'standalone_driving_system_softwa
 
 Follow the instructions within the code to understand how to integrate it into your own codebase. Additionally, these scripts can be utilized to explore the functionality of the package before integrating it into your project.
 
-#### Launch virtual environment and IDE at once
+### Launch virtual environment and IDE at once
 To simplify the process of activating the virtual environment and launching your IDE, you can use the provided [batch script](start_venv_and_ide.bat).
 
 How to use the script:
@@ -160,7 +172,7 @@ How to use the script:
 
 <!-- FUTURE FEATURES -->
 
-## 🔭 Future Features <a name="future-features"></a>
+# 🔭 Future Features <a name="future-features"></a>
 
 - [ ] **A GUI to display, plan and execute an US sequence**
 - [ ] **Compatibility check of chosen equipment**
@@ -170,7 +182,7 @@ How to use the script:
 
 <!-- CONTRIBUTING -->
 
-## 🤝 Contributing <a name="contributing"></a>
+# 🤝 Contributing <a name="contributing"></a>
 
 Contributions, issues, and feature requests are welcome!
 
@@ -181,7 +193,7 @@ We'd love to hear from you.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
-## 📝 License <a name="license"></a>
+# 📝 License <a name="license"></a>
 
 This project is [MIT](./LICENSE) licensed.
 
