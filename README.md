@@ -87,7 +87,7 @@ Clone this repository to your desired folder:
 
 	``` sh
 	cd my-folder
-	git clone ggit@github.com:Donders-Institute/Radboud-FUS-driving-system-software.git
+	git clone git@github.com:Donders-Institute/Radboud-FUS-driving-system-software.git
 	```
 	
 - GitHub Desktop
