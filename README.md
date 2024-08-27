@@ -37,9 +37,9 @@
 The **Radboud FUS driving system software** is designed to streamline the integration of new focused ultrasound equipment into your workflow. It enables control of the equipment while limiting the need for users to familiarize themselves with new software interfaces. 
 
 ## Features <a name="features"></a>
-- Seamless Integration: The current version offers essential functionality that can be easily integrated into your experimental code to control the system during your experiments.
-- Compatibility: This package is also a prerequisite for the latest version of the [SonoRover One software](https://github.com/Donders-Institute/Radboud-FUS-measurement-kit), which utilizes it to communicate with your focused ultrasound equipment. 
-By adhering to a standardized communication structure, the characterization software does not need to directly handle communication protocols. Instead, it uses the same codebase for both standalone, characterization and experimental settings, ensuring consistent and centralized updates to equipment communication.
+- **Seamless Integration**: The current version offers essential functionality that can be easily integrated into your experimental code to control the system during your experiments.
+- **Compatibility**: This package is also a prerequisite for the latest version of the [SonoRover One software](https://github.com/Donders-Institute/Radboud-FUS-measurement-kit), which utilizes it to communicate with your focused ultrasound equipment. 
+By adhering to a standardized communication structure, the characterization software does not need to directly handle communication protocols. Instead, it uses the same codebase for both standalone and experimental settings, ensuring consistent and centralized updates to equipment communication.
 
 This project is facilitated by the Radboud Focused Ultrasound Initiative. For more information, please visit the [website](https://www.ru.nl/en/donders-institute/research/research-facilities/focused-ultrasound-initiative-fus).
 
@@ -65,7 +65,6 @@ This project is facilitated by the Radboud Focused Ultrasound Initiative. For mo
 - GitHub: [@StefFek-GIT](https://github.com/StefFek-GIT)
 - [LinkedIn](https://linkedin.com/in/sfekkes)
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ## ✒️ How to cite <a name="how-to-cite"></a>
@@ -99,30 +98,30 @@ Clone this repository to your desired folder:
 
 ## Install <a name="install"></a>
 
-1. Open your command prompt and run the following batch file to set up the virtual environment and install the necessary dependencies. You can use input parameters to customize the environment name or Python interpreter location.
+Open your command prompt and run the following batch file to set up the virtual environment and install the necessary dependencies. You can use input parameters to customize the environment name or Python interpreter location.
 
-	```
-	cd your_directory_with_cloned_repository
-	install_dependencies.bat [VENV_NAME] [PYTHON_INTERPRETER_PATH]
-	```
+```
+cd your_directory_with_cloned_repository
+install_dependencies.bat [VENV_NAME] [PYTHON_INTERPRETER_PATH]
+```
 	
 - VENV_NAME: Specify the name for the virtual environment (e.g., MyEnv). If not provided, it defaults to FUS_DS_PACKAGE.
 - PYTHON_INTERPRETER_PATH: Specify the path to the Python 3.10 interpreter if it’s not in the default location. For example, C:\Path\To\Python310\python.exe.
 
 The batch file will:
 
-- Create a virtual environment named FUS_DS_PACKAGE.
+- Create a virtual environment.
 - Install the required Python packages.
 - Set up necessary environment variables.
 
 After running the batch file, ensure that the virtual environment is activated and dependencies are installed. You can verify this by:
 
-- Checking for the FUS_DS_PACKAGE virtual environment in your WORKON_HOME directory.
+- Checking for the virtual environment in your WORKON_HOME directory.
 - Confirming that the required packages are installed.
 
 ### Notes
-- Python Version: The script assumes that Python 3.10 is installed. If you have a different version, make sure to adjust the script accordingly or install Python 3.10.
-- Environment Variables: The batch file sets environment variables temporarily for the session and permanently if they are not already set. Ensure that WORKON_HOME and PROJECT_HOME are correctly configured as needed.
+- **Python Version**: The script assumes that Python 3.10 is installed. If you have a different version, make sure to adjust the script accordingly or install Python 3.10.
+- **Environment Variables**: The batch file sets environment variables temporarily for the session and permanently if they are not already set. Ensure that WORKON_HOME is correctly configured as needed.
 
 ### Troubleshooting
 If you encounter issues with the batch file not being recognized or errors during execution, ensure that:
@@ -132,34 +131,34 @@ If you encounter issues with the batch file not being recognized or errors durin
 
 ## Usage <a name="usage"></a>
 
-With the fus_driving_systems package installed, activate your environment to create and execute sequences. 
+With the fus_driving_systems package installed, activate your environment in your command prompt to create and execute sequences. 
 
-	```
-	workon [VENV_NAME]
-	```
+```
+workon [VENV_NAME]
+```
 
 While the virtual environment is activated, you can install Spyder or any other IDE of your choice. To install Spyder, run:
 
-	```
-	pip install spyder
-	```
+```
+pip install spyder
+```
 
 After installing Spyder, you can launch it directly from the command line within the activated virtual environment by running:
 
-	```
-	spyder
-	```
+```
+spyder
+```
 
 Open one of the Python scripts provided in the 'standalone_driving_system_software' directory, which serve as examples of how to create and execute a sequence with a driving system from a specific manufacturer.
 
 Follow the instructions within the code to understand how to integrate it into your own codebase. Additionally, these scripts can be utilized to explore the functionality of the package before integrating it into your project.
 
-### Launch virtual environment and IDE at once
+### Activate your virtual environment and launch the IDE at once
 To simplify the process of activating the virtual environment and launching your IDE, you can use the provided [batch script](start_venv_and_ide.bat).
 
 How to use the script:
 1. Ensure that start_env_and_ide.bat is located in a convenient location, such as the root directory of your project or your desktop.
-2. Run the script
+2. Run the script in one of the following ways:
 	- Open start_venv_and_ide.bat in a text editor and modify the VENV_NAME and IDE variables directly if you prefer not to use command-line arguments. To run the .bat file, just double-click it.
 	- Using the command prompt:
 		```
