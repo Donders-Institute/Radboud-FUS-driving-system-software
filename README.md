@@ -101,7 +101,7 @@ Clone this repository to your desired folder:
 Ensure you have Python 3.10 installed and accessible from your command line. If Python is not installed, download it from the [official Python website]{https://www.python.org/downloads/release/python-31011/}. It is not necessary to add Python to your system's PATH during installation,  as virtual environments allow you to manage and switch between Python versions without affecting other projects or code outside the environment..
 
 <div align="center">
-  <img src="/images/python_path.png" alt="python_path" width="auto"  height="70" />
+  <img src="/images/python_path.png" alt="python_path" width="auto"  height="auto" />
   
 </div>
 
