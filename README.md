@@ -98,30 +98,38 @@ Clone this repository to your desired folder:
 
 ## Install <a name="install"></a>
 
-Open your command prompt and run the following batch file to set up the virtual environment and install the necessary dependencies. You can use input parameters to customize the environment name or Python interpreter location.
+Ensure you have Python 3.10 installed and accessible from your command line. If Python is not installed, download it from the [official Python website]{https://www.python.org/downloads/release/python-31011/}. It is not necessary to add Python to your system's PATH during installation,  as virtual environments allow you to manage and switch between Python versions without affecting other projects or code outside the environment..
+
+<div align="center">
+  <img src="/images/python_path.png" alt="python_path" width="auto"  height="70" />
+  
+</div>
+
+Open your command prompt and run the following batch file to set up the virtual environment and install the necessary dependencies. You can use input parameters to customize the environment name or directory, or Python interpreter location. You must either rely on all default or provide all input parameters. 
 
 ```
 cd your_directory_with_cloned_repository
-install_dependencies.bat [VENV_NAME] [PYTHON_INTERPRETER_PATH]
+create_venv.bat "[PYTHON_INTERPRETER_PATH]" [VENV_NAME] "[VENV_DIR]"
 ```
 	
-- VENV_NAME: Specify the name for the virtual environment (e.g., MyEnv). If not provided, it defaults to FUS_DS_PACKAGE.
 - PYTHON_INTERPRETER_PATH: Specify the path to the Python 3.10 interpreter if it’s not in the default location. For example, C:\Path\To\Python310\python.exe.
+- VENV_NAME: Specify the name for the virtual environment (e.g., MyEnv). If not provided, it defaults to FUS_DS_PACKAGE.
+- VENV_DIR: Specify the directory for the virtual environment (e.g., C:/Users/Me/Envs). If not provided, it defaults to C:/Users/{USERPROFILE}/Envs.
+
+Example: create_venv.bat "C:\Path\To\Python310\python.exe" FUS_DS_PACKAGE "C:/Users/Me/Envs"
 
 The batch file will:
 
 - Create a virtual environment.
 - Install the required Python packages.
-- Set up necessary environment variables.
 
 After running the batch file, ensure that the virtual environment is activated and dependencies are installed. You can verify this by:
 
-- Checking for the virtual environment in your WORKON_HOME directory.
+- Checking for the virtual environment in your VENV_DIR directory.
 - Confirming that the required packages are installed.
 
 ### Notes
 - **Python Version**: The script assumes that Python 3.10 is installed. If you have a different version, make sure to adjust the script accordingly or install Python 3.10.
-- **Environment Variables**: The batch file sets environment variables temporarily for the session and permanently if they are not already set. Ensure that WORKON_HOME is correctly configured as needed.
 
 ### Troubleshooting
 If you encounter issues with the batch file not being recognized or errors during execution, ensure that:
@@ -134,7 +142,7 @@ If you encounter issues with the batch file not being recognized or errors durin
 With the fus_driving_systems package installed, activate your environment in your command prompt to create and execute sequences. 
 
 ```
-workon [VENV_NAME]
+call [VENV_PATH]\Scripts\activate
 ```
 
 While the virtual environment is activated, you can install Spyder or any other IDE of your choice. To install Spyder, run:
@@ -159,12 +167,12 @@ To simplify the process of activating the virtual environment and launching your
 How to use the script:
 1. Ensure that start_env_and_ide.bat is located in a convenient location, such as the root directory of your project or your desktop.
 2. Run the script in one of the following ways:
-	- Open start_venv_and_ide.bat in a text editor and modify the VENV_NAME and IDE variables directly if you prefer not to use command-line arguments. To run the .bat file, just double-click it.
+	- Open start_venv_and_ide.bat in a text editor and modify the VENV_PATH and IDE variables directly if you prefer not to use command-line arguments. To run the .bat file, just double-click it.
 	- Using the command prompt:
 		```
-		start_venv_and_ide.bat [VENV_NAME] [IDE]
+		start_venv_and_ide.bat [VENV_PATH] [IDE]
 		```
-		- VENV_NAME: Specify the name for the virtual environment (e.g., MyEnv). If not provided, it defaults to FUS_DS_PACKAGE.
+		- VENV_PATH: Specify the path to the virtual environment (e.g., C:/Users/Me/Envs/MyEnv). If not provided, it defaults to C:/Users/{USERPROFILE}/Envs/FUS_DS_PACKAGE.
 		- IDE: Specify the python interpreter. IF not provided, it defaults to spyder.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
