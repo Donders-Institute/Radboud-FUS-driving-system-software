@@ -118,7 +118,7 @@ class SonicConcepts(ds.ControlDrivingSystem):
         try:
             cmd = 'START\r'
             self.gen.write(cmd.encode('ascii'))
-            time.sleep(0.2)
+            time.sleep(0.05)
             line = self.gen.readline()
             logger.info('START: %s', line)
 
