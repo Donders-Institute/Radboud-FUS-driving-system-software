@@ -47,6 +47,8 @@ if errorlevel 1 (
     echo virtualenv is already installed.
 )
 
+set "VENV_PATH=%VENV_DIR%\%VENV_NAME%"
+
 :: Check if the virtual environment already exists
 if exist "%VENV_PATH%\Scripts\activate" (
     echo Virtual environment already exists at "%VENV_PATH%".
