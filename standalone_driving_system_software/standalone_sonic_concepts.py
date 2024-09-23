@@ -46,6 +46,9 @@ seq = sequence.Sequence()
 seq.driving_sys = '203-035'
 seq.driving_sys.connect_info = 'COM3'  # COM port the driving system is connected to
 
+# set wait_for_trigger to true if you want to use trigger
+seq.wait_for_trigger = True
+
 # to check available transducers: print(transducer.get_tran_serials())
 # choose one transducer from that list as input
 seq.transducer = 'CTX-250-009'
@@ -112,8 +115,19 @@ try:
     # optional: check if correct transducer is selected on driving system before continuining
     sc_ds.check_tran_sel()
 
-    sc_ds.send_sequence(seq)
-    sc_ds.execute_sequence()
+    # If wait_for_trigger is true, only the sequence is sent and will be executed by the external trigger
+    if seq.wait_for_trigger:
+        sc_ds.send_sequence(seq)  # currently, triggermode is set to 1. Triggermode of 2 is not supported yet.
+    
+    # If wait_for_trigger is false, the sequence is sent and can be executed directly using the execute_sequence() function
+    else:
+        sc_ds.send_sequence(seq)
+        sc_ds.execute_sequence()
 
 finally:
-    sc_ds.disconnect()
+    # When the sequence is executed using execute_sequence(), the system will be disconnected automatically,
+    # In the case your code is stopped abruptly, the driving system will be disconnected. Otherwise, there
+    # is a change that it keeps on firing ultrasound sequences.
+    # When using the external trigger, disconnect the driving system yourself.
+    if not seq.wait_for_trigger:
+        sc_ds.disconnect()

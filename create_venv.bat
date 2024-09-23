@@ -67,5 +67,5 @@ pip install -r requirements.txt
 :: Upgrade pip (optional but recommended)
 "%PYTHON_PATH%" -m pip install --upgrade pip
 
-echo Setup complete. To activate the virtual environment, run 'call "%VENV_PATH%"\Scripts\activate'. 
+echo Setup complete. To activate the virtual environment, run 'call %VENV_PATH%\Scripts\activate'. 
 echo The virtual environment is located at "%VENV_PATH%".

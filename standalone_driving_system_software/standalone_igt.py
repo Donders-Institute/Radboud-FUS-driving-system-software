@@ -46,6 +46,9 @@ seq = sequence.Sequence()
 # choose one driving system from that list as input
 seq.driving_sys = 'IGT-128-ch_comb_1x10-ch'
 
+# set wait_for_trigger to true if you want to use trigger
+seq.wait_for_trigger = True
+
 # to check available transducers: print(transducer.get_tran_serials())
 # choose one transducer from that list as input
 seq.transducer = 'IS_PCD15287_01001'
@@ -58,36 +61,27 @@ seq.focus = 40  # [mm], focal depth
 seq.dephasing_degree = 0  # [degrees]
 
 # either set maximum pressure in free water [MPa], voltage [V] or amplitude [%]
-seq.press = 1  # [MPa], maximum pressure in free water
 # seq.volt = 0  # [V], voltage per channel
-# seq.ampl = 10  # [%], amplitude. NOTE: DIFFERENT THAN SC
 
 # # timing parameters # #
 # you can use the TUS Calculator to visualize the timing parameters:
 # https://www.socsci.ru.nl/fusinitiative/tuscalculator/
 
 # ## pulse ## #
-seq.pulse_dur = 10  # [ms], pulse duration
-seq.pulse_rep_int = 200  # [ms], pulse repetition interval
 
 # pulse ramping
 # to check available ramp shapes: print(seq.get_ramp_shapes())
 # choose one ramp shape from that list as input
-seq.pulse_ramp_shape = 'Linear'
 
 # ramping up and ramping down duration are equal and are equal to ramp duration
-seq.pulse_ramp_dur = 0  # [ms], ramp duration, with at least 70 us between ramping up and down
 
 # ## pulse train ## #
 # if you only want one pulse train, keep the values equal to the pulse repetition interval
-seq.pulse_train_dur = 200  # [ms], pulse train duration
-seq.pulse_train_rep_int = 200  # [ms], pulse train repetition interval, NOTE: DIFFERENT THAN SC
 
 # ## pulse train repetition ## #
 # if you only want one pulse train, keep the value equal to the pulse repetition interval
 # if you only want one pulse train repetition block, keep the value equal to the pulse train
 # repetition interval
-seq.pulse_train_rep_dur = 3000  # [s], pulse train repetition duration, NOTE: DIFFERENT THAN SC
 
 # to get a summary of your entered sequence: print(seq)
 logger.info(f'The following sequence is used: {seq}')
@@ -98,15 +92,11 @@ logger.info(f'The following sequence is used: {seq}')
 
 # creating an IGT driving system instance, connecting to it and sending your first sequence can be
 # done when initializing your experiment. When appropriate, execute your sequence by implementing
-# 'execute_sequence()' into your code.
+# 'execute_sequence()' into your code or by using the external trigger.
 
 # when you want to change your sequence in the middle of your experimental code, create a new
 # sequence as above and send the new sequence: 'send_sequence()'. When appropriate, execute your
-# sequence by implementing 'execute_sequence()' into your code.
-
-# It is important to place your experimental code into a try-finally block, so if your code is
-# stopped abruptly, the driving system will be disconnected. Otherwise, there is a change that it
-# keeps on firing ultrasound sequences.
+# sequence by implementing 'execute_sequence()' into your code or by using the external trigger.
 
 ##############################################################################
 # import the 'fus_driving_systems - ds' into your code
@@ -122,9 +112,19 @@ try:
     # you can check if the system is still connected by using the following:
     # print(igt_ds.is_connected())
 
-    igt_driving_sys.send_sequence(seq)
-
-    igt_driving_sys.execute_sequence()
+    # If wait_for_trigger is true, only the sequence is sent and will be executed by the external trigger
+    if seq.wait_for_trigger:
+        igt_driving_sys.send_sequence(seq)
+    
+    # If wait_for_trigger is false, the sequence is sent and can be executed directly using the execute_sequence() function
+    else:
+        igt_driving_sys.send_sequence(seq)
+        igt_driving_sys.execute_sequence()
 
 finally:
-    igt_driving_sys.disconnect()
+    # When the sequence is executed using execute_sequence(), the system will be disconnected automatically,
+    # In the case your code is stopped abruptly, the driving system will be disconnected. Otherwise, there
+    # is a change that it keeps on firing ultrasound sequences.
+    # When using the external trigger, disconnect the driving system yourself.
+    if not seq.wait_for_trigger:
+        igt_driving_sys.disconnect()

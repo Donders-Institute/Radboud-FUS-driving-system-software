@@ -102,6 +102,9 @@ class SonicConcepts(ds.ControlDrivingSystem):
             self._set_timer(sequence.pulse_train_dur)
             self._set_ramping(sequence.pulse_ramp_shape, sequence.pulse_ramp_dur)
 
+            if sequence.wait_for_trigger:
+                self._send_command('TRIGGERMODE=1\r\n')
+
         else:
             logger.warning("No connection with driving system.")
             logger.warning("Reconnecting with driving system...")

@@ -178,6 +178,24 @@ class IGT(ds.ControlDrivingSystem):
             self.total_sequence_duration_ms = (100 + unifus.sequenceDurationMs(
                 self.seq, self.n_pulse_train_rep, self.pulse_train_delay))
 
+            # If wait_for_trigger is True, the driving system will wait for a trigger signal
+            if sequence.wait_for_trigger:
+                # Use unifus.ExecFlag.NONE if nothing special, or simply don't pass the exec_flags
+                # argument. Use '|' to combine multiple flags: flag1 | flag2 | flag3
+                # To use trigger, add one of unifus::ExecFlag::Trigger*
+                # exec_flags = unifus.ExecFlag.MeasureBoards
+                # exec_flags = unifus.ExecFlag.MeasureTimings | unifus.ExecFlag.TriggerAllSequences
+                exec_flags = (unifus.ExecFlag.MeasureTimings |
+                            unifus.ExecFlag.MeasureChannels |
+                            unifus.ExecFlag.MeasureBoards |
+                            unifus.ExecFlag.DisableMonitoringChannelCombiner |
+                            unifus.ExecFlag.DisableMonitoringChannelCurrentOut |
+                            unifus.ExecFlag.TriggerAllSequences)
+                # flags to disable checking the current limit
+
+                self.gen.prepareSequence(self.seq_buffer, self.n_pulse_train_rep,
+                                        self.pulse_train_delay, exec_flags)
+
         else:
             logger.warning("No connection with driving system.")
             logger.warning("Reconnecting with driving system...")
@@ -198,14 +216,14 @@ class IGT(ds.ControlDrivingSystem):
             # exec_flags = unifus.ExecFlag.MeasureBoards
             # exec_flags = unifus.ExecFlag.MeasureTimings | unifus.ExecFlag.TriggerAllSequences
             exec_flags = (unifus.ExecFlag.MeasureTimings |
-                          unifus.ExecFlag.MeasureChannels |
-                          unifus.ExecFlag.MeasureBoards |
-                          unifus.ExecFlag.DisableMonitoringChannelCombiner |
-                          unifus.ExecFlag.DisableMonitoringChannelCurrentOut)
+                        unifus.ExecFlag.MeasureChannels |
+                        unifus.ExecFlag.MeasureBoards |
+                        unifus.ExecFlag.DisableMonitoringChannelCombiner |
+                        unifus.ExecFlag.DisableMonitoringChannelCurrentOut)
             # flags to disable checking the current limit
 
             self.gen.prepareSequence(self.seq_buffer, self.n_pulse_train_rep,
-                                     self.pulse_train_delay, exec_flags)
+                                    self.pulse_train_delay, exec_flags)
 
             self.gen.startSequence()
             self.listener.waitSequence(self.total_sequence_duration_ms / 1000.0)
@@ -253,7 +271,7 @@ class IGT(ds.ControlDrivingSystem):
 
         # duration in us, delay in ms
         pulse.setDuration(sequence.pulse_dur, round(sequence.pulse_rep_int - sequence.pulse_dur, 1))
-
+        
         # set same frequency for all channels = 250KHz, in Hz
         oper_freq_hz = int(sequence.oper_freq * 1e3)
         pulse.setFrequencies([oper_freq_hz])

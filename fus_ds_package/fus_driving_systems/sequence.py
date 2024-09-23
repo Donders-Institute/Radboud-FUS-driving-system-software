@@ -51,6 +51,7 @@ class Sequence():
         _equip_combos (list): List of driving system and transducer combinations that require
         pressure compensation with an increasing focal depth.
         _driving_sys (DrivingSystem): The driving system associated with the sequence.
+        _wait_for_trigger (bool): Boolean indicating if the driving system is waiting for a trigger.
         _transducer (Transducer): The transducer associated with the sequence.
         _oper_freq (int): Operating frequency of the sequence [kHz].
         _dephasing_degree (float): Degree used to dephase every nth elemen based on chosen
@@ -106,6 +107,8 @@ class Sequence():
         self._driving_sys = ds.DrivingSystem()
         def_ds_serial = ds.get_ds_serials()[0]
         self.driving_sys = def_ds_serial
+
+        self._wait_for_trigger = False  # Default value for wait_for_trigger
 
         # set a temporary focus and operating frequency to set a default transducer
         self._global_power = 0  # SC: global power [W]
@@ -164,6 +167,7 @@ class Sequence():
         info = ''
 
         info += str(self._driving_sys)
+        info += f"Wait for trigger: {self._wait_for_trigger} \n "
         info += str(self._transducer)
 
         if self._driving_sys.manufact == config['Equipment.Manufacturer.IGT']['Name']:
@@ -243,6 +247,26 @@ class Sequence():
             if self._ds_tran_combo in self._equip_combos:
                 # New equipment selected, update conversion parameters
                 self._update_conv_param()
+
+    @property
+    def wait_for_trigger(self):
+        """
+        Gets the wait_for_trigger parameter.
+
+        Returns:
+            bool: The boolean indicating if the driving system is waiting for a trigger.
+        """
+        return self._wait_for_trigger
+
+    @wait_for_trigger.setter
+    def wait_for_trigger(self, wait_for_trigger):
+        """
+        Sets the wait_for_trigger parameter.
+
+        Args:
+            value (bool): The boolean indicating if the driving system is waiting for a trigger.
+        """
+        self._wait_for_trigger = wait_for_trigger
 
     @property
     def transducer(self):
