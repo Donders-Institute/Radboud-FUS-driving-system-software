@@ -148,8 +148,9 @@ class Transducer(object):
             :param point_mm: a 3-tuple (x,y,z) = cartesian coordinates (in mm) of the target, in the
             transducer space
             :set_focus_mm (float): The chosen focal depth [mm] without respect to natural focus.
-            :dephasing_degree (float): The degree used to dephase every 2nd element.
-            0 = no dephasing.
+            :dephasing_degree (list(float)): The degree used to dephase n elements in one cycle.
+            None = no dephasing. If the list is equal to the number of elements, the phases based on
+            the focus are overridden.
         """
 
         freqCount = pulse.frequencyCount()
@@ -178,10 +179,18 @@ class Transducer(object):
             rem = math.modf(dist / wavelen)[0]  # take fractional part
             phases[i] = rem * 360.0
 
-        if dephasing_degree != 0:
-            for i in range(len(phases)):
-                if i % 2 == 0:
-                    phases[i] = phases[i] + dephasing_degree  # add chosen degrees to dephase signal
+            if dephasing_degree is not None:
+                if len(dephasing_degree) > 1:
+                    logger.warning('Too few or too many entries given at dephasing_degree.' +
+                                   ' Only the first one is now used for dephasing purposes.')
+
+                dephasing_degree = dephasing_degree[0]
+                # determine n elements to dephase in one cycle
+                nth_elem = round(360/dephasing_degree)
+                for i in range(len(phases)):
+                    for i in range(nth_elem):
+                        # Add chosen degrees to dephase signal
+                        phases[i] = phases[i] + dephasing_degree*i
 
         phases_str = ', '.join([format(x, '.2f') for x in phases])
         natural_foc = set_focus_mm + point_mm[2]

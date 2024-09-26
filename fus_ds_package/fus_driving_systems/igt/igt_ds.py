@@ -92,7 +92,9 @@ class IGT(ds.ControlDrivingSystem):
         """
 
         # Establish connection with driving system
+        logger.info('Before unifus.FUSSystem....')
         self.fus = unifus.FUSSystem()
+        logger.info('After unifus.FUSSystem....')
 
         # Extract log information to log in same direction
         log_dir = 'C:\\Temp'
@@ -107,10 +109,13 @@ class IGT(ds.ControlDrivingSystem):
         unifus.setLogPath(log_dir, filename + "igt_ds_log")
         unifus.setLogLevel(unifus.LogLevel.Debug)
 
+        logger.info('After setting logging....')
+
         # Update the name of your configuration file
         igt_config_path = pkg_resources.resource_filename('fus_driving_systems', connect_info)
         if igt_config_path != '':
             self.fus.loadConfig(igt_config_path)
+            logger.info('After loadConfig....')
         else:
             logger.error("Configuration file %s doesn't exist.", igt_config_path)
             sys.exit()
@@ -118,9 +123,11 @@ class IGT(ds.ControlDrivingSystem):
         # Create and register an event listener
         self.listener = ExecListener()
         self.fus.registerListener(self.listener)
+        logger.info('After listener....')
 
         self.fus.connect()
         self.listener.waitConnection()
+        logger.info('After waitConnection()....')
         if self.fus.isConnected():
             self.connected = True
             logger.info('Driving system is connected.')
@@ -178,24 +185,6 @@ class IGT(ds.ControlDrivingSystem):
             self.total_sequence_duration_ms = (100 + unifus.sequenceDurationMs(
                 self.seq, self.n_pulse_train_rep, self.pulse_train_delay))
 
-            # If wait_for_trigger is True, the driving system will wait for a trigger signal
-            if sequence.wait_for_trigger:
-                # Use unifus.ExecFlag.NONE if nothing special, or simply don't pass the exec_flags
-                # argument. Use '|' to combine multiple flags: flag1 | flag2 | flag3
-                # To use trigger, add one of unifus::ExecFlag::Trigger*
-                # exec_flags = unifus.ExecFlag.MeasureBoards
-                # exec_flags = unifus.ExecFlag.MeasureTimings | unifus.ExecFlag.TriggerAllSequences
-                exec_flags = (unifus.ExecFlag.MeasureTimings |
-                            unifus.ExecFlag.MeasureChannels |
-                            unifus.ExecFlag.MeasureBoards |
-                            unifus.ExecFlag.DisableMonitoringChannelCombiner |
-                            unifus.ExecFlag.DisableMonitoringChannelCurrentOut |
-                            unifus.ExecFlag.TriggerAllSequences)
-                # flags to disable checking the current limit
-
-                self.gen.prepareSequence(self.seq_buffer, self.n_pulse_train_rep,
-                                        self.pulse_train_delay, exec_flags)
-
         else:
             logger.warning("No connection with driving system.")
             logger.warning("Reconnecting with driving system...")
@@ -203,6 +192,36 @@ class IGT(ds.ControlDrivingSystem):
             # if no connection can be made, program stops preventing infinite loop
             self.connect(sequence.driving_sys.connect_info)
             self.send_sequence(sequence)
+
+    def wait_for_trigger(self):
+        """
+        Activates the listener on the IGT ultrasound driving system to wait for the trigger to
+        execte the previously sent sequence.
+        """
+
+        try:
+            # Use unifus.ExecFlag.NONE if nothing special, or simply don't pass the exec_flags
+            # argument. Use '|' to combine multiple flags: flag1 | flag2 | flag3
+            # To use trigger, add one of unifus::ExecFlag::Trigger*
+            # exec_flags = unifus.ExecFlag.MeasureBoards
+            # exec_flags = unifus.ExecFlag.MeasureTimings | unifus.ExecFlag.TriggerAllSequences
+            exec_flags = (unifus.ExecFlag.MeasureTimings |
+                          unifus.ExecFlag.MeasureChannels |
+                          unifus.ExecFlag.MeasureBoards |
+                          unifus.ExecFlag.DisableMonitoringChannelCombiner |
+                          unifus.ExecFlag.DisableMonitoringChannelCurrentOut |
+                          unifus.ExecFlag.TriggerAllSequences)
+            # flags to disable checking the current limit
+
+            self.gen.prepareSequence(self.seq_buffer, self.n_pulse_train_rep,
+                                     self.pulse_train_delay, exec_flags)
+
+            self.gen.startSequence()
+            self.listener.waitSequence(self.total_sequence_duration_ms / 1000.0)
+
+        except Exception as why:
+            logger.error("Exception: %s", str(why))
+            sys.exit()
 
     def execute_sequence(self):
         """
@@ -216,14 +235,14 @@ class IGT(ds.ControlDrivingSystem):
             # exec_flags = unifus.ExecFlag.MeasureBoards
             # exec_flags = unifus.ExecFlag.MeasureTimings | unifus.ExecFlag.TriggerAllSequences
             exec_flags = (unifus.ExecFlag.MeasureTimings |
-                        unifus.ExecFlag.MeasureChannels |
-                        unifus.ExecFlag.MeasureBoards |
-                        unifus.ExecFlag.DisableMonitoringChannelCombiner |
-                        unifus.ExecFlag.DisableMonitoringChannelCurrentOut)
+                          unifus.ExecFlag.MeasureChannels |
+                          unifus.ExecFlag.MeasureBoards |
+                          unifus.ExecFlag.DisableMonitoringChannelCombiner |
+                          unifus.ExecFlag.DisableMonitoringChannelCurrentOut)
             # flags to disable checking the current limit
 
             self.gen.prepareSequence(self.seq_buffer, self.n_pulse_train_rep,
-                                    self.pulse_train_delay, exec_flags)
+                                     self.pulse_train_delay, exec_flags)
 
             self.gen.startSequence()
             self.listener.waitSequence(self.total_sequence_duration_ms / 1000.0)
@@ -271,7 +290,7 @@ class IGT(ds.ControlDrivingSystem):
 
         # duration in us, delay in ms
         pulse.setDuration(sequence.pulse_dur, round(sequence.pulse_rep_int - sequence.pulse_dur, 1))
-        
+
         # set same frequency for all channels = 250KHz, in Hz
         oper_freq_hz = int(sequence.oper_freq * 1e3)
         pulse.setFrequencies([oper_freq_hz])
@@ -284,8 +303,12 @@ class IGT(ds.ControlDrivingSystem):
             sys.exit()
 
         # set same phase offset for all channels (angle in [0,360] degrees)
-        pulse = self._set_phases(pulse, sequence.focus, sequence.transducer.steer_info,
-                                 sequence.transducer.natural_foc, sequence.dephasing_degree)
+        if len(sequence.dephasing_degree) == sequence.transducer.elements:
+            logger.info(f'Phases are overridden by phases set at dephasing_degree :{sequence.dephasing_degree}')
+            pulse.setPhases(sequence.dephasing_degree)
+        else:
+            pulse = self._set_phases(pulse, sequence.focus, sequence.transducer.steer_info,
+                                     sequence.transducer.natural_foc, sequence.dephasing_degree)
 
         return pulse
 
@@ -318,8 +341,9 @@ class IGT(ds.ControlDrivingSystem):
             focus (float): The focus value [mm].
             steer_info (str): Path to the steer information.
             natural_foc (float): The natural focus value [mm] used to calculate target focus.
-            dephasing_degree (float): The degree used to dephase every nth element.
-            0 = no dephasing.
+            dephasing_degree (list(float)): The degree used to dephase n elements in one cycle.
+            None = no dephasing. If the list is equal to the number of elements, the phases based on
+            the focus are overridden.
 
         Returns:
             list: List of phases.
@@ -367,12 +391,18 @@ class IGT(ds.ControlDrivingSystem):
                 # Retrieve phases dependent of number of channels
                 phases = [match_row.iloc[0].iloc[1:int(self.n_channels)+1]].to_list()
 
-                if dephasing_degree != 0:
-                    nth_elem = round(360/dephasing_degree)  # determine which nth element to dephase
+                if dephasing_degree is not None:
+                    if len(dephasing_degree) > 1:
+                        logger.warning('Too few or too many entries given at dephasing_degree.' +
+                                       ' Only the first one is now used for dephasing purposes.')
+
+                    dephasing_degree = dephasing_degree[0]
+                    # determine n elements to dephase in one cycle
+                    nth_elem = round(360/dephasing_degree)
                     for i in range(len(phases)):
-                        if i % nth_elem == 0:
+                        for i in range(nth_elem):
                             # Add chosen degrees to dephase signal
-                            phases[i] = phases[i] + dephasing_degree
+                            phases[i] = phases[i] + dephasing_degree*i
 
                 phases_str = ', '.join([format(x, '.2f') for x in phases])
                 logger.info(f'Computed phases for set focus of {focus}: {phases_str}')

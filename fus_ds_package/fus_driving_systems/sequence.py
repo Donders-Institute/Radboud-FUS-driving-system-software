@@ -54,8 +54,9 @@ class Sequence():
         _wait_for_trigger (bool): Boolean indicating if the driving system is waiting for a trigger.
         _transducer (Transducer): The transducer associated with the sequence.
         _oper_freq (int): Operating frequency of the sequence [kHz].
-        _dephasing_degree (float): Degree used to dephase every nth elemen based on chosen
-        degree. (0 = no dephasing).
+        _dephasing_degree (list(float)): The degree used to dephase n elements in one cycle.
+        None = no dephasing. If the list is equal to the number of elements, the phases based on
+        the focus are overridden.
         _global_power (float): [SC] global power [W].
         _press (float): [IGT] maximum pressure in free water [MPa].
         _volt (float): [IGT] voltage [V].
@@ -120,7 +121,7 @@ class Sequence():
         self._oper_freq = 0  # [kHz]
 
         # Degree used to dephase every nth elemen based on chosen degree. (0 = no dephasing).
-        self._dephasing_degree = 0
+        self._dephasing_degree = None
 
         self._transducer = tran.Transducer()
         def_tran_serial = tran.get_tran_serials()[0]
@@ -530,8 +531,9 @@ class Sequence():
         Getter method for the dephasing degree.
 
         Returns:
-            float: Degree used to dephase every nth elemen based on chosen degree.
-            (0 = no dephasing).
+            list(float): The degree used to dephase n elements in one cycle.
+            None = no dephasing. If the list is equal to the number of elements, the phases based on
+            the focus are overriden.
         """
 
         return self._dephasing_degree
@@ -542,8 +544,9 @@ class Sequence():
         Setter method for the dephasing degree.
 
         Parameters:
-            dephasing_degree (float): Degree used to dephase every nth elemen based on chosen
-            degree. (0 = no dephasing).
+            dephasing_degree (list(float)): The degree used to dephase n elements in one cycle.
+            None = no dephasing. If the list is equal to the number of elements, the phases based on
+            the focus are overriden.
         """
 
         self._dephasing_degree = dephasing_degree
