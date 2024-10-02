@@ -49,7 +49,7 @@ MAX_ALLOWED_PRESSURE = 1.2  # MPa
 config['General']['Maximum pressure allowed in free water [MPa]'] = str(MAX_ALLOWED_PRESSURE)
 
 # if ramp shapes are changed, don't forget to change values used in code as well
-config['General']['Ramp shapes'] = ', '.join(['Rectangular - no ramping', 'Linear', 'Tukey'])
+config['General']['Ramp shapes'] = '\n'.join(['Rectangular - no ramping', 'Linear', 'Tukey'])
 
 config['Headers'] = {}
 config['Headers']['Software limit'] = (f'Amplitude limit % based on {MAX_ALLOWED_PRESSURE} MPa'
