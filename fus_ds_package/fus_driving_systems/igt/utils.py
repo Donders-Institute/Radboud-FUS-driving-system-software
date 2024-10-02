@@ -35,6 +35,8 @@ https://github.com/Donders-Institute/Radboud-FUS-measurement-kit
 import time
 from fus_driving_systems.igt import unifus
 
+# Access the logger
+from fus_driving_systems.config.logging_config import logger
 
 class ExecListener(unifus.FUSListener):
     """
@@ -80,18 +82,18 @@ class ExecListener(unifus.FUSListener):
             (result.execIndex(), result.pulseIndex(), result.duration(), result.msFromStart()))
         measures = result.sharedMeasurements()
         if measures is not None:
-            print ("          Available: %d measures for %d board(s), %d measures for %d channel(s)" %
+            logger.info("          Available: %d measures for %d board(s), %d measures for %d channel(s)" %
                 (measures.boardMeasureCount(), measures.boardCount(), measures.channelMeasureCount(), measures.channelCount()))
             for channel in range(measures.channelCount()):
                 # Note: it is advised to call measures.physicalChannelMeasureAvailable(measure) to check
                 # before calling .channelPhysicalValue (channel, measure).
                 if measures.channelMeasureCount() == 5:
-                    print ("    ch[%d] V=%#4.3g V, I=%#4.3g A, PhaseV/I=%#4.3g°, PhaseV/Vref=%#5.4g°, Freq=%7d Hz, Pow=%#g W" % (channel,
+                    logger.info("    ch[%d] V=%#4.3g V, I=%#4.3g A, PhaseV/I=%#4.3g°, PhaseV/Vref=%#5.4g°, Freq=%7d Hz, Pow=%#g W" % (channel,
                         measures.channelPhysicalValue (channel, 0), measures.channelPhysicalValue (channel, 1),
                         measures.channelPhysicalValue (channel, 2), measures.channelPhysicalValue (channel, 3),
                         measures.channelRawValue (channel, 4), measures.power(channel)))
                 else:
-                    print ("    ch[%d] Vfwd=%#4.3g V, Vrev=%#4.3g V, PhaseV/Vref=%#5.4g°, Freq=%7d Hz, Pow=%#g W" % (channel,
+                    logger.info("    ch[%d] Vfwd=%#4.3g V, Vrev=%#4.3g V, PhaseV/Vref=%#5.4g°, Freq=%7d Hz, Pow=%#g W" % (channel,
                         measures.channelPhysicalValue (channel, 0), measures.channelPhysicalValue (channel, 1),
                         measures.channelPhysicalValue (channel, 2), measures.channelRawValue (channel, 3), measures.power(channel)))
 

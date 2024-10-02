@@ -210,14 +210,14 @@ class IGT(ds.ControlDrivingSystem):
                           unifus.ExecFlag.MeasureBoards |
                           unifus.ExecFlag.DisableMonitoringChannelCombiner |
                           unifus.ExecFlag.DisableMonitoringChannelCurrentOut |
-                          unifus.ExecFlag.TriggerAllSequences)
+                          unifus.ExecFlag.TriggerOneSequence)
             # flags to disable checking the current limit
 
-            self.gen.prepareSequence(self.seq_buffer, self.n_pulse_train_rep,
+            self.gen.prepareSequence(self.seq_buffer, 1000000,
                                      self.pulse_train_delay, exec_flags)
 
             self.gen.startSequence()
-            self.listener.waitSequence(self.total_sequence_duration_ms / 1000.0)
+            logger.info('Wait for trigger')
 
         except Exception as why:
             logger.error("Exception: %s", str(why))
@@ -288,7 +288,7 @@ class IGT(ds.ControlDrivingSystem):
 
         pulse = unifus.Pulse(self.n_channels, 1, 1)  # n phases, n frequencies, n amplitudes
 
-        # duration in us, delay in ms
+        # duration in ms, delay in ms
         pulse.setDuration(sequence.pulse_dur, round(sequence.pulse_rep_int - sequence.pulse_dur, 1))
 
         # set same frequency for all channels = 250KHz, in Hz
@@ -303,10 +303,10 @@ class IGT(ds.ControlDrivingSystem):
             sys.exit()
 
         # set same phase offset for all channels (angle in [0,360] degrees)
-        if len(sequence.dephasing_degree) == sequence.transducer.elements:
-            logger.info(f'Phases are overridden by phases set at dephasing_degree :{sequence.dephasing_degree}')
-            pulse.setPhases(sequence.dephasing_degree)
-        else:
+        if sequence.dephasing_degree is not None and len(sequence.dephasing_degree) == sequence.transducer.elements:
+                logger.info(f'Phases are overridden by phases set at dephasing_degree :{sequence.dephasing_degree}')
+                pulse.setPhases(sequence.dephasing_degree)
+        else:   
             pulse = self._set_phases(pulse, sequence.focus, sequence.transducer.steer_info,
                                      sequence.transducer.natural_foc, sequence.dephasing_degree)
 
@@ -399,10 +399,14 @@ class IGT(ds.ControlDrivingSystem):
                     dephasing_degree = dephasing_degree[0]
                     # determine n elements to dephase in one cycle
                     nth_elem = round(360/dephasing_degree)
+                    dephasing_elem = 0
                     for i in range(len(phases)):
-                        for i in range(nth_elem):
-                            # Add chosen degrees to dephase signal
-                            phases[i] = phases[i] + dephasing_degree*i
+                        # Add chosen degrees to dephase signal
+                        phases[i] = phases[i] + dephasing_degree*dephasing_elem
+                        
+                        dephasing_elem = dephasing_elem + 1
+                        if dephasing_elem == nth_elem:
+                            dephasing_elem = 0
 
                 phases_str = ', '.join([format(x, '.2f') for x in phases])
                 logger.info(f'Computed phases for set focus of {focus}: {phases_str}')

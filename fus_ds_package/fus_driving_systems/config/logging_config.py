@@ -68,18 +68,13 @@ def initialize_logger(log_dir, filename):
     file_handler = logging.FileHandler(os.path.join(log_dir, f'log_{timestamp}_' + filename
                                                     + '.txt'), mode='w')
 
-    # create console handler
-    console_handler = logging.StreamHandler(sys.stdout)
-
     # create formatter and add it to the handlers
     formatterCompact = logging.Formatter("%(asctime)s - %(levelname)s - %(module)s - " +
                                          "%(funcName)s line %(lineno)d %(message)s")
     file_handler.setFormatter(formatterCompact)
-    console_handler.setFormatter(formatterCompact)
 
     # add the handlers to the logger
     logger.addHandler(file_handler)
-    logger.addHandler(console_handler)
 
     return logger
 

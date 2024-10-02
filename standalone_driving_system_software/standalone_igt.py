@@ -62,7 +62,7 @@ seq.focus = 40  # [mm], focal depth
 # 2 elem: 90 dephasing, 3 elem: 180 dephasing, 4 elem: 270 dephasing.
 # When the amount of values match the amount of elements, it will override the calculated phases
 # based on the set focus.
-seq.dephasing_degree = None  # [degrees]: [120] or [0, 135, 239, 90]
+seq.dephasing_degree = None  # [degrees]: None, [120] or [0, 135, 239, 90]
 
 # either set maximum pressure in free water [MPa], voltage [V] or amplitude [%]
 # seq.press = 1  # [MPa], maximum pressure in free water
@@ -97,7 +97,6 @@ seq.pulse_train_rep_int = 200  # [ms], pulse train repetition interval, NOTE: DI
 seq.pulse_train_rep_dur = 0.2  # [s], pulse train repetition duration, NOTE: DIFFERENT THAN SC
 
 # to get a summary of your entered sequence: print(seq)
-logger.info(f'The following sequence is used: {seq}')
 
 ##############################################################################
 # connect with driving system and execute sequence

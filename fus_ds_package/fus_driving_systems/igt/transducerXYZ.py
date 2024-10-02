@@ -43,7 +43,7 @@ https://github.com/Donders-Institute/Radboud-FUS-measurement-kit
 
 # Access the logger
 from fus_driving_systems.config.logging_config import logger
-
+import sys
 import math
 try:  # for Python 2/3 compatibility
     from StringIO import StringIO
@@ -179,18 +179,24 @@ class Transducer(object):
             rem = math.modf(dist / wavelen)[0]  # take fractional part
             phases[i] = rem * 360.0
 
-            if dephasing_degree is not None:
-                if len(dephasing_degree) > 1:
-                    logger.warning('Too few or too many entries given at dephasing_degree.' +
-                                   ' Only the first one is now used for dephasing purposes.')
+        if dephasing_degree is not None:
+            if len(dephasing_degree) > 1:
+                logger.error('Too few or too many entries given at dephasing_degree.' +
+                               ' Only the first one is now used for dephasing purposes.')
+                sys.exit()
 
-                dephasing_degree = dephasing_degree[0]
-                # determine n elements to dephase in one cycle
-                nth_elem = round(360/dephasing_degree)
-                for i in range(len(phases)):
-                    for i in range(nth_elem):
-                        # Add chosen degrees to dephase signal
-                        phases[i] = phases[i] + dephasing_degree*i
+            dephasing_degree = dephasing_degree[0]
+
+            # determine n elements to dephase in one cycle
+            nth_elem = round(360/dephasing_degree)
+            dephasing_elem = 0
+            for i in range(len(phases)):
+                # Add chosen degrees to dephase signal
+                phases[i] = phases[i] + dephasing_degree*dephasing_elem
+                
+                dephasing_elem = dephasing_elem + 1
+                if dephasing_elem == nth_elem:
+                    dephasing_elem = 0
 
         phases_str = ', '.join([format(x, '.2f') for x in phases])
         natural_foc = set_focus_mm + point_mm[2]
