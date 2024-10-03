@@ -396,7 +396,7 @@ class Sequence():
 
             logger.info(f'New maximum pressure in free water value of {self._press} [MPa] ' +
                         f'results in a voltage of {self._volt} [V] and an amplitude ' +
-                        'of {self._ampl} [%].')
+                        f'of {self._ampl} [%].')
         else:
             logger.warning('No pressure compensation parameters available in the configuration' +
                            ' file for chosen equipment combination. Enter amplitude [%].')
@@ -475,7 +475,7 @@ class Sequence():
 
                 logger.info(f'New amplitude value of {self._ampl} [%] results in a maximum' +
                             f' pressure in free water of {self._press} [MPa] and a voltage ' +
-                            'of {self._volt} [V].')
+                            f'of {self._volt} [V].')
             else:
                 # Equipment is not part a combination, so only set amplitude
                 self._ampl = ampl

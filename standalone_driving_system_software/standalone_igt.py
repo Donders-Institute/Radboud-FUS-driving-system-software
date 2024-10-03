@@ -119,7 +119,7 @@ from fus_driving_systems.igt import igt_ds
 igt_driving_sys = igt_ds.IGT()
 
 try:
-    igt_driving_sys.connect(seq.driving_sys.connect_info)
+    igt_driving_sys.connect(seq.driving_sys.connect_info, log_dir, filename)
 
     # you can check if the system is still connected by using the following:
     # print(igt_ds.is_connected())

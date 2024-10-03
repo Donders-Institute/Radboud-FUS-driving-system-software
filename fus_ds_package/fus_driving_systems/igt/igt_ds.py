@@ -36,6 +36,7 @@ import sys
 import time
 
 # Miscellaneous packages
+import faulthandler
 import math
 
 import numpy as np
@@ -73,6 +74,9 @@ class IGT(ds.ControlDrivingSystem):
         """
         super().__init__()
 
+        with open("C:/Temp/faulthandler_output.log", "w") as f:
+            faulthandler.enable(file=f)
+
         self.fus = None
         self.listener = None
         self.n_channels = 0
@@ -83,7 +87,7 @@ class IGT(ds.ControlDrivingSystem):
         self.n_pulse_train_rep = 0
         self.pulse_train_delay = 0
 
-    def connect(self, connect_info):
+    def connect(self, connect_info, log_dir='C:\\Temp', log_name='standalone_igt'):
         """
         Connects to the IGT ultrasound driving system.
 
@@ -91,53 +95,64 @@ class IGT(ds.ControlDrivingSystem):
             connect_info (str): Path with IGT driving system-specific configuration file.
         """
 
-        # Establish connection with driving system
-        logger.info('Before unifus.FUSSystem....')
-        self.fus = unifus.FUSSystem()
-        logger.info('After unifus.FUSSystem....')
-
-        # Extract log information to log in same direction
-        log_dir = 'C:\\Temp'
-        filename = ''
-        for h in logger.__dict__['handlers']:
-            if h.__class__.__name__ == 'FileHandler':
-                log_file = h.baseFilename
-                log_dir = os.path.split(log_file)[0]
-                name_ext = os.path.split(log_file)[1]
-                filename = os.path.splitext(name_ext)[0]
-
-        unifus.setLogPath(log_dir, filename + "igt_ds_log")
-        unifus.setLogLevel(unifus.LogLevel.Debug)
-
-        logger.info('After setting logging....')
-
-        # Update the name of your configuration file
-        igt_config_path = pkg_resources.resource_filename('fus_driving_systems', connect_info)
-        if igt_config_path != '':
-            self.fus.loadConfig(igt_config_path)
-            logger.info('After loadConfig....')
-        else:
-            logger.error("Configuration file %s doesn't exist.", igt_config_path)
+        try:
+            # Establish connection with driving system
+            logger.info('Before unifus.FUSSystem....')
+            self.fus = unifus.FUSSystem()
+            logger.info('After unifus.FUSSystem....')
+        except Exception as e:
+            logger.error(f'Error initializing FUSSystem: {e}')
             sys.exit()
 
-        # Create and register an event listener
-        self.listener = ExecListener()
-        self.fus.registerListener(self.listener)
-        logger.info('After listener....')
+        try:
+            unifus.setLogPath(log_dir, log_name + "_igt_ds_log")
+            unifus.setLogLevel(unifus.LogLevel.Debug)
 
-        self.fus.connect()
-        self.listener.waitConnection()
-        logger.info('After waitConnection()....')
-        if self.fus.isConnected():
-            self.connected = True
-            logger.info('Driving system is connected.')
+            logger.info('After setting logging....')
+        except Exception as e:
+            logger.error(f"Error setting up logging: {e}")
+            sys.exit()
 
-            self.gen = self.fus.gen()
-            self.n_channels = self.gen.getParam(unifus.GenParam.ChannelCount)
-            logger.info("Generator: %s channels", self.n_channels)
-        else:
-            self.connected = False
-            logger.error("Error: connection failed.")
+        try:
+            # Update the name of your configuration file
+            igt_config_path = pkg_resources.resource_filename('fus_driving_systems', connect_info)
+            if igt_config_path != '':
+                self.fus.loadConfig(igt_config_path)
+                logger.info('After loadConfig....')
+            else:
+                logger.error("Configuration file %s doesn't exist.", igt_config_path)
+                sys.exit()
+        except Exception as e:
+            logger.error(f"Error loading configuration: {e}")
+            sys.exit()
+
+        try:
+            # Create and register an event listener
+            self.listener = ExecListener()
+            self.fus.registerListener(self.listener)
+            logger.info('After listener....')
+
+            self.fus.connect()
+            self.listener.waitConnection()
+            logger.info('After waitConnection()....')
+        except Exception as e:
+            logger.error(f"Error during connection or listener registration: {e}")
+            sys.exit()
+
+        try:
+            if self.fus.isConnected():
+                self.connected = True
+                logger.info('Driving system is connected.')
+
+                self.gen = self.fus.gen()
+                self.n_channels = self.gen.getParam(unifus.GenParam.ChannelCount)
+                logger.info("Generator: %s channels", self.n_channels)
+            else:
+                self.connected = False
+                logger.error("Error: connection failed.")
+                sys.exit()
+        except Exception as e:
+            logger.error(f"Error after connection check: {e}")
             sys.exit()
 
     def send_sequence(self, sequence):
