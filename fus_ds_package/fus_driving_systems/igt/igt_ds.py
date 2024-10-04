@@ -116,6 +116,7 @@ class IGT(ds.ControlDrivingSystem):
         try:
             # Update the name of your configuration file
             igt_config_path = pkg_resources.resource_filename('fus_driving_systems', connect_info)
+            logger.info(f'igt_config_path: {igt_config_path} found....')
             if igt_config_path != '':
                 self.fus.loadConfig(igt_config_path)
                 logger.info('After loadConfig....')
