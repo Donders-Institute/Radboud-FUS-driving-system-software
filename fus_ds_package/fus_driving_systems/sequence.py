@@ -57,6 +57,7 @@ class Sequence():
         _dephasing_degree (list(float)): The degree used to dephase n elements in one cycle.
         None = no dephasing. If the list is equal to the number of elements, the phases based on
         the focus are overridden.
+        _chosen_power (str): The chosen power parameter like amplitude or global power.
         _global_power (float): [SC] global power [W].
         _press (float): [IGT] maximum pressure in free water [MPa].
         _volt (float): [IGT] voltage [V].
@@ -112,10 +113,11 @@ class Sequence():
         self._wait_for_trigger = False  # Default value for wait_for_trigger
 
         # set a temporary focus and operating frequency to set a default transducer
-        self._global_power = 0  # SC: global power [W]
-        self._press = 0  # IGT: maximum pressure in free water [MPa]
-        self._volt = 0  # IGT: voltage [V]
-        self._ampl = 0  # IGT: amplitude [%]
+        self._chosen_power = ''
+        self._global_power = -1  # SC: global power [W]
+        self._press = -1  # IGT: maximum pressure in free water [MPa]
+        self._volt = -1  # IGT: voltage [V]
+        self._ampl = -1  # IGT: amplitude [%]
         self._norm_press = 0  # IGT: normalized pressure
         self._focus = 40  # [mm]
         self._oper_freq = 0  # [kHz]
@@ -327,6 +329,28 @@ class Sequence():
         self._oper_freq = int(oper_freq)
 
     @property
+    def chosen_power(self):
+        """
+        Getter method for the chosen_power.
+
+        Returns:
+            str: The chosen power parameter.
+        """
+
+        return self._chosen_power
+
+    @chosen_power.setter
+    def chosen_power(self, chosen_power):
+        """
+        Setter method for the chosen_power.
+
+        Parameters:
+            chosen_power (str): The chosen power parameter.
+        """
+
+        self._chosen_power = chosen_power
+
+    @property
     def global_power(self):
         """
         Getter method for the global_power.
@@ -347,14 +371,15 @@ class Sequence():
         """
 
         if self._driving_sys.manufact == config['Equipment.Manufacturer.SC']['Name']:
-            # set other parameters determine the intensity to None
-            self._ampl = None
-
             self._global_power = global_power
+            self._chosen_power = 'Global power [mW]'
+
+            # set other parameters determine the intensity to None
+            self.ampl = -1
         else:
             # Chosen system is not SC, so check if another value is set.
-            if global_power is None and self._ampl is not None:
-                self._global_power = None
+            if global_power == -1 and self._ampl > -1:
+                self._global_power = -1
 
             else:
                 logger.warning('Global power parameter is not available for ' +
@@ -383,10 +408,8 @@ class Sequence():
 
         # Check if pressure compensation is available for chosen equipment
         if self._ds_tran_combo in self._equip_combos:
-            # set other parameters that determine the intensity to None
-            self._global_power = None
-
             self._press = press
+            self._chosen_power = 'Max. pressure in free water [MPa]'
 
             # Calculate required voltage
             self._calc_volt()
@@ -397,6 +420,9 @@ class Sequence():
             logger.info(f'New maximum pressure in free water value of {self._press} [MPa] ' +
                         f'results in a voltage of {self._volt} [V] and an amplitude ' +
                         f'of {self._ampl} [%].')
+
+            # set other parameters determine the intensity to None
+            self.global_power = -1
         else:
             logger.warning('No pressure compensation parameters available in the configuration' +
                            ' file for chosen equipment combination. Enter amplitude [%].')
@@ -422,10 +448,8 @@ class Sequence():
         """
         # Check if pressure compensation is available for chosen equipment
         if self._ds_tran_combo in self._equip_combos:
-            # set other parameters determine the intensity to None
-            self._global_power = None
-
             self._volt = volt
+            self._chosen_power = 'Voltage [V]'
 
             # Calculate maximum pressure in free water for logging purposes
             self._calc_press()
@@ -436,6 +460,9 @@ class Sequence():
             logger.info(f'New voltage value of {self._volt} [V] results in a maximum' +
                         f' pressure in free water of {self._press} [MPa] and an amplitude ' +
                         f'of {self._ampl} [%].')
+
+            # set other parameters determine the intensity to None
+            self.global_power = -1
 
         else:
             logger.warning('No pressure compensation parameters available in the configuration' +
@@ -461,10 +488,8 @@ class Sequence():
             ampl (float): The amplitude [%] for IGT.
         """
         if self._driving_sys.manufact == config['Equipment.Manufacturer.IGT']['Name']:
+            self._chosen_power = 'Amplitude [%]'
             if self._ds_tran_combo in self._equip_combos:
-                # set other parameters determine the intensity to None
-                self._global_power = None
-
                 self._ampl = ampl
 
                 # Convert amplitude to voltage for logging
@@ -476,6 +501,9 @@ class Sequence():
                 logger.info(f'New amplitude value of {self._ampl} [%] results in a maximum' +
                             f' pressure in free water of {self._press} [MPa] and a voltage ' +
                             f'of {self._volt} [V].')
+
+                # set other parameters determine the intensity to None
+                self.global_power = -1
             else:
                 # Equipment is not part a combination, so only set amplitude
                 self._ampl = ampl
@@ -485,10 +513,10 @@ class Sequence():
                             ' only amplitude is accepted as input.')
         else:
             # Chosen system is not IGT, so check if another value is set.
-            if ampl is None and self._global_power is not None:
-                self._ampl = None
-                self._volt = None
-                self._press = None
+            if ampl == -1 and self._global_power > -1:
+                self._ampl = -1
+                self._volt = -1
+                self._press = -1
 
             else:
                 logger.warning('Amplitude parameter is not available for ' +
