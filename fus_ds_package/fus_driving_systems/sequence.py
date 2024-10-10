@@ -48,10 +48,14 @@ class Sequence():
     Class representing an ultrasound sequence.
 
     Attributes:
+        _seq_num (int): Number of sequence starting at zero. Currently only used to differentiate
+                        and send multiple sequences to the IGT system.
         _equip_combos (list): List of driving system and transducer combinations that require
         pressure compensation with an increasing focal depth.
         _driving_sys (DrivingSystem): The driving system associated with the sequence.
         _wait_for_trigger (bool): Boolean indicating if the driving system is waiting for a trigger.
+        _trigger_option (str): chosen trigger option.
+        _n_triggers (int): number of times a trigger will be sent.
         _transducer (Transducer): The transducer associated with the sequence.
         _oper_freq (int): Operating frequency of the sequence [kHz].
         _dephasing_degree (list(float)): The degree used to dephase n elements in one cycle.
@@ -103,6 +107,8 @@ class Sequence():
         Initializes a Sequence object with default values and loads configuration settings.
         """
 
+        self._seq_num = 0
+
         # Equipment parameters
         self._equip_combos = config['Equipment']['Combinations']
 
@@ -111,6 +117,8 @@ class Sequence():
         self.driving_sys = def_ds_serial
 
         self._wait_for_trigger = False  # Default value for wait_for_trigger
+        self._trigger_option = config['General']['Trigger options'].split('\n')[0]
+        self._n_triggers = 0
 
         # set a temporary focus and operating frequency to set a default transducer
         self._chosen_power = ''
@@ -169,8 +177,13 @@ class Sequence():
         """
         info = ''
 
+        info += f"Sequence number/buffer (for IGT purposes): {self._seq_num}"
         info += str(self._driving_sys)
+
         info += f"Wait for trigger: {self._wait_for_trigger} \n "
+        info += f"Trigger option: {self._trigger_option} \n "
+        info += f"Number of times a trigger is sent: {self._n_triggers} \n "
+
         info += str(self._transducer)
 
         if self._driving_sys.manufact == config['Equipment.Manufacturer.IGT']['Name']:
@@ -219,6 +232,30 @@ class Sequence():
                 + f" {self._timing_param['pulse_train_rep_dur']} \n ")
 
         return info
+
+    @property
+    def seq_num(self):
+        """
+        Getter method for the sequence number.
+
+        Returns:
+            seq_num: Number of sequence starting at zero. Currently only used to
+                           differentiate and send multiple sequences to the IGT system.
+        """
+
+        return self._seq_num
+
+    @seq_num.setter
+    def seq_num(self, seq_num):
+        """
+        Sets the sequence number.
+
+        Parameters:
+            seq_num (int): Number of sequence starting at zero. Currently only used to
+                           differentiate and send multiple sequences to the IGT system.
+        """
+
+        self._seq_num = seq_num
 
     @property
     def driving_sys(self):
@@ -270,6 +307,56 @@ class Sequence():
             value (bool): The boolean indicating if the driving system is waiting for a trigger.
         """
         self._wait_for_trigger = wait_for_trigger
+
+    def get_trigger_options(self):
+        """
+        Returns a list of available trigger options.
+
+        Returns:
+            List[str]: Available trigger options.
+        """
+
+        return config['General']['Trigger options'].split('\n')
+
+    @property
+    def trigger_option(self):
+        """
+        Gets the trigger_option parameter.
+
+        Returns:
+            str: The chosen trigger option.
+        """
+        return self._trigger_option
+
+    @trigger_option.setter
+    def trigger_option(self, trigger_option):
+        """
+        Sets the trigger_option parameter.
+
+        Args:
+            value (str):  The chosen trigger option.
+        """
+        self._trigger_option = trigger_option
+
+    @property
+    def n_triggers(self):
+        """
+        Gets the n_triggers parameter.
+
+        Returns:
+            int: The number of times a trigger will be sent.
+        """
+        return self._n_triggers
+
+    @n_triggers.setter
+    def n_triggers(self, n_triggers):
+        """
+        Sets the n_triggers parameter.
+
+        Args:
+            value (int): The number of times a trigger will be sent.
+        """
+        self._n_triggers = n_triggers
 
     @property
     def transducer(self):
@@ -372,7 +459,7 @@ class Sequence():
 
         if self._driving_sys.manufact == config['Equipment.Manufacturer.SC']['Name']:
             self._global_power = global_power
-            self._chosen_power = 'Global power [mW]'
+            self._chosen_power = config['General']['Power option.glob_pow']
 
             # set other parameters determine the intensity to None
             self.ampl = -1
@@ -409,7 +496,7 @@ class Sequence():
         # Check if pressure compensation is available for chosen equipment
         if self._ds_tran_combo in self._equip_combos:
             self._press = press
-            self._chosen_power = 'Max. pressure in free water [MPa]'
+            self._chosen_power = config['General']['Power option.press']
 
             # Calculate required voltage
             self._calc_volt()
@@ -449,7 +536,7 @@ class Sequence():
         # Check if pressure compensation is available for chosen equipment
         if self._ds_tran_combo in self._equip_combos:
             self._volt = volt
-            self._chosen_power = 'Voltage [V]'
+            self._chosen_power = config['General']['Power option.volt']
 
             # Calculate maximum pressure in free water for logging purposes
             self._calc_press()
@@ -488,7 +575,7 @@ class Sequence():
             ampl (float): The amplitude [%] for IGT.
         """
         if self._driving_sys.manufact == config['Equipment.Manufacturer.IGT']['Name']:
-            self._chosen_power = 'Amplitude [%]'
+            self._chosen_power = config['General']['Power option.ampl']
             if self._ds_tran_combo in self._equip_combos:
                 self._ampl = ampl
 

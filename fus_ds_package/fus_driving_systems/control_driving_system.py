@@ -56,6 +56,8 @@ class ControlDrivingSystem(ABC):
         # boolean to determine if gen is connected
         self.connected = False
 
+        self.is_sequence_sent = False
+
         # generator object
         self.gen = None
 
@@ -101,3 +103,13 @@ class ControlDrivingSystem(ABC):
         """
 
         return self.connected
+
+    def is_sequence_sent(self):
+        """
+        Checks whether a sequence has been sent to the ultrasound driving system.
+
+        Returns:
+            bool: True if a sequence has been sent, False otherwise.
+        """
+
+        return self.is_sequence_sent

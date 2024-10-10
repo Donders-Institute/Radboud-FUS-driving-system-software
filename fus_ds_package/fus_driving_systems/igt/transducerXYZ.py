@@ -182,7 +182,7 @@ class Transducer(object):
         if dephasing_degree is not None:
             if len(dephasing_degree) > 1:
                 logger.error('Too few or too many entries given at dephasing_degree.' +
-                               ' Only the first one is now used for dephasing purposes.')
+                             ' Only the first one is now used for dephasing purposes.')
                 sys.exit()
 
             dephasing_degree = dephasing_degree[0]
@@ -193,7 +193,7 @@ class Transducer(object):
             for i in range(len(phases)):
                 # Add chosen degrees to dephase signal
                 phases[i] = phases[i] + dephasing_degree*dephasing_elem
-                
+
                 dephasing_elem = dephasing_elem + 1
                 if dephasing_elem == nth_elem:
                     dephasing_elem = 0

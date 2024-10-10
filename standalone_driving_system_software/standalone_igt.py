@@ -14,6 +14,8 @@ Author: ir. Margely Cornelissen, FUS Initiative, Radboud University
 # initialize logging.
 ##############################################################################
 
+from fus_driving_systems.config.config import config_info as config
+
 from fus_driving_systems.config.logging_config import initialize_logger
 
 log_dir = "C://Temp"
@@ -41,13 +43,14 @@ from fus_driving_systems import sequence
 
 seq = sequence.Sequence()
 
+# Number of sequence starting at zero. Currently only used to differentiate and send multiple
+# sequences to the IGT system. Don't change this value if you only using one sequence definition.
+seq.seq_num = 0
+
 # equipment
 # to check available driving systems: print(driving_system.get_ds_serials())
 # choose one driving system from that list as input
 seq.driving_sys = 'IGT-128-ch_comb_1x10-ch'
-
-# set wait_for_trigger to true if you want to use trigger
-seq.wait_for_trigger = True
 
 # to check available transducers: print(transducer.get_tran_serials())
 # choose one transducer from that list as input
@@ -88,13 +91,26 @@ seq.pulse_ramp_dur = 0  # [ms], ramp duration, with at least 70 us between rampi
 # ## pulse train ## #
 # if you only want one pulse train, keep the values equal to the pulse repetition interval
 seq.pulse_train_dur = 200  # [ms], pulse train duration
-seq.pulse_train_rep_int = 200  # [ms], pulse train repetition interval, NOTE: DIFFERENT THAN SC
 
-# ## pulse train repetition ## #
-# if you only want one pulse train, keep the value equal to the pulse repetition interval
-# if you only want one pulse train repetition block, keep the value equal to the pulse train
-# repetition interval
-seq.pulse_train_rep_dur = 0.2  # [s], pulse train repetition duration, NOTE: DIFFERENT THAN SC
+# set wait_for_trigger to true if you want to use trigger
+seq.wait_for_trigger = True
+
+# When you only want to trigger a pulse train repetition once: 'TriggerOnePulseTrainRepetition'
+# Multiple times triggering a pulse train repetition isn't supported.
+# to check available trigger options: print(seq.get_trigger_options())
+seq.trigger_option = 'TriggerSequence'
+
+if seq.trigger_option == config['General']['Trigger option.seq']:
+    seq.n_triggers = 1  # number of timings above defined sequence will be triggered
+
+else:
+    seq.pulse_train_rep_int = 200  # [ms], pulse train repetition interval, NOTE: DIFFERENT THAN SC
+
+    # ## pulse train repetition ## #
+    # if you only want one pulse train, keep the value equal to the pulse repetition interval
+    # if you only want one pulse train repetition block, keep the value equal to the pulse train
+    # repetition interval
+    seq.pulse_train_rep_dur = 0.2  # [s], pulse train repetition duration, NOTE: DIFFERENT THAN SC
 
 # to get a summary of your entered sequence: print(seq)
 
@@ -128,13 +144,13 @@ try:
     # trigger
     if seq.wait_for_trigger:
         igt_driving_sys.send_sequence(seq)
-        igt_driving_sys.wait_for_trigger()
+        igt_driving_sys.wait_for_trigger(seq)
 
     # If wait_for_trigger is false, the sequence is sent and can be executed directly using the
     # execute_sequence() function
     else:
         igt_driving_sys.send_sequence(seq)
-        igt_driving_sys.execute_sequence()
+        igt_driving_sys.execute_sequence(seq)
 
 finally:
     # When the sequence is executed using execute_sequence(), the system will be disconnected

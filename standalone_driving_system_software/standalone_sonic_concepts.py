@@ -118,11 +118,11 @@ try:
     # If wait_for_trigger is true, only the sequence is sent and will be executed by the external trigger
     if seq.wait_for_trigger:
         sc_ds.send_sequence(seq)  # currently, triggermode is set to 1. Triggermode of 2 is not supported yet.
-    
+
     # If wait_for_trigger is false, the sequence is sent and can be executed directly using the execute_sequence() function
     else:
         sc_ds.send_sequence(seq)
-        sc_ds.execute_sequence()
+        sc_ds.execute_sequence(seq)
 
 finally:
     # When the sequence is executed using execute_sequence(), the system will be disconnected automatically,
