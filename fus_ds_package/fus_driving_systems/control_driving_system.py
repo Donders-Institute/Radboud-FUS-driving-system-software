@@ -56,7 +56,7 @@ class ControlDrivingSystem(ABC):
         # boolean to determine if gen is connected
         self.connected = False
 
-        self.is_sequence_sent = False
+        self.sequence_sent = False
 
         # generator object
         self.gen = None
@@ -112,4 +112,4 @@ class ControlDrivingSystem(ABC):
             bool: True if a sequence has been sent, False otherwise.
         """
 
-        return self.is_sequence_sent
+        return self.sequence_sent

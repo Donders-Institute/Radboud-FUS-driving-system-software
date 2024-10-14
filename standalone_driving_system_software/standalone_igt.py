@@ -100,8 +100,8 @@ seq.wait_for_trigger = True
 # to check available trigger options: print(seq.get_trigger_options())
 seq.trigger_option = 'TriggerSequence'
 
-if seq.trigger_option == config['General']['Trigger option.seq']:
-    seq.n_triggers = 1  # number of timings above defined sequence will be triggered
+if seq.wait_for_trigger and seq.trigger_option == config['General']['Trigger option.seq']:
+    seq.n_triggers = 5  # number of timings above defined sequence will be triggered
 
 else:
     seq.pulse_train_rep_int = 200  # [ms], pulse train repetition interval, NOTE: DIFFERENT THAN SC

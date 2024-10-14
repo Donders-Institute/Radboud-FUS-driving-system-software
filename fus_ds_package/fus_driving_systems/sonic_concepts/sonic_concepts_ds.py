@@ -65,6 +65,9 @@ class SonicConcepts(ds.ControlDrivingSystem):
         Parameters:
             connect_info (str): COM port information.
         """
+        
+        # When no connection, it is assumed that sent sequence isn't available (anymore)
+        self.sequence_sent = False
 
         self.gen = serial.Serial(connect_info, 115200, timeout=1)
         startup_message = self.gen.readline().decode("ascii").strip()
@@ -102,7 +105,7 @@ class SonicConcepts(ds.ControlDrivingSystem):
             self._set_timer(sequence.pulse_train_dur)
             self._set_ramping(sequence.pulse_ramp_shape, sequence.pulse_ramp_dur)
 
-            self.is_sequence_sent = True
+            self.sequence_sent = True
 
             if sequence.wait_for_trigger:
                 self._send_command('TRIGGERMODE=1\r\n')

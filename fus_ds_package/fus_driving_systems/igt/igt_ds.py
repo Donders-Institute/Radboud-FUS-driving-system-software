@@ -203,6 +203,8 @@ class IGT(ds.ControlDrivingSystem):
             if sequence.pulse_ramp_dur > sequence.pulse_dur/2 - 0.035:
                 error_messages.append('When applying ramping, there needs to be at least ' +
                                       '70 us between ramping up and down')
+                
+        return error_messages
 
     def send_sequence(self, sequence):
         """
@@ -266,14 +268,14 @@ class IGT(ds.ControlDrivingSystem):
             self.connect(sequence.driving_sys.connect_info)
             self.send_sequence(sequence)
 
-    def wait_for_trigger(self, sequence):
+    def wait_for_trigger(self, sequence, debug_info=False):
         """
         Activates the listener on the IGT ultrasound driving system to wait for the trigger to
         execte the previously sent sequence.
         """
 
         if self.is_connected():
-            if self.is_sequence_sent():
+            if self.is_sequence_sent(sequence.seq_num):
                 try:
                     # Use unifus.ExecFlag.NONE if nothing special, or simply don't pass the
                     # exec_flags argument. Use '|' to combine multiple flags: flag1 | flag2 | flag3
@@ -282,18 +284,19 @@ class IGT(ds.ControlDrivingSystem):
                     exec_flags = (unifus.ExecFlag.DisableMonitoringChannelCombiner |
                                   unifus.ExecFlag.DisableMonitoringChannelCurrentOut)
 
-                    ramp_transient_t = 0
-                    if sequence.pulse_ramp_dur > 0 and sequence.pulse_ramp_shape != config['General']['Ramp shape.rect']:
-                        ramp_transient_t = 0.070  # [ms]
-
-                    if sequence.pulse_dur > 4.570 + ramp_transient_t:  # [ms]
-                        exec_flags |= unifus.ExecFlag.MeasureChannels
-
-                    elif sequence.pulse_dur >= 0.035 + ramp_transient_t:  # [ms]
-                        exec_flags |= unifus.ExecFlag.MeasureBoards
-
-                    elif sequence.pulse_dur >= 0.001 + ramp_transient_t:  # [ms]:
-                        exec_flags |= unifus.ExecFlag.MeasureTimings  # or NONE
+                    if debug_info:
+                        ramp_transient_t = 0
+                        if sequence.pulse_ramp_dur > 0 and sequence.pulse_ramp_shape != config['General']['Ramp shape.rect']:
+                            ramp_transient_t = 0.070  # [ms]
+    
+                        if sequence.pulse_dur > 4.570 + ramp_transient_t:  # [ms]
+                            exec_flags |= unifus.ExecFlag.MeasureChannels
+    
+                        elif sequence.pulse_dur >= 0.035 + ramp_transient_t:  # [ms]
+                            exec_flags |= unifus.ExecFlag.MeasureBoards
+    
+                        elif sequence.pulse_dur >= 0.001 + ramp_transient_t:  # [ms]:
+                            exec_flags |= unifus.ExecFlag.MeasureTimings  # or NONE
 
                     # Determining trigger flag
                     if sequence.trigger_option == config['General']['Trigger option.seq']:
@@ -334,13 +337,13 @@ class IGT(ds.ControlDrivingSystem):
             self.send_sequence(sequence)
             self.wait_for_trigger(sequence)
 
-    def execute_sequence(self, sequence):
+    def execute_sequence(self, sequence, debug_info=False):
         """
         Executes the previously sent sequence on the IGT ultrasound driving system.
         """
 
         if self.is_connected():
-            if self.is_sequence_sent():
+            if self.is_sequence_sent(sequence.seq_num):
                 try:
                     # Use unifus.ExecFlag.NONE if nothing special, or simply don't pass the
                     # exec_flags argument. Use '|' to combine multiple flags: flag1 | flag2 | flag3
@@ -349,17 +352,18 @@ class IGT(ds.ControlDrivingSystem):
                     exec_flags = (unifus.ExecFlag.DisableMonitoringChannelCombiner |
                                   unifus.ExecFlag.DisableMonitoringChannelCurrentOut)
 
-                    ramp_transient_t = 0
-                    if sequence.pulse_ramp_dur > 0 and sequence.pulse_ramp_shape != config['General']['Ramp shape.rect']:
-                        ramp_transient_t = 0.070  # [ms]
-
-                    if sequence.pulse_dur > 4.570 + ramp_transient_t:  # [ms]
-                        exec_flags |= unifus.ExecFlag.MeasureChannels
-
-                    elif sequence.pulse_dur >= 0.035 + ramp_transient_t:  # [ms]
-                        exec_flags |= unifus.ExecFlag.MeasureBoards
-                    elif sequence.pulse_dur >= 0.001 + ramp_transient_t:  # [ms]:
-                        exec_flags |= unifus.ExecFlag.MeasureTimings  # or NONE
+                    if debug_info:
+                        ramp_transient_t = 0
+                        if sequence.pulse_ramp_dur > 0 and sequence.pulse_ramp_shape != config['General']['Ramp shape.rect']:
+                            ramp_transient_t = 0.070  # [ms]
+    
+                        if sequence.pulse_dur > 4.570 + ramp_transient_t:  # [ms]
+                            exec_flags |= unifus.ExecFlag.MeasureChannels
+    
+                        elif sequence.pulse_dur >= 0.035 + ramp_transient_t:  # [ms]
+                            exec_flags |= unifus.ExecFlag.MeasureBoards
+                        elif sequence.pulse_dur >= 0.001 + ramp_transient_t:  # [ms]:
+                            exec_flags |= unifus.ExecFlag.MeasureTimings  # or NONE
 
                     self.gen.prepareSequence(sequence.seq_num, self.n_pulse_train_rep,
                                              self.pulse_train_delay, exec_flags)

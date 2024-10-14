@@ -177,7 +177,7 @@ class Sequence():
         """
         info = ''
 
-        info += f"Sequence number/buffer (for IGT purposes): {self._seq_num}"
+        info += f"Sequence number/buffer (for IGT purposes): {self._seq_num} \n "
         info += str(self._driving_sys)
 
         info += f"Wait for trigger: {self._wait_for_trigger} \n "
@@ -504,9 +504,9 @@ class Sequence():
             # Convert required voltage to amplitude
             self._calc_ampl()
 
-            logger.info(f'New maximum pressure in free water value of {self._press} [MPa] ' +
-                        f'results in a voltage of {self._volt} [V] and an amplitude ' +
-                        f'of {self._ampl} [%].')
+            logger.info(f'New maximum pressure in free water value of {self._press:.2f} [MPa] ' +
+                        f'results in a voltage of {self._volt:.2f} [V] and an amplitude ' +
+                        f'of {self._ampl:.2f} [%].')
 
             # set other parameters determine the intensity to None
             self.global_power = -1
@@ -544,9 +544,9 @@ class Sequence():
             # Convert required to amplitude
             self._calc_ampl()
 
-            logger.info(f'New voltage value of {self._volt} [V] results in a maximum' +
-                        f' pressure in free water of {self._press} [MPa] and an amplitude ' +
-                        f'of {self._ampl} [%].')
+            logger.info(f'New voltage value of {self._volt:.2f} [V] results in a maximum' +
+                        f' pressure in free water of {self._press:.2f} [MPa] and an amplitude ' +
+                        f'of {self._ampl:.2f} [%].')
 
             # set other parameters determine the intensity to None
             self.global_power = -1
@@ -585,9 +585,9 @@ class Sequence():
                 # Convert voltage to pressure for logging
                 self._calc_press()
 
-                logger.info(f'New amplitude value of {self._ampl} [%] results in a maximum' +
-                            f' pressure in free water of {self._press} [MPa] and a voltage ' +
-                            f'of {self._volt} [V].')
+                logger.info(f'New amplitude value of {self._ampl:.2f} [%] results in a maximum' +
+                            f' pressure in free water of {self._press:.2f} [MPa] and a voltage ' +
+                            f'of {self._volt:.2f} [V].')
 
                 # set other parameters determine the intensity to None
                 self.global_power = -1
@@ -986,8 +986,8 @@ class Sequence():
         self._calc_ampl()
 
         logger.info('New equipment pressure compensation coefficients result in a maximum' +
-                    f' pressure in free water of {self._press} [MPa], a voltage of ' +
-                    f'{self._volt} [V] and an amplitude of {self._ampl} [%].')
+                    f' pressure in free water of {self._press:.2f} [MPa], a voltage of ' +
+                    f'{self._volt:.2f} [V] and an amplitude of {self._ampl:.2f} [%].')
 
     def _calc_norm_press(self):
         """
