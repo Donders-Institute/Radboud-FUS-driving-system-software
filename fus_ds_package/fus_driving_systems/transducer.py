@@ -126,7 +126,7 @@ def get_tran_serials():
         List[str]: Serial numbers for available transducers.
     """
 
-    serial_trans = config['Equipment']['Transducers'].split(', ')
+    serial_trans = config['Equipment']['Transducers'].split('\n')
 
     active_serials = []
     for serial in serial_trans:

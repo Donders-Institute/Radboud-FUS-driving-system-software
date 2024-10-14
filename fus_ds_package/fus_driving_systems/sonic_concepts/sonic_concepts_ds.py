@@ -65,6 +65,9 @@ class SonicConcepts(ds.ControlDrivingSystem):
         Parameters:
             connect_info (str): COM port information.
         """
+        
+        # When no connection, it is assumed that sent sequence isn't available (anymore)
+        self.sequence_sent = False
 
         self.gen = serial.Serial(connect_info, 115200, timeout=1)
         startup_message = self.gen.readline().decode("ascii").strip()
@@ -102,6 +105,11 @@ class SonicConcepts(ds.ControlDrivingSystem):
             self._set_timer(sequence.pulse_train_dur)
             self._set_ramping(sequence.pulse_ramp_shape, sequence.pulse_ramp_dur)
 
+            self.sequence_sent = True
+
+            if sequence.wait_for_trigger:
+                self._send_command('TRIGGERMODE=1\r\n')
+
         else:
             logger.warning("No connection with driving system.")
             logger.warning("Reconnecting with driving system...")
@@ -110,20 +118,38 @@ class SonicConcepts(ds.ControlDrivingSystem):
             self.connect(sequence.driving_sys.connect_info)
             self.send_sequence(sequence)
 
-    def execute_sequence(self):
+    def execute_sequence(self, sequence):
         """
         Executes the previously sent sequence on the Sonic Concepts ultrasound driving system.
         """
 
-        try:
-            cmd = 'START\r'
-            self.gen.write(cmd.encode('ascii'))
-            time.sleep(0.2)
-            line = self.gen.readline()
-            logger.info('START: %s', line)
+        if self.is_connected():
+            if self.is_sequence_sent():
+                try:
+                    cmd = 'START\r'
+                    self.gen.write(cmd.encode('ascii'))
+                    time.sleep(0.05)
+                    line = self.gen.readline()
+                    logger.info('START: %s', line)
 
-        except Exception as why:
-            logger.error("Exception: %s", str(why))
+                except Exception as why:
+                    logger.error("Exception: %s", str(why))
+            else:
+                logger.warning('The sequence has to be sent first using send_sequence() before ' +
+                               'the driving system can execute a sequence.')
+                logger.warning('Sending sequence...')
+
+                self.send_sequence(sequence)
+                self.execute_sequence(sequence)
+
+        else:
+            logger.warning("No connection with driving system.")
+            logger.warning("Reconnecting with driving system...")
+
+            # if no connection can be made, program stops preventing infinite loop
+            self.connect(sequence.driving_sys.connect_info)
+            self.send_sequence(sequence)
+            self.execute_sequence(sequence)
 
     def disconnect(self):
         """
@@ -307,16 +333,16 @@ class SonicConcepts(ds.ControlDrivingSystem):
         # convert ramp_length in milliseconds to micro seconds
         ramp_length = ramp_length * 1e3
 
-        if ramp_mode == 'Rectangular - no ramping':
+        if ramp_mode == config['General']['Ramp shape.rect']:
             self._reset_ramping()
 
             # Send abort command to allow further control after applying ramping
             command = 'ABORT\r\n'
             self._send_command(command, 0.1)
         else:
-            if ramp_mode == 'Linear':
+            if ramp_mode == config['General']['Ramp shape.lin']:
                 ramp_mode = 1
-            elif ramp_mode == 'Tukey':
+            elif ramp_mode == config['General']['Ramp shape.tuk']:
                 ramp_mode = 2
             else:
                 logger.error("Unknown modulation value: %s", ramp_mode)

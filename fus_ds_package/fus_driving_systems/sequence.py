@@ -48,13 +48,20 @@ class Sequence():
     Class representing an ultrasound sequence.
 
     Attributes:
+        _seq_num (int): Number of sequence starting at zero. Currently only used to differentiate
+                        and send multiple sequences to the IGT system.
         _equip_combos (list): List of driving system and transducer combinations that require
         pressure compensation with an increasing focal depth.
         _driving_sys (DrivingSystem): The driving system associated with the sequence.
+        _wait_for_trigger (bool): Boolean indicating if the driving system is waiting for a trigger.
+        _trigger_option (str): chosen trigger option.
+        _n_triggers (int): number of times a trigger will be sent.
         _transducer (Transducer): The transducer associated with the sequence.
         _oper_freq (int): Operating frequency of the sequence [kHz].
-        _dephasing_degree (float): Degree used to dephase every nth elemen based on chosen
-        degree. (0 = no dephasing).
+        _dephasing_degree (list(float)): The degree used to dephase n elements in one cycle.
+        None = no dephasing. If the list is equal to the number of elements, the phases based on
+        the focus are overridden.
+        _chosen_power (str): The chosen power parameter like amplitude or global power.
         _global_power (float): [SC] global power [W].
         _press (float): [IGT] maximum pressure in free water [MPa].
         _volt (float): [IGT] voltage [V].
@@ -100,6 +107,8 @@ class Sequence():
         Initializes a Sequence object with default values and loads configuration settings.
         """
 
+        self._seq_num = 0
+
         # Equipment parameters
         self._equip_combos = config['Equipment']['Combinations']
 
@@ -107,17 +116,22 @@ class Sequence():
         def_ds_serial = ds.get_ds_serials()[0]
         self.driving_sys = def_ds_serial
 
+        self._wait_for_trigger = False  # Default value for wait_for_trigger
+        self._trigger_option = config['General']['Trigger options'].split('\n')[0]
+        self._n_triggers = 0
+
         # set a temporary focus and operating frequency to set a default transducer
-        self._global_power = 0  # SC: global power [W]
-        self._press = 0  # IGT: maximum pressure in free water [MPa]
-        self._volt = 0  # IGT: voltage [V]
-        self._ampl = 0  # IGT: amplitude [%]
+        self._chosen_power = ''
+        self._global_power = -1  # SC: global power [W]
+        self._press = -1  # IGT: maximum pressure in free water [MPa]
+        self._volt = -1  # IGT: voltage [V]
+        self._ampl = -1  # IGT: amplitude [%]
         self._norm_press = 0  # IGT: normalized pressure
         self._focus = 40  # [mm]
         self._oper_freq = 0  # [kHz]
 
         # Degree used to dephase every nth elemen based on chosen degree. (0 = no dephasing).
-        self._dephasing_degree = 0
+        self._dephasing_degree = None
 
         self._transducer = tran.Transducer()
         def_tran_serial = tran.get_tran_serials()[0]
@@ -163,7 +177,13 @@ class Sequence():
         """
         info = ''
 
+        info += f"Sequence number/buffer (for IGT purposes): {self._seq_num} \n "
         info += str(self._driving_sys)
+
+        info += f"Wait for trigger: {self._wait_for_trigger} \n "
+        info += f"Trigger option: {self._trigger_option} \n "
+        info += f"Number of times a trigger is sent: {self._n_triggers} \n "
+
         info += str(self._transducer)
 
         if self._driving_sys.manufact == config['Equipment.Manufacturer.IGT']['Name']:
@@ -214,6 +234,30 @@ class Sequence():
         return info
 
     @property
+    def seq_num(self):
+        """
+        Getter method for the sequence number.
+
+        Returns:
+            seq_num: Number of sequence starting at zero. Currently only used to
+                           differentiate and send multiple sequences to the IGT system.
+        """
+
+        return self._seq_num
+
+    @seq_num.setter
+    def seq_num(self, seq_num):
+        """
+        Sets the sequence number.
+
+        Parameters:
+            seq_num (int): Number of sequence starting at zero. Currently only used to
+                           differentiate and send multiple sequences to the IGT system.
+        """
+
+        self._seq_num = seq_num
+
+    @property
     def driving_sys(self):
         """
         Getter method for the driving system.
@@ -243,6 +287,76 @@ class Sequence():
             if self._ds_tran_combo in self._equip_combos:
                 # New equipment selected, update conversion parameters
                 self._update_conv_param()
+
+    @property
+    def wait_for_trigger(self):
+        """
+        Gets the wait_for_trigger parameter.
+
+        Returns:
+            bool: The boolean indicating if the driving system is waiting for a trigger.
+        """
+        return self._wait_for_trigger
+
+    @wait_for_trigger.setter
+    def wait_for_trigger(self, wait_for_trigger):
+        """
+        Sets the wait_for_trigger parameter.
+
+        Args:
+            value (bool): The boolean indicating if the driving system is waiting for a trigger.
+        """
+        self._wait_for_trigger = wait_for_trigger
+
+    def get_trigger_options(self):
+        """
+        Returns a list of available trigger options.
+
+        Returns:
+            List[str]: Available trigger options.
+        """
+
+        return config['General']['Trigger options'].split('\n')
+
+    @property
+    def trigger_option(self):
+        """
+        Gets the trigger_option parameter.
+
+        Returns:
+            str: The chosen trigger option.
+        """
+        return self._trigger_option
+
+    @trigger_option.setter
+    def trigger_option(self, trigger_option):
+        """
+        Sets the trigger_option parameter.
+
+        Args:
+            value (str):  The chosen trigger option.
+        """
+        self._trigger_option = trigger_option
+
+    @property
+    def n_triggers(self):
+        """
+        Gets the n_triggers parameter.
+
+        Returns:
+            int: The number of times a trigger will be sent.
+        """
+        return self._n_triggers
+
+    @n_triggers.setter
+    def n_triggers(self, n_triggers):
+        """
+        Sets the n_triggers parameter.
+
+        Args:
+            value (int): The number of times a trigger will be sent.
+        """
+        self._n_triggers = n_triggers
 
     @property
     def transducer(self):
@@ -302,6 +416,28 @@ class Sequence():
         self._oper_freq = int(oper_freq)
 
     @property
+    def chosen_power(self):
+        """
+        Getter method for the chosen_power.
+
+        Returns:
+            str: The chosen power parameter.
+        """
+
+        return self._chosen_power
+
+    @chosen_power.setter
+    def chosen_power(self, chosen_power):
+        """
+        Setter method for the chosen_power.
+
+        Parameters:
+            chosen_power (str): The chosen power parameter.
+        """
+
+        self._chosen_power = chosen_power
+
+    @property
     def global_power(self):
         """
         Getter method for the global_power.
@@ -322,14 +458,15 @@ class Sequence():
         """
 
         if self._driving_sys.manufact == config['Equipment.Manufacturer.SC']['Name']:
-            # set other parameters determine the intensity to None
-            self._ampl = None
-
             self._global_power = global_power
+            self._chosen_power = config['General']['Power option.glob_pow']
+
+            # set other parameters determine the intensity to None
+            self.ampl = -1
         else:
             # Chosen system is not SC, so check if another value is set.
-            if global_power is None and self._ampl is not None:
-                self._global_power = None
+            if global_power == -1 and self._ampl > -1:
+                self._global_power = -1
 
             else:
                 logger.warning('Global power parameter is not available for ' +
@@ -358,10 +495,8 @@ class Sequence():
 
         # Check if pressure compensation is available for chosen equipment
         if self._ds_tran_combo in self._equip_combos:
-            # set other parameters that determine the intensity to None
-            self._global_power = None
-
             self._press = press
+            self._chosen_power = config['General']['Power option.press']
 
             # Calculate required voltage
             self._calc_volt()
@@ -369,9 +504,12 @@ class Sequence():
             # Convert required voltage to amplitude
             self._calc_ampl()
 
-            logger.info(f'New maximum pressure in free water value of {self._press} [MPa] ' +
-                        f'results in a voltage of {self._volt} [V] and an amplitude ' +
-                        'of {self._ampl} [%].')
+            logger.info(f'New maximum pressure in free water value of {self._press:.2f} [MPa] ' +
+                        f'results in a voltage of {self._volt:.2f} [V] and an amplitude ' +
+                        f'of {self._ampl:.2f} [%].')
+
+            # set other parameters determine the intensity to None
+            self.global_power = -1
         else:
             logger.warning('No pressure compensation parameters available in the configuration' +
                            ' file for chosen equipment combination. Enter amplitude [%].')
@@ -397,10 +535,8 @@ class Sequence():
         """
         # Check if pressure compensation is available for chosen equipment
         if self._ds_tran_combo in self._equip_combos:
-            # set other parameters determine the intensity to None
-            self._global_power = None
-
             self._volt = volt
+            self._chosen_power = config['General']['Power option.volt']
 
             # Calculate maximum pressure in free water for logging purposes
             self._calc_press()
@@ -408,9 +544,12 @@ class Sequence():
             # Convert required to amplitude
             self._calc_ampl()
 
-            logger.info(f'New voltage value of {self._volt} [V] results in a maximum' +
-                        f' pressure in free water of {self._press} [MPa] and an amplitude ' +
-                        f'of {self._ampl} [%].')
+            logger.info(f'New voltage value of {self._volt:.2f} [V] results in a maximum' +
+                        f' pressure in free water of {self._press:.2f} [MPa] and an amplitude ' +
+                        f'of {self._ampl:.2f} [%].')
+
+            # set other parameters determine the intensity to None
+            self.global_power = -1
 
         else:
             logger.warning('No pressure compensation parameters available in the configuration' +
@@ -436,10 +575,8 @@ class Sequence():
             ampl (float): The amplitude [%] for IGT.
         """
         if self._driving_sys.manufact == config['Equipment.Manufacturer.IGT']['Name']:
+            self._chosen_power = config['General']['Power option.ampl']
             if self._ds_tran_combo in self._equip_combos:
-                # set other parameters determine the intensity to None
-                self._global_power = None
-
                 self._ampl = ampl
 
                 # Convert amplitude to voltage for logging
@@ -448,9 +585,12 @@ class Sequence():
                 # Convert voltage to pressure for logging
                 self._calc_press()
 
-                logger.info(f'New amplitude value of {self._ampl} [%] results in a maximum' +
-                            f' pressure in free water of {self._press} [MPa] and a voltage ' +
-                            'of {self._volt} [V].')
+                logger.info(f'New amplitude value of {self._ampl:.2f} [%] results in a maximum' +
+                            f' pressure in free water of {self._press:.2f} [MPa] and a voltage ' +
+                            f'of {self._volt:.2f} [V].')
+
+                # set other parameters determine the intensity to None
+                self.global_power = -1
             else:
                 # Equipment is not part a combination, so only set amplitude
                 self._ampl = ampl
@@ -460,10 +600,10 @@ class Sequence():
                             ' only amplitude is accepted as input.')
         else:
             # Chosen system is not IGT, so check if another value is set.
-            if ampl is None and self._global_power is not None:
-                self._ampl = None
-                self._volt = None
-                self._press = None
+            if ampl == -1 and self._global_power > -1:
+                self._ampl = -1
+                self._volt = -1
+                self._press = -1
 
             else:
                 logger.warning('Amplitude parameter is not available for ' +
@@ -506,8 +646,9 @@ class Sequence():
         Getter method for the dephasing degree.
 
         Returns:
-            float: Degree used to dephase every nth elemen based on chosen degree.
-            (0 = no dephasing).
+            list(float): The degree used to dephase n elements in one cycle.
+            None = no dephasing. If the list is equal to the number of elements, the phases based on
+            the focus are overriden.
         """
 
         return self._dephasing_degree
@@ -518,8 +659,9 @@ class Sequence():
         Setter method for the dephasing degree.
 
         Parameters:
-            dephasing_degree (float): Degree used to dephase every nth elemen based on chosen
-            degree. (0 = no dephasing).
+            dephasing_degree (list(float)): The degree used to dephase n elements in one cycle.
+            None = no dephasing. If the list is equal to the number of elements, the phases based on
+            the focus are overriden.
         """
 
         self._dephasing_degree = dephasing_degree
@@ -844,8 +986,8 @@ class Sequence():
         self._calc_ampl()
 
         logger.info('New equipment pressure compensation coefficients result in a maximum' +
-                    f' pressure in free water of {self._press} [MPa], a voltage of ' +
-                    f'{self._volt} [V] and an amplitude of {self._ampl} [%].')
+                    f' pressure in free water of {self._press:.2f} [MPa], a voltage of ' +
+                    f'{self._volt:.2f} [V] and an amplitude of {self._ampl:.2f} [%].')
 
     def _calc_norm_press(self):
         """

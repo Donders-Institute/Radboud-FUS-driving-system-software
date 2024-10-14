@@ -36,6 +36,7 @@ import sys
 import time
 
 # Miscellaneous packages
+import faulthandler
 import math
 
 import numpy as np
@@ -52,6 +53,7 @@ from fus_driving_systems.igt import unifus
 
 # Access the logger
 from fus_driving_systems.config.logging_config import logger
+from fus_driving_systems.config.config import config_info as config
 
 
 class IGT(ds.ControlDrivingSystem):
@@ -73,17 +75,38 @@ class IGT(ds.ControlDrivingSystem):
         """
         super().__init__()
 
+        with open("C:/Temp/faulthandler_output.log", "w") as f:
+            faulthandler.enable(file=f)
+
+        self.sent_seq_nums = []
         self.fus = None
         self.listener = None
         self.n_channels = 0
         self.total_sequence_duration_ms = 0
 
         self.seq = None
-        self.seq_buffer = 0
+
         self.n_pulse_train_rep = 0
         self.pulse_train_delay = 0
 
-    def connect(self, connect_info):
+    def is_sequence_sent(self, seq_num):
+        """
+        Checks whether a sequence has been sent to the ultrasound driving system.
+
+        Returns:
+            bool: True if a sequence has been sent, False otherwise.
+        """
+
+        return seq_num in self.sent_seq_nums
+
+    def register_sent_sequence(self, seq_num):
+        """
+        Adds the sequence number of the sent sequence to the sent sequence list.
+        """
+
+        self.sent_seq_nums.append(seq_num)
+
+    def connect(self, connect_info, log_dir='C:\\Temp', log_name='standalone_igt'):
         """
         Connects to the IGT ultrasound driving system.
 
@@ -91,51 +114,101 @@ class IGT(ds.ControlDrivingSystem):
             connect_info (str): Path with IGT driving system-specific configuration file.
         """
 
-        # Establish connection with driving system
-        self.fus = unifus.FUSSystem()
+        # When no connection, it is assumed that all sent sequences aren't available (anymore)
+        self.sent_seq_nums = []
 
-        # Extract log information to log in same direction
-        log_dir = 'C:\\Temp'
-        filename = ''
-        for h in logger.__dict__['handlers']:
-            if h.__class__.__name__ == 'FileHandler':
-                log_file = h.baseFilename
-                log_dir = os.path.split(log_file)[0]
-                name_ext = os.path.split(log_file)[1]
-                filename = os.path.splitext(name_ext)[0]
-
-        unifus.setLogPath(log_dir, filename + "igt_ds_log")
-        unifus.setLogLevel(unifus.LogLevel.Debug)
-
-        # Update the name of your configuration file
-        igt_config_path = pkg_resources.resource_filename('fus_driving_systems', connect_info)
-        if igt_config_path != '':
-            self.fus.loadConfig(igt_config_path)
-        else:
-            logger.error("Configuration file %s doesn't exist.", igt_config_path)
+        try:
+            # Establish connection with driving system
+            logger.info('Before unifus.FUSSystem....')
+            self.fus = unifus.FUSSystem()
+            logger.info('After unifus.FUSSystem....')
+        except Exception as e:
+            logger.error(f'Error initializing FUSSystem: {e}')
             sys.exit()
 
-        # Create and register an event listener
-        self.listener = ExecListener()
-        self.fus.registerListener(self.listener)
+        try:
+            unifus.setLogPath(log_dir, log_name + "_igt_ds_log")
+            unifus.setLogLevel(unifus.LogLevel.Debug)
 
-        self.fus.connect()
-        self.listener.waitConnection()
-        if self.fus.isConnected():
-            self.connected = True
-            logger.info('Driving system is connected.')
-
-            self.gen = self.fus.gen()
-            self.n_channels = self.gen.getParam(unifus.GenParam.ChannelCount)
-            logger.info("Generator: %s channels", self.n_channels)
-        else:
-            self.connected = False
-            logger.error("Error: connection failed.")
+            logger.info('After setting logging....')
+        except Exception as e:
+            logger.error(f"Error setting up logging: {e}")
             sys.exit()
+
+        try:
+            # Update the name of your configuration file
+            igt_config_path = pkg_resources.resource_filename('fus_driving_systems', connect_info)
+            logger.info(f'igt_config_path: {igt_config_path} found....')
+            if igt_config_path != '':
+                self.fus.loadConfig(igt_config_path)
+                logger.info('After loadConfig....')
+            else:
+                logger.error("Configuration file %s doesn't exist.", igt_config_path)
+                sys.exit()
+        except Exception as e:
+            logger.error(f"Error loading configuration: {e}")
+            sys.exit()
+
+        try:
+            # Create and register an event listener
+            self.listener = ExecListener()
+            self.fus.registerListener(self.listener)
+            logger.info('After listener....')
+
+            self.fus.connect()
+            self.listener.waitConnection()
+            logger.info('After waitConnection()....')
+        except Exception as e:
+            logger.error(f"Error during connection or listener registration: {e}")
+            sys.exit()
+
+        try:
+            if self.fus.isConnected():
+                self.connected = True
+                logger.info('Driving system is connected.')
+
+                self.gen = self.fus.gen()
+                self.n_channels = self.gen.getParam(unifus.GenParam.ChannelCount)
+                logger.info("Generator: %s channels", self.n_channels)
+            else:
+                self.connected = False
+                logger.error("Error: connection failed.")
+                sys.exit()
+        except Exception as e:
+            logger.error(f"Error after connection check: {e}")
+            sys.exit()
+
+    def validate_sequence(self, sequence):
+        """
+        Validates if the sequence is within the expected ranges.
+
+        Parameters:
+            sequence(Object): contains, amongst other things, of:
+                the ultrasound protocol (focus, pulse duration, pulse rep. interval and etcetera)
+                used equipment (driving system and transducer)
+
+        Returns:
+            List: List of error messages.
+        """
+
+        error_messages = []
+        if sequence.pulse_dur < 0.001:  # [ms]:
+            error_messages.append('Pulse duration is not allowed to be smaller than 1 us.')
+
+        if sequence.pulse_rep_int < 0.170:  # [ms]
+            error_messages.append('Pulse repetition interval is not allowed to be smaller than' +
+                                  ' 170 us.')
+
+        if sequence.pulse_ramp_dur > 0 and sequence.pulse_ramp_shape != config['General']['Ramp shape.rect']:
+            if sequence.pulse_ramp_dur > sequence.pulse_dur/2 - 0.035:
+                error_messages.append('When applying ramping, there needs to be at least ' +
+                                      '70 us between ramping up and down')
+
+        return error_messages
 
     def send_sequence(self, sequence):
         """
-        Sends an ultrasound sequence to the IGT ultrasound driving system.
+        Validates and sends an ultrasound sequence to the IGT ultrasound driving system.
 
         Parameters:
             sequence(Object): contains, amongst other things, of:
@@ -143,8 +216,15 @@ class IGT(ds.ControlDrivingSystem):
                 used equipment (driving system and transducer)
         """
 
-        logger.info('Sequence with the following parameters is send to the driving system: \n '
+        logger.info('Sequence with the following parameters is validated before sending: \n '
                     + '%s', sequence)
+
+        error_messages = self.validate_sequence(sequence)
+
+        if error_messages:
+            for error in error_messages:
+                logger.error(error)
+            sys.exit()
 
         if self.is_connected():
 
@@ -160,7 +240,7 @@ class IGT(ds.ControlDrivingSystem):
                                                 sequence.pulse_train_rep_int)
 
             # Apply ramping
-            if sequence.pulse_ramp_shape != 'Rectangular - no ramping':
+            if sequence.pulse_ramp_shape != config['General']['Ramp shape.rect']:
                 self._apply_ramping(sequence)
 
             # (optional) restore disabled channels
@@ -173,10 +253,12 @@ class IGT(ds.ControlDrivingSystem):
             # gen.setParam (unifus.GenParam.MultiplexerValue, 3);
 
             # Upload the sequence
-            self.gen.sendSequence(self.seq_buffer, self.seq)
+            self.gen.sendSequence(sequence.seq_num, self.seq)
 
             self.total_sequence_duration_ms = (100 + unifus.sequenceDurationMs(
                 self.seq, self.n_pulse_train_rep, self.pulse_train_delay))
+
+            self.register_sent_sequence(sequence.seq_num)
 
         else:
             logger.warning("No connection with driving system.")
@@ -186,33 +268,128 @@ class IGT(ds.ControlDrivingSystem):
             self.connect(sequence.driving_sys.connect_info)
             self.send_sequence(sequence)
 
-    def execute_sequence(self):
+    def wait_for_trigger(self, sequence, debug_info=False):
+        """
+        Activates the listener on the IGT ultrasound driving system to wait for the trigger to
+        execte the previously sent sequence.
+        """
+
+        if self.is_connected():
+            if self.is_sequence_sent(sequence.seq_num):
+                try:
+                    # Use unifus.ExecFlag.NONE if nothing special, or simply don't pass the
+                    # exec_flags argument. Use '|' to combine multiple flags: flag1 | flag2 | flag3
+                    # To use trigger, add one of unifus::ExecFlag::Trigger*
+                    # Flags to disable checking the current limit
+                    exec_flags = (unifus.ExecFlag.DisableMonitoringChannelCombiner |
+                                  unifus.ExecFlag.DisableMonitoringChannelCurrentOut)
+
+                    if debug_info:
+                        ramp_transient_t = 0
+                        if sequence.pulse_ramp_dur > 0 and sequence.pulse_ramp_shape != config['General']['Ramp shape.rect']:
+                            ramp_transient_t = 0.070  # [ms]
+
+                        if sequence.pulse_dur > 4.570 + ramp_transient_t:  # [ms]
+                            exec_flags |= unifus.ExecFlag.MeasureChannels
+
+                        elif sequence.pulse_dur >= 0.035 + ramp_transient_t:  # [ms]
+                            exec_flags |= unifus.ExecFlag.MeasureBoards
+
+                        elif sequence.pulse_dur >= 0.001 + ramp_transient_t:  # [ms]:
+                            exec_flags |= unifus.ExecFlag.MeasureTimings  # or NONE
+
+                    # Determining trigger flag
+                    if sequence.trigger_option == config['General']['Trigger option.seq']:
+                        exec_flags |= unifus.ExecFlag.TriggerOneSequence
+                        self.n_pulse_train_rep = sequence.n_triggers
+                        self.pulse_train_delay = 0  # trigger will determine delay
+
+                    elif sequence.trigger_option == config['General']['Trigger option.ptr']:
+                        exec_flags |= unifus.ExecFlag.TriggerAllSequences
+
+                    else:
+                        logger.error(f'Trigger option {sequence.trigger_option} is not identical ' +
+                                     f'to implemented trigger options: {sequence.get_trigger_options()}.')
+                        sys.exit()
+
+                    self.gen.prepareSequence(sequence.seq_num, self.n_pulse_train_rep,
+                                             self.pulse_train_delay, exec_flags)
+
+                    self.gen.startSequence()
+                    logger.info('Wait for trigger')
+
+                except Exception as why:
+                    logger.error("Exception: %s", str(why))
+                    sys.exit()
+            else:
+                logger.warning('The sequence has to be sent first using send_sequence() before ' +
+                               'the driving system can wait for a trigger.')
+                logger.warning('Sending sequence...')
+
+                self.send_sequence(sequence)
+                self.wait_for_trigger(sequence)
+        else:
+            logger.warning("No connection with driving system.")
+            logger.warning("Reconnecting with driving system...")
+
+            # if no connection can be made, program stops preventing infinite loop
+            self.connect(sequence.driving_sys.connect_info)
+            self.send_sequence(sequence)
+            self.wait_for_trigger(sequence)
+
+    def execute_sequence(self, sequence, debug_info=False):
         """
         Executes the previously sent sequence on the IGT ultrasound driving system.
         """
 
-        try:
-            # Use unifus.ExecFlag.NONE if nothing special, or simply don't pass the exec_flags
-            # argument. Use '|' to combine multiple flags: flag1 | flag2 | flag3
-            # To use trigger, add one of unifus::ExecFlag::Trigger*
-            # exec_flags = unifus.ExecFlag.MeasureBoards
-            # exec_flags = unifus.ExecFlag.MeasureTimings | unifus.ExecFlag.TriggerAllSequences
-            exec_flags = (unifus.ExecFlag.MeasureTimings |
-                          unifus.ExecFlag.MeasureChannels |
-                          unifus.ExecFlag.MeasureBoards |
-                          unifus.ExecFlag.DisableMonitoringChannelCombiner |
-                          unifus.ExecFlag.DisableMonitoringChannelCurrentOut)
-            # flags to disable checking the current limit
+        if self.is_connected():
+            if self.is_sequence_sent(sequence.seq_num):
+                try:
+                    # Use unifus.ExecFlag.NONE if nothing special, or simply don't pass the
+                    # exec_flags argument. Use '|' to combine multiple flags: flag1 | flag2 | flag3
+                    # To use trigger, add one of unifus::ExecFlag::Trigger*
+                    # Flags to disable checking the current limit
+                    exec_flags = (unifus.ExecFlag.DisableMonitoringChannelCombiner |
+                                  unifus.ExecFlag.DisableMonitoringChannelCurrentOut)
 
-            self.gen.prepareSequence(self.seq_buffer, self.n_pulse_train_rep,
-                                     self.pulse_train_delay, exec_flags)
+                    if debug_info:
+                        ramp_transient_t = 0
+                        if sequence.pulse_ramp_dur > 0 and sequence.pulse_ramp_shape != config['General']['Ramp shape.rect']:
+                            ramp_transient_t = 0.070  # [ms]
 
-            self.gen.startSequence()
-            self.listener.waitSequence(self.total_sequence_duration_ms / 1000.0)
+                        if sequence.pulse_dur > 4.570 + ramp_transient_t:  # [ms]
+                            exec_flags |= unifus.ExecFlag.MeasureChannels
 
-        except Exception as why:
-            logger.error("Exception: %s", str(why))
-            sys.exit()
+                        elif sequence.pulse_dur >= 0.035 + ramp_transient_t:  # [ms]
+                            exec_flags |= unifus.ExecFlag.MeasureBoards
+                        elif sequence.pulse_dur >= 0.001 + ramp_transient_t:  # [ms]:
+                            exec_flags |= unifus.ExecFlag.MeasureTimings  # or NONE
+
+                    self.gen.prepareSequence(sequence.seq_num, self.n_pulse_train_rep,
+                                             self.pulse_train_delay, exec_flags)
+
+                    self.gen.startSequence()
+                    self.listener.waitSequence(self.total_sequence_duration_ms / 1000.0)
+
+                except Exception as why:
+                    logger.error("Exception: %s", str(why))
+                    sys.exit()
+            else:
+                logger.warning('The sequence has to be sent first using send_sequence() before ' +
+                               'the driving system can execute a sequence.')
+                logger.warning('Sending sequence...')
+
+                self.send_sequence(sequence)
+                self.execute_sequence(sequence)
+
+        else:
+            logger.warning("No connection with driving system.")
+            logger.warning("Reconnecting with driving system...")
+
+            # if no connection can be made, program stops preventing infinite loop
+            self.connect(sequence.driving_sys.connect_info)
+            self.send_sequence(sequence)
+            self.execute_sequence(sequence)
 
     def disconnect(self):
         """
@@ -251,7 +428,7 @@ class IGT(ds.ControlDrivingSystem):
 
         pulse = unifus.Pulse(self.n_channels, 1, 1)  # n phases, n frequencies, n amplitudes
 
-        # duration in us, delay in ms
+        # duration in ms, delay in ms
         pulse.setDuration(sequence.pulse_dur, round(sequence.pulse_rep_int - sequence.pulse_dur, 1))
 
         # set same frequency for all channels = 250KHz, in Hz
@@ -266,8 +443,12 @@ class IGT(ds.ControlDrivingSystem):
             sys.exit()
 
         # set same phase offset for all channels (angle in [0,360] degrees)
-        pulse = self._set_phases(pulse, sequence.focus, sequence.transducer.steer_info,
-                                 sequence.transducer.natural_foc, sequence.dephasing_degree)
+        if sequence.dephasing_degree is not None and len(sequence.dephasing_degree) == sequence.transducer.elements:
+                logger.info(f'Phases are overridden by phases set at dephasing_degree :{sequence.dephasing_degree}')
+                pulse.setPhases(sequence.dephasing_degree)
+        else:
+            pulse = self._set_phases(pulse, sequence.focus, sequence.transducer.steer_info,
+                                     sequence.transducer.natural_foc, sequence.dephasing_degree)
 
         return pulse
 
@@ -300,8 +481,9 @@ class IGT(ds.ControlDrivingSystem):
             focus (float): The focus value [mm].
             steer_info (str): Path to the steer information.
             natural_foc (float): The natural focus value [mm] used to calculate target focus.
-            dephasing_degree (float): The degree used to dephase every nth element.
-            0 = no dephasing.
+            dephasing_degree (list(float)): The degree used to dephase n elements in one cycle.
+            None = no dephasing. If the list is equal to the number of elements, the phases based on
+            the focus are overridden.
 
         Returns:
             list: List of phases.
@@ -349,12 +531,22 @@ class IGT(ds.ControlDrivingSystem):
                 # Retrieve phases dependent of number of channels
                 phases = [match_row.iloc[0].iloc[1:int(self.n_channels)+1]].to_list()
 
-                if dephasing_degree != 0:
-                    nth_elem = round(360/dephasing_degree)  # determine which nth element to dephase
+                if dephasing_degree is not None:
+                    if len(dephasing_degree) > 1:
+                        logger.warning('Too few or too many entries given at dephasing_degree.' +
+                                       ' Only the first one is now used for dephasing purposes.')
+
+                    dephasing_degree = dephasing_degree[0]
+                    # determine n elements to dephase in one cycle
+                    nth_elem = round(360/dephasing_degree)
+                    dephasing_elem = 0
                     for i in range(len(phases)):
-                        if i % nth_elem == 0:
-                            # Add chosen degrees to dephase signal
-                            phases[i] = phases[i] + dephasing_degree
+                        # Add chosen degrees to dephase signal
+                        phases[i] = phases[i] + dephasing_degree*dephasing_elem
+
+                        dephasing_elem = dephasing_elem + 1
+                        if dephasing_elem == nth_elem:
+                            dephasing_elem = 0
 
                 phases_str = ', '.join([format(x, '.2f') for x in phases])
                 logger.info(f'Computed phases for set focus of {focus}: {phases_str}')
@@ -376,31 +568,36 @@ class IGT(ds.ControlDrivingSystem):
             sequence (Sequence): The sequence object containing ultrasound parameters.
         """
 
-        # Use best temporal resolution for pulse ramping [ms]
-        min_ramp_temp_res = 0.005  # [ms]
-        max_ramp_steps = 1023
+        if sequence.pulse_ramp_shape == config['General']['Ramp shape.lin']:  # Linear ramping
+            self.gen.setPulseRamp(unifus.PulseRamp.Rising, sequence.pulse_ramp_dur)
+            self.gen.setPulseRamp(unifus.PulseRamp.Falling, sequence.pulse_ramp_dur)
 
-        ramp_n_steps = int(sequence.pulse_ramp_dur/min_ramp_temp_res)
-        if ramp_n_steps > max_ramp_steps:
-            min_ramp_temp_res = sequence.pulse_ramp_dur/max_ramp_steps
+        elif sequence.pulse_ramp_shape == config['General']['Ramp shape.tuk']:  # Tukey ramping
+            # Use best temporal resolution for pulse ramping [ms]
+            min_ramp_temp_res = 0.005  # [ms]
+            max_ramp_steps = 1023
 
-        # Note: ramp up and ramp down order are the other way around
-        # ramp up descends, ramp down ascends
-        ampl_ramp = self._get_ramping_amplitude(sequence, min_ramp_temp_res)
+            ramp_n_steps = int(sequence.pulse_ramp_dur/min_ramp_temp_res)
+            if ramp_n_steps > max_ramp_steps:
+                min_ramp_temp_res = sequence.pulse_ramp_dur/max_ramp_steps
 
-        # Execution with pulse modulation (automatically disable ramps if any)
-        # Values are attenuation in percent of the full Pulse amplitude.
-        # 0 = no attenuation = full amplitude, 100 = full attenuation = 0 amplitude.
-        max_ampl = 100  # [%]
-        ramp_down = ampl_ramp * max_ampl
-        ramp_down = [int(pUp) for pUp in ramp_down]
+            # Note: ramp up and ramp down order are the other way around
+            # ramp up descends, ramp down ascends
+            ampl_ramp = self._get_ramping_amplitude(sequence, min_ramp_temp_res)
 
-        ramp_up = np.flip(ampl_ramp) * max_ampl
-        ramp_up = [int(pDown) for pDown in ramp_up]
+            # Execution with pulse modulation (automatically disable ramps if any)
+            # Values are attenuation in percent of the full Pulse amplitude.
+            # 0 = no attenuation = full amplitude, 100 = full attenuation = 0 amplitude.
+            max_ampl = 100  # [%]
+            ramp_down = ampl_ramp * max_ampl
+            ramp_down = [int(pUp) for pUp in ramp_down]
 
-        self.gen.setPulseModulation(
-            ramp_up, min_ramp_temp_res,  # beginning
-            ramp_down, min_ramp_temp_res)  # end
+            ramp_up = np.flip(ampl_ramp) * max_ampl
+            ramp_up = [int(pDown) for pDown in ramp_up]
+
+            self.gen.setPulseModulation(
+                ramp_up, min_ramp_temp_res,  # beginning
+                ramp_down, min_ramp_temp_res)  # end
 
     def _get_ramping_amplitude(self, sequence, pulse_ramp_temp_res):
         """
@@ -415,18 +612,12 @@ class IGT(ds.ControlDrivingSystem):
             tuple: A tuple containing the amplitude ramping and step duration.
         """
 
-        if sequence.pulse_ramp_shape == 'Linear':  # Linear ramping
-            # amount of points where ramping is applied
-            n_points = math.floor(sequence.pulse_ramp_dur/pulse_ramp_temp_res)
-            ampl_ramp = np.linspace(0, 1, n_points)
-
-        elif sequence.pulse_ramp_shape == 'Tukey':  # Tukey ramping
-            # amount of points where ramping is applied
-            n_points = math.floor(sequence.pulse_ramp_dur/pulse_ramp_temp_res)
-            alpha = 1
-            x = np.linspace(0, alpha/2, n_points)
-            ampl_ramp = np.zeros(n_points)
-            for i in range(n_points):
-                ampl_ramp[i] = 0.5 * (1 + math.cos((2*math.pi/alpha) * (x[i] - alpha/2)))
+        # amount of points where ramping is applied
+        n_points = math.floor(sequence.pulse_ramp_dur/pulse_ramp_temp_res)
+        alpha = 1
+        x = np.linspace(0, alpha/2, n_points)
+        ampl_ramp = np.zeros(n_points)
+        for i in range(n_points):
+            ampl_ramp[i] = 0.5 * (1 + math.cos((2*math.pi/alpha) * (x[i] - alpha/2)))
 
         return ampl_ramp

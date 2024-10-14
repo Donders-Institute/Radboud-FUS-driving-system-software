@@ -49,15 +49,35 @@ MAX_ALLOWED_PRESSURE = 1.2  # MPa
 config['General']['Maximum pressure allowed in free water [MPa]'] = str(MAX_ALLOWED_PRESSURE)
 
 # if ramp shapes are changed, don't forget to change values used in code as well
-config['General']['Ramp shapes'] = ', '.join(['Rectangular - no ramping', 'Linear', 'Tukey'])
+RAMP_RECT = 'Rectangular - no ramping'
+RAMP_LIN = 'Linear'
+RAMP_TUK = 'Tukey'
 
-config['Headers'] = {}
-config['Headers']['Software limit'] = (f'Amplitude limit % based on {MAX_ALLOWED_PRESSURE} MPa'
-                                       + ' in free water')
+config['General']['Ramp shapes'] = '\n'.join([RAMP_RECT, RAMP_LIN, RAMP_TUK])
+config['General']['Ramp shape.rect'] = RAMP_RECT
+config['General']['Ramp shape.lin'] = RAMP_LIN
+config['General']['Ramp shape.tuk'] = RAMP_TUK
 
-config['Headers']['a-coefficient'] = 'a-coefficient (pressure [Pa] = a*ampl % + b)'
-config['Headers']['b-coefficient'] = 'b-coefficent (pressure [Pa] = a*ampl % + b)'
-config['Headers']['100% pressure'] = 'Pressure [MPa] at 100% amplitude'
+# Trigger options
+TRIG_NONE = 'None'
+TRIG_SEQ = 'TriggerSequence'
+TRIG_PTR = 'TriggerOnePulseTrainRepetition'
+
+config['General']['Trigger options'] = '\n'.join([TRIG_NONE, TRIG_SEQ, TRIG_PTR])
+config['General']['Trigger option.none'] = TRIG_NONE
+config['General']['Trigger option.seq'] = TRIG_SEQ
+config['General']['Trigger option.ptr'] = TRIG_PTR
+
+# Power options
+POW_GP = 'Global power [mW]'
+POW_AMPL = 'Amplitude [%]'
+POW_PRESS = 'Max. pressure in free water [MPa]'
+POW_VOLT = 'Voltage [V]'
+
+config['General']['Power option.glob_pow'] = POW_GP
+config['General']['Power option.ampl'] = POW_AMPL
+config['General']['Power option.press'] = POW_PRESS
+config['General']['Power option.volt'] = POW_VOLT
 
 config['Equipment'] = {}
 
@@ -70,6 +90,7 @@ CONFIG_FILE_FOLDER_SC_TRAN = 'igt\\config\\sonic_concepts_transducers'
 config['Equipment.Manufacturer.SC'] = {}
 config['Equipment.Manufacturer.SC']['Name'] = SONIC_CONCEPTS
 config['Equipment.Manufacturer.SC']['Config. file folder transducers'] = CONFIG_FILE_FOLDER_SC_TRAN
+config['Equipment.Manufacturer.SC']['Power options'] = '\n'.join([POW_GP])
 config['Equipment.Manufacturer.SC']['Additional charac. discon. message'] = ('\n - the correct ' +
                                                                              'TRANSDUCER is ' +
                                                                              'selected on the ' +
@@ -79,14 +100,14 @@ config['Equipment.Manufacturer.SC']['Check tran message'] = ('Ensure the correct
 
 SC_DS = ['203-035', '105-010']
 
-config['Equipment.Manufacturer.SC']['Equipment - Driving systems'] = ', '.join(SC_DS)
+config['Equipment.Manufacturer.SC']['Equipment - Driving systems'] = '\n'.join(SC_DS)
 
 SC_TRAN_2CH = ['CTX-250-009', 'CTX-250-014', 'CTX-500-006']
 SC_TRAN_4CH = ['CTX-250-001', 'CTX-250-026', 'CTX-500-024', 'CTX-500-026']
 
 SC_TRANS = SC_TRAN_2CH + SC_TRAN_4CH
 
-config['Equipment.Manufacturer.SC']['Equipment - Transducers'] = ', '.join(SC_TRANS)
+config['Equipment.Manufacturer.SC']['Equipment - Transducers'] = '\n'.join(SC_TRANS)
 
 
 #######################################################################################
@@ -98,6 +119,7 @@ CONFIG_FILE_FOLDER_IGT_DS = 'igt\\config'
 config['Equipment.Manufacturer.IGT'] = {}
 config['Equipment.Manufacturer.IGT']['Name'] = IGT
 config['Equipment.Manufacturer.IGT']['Config. file folder driving sys.'] = CONFIG_FILE_FOLDER_IGT_DS
+config['Equipment.Manufacturer.IGT']['Power options'] = '\n'.join([POW_AMPL, POW_PRESS, POW_VOLT])
 config['Equipment.Manufacturer.IGT']['Additional charac. discon. message'] = ''
 
 IGT_DS = ['IGT-128-ch', 'IGT-128-ch_comb_2x10-ch', 'IGT-128-ch_comb_1x10-ch',
@@ -106,7 +128,7 @@ IGT_DS = ['IGT-128-ch', 'IGT-128-ch_comb_2x10-ch', 'IGT-128-ch_comb_1x10-ch',
           'IGT-8-ch_comb_2x4-ch', 'IGT-8-ch_comb_1x4-ch', 'IGT-8-ch_comb_2x2-ch',
           'IGT-8-ch_comb_1x2-ch']
 
-config['Equipment.Manufacturer.IGT']['Equipment - Driving systems'] = ', '.join(IGT_DS)
+config['Equipment.Manufacturer.IGT']['Equipment - Driving systems'] = '\n'.join(IGT_DS)
 
 
 #######################################################################################
@@ -126,15 +148,15 @@ IS_TRANS = ['IS_PCD15287_01001', 'IS_PCD15287_01002', 'IS_PCD15473_01001', 'IS_P
 # Equipment collection
 #######################################################################################
 
-config['Equipment.Manufacturer.IS']['Equipment - Transducers'] = ', '.join(IS_TRANS)
+config['Equipment.Manufacturer.IS']['Equipment - Transducers'] = '\n'.join(IS_TRANS)
 
 # list of driving system 'serial numbers'
-config['Equipment']['Driving systems'] = str(', '.join(SC_DS + IGT_DS))
+config['Equipment']['Driving systems'] = str('\n'.join(SC_DS + IGT_DS))
 
 DUMMY = 'Dummy'
 DUMMIES = [DUMMY]
 # list of transducer 'serial numbers'
-config['Equipment']['Transducers'] = str(', '.join(SC_TRANS + IS_TRANS + DUMMIES))
+config['Equipment']['Transducers'] = str('\n'.join(SC_TRANS + IS_TRANS + DUMMIES))
 
 DS_TRAN_COMBOS = [
     # IGT 128 ch. 2 x 10
@@ -154,7 +176,7 @@ DS_TRAN_COMBOS = [
     '~'.join([IGT_DS[8], IS_TRANS[2]]), '~'.join([IGT_DS[8], IS_TRANS[3]])
                                                      ]
 
-config['Equipment']['Combinations'] = ', '.join(DS_TRAN_COMBOS)
+config['Equipment']['Combinations'] = '\n'.join(DS_TRAN_COMBOS)
 
 #######################################################################################
 # Sonic Concepts - Driving systems
@@ -166,7 +188,7 @@ config['Equipment.Driving system.' + SC_DS[0]]['Name'] = ('NeuroFUS 1 x 4 ch. or
 config['Equipment.Driving system.' + SC_DS[0]]['Manufacturer'] = SONIC_CONCEPTS
 config['Equipment.Driving system.' + SC_DS[0]]['Available channels'] = str(4)
 config['Equipment.Driving system.' + SC_DS[0]]['Connection info'] = 'COM7'
-config['Equipment.Driving system.' + SC_DS[0]]['Transducer compatibility'] = str(', '.join(
+config['Equipment.Driving system.' + SC_DS[0]]['Transducer compatibility'] = str('\n'.join(
     SC_TRANS + DUMMIES))
 config['Equipment.Driving system.' + SC_DS[0]]['Active?'] = str(True)
 
@@ -176,7 +198,7 @@ config['Equipment.Driving system.' + SC_DS[1]]['Name'] = ('NeuroFUS 1 x 4 ch. or
 config['Equipment.Driving system.' + SC_DS[1]]['Manufacturer'] = SONIC_CONCEPTS
 config['Equipment.Driving system.' + SC_DS[1]]['Available channels'] = str(4)
 config['Equipment.Driving system.' + SC_DS[1]]['Connection info'] = 'COM8'
-config['Equipment.Driving system.' + SC_DS[1]]['Transducer compatibility'] = str(', '.join(
+config['Equipment.Driving system.' + SC_DS[1]]['Transducer compatibility'] = str('\n'.join(
     SC_TRANS + DUMMIES))
 config['Equipment.Driving system.' + SC_DS[1]]['Active?'] = str(True)
 
@@ -194,7 +216,7 @@ config['Equipment.Driving system.' + IGT_DS[0]]['Available channels'] = str(128)
 config['Equipment.Driving system.' + IGT_DS[0]]['Connection info'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IGT_DS,
     'gen_Nijmegen128_393F.json'))  # should be in the same directory as code
-config['Equipment.Driving system.' + IGT_DS[0]]['Transducer compatibility'] = str(', '.join(
+config['Equipment.Driving system.' + IGT_DS[0]]['Transducer compatibility'] = str('\n'.join(
     DUMMIES))
 config['Equipment.Driving system.' + IGT_DS[0]]['Active?'] = str(True)
 
@@ -205,7 +227,7 @@ config['Equipment.Driving system.' + IGT_DS[1]]['Available channels'] = str(20)
 config['Equipment.Driving system.' + IGT_DS[1]]['Connection info'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IGT_DS,
     'gen_Nijmegen128_2x10_393F.json'))  # should be in the same directory as code
-config['Equipment.Driving system.' + IGT_DS[1]]['Transducer compatibility'] = str(', '.join(
+config['Equipment.Driving system.' + IGT_DS[1]]['Transducer compatibility'] = str('\n'.join(
     IS_TRANS + DUMMIES))
 config['Equipment.Driving system.' + IGT_DS[1]]['Active?'] = str(False)
 
@@ -216,7 +238,7 @@ config['Equipment.Driving system.' + IGT_DS[2]]['Available channels'] = str(10)
 config['Equipment.Driving system.' + IGT_DS[2]]['Connection info'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IGT_DS,
     'gen_Nijmegen128_1x10_393F.json'))  # should be in the same directory as code
-config['Equipment.Driving system.' + IGT_DS[2]]['Transducer compatibility'] = str(', '.join(
+config['Equipment.Driving system.' + IGT_DS[2]]['Transducer compatibility'] = str('\n'.join(
     IS_TRANS + DUMMIES))
 config['Equipment.Driving system.' + IGT_DS[2]]['Active?'] = str(True)
 
@@ -227,7 +249,7 @@ config['Equipment.Driving system.' + IGT_DS[3]]['Available channels'] = str(8)
 config['Equipment.Driving system.' + IGT_DS[3]]['Connection info'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IGT_DS,
     'gen_Nijmegen128_8c.json'))  # should be in the same directory as code
-config['Equipment.Driving system.' + IGT_DS[3]]['Transducer compatibility'] = str(', '.join(
+config['Equipment.Driving system.' + IGT_DS[3]]['Transducer compatibility'] = str('\n'.join(
     SC_TRAN_4CH + DUMMIES))
 config['Equipment.Driving system.' + IGT_DS[3]]['Active?'] = str(False)
 
@@ -238,7 +260,7 @@ config['Equipment.Driving system.' + IGT_DS[4]]['Available channels'] = str(4)
 config['Equipment.Driving system.' + IGT_DS[4]]['Connection info'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IGT_DS,
     'gen_Nijmegen128_4ch.json'))  # should be in the same directory as code
-config['Equipment.Driving system.' + IGT_DS[4]]['Transducer compatibility'] = str(', '.join(
+config['Equipment.Driving system.' + IGT_DS[4]]['Transducer compatibility'] = str('\n'.join(
     SC_TRANS + DUMMIES))
 config['Equipment.Driving system.' + IGT_DS[4]]['Active?'] = str(False)
 
@@ -249,7 +271,7 @@ config['Equipment.Driving system.' + IGT_DS[5]]['Available channels'] = str(2)
 config['Equipment.Driving system.' + IGT_DS[5]]['Connection info'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IGT_DS,
     'gen_Nijmegen128_2ch.json'))  # should be in the same directory as code
-config['Equipment.Driving system.' + IGT_DS[5]]['Transducer compatibility'] = str(', '.join(
+config['Equipment.Driving system.' + IGT_DS[5]]['Transducer compatibility'] = str('\n'.join(
     SC_TRAN_2CH + DUMMIES))
 config['Equipment.Driving system.' + IGT_DS[5]]['Active?'] = str(False)
 
@@ -263,7 +285,7 @@ config['Equipment.Driving system.' + IGT_DS[6]]['Available channels'] = str(32)
 config['Equipment.Driving system.' + IGT_DS[6]]['Connection info'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IGT_DS,
     'gen_Nijmegen32_71D8.json'))  # should be in the same directory as code
-config['Equipment.Driving system.' + IGT_DS[6]]['Transducer compatibility'] = str(', '.join(
+config['Equipment.Driving system.' + IGT_DS[6]]['Transducer compatibility'] = str('\n'.join(
     DUMMIES))
 config['Equipment.Driving system.' + IGT_DS[6]]['Active?'] = str(True)
 
@@ -274,7 +296,7 @@ config['Equipment.Driving system.' + IGT_DS[7]]['Available channels'] = str(20)
 config['Equipment.Driving system.' + IGT_DS[7]]['Connection info'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IGT_DS,
     'gen_Nijmegen32_2x10c_71D8.json'))  # should be in the same directory as code
-config['Equipment.Driving system.' + IGT_DS[7]]['Transducer compatibility'] = str(', '.join(
+config['Equipment.Driving system.' + IGT_DS[7]]['Transducer compatibility'] = str('\n'.join(
     IS_TRANS + DUMMIES))
 config['Equipment.Driving system.' + IGT_DS[7]]['Active?'] = str(False)
 
@@ -285,7 +307,7 @@ config['Equipment.Driving system.' + IGT_DS[8]]['Available channels'] = str(10)
 config['Equipment.Driving system.' + IGT_DS[8]]['Connection info'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IGT_DS,
     'gen_Nijmegen32_10c_71D8.json'))  # should be in the same directory as code
-config['Equipment.Driving system.' + IGT_DS[8]]['Transducer compatibility'] = str(', '.join(
+config['Equipment.Driving system.' + IGT_DS[8]]['Transducer compatibility'] = str('\n'.join(
     IS_TRANS + DUMMIES))
 config['Equipment.Driving system.' + IGT_DS[8]]['Active?'] = str(True)
 
@@ -299,7 +321,7 @@ config['Equipment.Driving system.' + IGT_DS[9]]['Available channels'] = str(8)
 config['Equipment.Driving system.' + IGT_DS[9]]['Connection info'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IGT_DS,
     'gen_Nijmegen_8_F720.json'))  # should be in the same directory as code
-config['Equipment.Driving system.' + IGT_DS[9]]['Transducer compatibility'] = str(', '.join(
+config['Equipment.Driving system.' + IGT_DS[9]]['Transducer compatibility'] = str('\n'.join(
     SC_TRAN_4CH + DUMMIES))
 config['Equipment.Driving system.' + IGT_DS[9]]['Active?'] = str(False)
 
@@ -310,7 +332,7 @@ config['Equipment.Driving system.' + IGT_DS[10]]['Available channels'] = str(4)
 config['Equipment.Driving system.' + IGT_DS[10]]['Connection info'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IGT_DS,
     'gen_Nijmegen_4_F720.json'))  # should be in the same directory as code
-config['Equipment.Driving system.' + IGT_DS[10]]['Transducer compatibility'] = str(', '.join(
+config['Equipment.Driving system.' + IGT_DS[10]]['Transducer compatibility'] = str('\n'.join(
     SC_TRAN_4CH + DUMMIES))
 config['Equipment.Driving system.' + IGT_DS[10]]['Active?'] = str(False)
 
@@ -321,7 +343,7 @@ config['Equipment.Driving system.' + IGT_DS[11]]['Available channels'] = str(4)
 config['Equipment.Driving system.' + IGT_DS[11]]['Connection info'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IGT_DS,
     'gen_Nijmegen_8c4_F720.json'))  # should be in the same directory as code
-config['Equipment.Driving system.' + IGT_DS[11]]['Transducer compatibility'] = str(', '.join(
+config['Equipment.Driving system.' + IGT_DS[11]]['Transducer compatibility'] = str('\n'.join(
     SC_TRAN_2CH + DUMMIES))
 config['Equipment.Driving system.' + IGT_DS[11]]['Active?'] = str(False)
 
@@ -332,7 +354,7 @@ config['Equipment.Driving system.' + IGT_DS[12]]['Available channels'] = str(2)
 config['Equipment.Driving system.' + IGT_DS[12]]['Connection info'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IGT_DS,
     'gen_Nijmegen_4c2_F720.json'))  # should be in the same directory as code
-config['Equipment.Driving system.' + IGT_DS[12]]['Transducer compatibility'] = str(', '.join(
+config['Equipment.Driving system.' + IGT_DS[12]]['Transducer compatibility'] = str('\n'.join(
     SC_TRAN_2CH + DUMMIES))
 config['Equipment.Driving system.' + IGT_DS[12]]['Active?'] = str(False)
 

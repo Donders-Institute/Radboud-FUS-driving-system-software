@@ -3,4 +3,5 @@ numpy==2.1.0
 pandas==2.2.2
 pyserial==3.5
 tk==0.1.0
+openpyxl==3.1.5
 ./fus_ds_package

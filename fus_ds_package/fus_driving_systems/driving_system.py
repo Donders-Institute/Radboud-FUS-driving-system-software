@@ -85,7 +85,7 @@ class DrivingSystem:
                                           ['Available channels'])
             self.connect_info = config['Equipment.Driving system.' + serial]['Connection info']
             self.tran_comp = (config['Equipment.Driving system.' + serial]
-                                    ['Transducer compatibility'].split(', '))
+                                    ['Transducer compatibility'].split('\n'))
             self.is_active = config['Equipment.Driving system.' + serial]['Active?'] == 'True'
 
         except KeyError:
@@ -119,7 +119,7 @@ def get_ds_serials():
         List[str]: Serial numbers for available driving systems.
     """
 
-    serial_ds = config['Equipment']['Driving systems'].split(', ')
+    serial_ds = config['Equipment']['Driving systems'].split('\n')
 
     active_serials = []
     for serial in serial_ds:
