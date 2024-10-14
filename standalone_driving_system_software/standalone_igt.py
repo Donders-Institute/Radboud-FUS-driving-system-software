@@ -67,6 +67,7 @@ seq.focus = 40  # [mm], focal depth
 # based on the set focus.
 seq.dephasing_degree = None  # [degrees]: None, [120] or [0, 135, 239, 90]
 
+# THE FEATURE IS NOT ENABLED YET! Use amplitude only for now
 # either set maximum pressure in free water [MPa], voltage [V] or amplitude [%]
 # seq.press = 1  # [MPa], maximum pressure in free water
 # seq.volt = 0  # [V], voltage per channel
