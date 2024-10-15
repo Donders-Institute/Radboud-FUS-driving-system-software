@@ -203,7 +203,7 @@ class IGT(ds.ControlDrivingSystem):
             if sequence.pulse_ramp_dur > sequence.pulse_dur/2 - 0.035:
                 error_messages.append('When applying ramping, there needs to be at least ' +
                                       '70 us between ramping up and down')
-
+                
         return error_messages
 
     def send_sequence(self, sequence):
@@ -288,13 +288,13 @@ class IGT(ds.ControlDrivingSystem):
                         ramp_transient_t = 0
                         if sequence.pulse_ramp_dur > 0 and sequence.pulse_ramp_shape != config['General']['Ramp shape.rect']:
                             ramp_transient_t = 0.070  # [ms]
-
+    
                         if sequence.pulse_dur > 4.570 + ramp_transient_t:  # [ms]
                             exec_flags |= unifus.ExecFlag.MeasureChannels
-
+    
                         elif sequence.pulse_dur >= 0.035 + ramp_transient_t:  # [ms]
                             exec_flags |= unifus.ExecFlag.MeasureBoards
-
+    
                         elif sequence.pulse_dur >= 0.001 + ramp_transient_t:  # [ms]:
                             exec_flags |= unifus.ExecFlag.MeasureTimings  # or NONE
 
@@ -356,10 +356,10 @@ class IGT(ds.ControlDrivingSystem):
                         ramp_transient_t = 0
                         if sequence.pulse_ramp_dur > 0 and sequence.pulse_ramp_shape != config['General']['Ramp shape.rect']:
                             ramp_transient_t = 0.070  # [ms]
-
+    
                         if sequence.pulse_dur > 4.570 + ramp_transient_t:  # [ms]
                             exec_flags |= unifus.ExecFlag.MeasureChannels
-
+    
                         elif sequence.pulse_dur >= 0.035 + ramp_transient_t:  # [ms]
                             exec_flags |= unifus.ExecFlag.MeasureBoards
                         elif sequence.pulse_dur >= 0.001 + ramp_transient_t:  # [ms]:
@@ -568,36 +568,31 @@ class IGT(ds.ControlDrivingSystem):
             sequence (Sequence): The sequence object containing ultrasound parameters.
         """
 
-        if sequence.pulse_ramp_shape == config['General']['Ramp shape.lin']:  # Linear ramping
-            self.gen.setPulseRamp(unifus.PulseRamp.Rising, sequence.pulse_ramp_dur)
-            self.gen.setPulseRamp(unifus.PulseRamp.Falling, sequence.pulse_ramp_dur)
+        # Use best temporal resolution for pulse ramping [ms]
+        min_ramp_temp_res = 0.005  # [ms]
+        max_ramp_steps = 1023
 
-        elif sequence.pulse_ramp_shape == config['General']['Ramp shape.tuk']:  # Tukey ramping
-            # Use best temporal resolution for pulse ramping [ms]
-            min_ramp_temp_res = 0.005  # [ms]
-            max_ramp_steps = 1023
+        ramp_n_steps = int(sequence.pulse_ramp_dur/min_ramp_temp_res)
+        if ramp_n_steps > max_ramp_steps:
+            min_ramp_temp_res = sequence.pulse_ramp_dur/max_ramp_steps
 
-            ramp_n_steps = int(sequence.pulse_ramp_dur/min_ramp_temp_res)
-            if ramp_n_steps > max_ramp_steps:
-                min_ramp_temp_res = sequence.pulse_ramp_dur/max_ramp_steps
+        # Note: ramp up and ramp down order are the other way around
+        # ramp up descends, ramp down ascends
+        ampl_ramp = self._get_ramping_amplitude(sequence, min_ramp_temp_res)
 
-            # Note: ramp up and ramp down order are the other way around
-            # ramp up descends, ramp down ascends
-            ampl_ramp = self._get_ramping_amplitude(sequence, min_ramp_temp_res)
+        # Execution with pulse modulation (automatically disable ramps if any)
+        # Values are attenuation in percent of the full Pulse amplitude.
+        # 0 = no attenuation = full amplitude, 100 = full attenuation = 0 amplitude.
+        max_ampl = 100  # [%]
+        ramp_down = ampl_ramp * max_ampl
+        ramp_down = [int(pUp) for pUp in ramp_down]
 
-            # Execution with pulse modulation (automatically disable ramps if any)
-            # Values are attenuation in percent of the full Pulse amplitude.
-            # 0 = no attenuation = full amplitude, 100 = full attenuation = 0 amplitude.
-            max_ampl = 100  # [%]
-            ramp_down = ampl_ramp * max_ampl
-            ramp_down = [int(pUp) for pUp in ramp_down]
+        ramp_up = np.flip(ampl_ramp) * max_ampl
+        ramp_up = [int(pDown) for pDown in ramp_up]
 
-            ramp_up = np.flip(ampl_ramp) * max_ampl
-            ramp_up = [int(pDown) for pDown in ramp_up]
-
-            self.gen.setPulseModulation(
-                ramp_up, min_ramp_temp_res,  # beginning
-                ramp_down, min_ramp_temp_res)  # end
+        self.gen.setPulseModulation(
+            ramp_up, min_ramp_temp_res,  # beginning
+            ramp_down, min_ramp_temp_res)  # end
 
     def _get_ramping_amplitude(self, sequence, pulse_ramp_temp_res):
         """
@@ -612,12 +607,18 @@ class IGT(ds.ControlDrivingSystem):
             tuple: A tuple containing the amplitude ramping and step duration.
         """
 
-        # amount of points where ramping is applied
-        n_points = math.floor(sequence.pulse_ramp_dur/pulse_ramp_temp_res)
-        alpha = 1
-        x = np.linspace(0, alpha/2, n_points)
-        ampl_ramp = np.zeros(n_points)
-        for i in range(n_points):
-            ampl_ramp[i] = 0.5 * (1 + math.cos((2*math.pi/alpha) * (x[i] - alpha/2)))
+        if sequence.pulse_ramp_shape == config['General']['Ramp shape.lin']:  # Linear ramping
+            # amount of points where ramping is applied
+            n_points = math.floor(sequence.pulse_ramp_dur/pulse_ramp_temp_res)
+            ampl_ramp = np.linspace(0, 1, n_points)
+
+        elif sequence.pulse_ramp_shape == config['General']['Ramp shape.tuk']:  # Tukey ramping
+            # amount of points where ramping is applied
+            n_points = math.floor(sequence.pulse_ramp_dur/pulse_ramp_temp_res)
+            alpha = 1
+            x = np.linspace(0, alpha/2, n_points)
+            ampl_ramp = np.zeros(n_points)
+            for i in range(n_points):
+                ampl_ramp[i] = 0.5 * (1 + math.cos((2*math.pi/alpha) * (x[i] - alpha/2)))
 
         return ampl_ramp
