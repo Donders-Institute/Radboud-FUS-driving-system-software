@@ -52,11 +52,13 @@ config['General']['Maximum pressure allowed in free water [MPa]'] = str(MAX_ALLO
 RAMP_RECT = 'Rectangular - no ramping'
 RAMP_LIN = 'Linear'
 RAMP_TUK = 'Tukey'
+RAMP_SHOTA = 'Shota'
 
 config['General']['Ramp shapes'] = '\n'.join([RAMP_RECT, RAMP_LIN, RAMP_TUK])
 config['General']['Ramp shape.rect'] = RAMP_RECT
 config['General']['Ramp shape.lin'] = RAMP_LIN
 config['General']['Ramp shape.tuk'] = RAMP_TUK
+config['General']['Ramp shape.shota'] = RAMP_SHOTA
 
 # Trigger options
 TRIG_NONE = 'None'
