@@ -199,14 +199,17 @@ class IGT(ds.ControlDrivingSystem):
             error_messages.append('Pulse repetition interval is not allowed to be smaller than' +
                                   ' 170 us.')
 
-        if sequence.pulse_ramp_dur > 0 and sequence.pulse_ramp_shape != config['General']['Ramp shape.rect']:
+        if sequence.pulse_ramp_dur > 0 and (sequence.pulse_ramp_shape !=
+                                            config['General']['Ramp shape.rect']):
             if sequence.pulse_ramp_dur > sequence.pulse_dur/2 - 0.035:
                 error_messages.append('When applying ramping, there needs to be at least ' +
                                       '70 us between ramping up and down')
-                
+        if sequence.ampl is None:
+            error_messages.append("Intensity parameter may be set incorrectly. Amplitude is None.")
+
         return error_messages
 
-    def send_sequence(self, sequence):
+    def send_sequence(self, seq1, seq2=None):
         """
         Validates and sends an ultrasound sequence to the IGT ultrasound driving system.
 
@@ -216,32 +219,42 @@ class IGT(ds.ControlDrivingSystem):
                 used equipment (driving system and transducer)
         """
 
-        logger.info('Sequence with the following parameters is validated before sending: \n '
-                    + '%s', sequence)
+        seqs = [seq1]
+        if seq2 is not None:
+            seqs = [seq1, seq2]
 
-        error_messages = self.validate_sequence(sequence)
+        for seq in seqs:
+            logger.info('Sequence with the following parameters is validated before sending: \n '
+                        + '%s', seq)
 
-        if error_messages:
-            for error in error_messages:
-                logger.error(error)
-            sys.exit()
+            error_messages = self.validate_sequence(seq)
+
+            if error_messages:
+                for error in error_messages:
+                    logger.error(error)
+                sys.exit()
 
         if self.is_connected():
 
             # define pulse
-            pulse = self._define_pulse(sequence)
+            if seq2 is None:
+                pulse = self._define_pulse(seq1, seq1.transducer.elements)
+            else:
+                logger.info('Two sequences are sent indicating two transducers are connected.')
+                logger.info('Timing parameters will be based on first sequence.')
+                pulse = self._define_two_seq_pulse(seq1, seq2)
 
             # define pulse train
-            self._define_pulse_train(sequence, pulse)
+            self._define_pulse_train(seq1, pulse)
 
             # Define pulse train repetition
             # number of executions of one pulse train
-            self.n_pulse_train_rep = math.floor(sequence.pulse_train_rep_dur /
-                                                sequence.pulse_train_rep_int)
+            self.n_pulse_train_rep = math.floor(seq1.pulse_train_rep_dur /
+                                                seq1.pulse_train_rep_int)
 
             # Apply ramping
-            if sequence.pulse_ramp_shape != config['General']['Ramp shape.rect']:
-                self._apply_ramping(sequence)
+            if seq1.pulse_ramp_shape != config['General']['Ramp shape.rect']:
+                self._apply_ramping(seq1)
 
             # (optional) restore disabled channels
             self.gen.enableAllChannels()
@@ -253,20 +266,66 @@ class IGT(ds.ControlDrivingSystem):
             # gen.setParam (unifus.GenParam.MultiplexerValue, 3);
 
             # Upload the sequence
-            self.gen.sendSequence(sequence.seq_num, self.seq)
+            self.gen.sendSequence(seq1.seq_num, self.seq)
 
             self.total_sequence_duration_ms = (100 + unifus.sequenceDurationMs(
                 self.seq, self.n_pulse_train_rep, self.pulse_train_delay))
 
-            self.register_sent_sequence(sequence.seq_num)
+            self.register_sent_sequence(seq1.seq_num)
 
         else:
             logger.warning("No connection with driving system.")
             logger.warning("Reconnecting with driving system...")
 
             # if no connection can be made, program stops preventing infinite loop
-            self.connect(sequence.driving_sys.connect_info)
-            self.send_sequence(sequence)
+            self.connect(seq1.driving_sys.connect_info)
+            self.send_sequence(seq1, seq2)
+
+    def _define_two_seq_pulse(self, seq1, seq2):
+        """
+        Validates and sends an ultrasound sequence to the IGT ultrasound driving system.
+
+        Parameters:
+            seq1, seq2 (Object): contains, amongst other things, of:
+                the ultrasound protocol (focus, pulse duration, pulse rep. interval and etcetera)
+                used equipment (driving system and transducer)
+        """
+
+        pulse = unifus.Pulse(self.n_channels, 1, 1)  # n phases, n frequencies, n amplitudes
+
+        # duration in ms, delay in ms
+        pulse.setDuration(seq1.pulse_dur, round(seq1.pulse_rep_int - seq1.pulse_dur, 1))
+
+        # determine  per sequence
+        freqs = []
+        ampls = []
+        phases = []
+        for seq in [seq1, seq2]:
+            oper_freq_hz = int(seq.oper_freq * 1e3)
+            freqs = freqs + [oper_freq_hz] * seq.transducer.elements
+
+            ampls = ampls + [seq.ampl] * seq.transducer.elements
+
+            if seq.dephasing_degree is not None and (len(seq.dephasing_degree) ==
+                                                     seq.transducer.elements):
+                logger.info(f'Phases are overridden by phases set at dephasing_degree :{seq.dephasing_degree}')
+                phases = phases + seq.dephasing_degree
+            else:
+                computed_phases = self._set_phases(pulse, seq.focus, seq.transducer.steer_info,
+                                                   seq.transducer.natural_foc,
+                                                   seq.dephasing_degree)
+                phases = phases + computed_phases
+
+        # set frequency for all channels, in Hz
+        pulse.setFrequencies(freqs)
+
+        # set amplitude for all channels in percent (of max amplitude)
+        pulse.setAmplitudes(ampls)
+
+        # set phase offset for all channels (angle in [0,360] degrees)
+        pulse.setPhases(phases)
+
+        return pulse
 
     def wait_for_trigger(self, sequence, debug_info=False):
         """
@@ -286,15 +345,16 @@ class IGT(ds.ControlDrivingSystem):
 
                     if debug_info:
                         ramp_transient_t = 0
-                        if sequence.pulse_ramp_dur > 0 and sequence.pulse_ramp_shape != config['General']['Ramp shape.rect']:
+                        if sequence.pulse_ramp_dur > 0 and (sequence.pulse_ramp_shape !=
+                                                            config['General']['Ramp shape.rect']):
                             ramp_transient_t = 0.070  # [ms]
-    
+
                         if sequence.pulse_dur > 4.570 + ramp_transient_t:  # [ms]
                             exec_flags |= unifus.ExecFlag.MeasureChannels
-    
+
                         elif sequence.pulse_dur >= 0.035 + ramp_transient_t:  # [ms]
                             exec_flags |= unifus.ExecFlag.MeasureBoards
-    
+
                         elif sequence.pulse_dur >= 0.001 + ramp_transient_t:  # [ms]:
                             exec_flags |= unifus.ExecFlag.MeasureTimings  # or NONE
 
@@ -356,10 +416,10 @@ class IGT(ds.ControlDrivingSystem):
                         ramp_transient_t = 0
                         if sequence.pulse_ramp_dur > 0 and sequence.pulse_ramp_shape != config['General']['Ramp shape.rect']:
                             ramp_transient_t = 0.070  # [ms]
-    
+
                         if sequence.pulse_dur > 4.570 + ramp_transient_t:  # [ms]
                             exec_flags |= unifus.ExecFlag.MeasureChannels
-    
+
                         elif sequence.pulse_dur >= 0.035 + ramp_transient_t:  # [ms]
                             exec_flags |= unifus.ExecFlag.MeasureBoards
                         elif sequence.pulse_dur >= 0.001 + ramp_transient_t:  # [ms]:
@@ -447,8 +507,9 @@ class IGT(ds.ControlDrivingSystem):
                 logger.info(f'Phases are overridden by phases set at dephasing_degree :{sequence.dephasing_degree}')
                 pulse.setPhases(sequence.dephasing_degree)
         else:
-            pulse = self._set_phases(pulse, sequence.focus, sequence.transducer.steer_info,
-                                     sequence.transducer.natural_foc, sequence.dephasing_degree)
+            phases = self._set_phases(pulse, sequence.focus, sequence.transducer.steer_info,
+                                      sequence.transducer.natural_foc, sequence.dephasing_degree)
+            pulse.setPhases(phases)
 
         return pulse
 
@@ -503,7 +564,7 @@ class IGT(ds.ControlDrivingSystem):
             aim_wrt_natural_focus = natural_foc - focus
 
             # Aim n mm away from the natural focal spot, on main axis (Z)
-            trans.computePhases(pulse, (0, 0, aim_wrt_natural_focus), focus, dephasing_degree)
+            phases = trans.computePhases(pulse, (0, 0, aim_wrt_natural_focus), focus, dephasing_degree)
 
         else:
             # Import excel file containing phases per focal depth
@@ -551,14 +612,12 @@ class IGT(ds.ControlDrivingSystem):
                 phases_str = ', '.join([format(x, '.2f') for x in phases])
                 logger.info(f'Computed phases for set focus of {focus}: {phases_str}')
 
-                pulse.setPhases(phases)
-
             else:
                 logger.error("Pipeline is cancelled. The following direction cannot be found: "
                              + "%s", excel_path)
                 sys.exit()
 
-        return pulse
+        return phases
 
     def _apply_ramping(self, sequence):
         """

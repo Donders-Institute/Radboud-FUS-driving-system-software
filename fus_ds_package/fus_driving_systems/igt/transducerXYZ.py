@@ -203,5 +203,4 @@ class Transducer(object):
         logger.info(f'Computed phases for set focus of {set_focus_mm} and aim w.r.t. natural ' +
                     f'focus of {natural_foc}: {phases_str}')
 
-        pulse.setPhases(phases)
-        return True
+        return phases
