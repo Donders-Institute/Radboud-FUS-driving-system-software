@@ -52,6 +52,7 @@ seq.seq_num = 0
 # to check available driving systems: print(driving_system.get_ds_serials())
 # choose one driving system from that list as input
 seq.driving_sys = 'IGT-128-ch_comb_1x10-ch'
+use_two_transducers = True  # is true if you are using two transducers simulateneously or interleaved
 
 # to check available transducers: print(transducer.get_tran_serials())
 # choose one transducer from that list as input
@@ -73,8 +74,6 @@ seq.dephasing_degree = None  # [degrees]: None, [120] or [0, 135, 239, 90]
 # seq.press = 1  # [MPa], maximum pressure in free water
 # seq.volt = 0  # [V], voltage per channel
 seq.ampl = 10  # [%], amplitude. NOTE: DIFFERENT THAN SC
-
-use_two_transducers = True
 
 if use_two_transducers:
     seq2 = sequence.Sequence()
