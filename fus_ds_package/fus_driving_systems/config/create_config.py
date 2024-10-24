@@ -371,6 +371,7 @@ config['Equipment.Transducer.' + SC_TRANS[0]]['Manufacturer'] = SONIC_CONCEPTS
 config['Equipment.Transducer.' + SC_TRANS[0]]['Elements'] = str(2)
 config['Equipment.Transducer.' + SC_TRANS[0]]['Fund. freq.'] = str(250)  # [kHz]
 config['Equipment.Transducer.' + SC_TRANS[0]]['Natural focus'] = str(0)  # [mm] only for Imasonic
+config['Equipment.Transducer.' + SC_TRANS[0]]['Exit plane - first element dist.'] = str(0)  # [mm] only for Imasonic
 config['Equipment.Transducer.' + SC_TRANS[0]]['Min. focus'] = str(15.9)  # [mm]
 config['Equipment.Transducer.' + SC_TRANS[0]]['Max. focus'] = str(46.0)  # [mm]
 config['Equipment.Transducer.' + SC_TRANS[0]]['Steer information'] = str(os.path.join(
@@ -384,6 +385,7 @@ config['Equipment.Transducer.' + SC_TRANS[1]]['Manufacturer'] = SONIC_CONCEPTS
 config['Equipment.Transducer.' + SC_TRANS[1]]['Elements'] = str(2)
 config['Equipment.Transducer.' + SC_TRANS[1]]['Fund. freq.'] = str(250)  # [kHz]
 config['Equipment.Transducer.' + SC_TRANS[1]]['Natural focus'] = str(0)  # [mm] only for Imasonic
+config['Equipment.Transducer.' + SC_TRANS[1]]['Exit plane - first element dist.'] = str(0)  # [mm] only for Imasonic
 config['Equipment.Transducer.' + SC_TRANS[1]]['Min. focus'] = str(12.6)  # [mm]
 config['Equipment.Transducer.' + SC_TRANS[1]]['Max. focus'] = str(44.1)  # [mm]
 config['Equipment.Transducer.' + SC_TRANS[1]]['Steer information'] = str(os.path.join(
@@ -398,6 +400,7 @@ config['Equipment.Transducer.' + SC_TRANS[2]]['Manufacturer'] = SONIC_CONCEPTS
 config['Equipment.Transducer.' + SC_TRANS[2]]['Elements'] = str(2)
 config['Equipment.Transducer.' + SC_TRANS[2]]['Fund. freq.'] = str(500)  # [kHz]
 config['Equipment.Transducer.' + SC_TRANS[2]]['Natural focus'] = str(0)  # [mm] only for Imasonic
+config['Equipment.Transducer.' + SC_TRANS[2]]['Exit plane - first element dist.'] = str(0)  # [mm] only for Imasonic
 config['Equipment.Transducer.' + SC_TRANS[2]]['Min. focus'] = str(33.2)  # [mm]
 config['Equipment.Transducer.' + SC_TRANS[2]]['Max. focus'] = str(79.4)  # [mm]
 config['Equipment.Transducer.' + SC_TRANS[2]]['Steer information'] = str(os.path.join(
@@ -411,6 +414,7 @@ config['Equipment.Transducer.' + SC_TRANS[3]]['Manufacturer'] = SONIC_CONCEPTS
 config['Equipment.Transducer.' + SC_TRANS[3]]['Elements'] = str(4)
 config['Equipment.Transducer.' + SC_TRANS[3]]['Fund. freq.'] = str(250)  # [kHz]
 config['Equipment.Transducer.' + SC_TRANS[3]]['Natural focus'] = str(0)  # [mm] only for Imasonic
+config['Equipment.Transducer.' + SC_TRANS[3]]['Exit plane - first element dist.'] = str(0)  # [mm] only for Imasonic
 config['Equipment.Transducer.' + SC_TRANS[3]]['Min. focus'] = str(14.2)  # [mm]
 config['Equipment.Transducer.' + SC_TRANS[3]]['Max. focus'] = str(60.9)  # [mm]
 config['Equipment.Transducer.' + SC_TRANS[3]]['Steer information'] = str(os.path.join(
@@ -424,6 +428,7 @@ config['Equipment.Transducer.' + SC_TRANS[4]]['Manufacturer'] = SONIC_CONCEPTS
 config['Equipment.Transducer.' + SC_TRANS[4]]['Elements'] = str(4)
 config['Equipment.Transducer.' + SC_TRANS[4]]['Fund. freq.'] = str(250)  # [kHz]
 config['Equipment.Transducer.' + SC_TRANS[4]]['Natural focus'] = str(0)  # [mm] only for Imasonic
+config['Equipment.Transducer.' + SC_TRANS[4]]['Exit plane - first element dist.'] = str(0)  # [mm] only for Imasonic
 config['Equipment.Transducer.' + SC_TRANS[4]]['Min. focus'] = str(22.2)  # [mm]
 config['Equipment.Transducer.' + SC_TRANS[4]]['Max. focus'] = str(61.5)  # [mm]
 config['Equipment.Transducer.' + SC_TRANS[4]]['Steer information'] = str(os.path.join(
@@ -437,6 +442,7 @@ config['Equipment.Transducer.' + SC_TRANS[5]]['Manufacturer'] = SONIC_CONCEPTS
 config['Equipment.Transducer.' + SC_TRANS[5]]['Elements'] = str(4)
 config['Equipment.Transducer.' + SC_TRANS[5]]['Fund. freq.'] = str(500)  # [kHz]
 config['Equipment.Transducer.' + SC_TRANS[5]]['Natural focus'] = str(0)  # [mm] only for Imasonic
+config['Equipment.Transducer.' + SC_TRANS[5]]['Exit plane - first element dist.'] = str(0)  # [mm] only for Imasonic
 config['Equipment.Transducer.' + SC_TRANS[5]]['Min. focus'] = str(31.7)  # [mm]
 config['Equipment.Transducer.' + SC_TRANS[5]]['Max. focus'] = str(77.0)  # [mm]
 config['Equipment.Transducer.' + SC_TRANS[5]]['Steer information'] = str(os.path.join(
@@ -450,6 +456,7 @@ config['Equipment.Transducer.' + SC_TRANS[6]]['Manufacturer'] = SONIC_CONCEPTS
 config['Equipment.Transducer.' + SC_TRANS[6]]['Elements'] = str(4)
 config['Equipment.Transducer.' + SC_TRANS[6]]['Fund. freq.'] = str(500)  # [kHz]
 config['Equipment.Transducer.' + SC_TRANS[6]]['Natural focus'] = str(0)  # [mm] only for Imasonic
+config['Equipment.Transducer.' + SC_TRANS[6]]['Exit plane - first element dist.'] = str(0)  # [mm] only for Imasonic
 config['Equipment.Transducer.' + SC_TRANS[6]]['Min. focus'] = str(39.6)  # [mm]
 config['Equipment.Transducer.' + SC_TRANS[6]]['Max. focus'] = str(79.6)  # [mm]
 config['Equipment.Transducer.' + SC_TRANS[6]]['Steer information'] = str(os.path.join(
@@ -469,8 +476,9 @@ config['Equipment.Transducer.' + IS_TRANS[0]]['Manufacturer'] = IMASONIC
 config['Equipment.Transducer.' + IS_TRANS[0]]['Elements'] = str(10)
 config['Equipment.Transducer.' + IS_TRANS[0]]['Fund. freq.'] = str(300)  # [kHz]
 config['Equipment.Transducer.' + IS_TRANS[0]]['Natural focus'] = str(75)  # [mm]
-config['Equipment.Transducer.' + IS_TRANS[0]]['Min. focus'] = str(10)  # [mm]
-config['Equipment.Transducer.' + IS_TRANS[0]]['Max. focus'] = str(150)  # [mm]
+config['Equipment.Transducer.' + IS_TRANS[0]]['Exit plane - first element dist.'] = str(9.7)  # [mm]
+config['Equipment.Transducer.' + IS_TRANS[0]]['Min. focus'] = str(7)  # [mm]
+config['Equipment.Transducer.' + IS_TRANS[0]]['Max. focus'] = str(92)  # [mm]
 config['Equipment.Transducer.' + IS_TRANS[0]]['Steer information'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IS_TRAN,
     'transducer_15287_10_300kHz.ini'))  # should be in the same directory as code
@@ -483,8 +491,9 @@ config['Equipment.Transducer.' + IS_TRANS[1]]['Manufacturer'] = IMASONIC
 config['Equipment.Transducer.' + IS_TRANS[1]]['Elements'] = str(10)
 config['Equipment.Transducer.' + IS_TRANS[1]]['Fund. freq.'] = str(300)  # [kHz]
 config['Equipment.Transducer.' + IS_TRANS[1]]['Natural focus'] = str(75)  # [mm]
-config['Equipment.Transducer.' + IS_TRANS[1]]['Min. focus'] = str(10)  # [mm]
-config['Equipment.Transducer.' + IS_TRANS[1]]['Max. focus'] = str(150)  # [mm]
+config['Equipment.Transducer.' + IS_TRANS[1]]['Exit plane - first element dist.'] = str(9.7)  # [mm]
+config['Equipment.Transducer.' + IS_TRANS[1]]['Min. focus'] = str(7)  # [mm]
+config['Equipment.Transducer.' + IS_TRANS[1]]['Max. focus'] = str(92)  # [mm]
 config['Equipment.Transducer.' + IS_TRANS[1]]['Steer information'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IS_TRAN,
     'transducer_15287_10_300kHz.ini'))  # should be in the same directory as code
@@ -497,6 +506,7 @@ config['Equipment.Transducer.' + IS_TRANS[2]]['Manufacturer'] = IMASONIC
 config['Equipment.Transducer.' + IS_TRANS[2]]['Elements'] = str(10)
 config['Equipment.Transducer.' + IS_TRANS[2]]['Fund. freq.'] = str(300)  # [kHz]
 config['Equipment.Transducer.' + IS_TRANS[2]]['Natural focus'] = str(100)  # [mm]
+config['Equipment.Transducer.' + IS_TRANS[2]]['Exit plane - first element dist.'] = str(7.3)  # [mm]
 config['Equipment.Transducer.' + IS_TRANS[2]]['Min. focus'] = str(10)  # [mm]
 config['Equipment.Transducer.' + IS_TRANS[2]]['Max. focus'] = str(150)  # [mm]
 config['Equipment.Transducer.' + IS_TRANS[2]]['Steer information'] = str(os.path.join(
@@ -511,6 +521,7 @@ config['Equipment.Transducer.' + IS_TRANS[3]]['Manufacturer'] = IMASONIC
 config['Equipment.Transducer.' + IS_TRANS[3]]['Elements'] = str(10)
 config['Equipment.Transducer.' + IS_TRANS[3]]['Fund. freq.'] = str(300)  # [kHz]
 config['Equipment.Transducer.' + IS_TRANS[3]]['Natural focus'] = str(100)  # [mm]
+config['Equipment.Transducer.' + IS_TRANS[3]]['Exit plane - first element dist.'] = str(7.3)  # [mm]
 config['Equipment.Transducer.' + IS_TRANS[3]]['Min. focus'] = str(10)  # [mm]
 config['Equipment.Transducer.' + IS_TRANS[3]]['Max. focus'] = str(150)  # [mm]
 config['Equipment.Transducer.' + IS_TRANS[3]]['Steer information'] = str(os.path.join(
@@ -529,6 +540,7 @@ config['Equipment.Transducer.' + DUMMY]['Manufacturer'] = ''
 config['Equipment.Transducer.' + DUMMY]['Elements'] = str(0)
 config['Equipment.Transducer.' + DUMMY]['Fund. freq.'] = str(0)  # [kHz]
 config['Equipment.Transducer.' + DUMMY]['Natural focus'] = str(0)  # [mm]
+config['Equipment.Transducer.' + DUMMY]['Exit plane - first element dist.'] = str(0)  # [mm] only for Imasonic
 config['Equipment.Transducer.' + DUMMY]['Min. focus'] = str(0)  # [mm]
 config['Equipment.Transducer.' + DUMMY]['Max. focus'] = str(1000)  # [mm]
 config['Equipment.Transducer.' + DUMMY]['Steer information'] = ''
@@ -543,16 +555,30 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['Driving system serial'] = 
                                                                                  .split('~')[0])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['Transducer serial'] = (DS_TRAN_COMBOS[0]
                                                                              .split('~')[1])
+
 config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['V2A a-coeff'] = str(6.1122)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['V2A b-coeff'] = str(-0.4917)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['V2P a-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['V2P b-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2NP a0-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2NP a1-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2NP a2-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2NP a3-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2NP a4-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2NP a5-coeff'] = str(0)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['P2A a-coeff'] = str(8.34e-5)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['P2A b-coeff'] = str(-3.79e-2)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2EQF1 foc. low lim.'] = str(7)  # >=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2EQF1 foc. upper lim.'] = str(17.7)  # <=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2EQF1 a0-coeff'] = str(-7.40)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2EQF1 a1-coeff'] = str(3.64)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2EQF1 a2-coeff'] = str(-5.77e-1)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2EQF1 a3-coeff'] = str(4.30e-2)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2EQF1 a4-coeff'] = str(-1.55e-3)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2EQF1 a5-coeff'] = str(2.18e-5)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2EQF2 foc. low lim.'] = str(17.7)  # >
+config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2EQF2 foc. upper lim.'] = str(92)  # <=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2EQF2 a0-coeff'] = str(5.01e-1)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2EQF2 a1-coeff'] = str(3.21e-3)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2EQF2 a2-coeff'] = str(1.28e-4)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2EQF2 a3-coeff'] = str(-4.42e-7)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2EQF2 a4-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2EQF2 a5-coeff'] = str(0)
 
 config['Equipment.Combination.' + DS_TRAN_COMBOS[1]] = {}
 config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['Driving system serial'] = (DS_TRAN_COMBOS[1]
@@ -561,14 +587,27 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['Transducer serial'] = (DS_
                                                                              .split('~')[1])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['V2A a-coeff'] = str(6.1122)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['V2A b-coeff'] = str(-0.4917)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['V2P a-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['V2P b-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2NP a0-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2NP a1-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2NP a2-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2NP a3-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2NP a4-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2NP a5-coeff'] = str(0)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['P2A a-coeff'] = str(8.34e-5)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['P2A b-coeff'] = str(-3.79e-2)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2EQF1 foc. low lim.'] = str(7)  # >=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2EQF1 foc. upper lim.'] = str(17.7)  # <=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2EQF1 a0-coeff'] = str(-7.40)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2EQF1 a1-coeff'] = str(3.64)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2EQF1 a2-coeff'] = str(-5.77e-1)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2EQF1 a3-coeff'] = str(4.30e-2)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2EQF1 a4-coeff'] = str(-1.55e-3)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2EQF1 a5-coeff'] = str(2.18e-5)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2EQF2 foc. low lim.'] = str(17.7)  # >
+config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2EQF2 foc. upper lim.'] = str(92)  # <=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2EQF2 a0-coeff'] = str(5.01e-1)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2EQF2 a1-coeff'] = str(3.21e-3)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2EQF2 a2-coeff'] = str(1.28e-4)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2EQF2 a3-coeff'] = str(-4.42e-7)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2EQF2 a4-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2EQF2 a5-coeff'] = str(0)
 
 config['Equipment.Combination.' + DS_TRAN_COMBOS[2]] = {}
 config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['Driving system serial'] = (DS_TRAN_COMBOS[2]
@@ -577,14 +616,27 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['Transducer serial'] = (DS_
                                                                              .split('~')[1])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['V2A a-coeff'] = str(6.1122)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['V2A b-coeff'] = str(-0.4917)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['V2P a-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['V2P b-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2NP a0-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2NP a1-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2NP a2-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2NP a3-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2NP a4-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2NP a5-coeff'] = str(0)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['P2A a-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['P2A b-coeff'] = str(0)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2EQF1 foc. low lim.'] = str(0)  # >=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2EQF1 foc. upper lim.'] = str(0)  # <=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2EQF1 a0-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2EQF1 a1-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2EQF1 a2-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2EQF1 a3-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2EQF1 a4-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2EQF1 a5-coeff'] = str(0)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2EQF2 foc. low lim.'] = str(0)  # >
+config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2EQF2 foc. upper lim.'] = str(0)  # <=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2EQF2 a0-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2EQF2 a1-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2EQF2 a2-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2EQF2 a3-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2EQF2 a4-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2EQF2 a5-coeff'] = str(0)
 
 config['Equipment.Combination.' + DS_TRAN_COMBOS[3]] = {}
 config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['Driving system serial'] = (DS_TRAN_COMBOS[3]
@@ -593,14 +645,27 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['Transducer serial'] = (DS_
                                                                              .split('~')[1])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['V2A a-coeff'] = str(6.1122)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['V2A b-coeff'] = str(-0.4917)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['V2P a-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['V2P b-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2NP a0-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2NP a1-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2NP a2-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2NP a3-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2NP a4-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2NP a5-coeff'] = str(0)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['P2A a-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['P2A b-coeff'] = str(0)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2EQF1 foc. low lim.'] = str(0)  # >=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2EQF1 foc. upper lim.'] = str(0)  # <=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2EQF1 a0-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2EQF1 a1-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2EQF1 a2-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2EQF1 a3-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2EQF1 a4-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2EQF1 a5-coeff'] = str(0)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2EQF2 foc. low lim.'] = str(0)  # >
+config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2EQF2 foc. upper lim.'] = str(0)  # <=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2EQF2 a0-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2EQF2 a1-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2EQF2 a2-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2EQF2 a3-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2EQF2 a4-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2EQF2 a5-coeff'] = str(0)
 
 config['Equipment.Combination.' + DS_TRAN_COMBOS[4]] = {}
 config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['Driving system serial'] = (DS_TRAN_COMBOS[4]
@@ -609,14 +674,27 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['Transducer serial'] = (DS_
                                                                              .split('~')[1])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['V2A a-coeff'] = str(6.1122)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['V2A b-coeff'] = str(-0.4917)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['V2P a-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['V2P b-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2NP a0-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2NP a1-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2NP a2-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2NP a3-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2NP a4-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2NP a5-coeff'] = str(0)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['P2A a-coeff'] = str(8.34e-5)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['P2A b-coeff'] = str(-3.79e-2)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2EQF1 foc. low lim.'] = str(7)  # >=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2EQF1 foc. upper lim.'] = str(17.7)  # <=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2EQF1 a0-coeff'] = str(-7.40)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2EQF1 a1-coeff'] = str(3.64)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2EQF1 a2-coeff'] = str(-5.77e-1)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2EQF1 a3-coeff'] = str(4.30e-2)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2EQF1 a4-coeff'] = str(-1.55e-3)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2EQF1 a5-coeff'] = str(2.18e-5)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2EQF2 foc. low lim.'] = str(17.7)  # >
+config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2EQF2 foc. upper lim.'] = str(92)  # <=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2EQF2 a0-coeff'] = str(5.01e-1)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2EQF2 a1-coeff'] = str(3.21e-3)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2EQF2 a2-coeff'] = str(1.28e-4)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2EQF2 a3-coeff'] = str(-4.42e-7)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2EQF2 a4-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2EQF2 a5-coeff'] = str(0)
 
 config['Equipment.Combination.' + DS_TRAN_COMBOS[5]] = {}
 config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['Driving system serial'] = (DS_TRAN_COMBOS[5]
@@ -625,14 +703,27 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['Transducer serial'] = (DS_
                                                                              .split('~')[1])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['V2A a-coeff'] = str(6.1122)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['V2A b-coeff'] = str(-0.4917)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['V2P a-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['V2P b-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2NP a0-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2NP a1-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2NP a2-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2NP a3-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2NP a4-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2NP a5-coeff'] = str(0)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['P2A a-coeff'] = str(8.34e-5)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['P2A b-coeff'] = str(-3.79e-2)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2EQF1 foc. low lim.'] = str(7)  # >=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2EQF1 foc. upper lim.'] = str(17.7)  # <=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2EQF1 a0-coeff'] = str(-7.40)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2EQF1 a1-coeff'] = str(3.64)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2EQF1 a2-coeff'] = str(-5.77e-1)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2EQF1 a3-coeff'] = str(4.30e-2)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2EQF1 a4-coeff'] = str(-1.55e-3)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2EQF1 a5-coeff'] = str(2.18e-5)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2EQF2 foc. low lim.'] = str(17.7)  # >
+config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2EQF2 foc. upper lim.'] = str(92)  # <=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2EQF2 a0-coeff'] = str(5.01e-1)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2EQF2 a1-coeff'] = str(3.21e-3)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2EQF2 a2-coeff'] = str(1.28e-4)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2EQF2 a3-coeff'] = str(-4.42e-7)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2EQF2 a4-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2EQF2 a5-coeff'] = str(0)
 
 config['Equipment.Combination.' + DS_TRAN_COMBOS[6]] = {}
 config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['Driving system serial'] = (DS_TRAN_COMBOS[6]
@@ -641,14 +732,27 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['Transducer serial'] = (DS_
                                                                              .split('~')[1])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['V2A a-coeff'] = str(6.1122)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['V2A b-coeff'] = str(-0.4917)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['V2P a-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['V2P b-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2NP a0-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2NP a1-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2NP a2-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2NP a3-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2NP a4-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2NP a5-coeff'] = str(0)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['P2A a-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['P2A b-coeff'] = str(0)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2EQF1 foc. low lim.'] = str(0)  # >=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2EQF1 foc. upper lim.'] = str(0)  # <=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2EQF1 a0-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2EQF1 a1-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2EQF1 a2-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2EQF1 a3-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2EQF1 a4-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2EQF1 a5-coeff'] = str(0)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2EQF2 foc. low lim.'] = str(0)  # >
+config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2EQF2 foc. upper lim.'] = str(0)  # <=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2EQF2 a0-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2EQF2 a1-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2EQF2 a2-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2EQF2 a3-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2EQF2 a4-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2EQF2 a5-coeff'] = str(0)
 
 config['Equipment.Combination.' + DS_TRAN_COMBOS[7]] = {}
 config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['Driving system serial'] = (DS_TRAN_COMBOS[7]
@@ -657,14 +761,27 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['Transducer serial'] = (DS_
                                                                              .split('~')[1])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['V2A a-coeff'] = str(6.1122)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['V2A b-coeff'] = str(-0.4917)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['V2P a-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['V2P b-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2NP a0-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2NP a1-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2NP a2-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2NP a3-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2NP a4-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2NP a5-coeff'] = str(0)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['P2A a-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['P2A b-coeff'] = str(0)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2EQF1 foc. low lim.'] = str(0)  # >=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2EQF1 foc. upper lim.'] = str(0)  # <=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2EQF1 a0-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2EQF1 a1-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2EQF1 a2-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2EQF1 a3-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2EQF1 a4-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2EQF1 a5-coeff'] = str(0)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2EQF2 foc. low lim.'] = str(0)  # >
+config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2EQF2 foc. upper lim.'] = str(0)  # <=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2EQF2 a0-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2EQF2 a1-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2EQF2 a2-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2EQF2 a3-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2EQF2 a4-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2EQF2 a5-coeff'] = str(0)
 
 config['Equipment.Combination.' + DS_TRAN_COMBOS[8]] = {}
 config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['Driving system serial'] = (DS_TRAN_COMBOS[8]
@@ -673,14 +790,27 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['Transducer serial'] = (DS_
                                                                              .split('~')[1])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['V2A a-coeff'] = str(6.1393)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['V2A b-coeff'] = str(-0.7172)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['V2P a-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['V2P b-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2NP a0-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2NP a1-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2NP a2-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2NP a3-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2NP a4-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2NP a5-coeff'] = str(0)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['P2A a-coeff'] = str(8.34e-5)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['P2A b-coeff'] = str(-3.79e-2)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2EQF1 foc. low lim.'] = str(7)  # >=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2EQF1 foc. upper lim.'] = str(17.7)  # <=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2EQF1 a0-coeff'] = str(-7.40)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2EQF1 a1-coeff'] = str(3.64)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2EQF1 a2-coeff'] = str(-5.77e-1)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2EQF1 a3-coeff'] = str(4.30e-2)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2EQF1 a4-coeff'] = str(-1.55e-3)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2EQF1 a5-coeff'] = str(2.18e-5)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2EQF2 foc. low lim.'] = str(17.7)  # >
+config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2EQF2 foc. upper lim.'] = str(92)  # <=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2EQF2 a0-coeff'] = str(5.01e-1)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2EQF2 a1-coeff'] = str(3.21e-3)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2EQF2 a2-coeff'] = str(1.28e-4)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2EQF2 a3-coeff'] = str(-4.42e-7)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2EQF2 a4-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2EQF2 a5-coeff'] = str(0)
 
 config['Equipment.Combination.' + DS_TRAN_COMBOS[9]] = {}
 config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['Driving system serial'] = (DS_TRAN_COMBOS[9]
@@ -689,14 +819,27 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['Transducer serial'] = (DS_
                                                                              .split('~')[1])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['V2A a-coeff'] = str(6.1393)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['V2A b-coeff'] = str(-0.7172)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['V2P a-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['V2P b-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2NP a0-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2NP a1-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2NP a2-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2NP a3-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2NP a4-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2NP a5-coeff'] = str(0)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['P2A a-coeff'] = str(8.34e-5)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['P2A b-coeff'] = str(-3.79e-2)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2EQF1 foc. low lim.'] = str(7)  # >=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2EQF1 foc. upper lim.'] = str(17.7)  # <=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2EQF1 a0-coeff'] = str(-7.40)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2EQF1 a1-coeff'] = str(3.64)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2EQF1 a2-coeff'] = str(-5.77e-1)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2EQF1 a3-coeff'] = str(4.30e-2)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2EQF1 a4-coeff'] = str(-1.55e-3)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2EQF1 a5-coeff'] = str(2.18e-5)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2EQF2 foc. low lim.'] = str(17.7)  # >
+config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2EQF2 foc. upper lim.'] = str(92)  # <=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2EQF2 a0-coeff'] = str(5.01e-1)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2EQF2 a1-coeff'] = str(3.21e-3)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2EQF2 a2-coeff'] = str(1.28e-4)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2EQF2 a3-coeff'] = str(-4.42e-7)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2EQF2 a4-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2EQF2 a5-coeff'] = str(0)
 
 config['Equipment.Combination.' + DS_TRAN_COMBOS[10]] = {}
 config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['Driving system serial'] = (DS_TRAN_COMBOS[10]
@@ -705,14 +848,27 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['Transducer serial'] = (DS
                                                                               .split('~')[1])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['V2A a-coeff'] = str(6.1393)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['V2A b-coeff'] = str(-0.7172)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['V2P a-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['V2P b-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2NP a0-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2NP a1-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2NP a2-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2NP a3-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2NP a4-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2NP a5-coeff'] = str(0)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['P2A a-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['P2A b-coeff'] = str(0)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2EQF1 foc. low lim.'] = str(0)  # >=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2EQF1 foc. upper lim.'] = str(0)  # <=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2EQF1 a0-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2EQF1 a1-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2EQF1 a2-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2EQF1 a3-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2EQF1 a4-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2EQF1 a5-coeff'] = str(0)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2EQF2 foc. low lim.'] = str(0)  # >
+config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2EQF2 foc. upper lim.'] = str(0)  # <=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2EQF2 a0-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2EQF2 a1-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2EQF2 a2-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2EQF2 a3-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2EQF2 a4-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2EQF2 a5-coeff'] = str(0)
 
 config['Equipment.Combination.' + DS_TRAN_COMBOS[11]] = {}
 config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['Driving system serial'] = (DS_TRAN_COMBOS[11]
@@ -721,14 +877,27 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['Transducer serial'] = (DS
                                                                               .split('~')[1])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['V2A a-coeff'] = str(6.1393)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['V2A b-coeff'] = str(-0.7172)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['V2P a-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['V2P b-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2NP a0-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2NP a1-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2NP a2-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2NP a3-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2NP a4-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2NP a5-coeff'] = str(0)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['P2A a-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['P2A b-coeff'] = str(0)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2EQF1 foc. low lim.'] = str(0)  # >=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2EQF1 foc. upper lim.'] = str(0)  # <=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2EQF1 a0-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2EQF1 a1-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2EQF1 a2-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2EQF1 a3-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2EQF1 a4-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2EQF1 a5-coeff'] = str(0)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2EQF2 foc. low lim.'] = str(0)  # >
+config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2EQF2 foc. upper lim.'] = str(0)  # <=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2EQF2 a0-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2EQF2 a1-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2EQF2 a2-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2EQF2 a3-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2EQF2 a4-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2EQF2 a5-coeff'] = str(0)
 
 config['Equipment.Combination.' + DS_TRAN_COMBOS[12]] = {}
 config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['Driving system serial'] = (DS_TRAN_COMBOS[12]
@@ -737,14 +906,27 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['Transducer serial'] = (DS
                                                                               .split('~')[1])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['V2A a-coeff'] = str(6.1393)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['V2A b-coeff'] = str(-0.7172)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['V2P a-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['V2P b-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2NP a0-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2NP a1-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2NP a2-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2NP a3-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2NP a4-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2NP a5-coeff'] = str(0)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['P2A a-coeff'] = str(8.34e-5)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['P2A b-coeff'] = str(-3.79e-2)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2EQF1 foc. low lim.'] = str(7)  # >=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2EQF1 foc. upper lim.'] = str(17.7)  # <=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2EQF1 a0-coeff'] = str(-7.40)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2EQF1 a1-coeff'] = str(3.64)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2EQF1 a2-coeff'] = str(-5.77e-1)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2EQF1 a3-coeff'] = str(4.30e-2)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2EQF1 a4-coeff'] = str(-1.55e-3)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2EQF1 a5-coeff'] = str(2.18e-5)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2EQF2 foc. low lim.'] = str(17.7)  # >
+config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2EQF2 foc. upper lim.'] = str(92)  # <=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2EQF2 a0-coeff'] = str(5.01e-1)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2EQF2 a1-coeff'] = str(3.21e-3)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2EQF2 a2-coeff'] = str(1.28e-4)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2EQF2 a3-coeff'] = str(-4.42e-7)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2EQF2 a4-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2EQF2 a5-coeff'] = str(0)
 
 config['Equipment.Combination.' + DS_TRAN_COMBOS[13]] = {}
 config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['Driving system serial'] = (DS_TRAN_COMBOS[13]
@@ -753,14 +935,27 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['Transducer serial'] = (DS
                                                                               .split('~')[1])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['V2A a-coeff'] = str(6.1393)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['V2A b-coeff'] = str(-0.7172)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['V2P a-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['V2P b-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2NP a0-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2NP a1-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2NP a2-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2NP a3-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2NP a4-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2NP a5-coeff'] = str(0)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['P2A a-coeff'] = str(8.34e-5)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['P2A b-coeff'] = str(-3.79e-2)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2EQF1 foc. low lim.'] = str(7)  # >=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2EQF1 foc. upper lim.'] = str(17.7)  # <=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2EQF1 a0-coeff'] = str(-7.40)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2EQF1 a1-coeff'] = str(3.64)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2EQF1 a2-coeff'] = str(-5.77e-1)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2EQF1 a3-coeff'] = str(4.30e-2)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2EQF1 a4-coeff'] = str(-1.55e-3)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2EQF1 a5-coeff'] = str(2.18e-5)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2EQF2 foc. low lim.'] = str(17.7)  # >
+config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2EQF2 foc. upper lim.'] = str(92)  # <=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2EQF2 a0-coeff'] = str(5.01e-1)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2EQF2 a1-coeff'] = str(3.21e-3)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2EQF2 a2-coeff'] = str(1.28e-4)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2EQF2 a3-coeff'] = str(-4.42e-7)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2EQF2 a4-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2EQF2 a5-coeff'] = str(0)
 
 config['Equipment.Combination.' + DS_TRAN_COMBOS[14]] = {}
 config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['Driving system serial'] = (DS_TRAN_COMBOS[14]
@@ -769,14 +964,27 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['Transducer serial'] = (DS
                                                                               .split('~')[1])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['V2A a-coeff'] = str(6.1393)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['V2A b-coeff'] = str(-0.7172)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['V2P a-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['V2P b-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2NP a0-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2NP a1-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2NP a2-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2NP a3-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2NP a4-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2NP a5-coeff'] = str(0)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['P2A a-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['P2A b-coeff'] = str(0)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2EQF1 foc. low lim.'] = str(0)  # >=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2EQF1 foc. upper lim.'] = str(0)  # <=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2EQF1 a0-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2EQF1 a1-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2EQF1 a2-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2EQF1 a3-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2EQF1 a4-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2EQF1 a5-coeff'] = str(0)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2EQF2 foc. low lim.'] = str(0)  # >
+config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2EQF2 foc. upper lim.'] = str(0)  # <=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2EQF2 a0-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2EQF2 a1-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2EQF2 a2-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2EQF2 a3-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2EQF2 a4-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2EQF2 a5-coeff'] = str(0)
 
 config['Equipment.Combination.' + DS_TRAN_COMBOS[15]] = {}
 config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['Driving system serial'] = (DS_TRAN_COMBOS[15]
@@ -785,14 +993,27 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['Transducer serial'] = (DS
                                                                               .split('~')[1])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['V2A a-coeff'] = str(6.1393)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['V2A b-coeff'] = str(-0.7172)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['V2P a-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['V2P b-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2NP a0-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2NP a1-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2NP a2-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2NP a3-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2NP a4-coeff'] = str(0)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2NP a5-coeff'] = str(0)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['P2A a-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['P2A b-coeff'] = str(0)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2EQF1 foc. low lim.'] = str(0)  # >=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2EQF1 foc. upper lim.'] = str(0)  # <=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2EQF1 a0-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2EQF1 a1-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2EQF1 a2-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2EQF1 a3-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2EQF1 a4-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2EQF1 a5-coeff'] = str(0)
+
+config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2EQF2 foc. low lim.'] = str(0)  # >
+config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2EQF2 foc. upper lim.'] = str(0)  # <=
+config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2EQF2 a0-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2EQF2 a1-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2EQF2 a2-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2EQF2 a3-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2EQF2 a4-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2EQF2 a5-coeff'] = str(0)
 
 with open(CONFIG_FILE, 'w') as configfile:
     config.write(configfile)
