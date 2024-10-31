@@ -291,7 +291,13 @@ class Sequence():
                            differentiate and send multiple sequences to the IGT system.
         """
 
-        self._seq_num = seq_num
+        val_messages = validate_value(seq_num, 'Sequence number (seq_num)',
+                                      True, True, False, False)
+        if not val_messages:
+            self._seq_num = seq_num
+        else:
+            for message in val_messages:
+                logger.error(message)
 
     @property
     def driving_sys(self):
@@ -342,7 +348,14 @@ class Sequence():
         Args:
             value (bool): The boolean indicating if the driving system is waiting for a trigger.
         """
-        self._wait_for_trigger = wait_for_trigger
+
+        val_messages = validate_value(wait_for_trigger, 'Wait for trigger (wait_for_trigger)',
+                                      False, False, False, True)
+        if not val_messages:
+            self._wait_for_trigger = wait_for_trigger
+        else:
+            for message in val_messages:
+                logger.error(message)
 
     def get_trigger_options(self):
         """
@@ -372,7 +385,11 @@ class Sequence():
         Args:
             value (str):  The chosen trigger option.
         """
-        self._trigger_option = trigger_option
+
+        if trigger_option not in self.get_trigger_options():
+            logger.error(f'{trigger_option} is not an available option.')
+        else:
+            self._trigger_option = trigger_option
 
     @property
     def n_triggers(self):
@@ -1258,3 +1275,17 @@ class Sequence():
 
         press_pa = (self._ampl - self.P2A_b) / (self.P2A_a * self._eq_factor)
         self._press = press_pa * 1e-6  # convert to MPa
+
+
+def validate_value(value, input_param, check_num, check_pos, check_nonzero, check_bool):
+    val_messages = []
+
+    if check_nonzero and value == 0:
+        val_messages.append(f'{input_param} is not allowed to be zero.')
+    if check_num and not isinstance(value, (int, float)):
+        val_messages.append(f'{input_param} should be a number.')
+    if check_pos and value < 0:
+        val_messages.append(f'{input_param} is not allowed to be negative.')
+
+    if check_bool and not isinstance(value, bool):
+        val_messages.append(f'{input_param} should be a boolean.')
