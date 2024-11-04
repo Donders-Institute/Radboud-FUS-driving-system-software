@@ -214,8 +214,12 @@ class IGT(ds.ControlDrivingSystem):
             error_messages.append('Pulse repetition interval is not allowed to be smaller than' +
                                   ' 170 us.')
 
+        # Ramping check is not required when smooth linear modulation is used
+        use_smoothing = (sequence.pulse_ramp_shape == config['General']['Ramp shape.lin'] and
+                         sequence.pulse_ramp_dur <= 7.253 and sequence.pulse_ramp_dur >= 0.028)
+
         if sequence.pulse_ramp_dur > 0 and (sequence.pulse_ramp_shape !=
-                                            config['General']['Ramp shape.rect']):
+                                            config['General']['Ramp shape.rect']) and not use_smoothing:
             if sequence.pulse_ramp_dur > sequence.pulse_dur/2 - 0.035:
                 error_messages.append('When applying ramping, there needs to be at least ' +
                                       '70 us between ramping up and down')
@@ -647,31 +651,37 @@ class IGT(ds.ControlDrivingSystem):
             sequence (Sequence): The sequence object containing ultrasound parameters.
         """
 
-        # Use best temporal resolution for pulse ramping [ms]
-        min_ramp_temp_res = 0.005  # [ms]
-        max_ramp_steps = 1023
+        # Smooth linear ramping currently only applicable between the range of 0.028 and 7.253 ms
+        if sequence.pulse_ramp_shape == config['General']['Ramp shape.lin'] and sequence.pulse_ramp_dur <= 7.253 and sequence.pulse_ramp_dur >= 0.028:  # Linear ramping
+            self.gen.setPulseRamp(unifus.PulseRamp.Rising, sequence.pulse_ramp_dur)
+            self.gen.setPulseRamp(unifus.PulseRamp.Falling, sequence.pulse_ramp_dur)
 
-        ramp_n_steps = int(sequence.pulse_ramp_dur/min_ramp_temp_res)
-        if ramp_n_steps > max_ramp_steps:
-            min_ramp_temp_res = sequence.pulse_ramp_dur/max_ramp_steps
+        else:
+            # Use best temporal resolution for pulse ramping [ms]
+            min_ramp_temp_res = 0.005  # [ms]
+            max_ramp_steps = 1023
 
-        # Note: ramp up and ramp down order are the other way around
-        # ramp up descends, ramp down ascends
-        ampl_ramp = self._get_ramping_amplitude(sequence, min_ramp_temp_res)
+            ramp_n_steps = int(sequence.pulse_ramp_dur/min_ramp_temp_res)
+            if ramp_n_steps > max_ramp_steps:
+                min_ramp_temp_res = sequence.pulse_ramp_dur/max_ramp_steps
 
-        # Execution with pulse modulation (automatically disable ramps if any)
-        # Values are attenuation in percent of the full Pulse amplitude.
-        # 0 = no attenuation = full amplitude, 100 = full attenuation = 0 amplitude.
-        max_ampl = 100  # [%]
-        ramp_down = ampl_ramp * max_ampl
-        ramp_down = [int(pUp) for pUp in ramp_down]
+            # Note: ramp up and ramp down order are the other way around
+            # ramp up descends, ramp down ascends
+            ampl_ramp = self._get_ramping_amplitude(sequence, min_ramp_temp_res)
 
-        ramp_up = np.flip(ampl_ramp) * max_ampl
-        ramp_up = [int(pDown) for pDown in ramp_up]
+            # Execution with pulse modulation (automatically disable ramps if any)
+            # Values are attenuation in percent of the full Pulse amplitude.
+            # 0 = no attenuation = full amplitude, 100 = full attenuation = 0 amplitude.
+            max_ampl = 100  # [%]
+            ramp_down = ampl_ramp * max_ampl
+            ramp_down = [int(pUp) for pUp in ramp_down]
 
-        self.gen.setPulseModulation(
-            ramp_up, min_ramp_temp_res,  # beginning
-            ramp_down, min_ramp_temp_res)  # end
+            ramp_up = np.flip(ampl_ramp) * max_ampl
+            ramp_up = [int(pDown) for pDown in ramp_up]
+
+            self.gen.setPulseModulation(
+                ramp_up, min_ramp_temp_res,  # beginning
+                ramp_down, min_ramp_temp_res)  # end
 
     def _get_ramping_amplitude(self, sequence, pulse_ramp_temp_res):
         """
