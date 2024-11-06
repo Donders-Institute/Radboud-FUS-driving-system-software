@@ -119,6 +119,7 @@ Example:
 ```
 create_venv.bat "C:\Path\To\Python310\python.exe" FUS_DS_PACKAGE "C:/Users/Me/Envs"
 ```
+
 The batch file will create a virtual environment, install the required Python packages and the default IDE, Spyder.
 
 **DCCN specific configuration**

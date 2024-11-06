@@ -317,7 +317,6 @@ class IGT(ds.ControlDrivingSystem):
         freqs = []
         ampls = []
         for seq in [seq1, seq2]:
-
             ampls = ampls + [seq.ampl] * seq.transducer.elements
 
             oper_freq_hz = int(seq.oper_freq * 1e3)
@@ -364,6 +363,7 @@ class IGT(ds.ControlDrivingSystem):
 
                     if debug_info:
                         ramp_transient_t = 0
+
                         if seq1.pulse_ramp_dur > 0 and (seq1.pulse_ramp_shape !=
                                                         config['General']['Ramp shape.rect']):
                             ramp_transient_t = 0.070  # [ms]
@@ -374,7 +374,7 @@ class IGT(ds.ControlDrivingSystem):
                         elif seq1.pulse_dur >= 0.035 + ramp_transient_t:  # [ms]
                             exec_flags |= unifus.ExecFlag.MeasureBoards
 
-                        elif seq1.pulse_dur >= 0.001 + ramp_transient_t:  # [ms]:
+                        elif seq1.pulse_dur >= 0.001 + ramp_transient_t:  # [ms]
                             exec_flags |= unifus.ExecFlag.MeasureTimings  # or NONE
 
                     # Determining trigger flag
@@ -699,5 +699,15 @@ class IGT(ds.ControlDrivingSystem):
             ampl_ramp = np.zeros(n_points)
             for i in range(n_points):
                 ampl_ramp[i] = 0.5 * (1 + math.cos((2*math.pi/alpha) * (x[i] - alpha/2)))
+
+        elif sequence.pulse_ramp_shape == config['General']['Ramp shape.shota']:
+            # amount of points where ramping is applied
+            n_points = math.floor(sequence.pulse_ramp_dur/pulse_ramp_temp_res)
+            pulse_ramp_dur_s = sequence.pulse_ramp_dur / 1000
+            f = 1 / (2 * pulse_ramp_dur_s)   # [Hz]
+            x = np.linspace(0, pulse_ramp_dur_s, n_points)
+            ampl_ramp = np.zeros(n_points)
+            for i in range(n_points):
+                ampl_ramp[i] = 0.5 * (1 + math.sin(2*math.pi*f*x[i] - math.pi/2))
 
         return ampl_ramp

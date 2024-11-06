@@ -49,9 +49,10 @@ class Transducer:
         manufact (str): Name of the manufacturer.
         elements (int): Number of elements.
         fund_freq (int): Fundamental frequency of the transducer [kHz].
-        natural_foc (int): Natural focal depth of the transducer [mm].
-        min_foc (int): Minimum focal depth of the transducer [mm].
-        max_foc (int): Maximum focal depth of the transducer [mm].
+        natural_foc (float): Natural focal depth of the transducer [mm].
+        exit_plane_dist (float): Distance between exit plane and first element [mm].
+        min_foc (float): Minimum focal depth of the transducer [mm].
+        max_foc (float): Maximum focal depth of the transducer [mm].
         steer_info (str):  ONLY USED FOR IGT! Path to the steer information of the transducer.
         is_active (Boolean): Indication if the transducer is used with the code.
     """
@@ -67,8 +68,9 @@ class Transducer:
         self.elements = 0
         self.fund_freq = 0  # [kHz]
         self.natural_foc = 0  # [mm]
+        self.exit_plane_dist = 0  # [mm]
         self.min_foc = 0  # [mm]
-        self.max_foc = 100  # [mm]
+        self.max_foc = 200  # [mm]
         self.steer_info = None
         self.is_active = True
 
@@ -87,6 +89,8 @@ class Transducer:
             self.elements = int(config['Equipment.Transducer.' + serial]['Elements'])
             self.fund_freq = int(config['Equipment.Transducer.' + serial]['Fund. freq.'])
             self.natural_foc = float(config['Equipment.Transducer.' + serial]['Natural focus'])
+            self.exit_plane_dist = float(config['Equipment.Transducer.' + serial]
+                                         ['Exit plane - first element dist.'])
             self.min_foc = float(config['Equipment.Transducer.' + serial]['Min. focus'])
             self.max_foc = float(config['Equipment.Transducer.' + serial]['Max. focus'])
             self.steer_info = config['Equipment.Transducer.' + serial]['Steer information']
@@ -109,9 +113,10 @@ class Transducer:
         info += f"Transducer manufacturer: {self.manufact} \n "
         info += f"Transducer elements: {self.elements} \n "
         info += f"Transducer fundamental frequency [kHz]: {self.fund_freq} \n "
-        info += f"Transducer natural focus: {self.natural_foc} \n "
-        info += f"Transducer min. focus: {self.min_foc} \n "
-        info += f"Transducer max. focus: {self.max_foc} \n "
+        info += f"Transducer natural focus [mm]: {self.natural_foc} \n "
+        info += f"Transducer exit plane - first elem. distance [mm]: {self.exit_plane_dist} \n "
+        info += f"Transducer min. focus [mm]: {self.min_foc} \n "
+        info += f"Transducer max. focus [mm]: {self.max_foc} \n "
         info += ("Transducer steer table (Note: only used i.c.w. IGT driving sys.):" +
                  f" {self.steer_info} \n ")
 
