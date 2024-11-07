@@ -652,9 +652,10 @@ class IGT(ds.ControlDrivingSystem):
         """
 
         # Smooth linear ramping currently only applicable between the range of 0.028 and 7.253 ms
-        if sequence.pulse_ramp_shape == config['General']['Ramp shape.lin'] and sequence.pulse_ramp_dur <= 7.253 and sequence.pulse_ramp_dur >= 0.028:  # Linear ramping
-            self.gen.setPulseRamp(unifus.PulseRamp.Rising, sequence.pulse_ramp_dur)
-            self.gen.setPulseRamp(unifus.PulseRamp.Falling, sequence.pulse_ramp_dur)
+        ramp_dur_ampl_100_ms = (sequence.pulse_ramp_dur*100)/sequence.ampl  # [ms]
+        if sequence.pulse_ramp_shape == config['General']['Ramp shape.lin'] and ramp_dur_ampl_100_ms <= 7.253 and ramp_dur_ampl_100_ms >= 0.028:  # Linear ramping
+            self.gen.setPulseRamp(unifus.PulseRamp.Rising, ramp_dur_ampl_100_ms)
+            self.gen.setPulseRamp(unifus.PulseRamp.Falling, ramp_dur_ampl_100_ms)
 
         else:
             # Use best temporal resolution for pulse ramping [ms]
