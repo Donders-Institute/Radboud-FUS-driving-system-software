@@ -53,7 +53,7 @@ RAMP_RECT = 'Rectangular - no ramping'
 RAMP_LIN = 'Linear'
 RAMP_TUK = 'Tukey'
 
-config['General']['Ramp shapes'] = '\n'.join([RAMP_RECT, RAMP_LIN, RAMP_TUK, RAMP_SHOTA])
+config['General']['Ramp shapes'] = '\n'.join([RAMP_RECT, RAMP_LIN, RAMP_TUK])
 config['General']['Ramp shape.rect'] = RAMP_RECT
 config['General']['Ramp shape.lin'] = RAMP_LIN
 config['General']['Ramp shape.tuk'] = RAMP_TUK
@@ -122,11 +122,12 @@ config['Equipment.Manufacturer.IGT']['Config. file folder driving sys.'] = CONFI
 config['Equipment.Manufacturer.IGT']['Power options'] = '\n'.join([POW_AMPL, POW_PRESS, POW_VOLT])
 config['Equipment.Manufacturer.IGT']['Additional charac. discon. message'] = ''
 
-IGT_DS = ['IGT-128-ch', 'IGT-128-ch_comb_2x10-ch', 'IGT-128-ch_comb_1x10-ch',
-          'IGT-128-ch_comb_1x8-ch', 'IGT-128-ch_comb_1x4-ch', 'IGT-128-ch_comb_1x2-ch',
-          'IGT-32-ch', 'IGT-32-ch_comb_2x10-ch', 'IGT-32-ch_comb_1x10-ch',
-          'IGT-8-ch_comb_2x4-ch', 'IGT-8-ch_comb_1x4-ch', 'IGT-8-ch_comb_2x2-ch',
-          'IGT-8-ch_comb_1x2-ch']
+IGT_DS = ['IGT-128-ch', 'IGT-128-ch_2x10-ch', 'IGT-128-ch_slot_1_1x10-ch',
+          'IGT-128-ch_slot_2_1x10-ch', 'IGT-128-ch_1x8-ch', 'IGT-128-ch_1x4-ch',
+          'IGT-128-ch_1x2-ch',
+          'IGT-32-ch', 'IGT-32-ch_2x10-ch', 'IGT-32-ch_slot_1_1x10-ch', 'IGT-32-ch_slot_2_1x10-ch',
+          'IGT-8-ch_2x4-ch', 'IGT-8-ch_1x4-ch', 'IGT-8-ch_2x2-ch',
+          'IGT-8-ch_1x2-ch']
 
 config['Equipment.Manufacturer.IGT']['Equipment - Driving systems'] = '\n'.join(IGT_DS)
 
@@ -164,16 +165,26 @@ DS_TRAN_COMBOS = [
     '~'.join([IGT_DS[1], IS_TRANS[2]]), '~'.join([IGT_DS[1], IS_TRANS[3]]),
 
     # IGT 128 ch. 1 x 10
+    # slot 1
     '~'.join([IGT_DS[2], IS_TRANS[0]]), '~'.join([IGT_DS[2], IS_TRANS[1]]),
     '~'.join([IGT_DS[2], IS_TRANS[2]]), '~'.join([IGT_DS[2], IS_TRANS[3]]),
 
+    # slot 2
+    '~'.join([IGT_DS[3], IS_TRANS[0]]), '~'.join([IGT_DS[3], IS_TRANS[1]]),
+    '~'.join([IGT_DS[3], IS_TRANS[2]]), '~'.join([IGT_DS[3], IS_TRANS[3]]),
+
     # IGT 32 ch. 2 x 10
-    '~'.join([IGT_DS[7], IS_TRANS[0]]), '~'.join([IGT_DS[7], IS_TRANS[1]]),
-    '~'.join([IGT_DS[7], IS_TRANS[2]]), '~'.join([IGT_DS[7], IS_TRANS[3]]),
+    '~'.join([IGT_DS[8], IS_TRANS[0]]), '~'.join([IGT_DS[8], IS_TRANS[1]]),
+    '~'.join([IGT_DS[8], IS_TRANS[2]]), '~'.join([IGT_DS[8], IS_TRANS[3]]),
 
     # IGT 32 ch. 1 x 10
-    '~'.join([IGT_DS[8], IS_TRANS[0]]), '~'.join([IGT_DS[8], IS_TRANS[1]]),
-    '~'.join([IGT_DS[8], IS_TRANS[2]]), '~'.join([IGT_DS[8], IS_TRANS[3]])
+    # slot 1
+    '~'.join([IGT_DS[9], IS_TRANS[0]]), '~'.join([IGT_DS[9], IS_TRANS[1]]),
+    '~'.join([IGT_DS[9], IS_TRANS[2]]), '~'.join([IGT_DS[9], IS_TRANS[3]]),
+
+    # slot 2
+    '~'.join([IGT_DS[10], IS_TRANS[0]]), '~'.join([IGT_DS[10], IS_TRANS[1]]),
+    '~'.join([IGT_DS[10], IS_TRANS[2]]), '~'.join([IGT_DS[10], IS_TRANS[3]])
                                                      ]
 
 config['Equipment']['Combinations'] = '\n'.join(DS_TRAN_COMBOS)
@@ -221,7 +232,7 @@ config['Equipment.Driving system.' + IGT_DS[0]]['Transducer compatibility'] = st
 config['Equipment.Driving system.' + IGT_DS[0]]['Active?'] = str(True)
 
 config['Equipment.Driving system.' + IGT_DS[1]] = {}
-config['Equipment.Driving system.' + IGT_DS[1]]['Name'] = IGT + ' 128 ch. - 2 x 10 ch.'
+config['Equipment.Driving system.' + IGT_DS[1]]['Name'] = IGT + ' 128 ch. - slot 1 & 2 - 2 x 10 ch.'
 config['Equipment.Driving system.' + IGT_DS[1]]['Manufacturer'] = IGT
 config['Equipment.Driving system.' + IGT_DS[1]]['Available channels'] = str(20)
 config['Equipment.Driving system.' + IGT_DS[1]]['Connection info'] = str(os.path.join(
@@ -232,131 +243,152 @@ config['Equipment.Driving system.' + IGT_DS[1]]['Transducer compatibility'] = st
 config['Equipment.Driving system.' + IGT_DS[1]]['Active?'] = str(True)
 
 config['Equipment.Driving system.' + IGT_DS[2]] = {}
-config['Equipment.Driving system.' + IGT_DS[2]]['Name'] = IGT + ' 128 ch. - 1 x 10 ch.'
+config['Equipment.Driving system.' + IGT_DS[2]]['Name'] = IGT + ' 128 ch. - slot 1 - 1 x 10 ch.'
 config['Equipment.Driving system.' + IGT_DS[2]]['Manufacturer'] = IGT
 config['Equipment.Driving system.' + IGT_DS[2]]['Available channels'] = str(10)
 config['Equipment.Driving system.' + IGT_DS[2]]['Connection info'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IGT_DS,
-    'gen_Nijmegen128_1x10_393F.json'))  # should be in the same directory as code
+    'gen_Nijmegen128_1x10_slot_1_393F.json'))  # should be in the same directory as code
 config['Equipment.Driving system.' + IGT_DS[2]]['Transducer compatibility'] = str('\n'.join(
     IS_TRANS + DUMMIES))
 config['Equipment.Driving system.' + IGT_DS[2]]['Active?'] = str(True)
 
 config['Equipment.Driving system.' + IGT_DS[3]] = {}
-config['Equipment.Driving system.' + IGT_DS[3]]['Name'] = IGT + ' 128 ch. - 8 ch.'
+config['Equipment.Driving system.' + IGT_DS[3]]['Name'] = IGT + ' 128 ch. - slot 2 - 1 x 10 ch.'
 config['Equipment.Driving system.' + IGT_DS[3]]['Manufacturer'] = IGT
-config['Equipment.Driving system.' + IGT_DS[3]]['Available channels'] = str(8)
+config['Equipment.Driving system.' + IGT_DS[3]]['Available channels'] = str(10)
 config['Equipment.Driving system.' + IGT_DS[3]]['Connection info'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IGT_DS,
-    'gen_Nijmegen128_8c.json'))  # should be in the same directory as code
+    'gen_Nijmegen128_1x10_slot_2_393F.json'))  # should be in the same directory as code
 config['Equipment.Driving system.' + IGT_DS[3]]['Transducer compatibility'] = str('\n'.join(
-    SC_TRAN_4CH + DUMMIES))
-config['Equipment.Driving system.' + IGT_DS[3]]['Active?'] = str(False)
+    IS_TRANS + DUMMIES))
+config['Equipment.Driving system.' + IGT_DS[3]]['Active?'] = str(True)
 
 config['Equipment.Driving system.' + IGT_DS[4]] = {}
-config['Equipment.Driving system.' + IGT_DS[4]]['Name'] = IGT + ' 128 ch. - 4 ch.'
+config['Equipment.Driving system.' + IGT_DS[4]]['Name'] = IGT + ' 128 ch. - 8 ch.'
 config['Equipment.Driving system.' + IGT_DS[4]]['Manufacturer'] = IGT
-config['Equipment.Driving system.' + IGT_DS[4]]['Available channels'] = str(4)
+config['Equipment.Driving system.' + IGT_DS[4]]['Available channels'] = str(8)
 config['Equipment.Driving system.' + IGT_DS[4]]['Connection info'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IGT_DS,
-    'gen_Nijmegen128_4ch.json'))  # should be in the same directory as code
+    'gen_Nijmegen128_8c.json'))  # should be in the same directory as code
 config['Equipment.Driving system.' + IGT_DS[4]]['Transducer compatibility'] = str('\n'.join(
-    SC_TRANS + DUMMIES))
+    SC_TRAN_4CH + DUMMIES))
 config['Equipment.Driving system.' + IGT_DS[4]]['Active?'] = str(False)
 
 config['Equipment.Driving system.' + IGT_DS[5]] = {}
-config['Equipment.Driving system.' + IGT_DS[5]]['Name'] = IGT + ' 128 ch. - 2 ch.'
+config['Equipment.Driving system.' + IGT_DS[5]]['Name'] = IGT + ' 128 ch. - 4 ch.'
 config['Equipment.Driving system.' + IGT_DS[5]]['Manufacturer'] = IGT
-config['Equipment.Driving system.' + IGT_DS[5]]['Available channels'] = str(2)
+config['Equipment.Driving system.' + IGT_DS[5]]['Available channels'] = str(4)
 config['Equipment.Driving system.' + IGT_DS[5]]['Connection info'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IGT_DS,
-    'gen_Nijmegen128_2ch.json'))  # should be in the same directory as code
+    'gen_Nijmegen128_4ch.json'))  # should be in the same directory as code
 config['Equipment.Driving system.' + IGT_DS[5]]['Transducer compatibility'] = str('\n'.join(
-    SC_TRAN_2CH + DUMMIES))
+    SC_TRANS + DUMMIES))
 config['Equipment.Driving system.' + IGT_DS[5]]['Active?'] = str(False)
+
+config['Equipment.Driving system.' + IGT_DS[6]] = {}
+config['Equipment.Driving system.' + IGT_DS[6]]['Name'] = IGT + ' 128 ch. - 2 ch.'
+config['Equipment.Driving system.' + IGT_DS[6]]['Manufacturer'] = IGT
+config['Equipment.Driving system.' + IGT_DS[6]]['Available channels'] = str(2)
+config['Equipment.Driving system.' + IGT_DS[6]]['Connection info'] = str(os.path.join(
+    CONFIG_FILE_FOLDER_IGT_DS,
+    'gen_Nijmegen128_2ch.json'))  # should be in the same directory as code
+config['Equipment.Driving system.' + IGT_DS[6]]['Transducer compatibility'] = str('\n'.join(
+    SC_TRAN_2CH + DUMMIES))
+config['Equipment.Driving system.' + IGT_DS[6]]['Active?'] = str(False)
 
 
 # # 32 ch. # #
 
-config['Equipment.Driving system.' + IGT_DS[6]] = {}
-config['Equipment.Driving system.' + IGT_DS[6]]['Name'] = IGT + ' 32 ch. - all channels'
-config['Equipment.Driving system.' + IGT_DS[6]]['Manufacturer'] = IGT
-config['Equipment.Driving system.' + IGT_DS[6]]['Available channels'] = str(32)
-config['Equipment.Driving system.' + IGT_DS[6]]['Connection info'] = str(os.path.join(
-    CONFIG_FILE_FOLDER_IGT_DS,
-    'gen_Nijmegen32_71D8.json'))  # should be in the same directory as code
-config['Equipment.Driving system.' + IGT_DS[6]]['Transducer compatibility'] = str('\n'.join(
-    DUMMIES))
-config['Equipment.Driving system.' + IGT_DS[6]]['Active?'] = str(True)
-
 config['Equipment.Driving system.' + IGT_DS[7]] = {}
-config['Equipment.Driving system.' + IGT_DS[7]]['Name'] = IGT + ' 32 ch. - 2 x 10 ch.'
+config['Equipment.Driving system.' + IGT_DS[7]]['Name'] = IGT + ' 32 ch. - all channels'
 config['Equipment.Driving system.' + IGT_DS[7]]['Manufacturer'] = IGT
-config['Equipment.Driving system.' + IGT_DS[7]]['Available channels'] = str(20)
+config['Equipment.Driving system.' + IGT_DS[7]]['Available channels'] = str(32)
 config['Equipment.Driving system.' + IGT_DS[7]]['Connection info'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IGT_DS,
-    'gen_Nijmegen32_2x10c_71D8.json'))  # should be in the same directory as code
+    'gen_Nijmegen32_71D8.json'))  # should be in the same directory as code
 config['Equipment.Driving system.' + IGT_DS[7]]['Transducer compatibility'] = str('\n'.join(
-    IS_TRANS + DUMMIES))
+    DUMMIES))
 config['Equipment.Driving system.' + IGT_DS[7]]['Active?'] = str(True)
 
 config['Equipment.Driving system.' + IGT_DS[8]] = {}
-config['Equipment.Driving system.' + IGT_DS[8]]['Name'] = IGT + ' 32 ch. - 1 x 10 ch.'
+config['Equipment.Driving system.' + IGT_DS[8]]['Name'] = IGT + ' 32 ch. - slot 1 & 2 - 2 x 10 ch.'
 config['Equipment.Driving system.' + IGT_DS[8]]['Manufacturer'] = IGT
-config['Equipment.Driving system.' + IGT_DS[8]]['Available channels'] = str(10)
+config['Equipment.Driving system.' + IGT_DS[8]]['Available channels'] = str(20)
 config['Equipment.Driving system.' + IGT_DS[8]]['Connection info'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IGT_DS,
-    'gen_Nijmegen32_10c_71D8.json'))  # should be in the same directory as code
+    'gen_Nijmegen32_2x10_71D8.json'))  # should be in the same directory as code
 config['Equipment.Driving system.' + IGT_DS[8]]['Transducer compatibility'] = str('\n'.join(
     IS_TRANS + DUMMIES))
 config['Equipment.Driving system.' + IGT_DS[8]]['Active?'] = str(True)
 
+config['Equipment.Driving system.' + IGT_DS[9]] = {}
+config['Equipment.Driving system.' + IGT_DS[9]]['Name'] = IGT + ' 32 ch. - slot 1 - 1 x 10 ch.'
+config['Equipment.Driving system.' + IGT_DS[9]]['Manufacturer'] = IGT
+config['Equipment.Driving system.' + IGT_DS[9]]['Available channels'] = str(10)
+config['Equipment.Driving system.' + IGT_DS[9]]['Connection info'] = str(os.path.join(
+    CONFIG_FILE_FOLDER_IGT_DS,
+    'gen_Nijmegen32_1x10_slot_1_71D8.json'))  # should be in the same directory as code
+config['Equipment.Driving system.' + IGT_DS[9]]['Transducer compatibility'] = str('\n'.join(
+    IS_TRANS + DUMMIES))
+config['Equipment.Driving system.' + IGT_DS[9]]['Active?'] = str(True)
+
+config['Equipment.Driving system.' + IGT_DS[10]] = {}
+config['Equipment.Driving system.' + IGT_DS[10]]['Name'] = IGT + ' 32 ch. - slot 2 - 1 x 10 ch.'
+config['Equipment.Driving system.' + IGT_DS[10]]['Manufacturer'] = IGT
+config['Equipment.Driving system.' + IGT_DS[10]]['Available channels'] = str(10)
+config['Equipment.Driving system.' + IGT_DS[10]]['Connection info'] = str(os.path.join(
+    CONFIG_FILE_FOLDER_IGT_DS,
+    'gen_Nijmegen32_1x10_slot_2_71D8.json'))  # should be in the same directory as code
+config['Equipment.Driving system.' + IGT_DS[10]]['Transducer compatibility'] = str('\n'.join(
+    IS_TRANS + DUMMIES))
+config['Equipment.Driving system.' + IGT_DS[10]]['Active?'] = str(True)
 
 # # 8 ch. # #
 
-config['Equipment.Driving system.' + IGT_DS[9]] = {}
-config['Equipment.Driving system.' + IGT_DS[9]]['Name'] = IGT + ' 8 ch. - 2 x 4 ch.'
-config['Equipment.Driving system.' + IGT_DS[9]]['Manufacturer'] = IGT
-config['Equipment.Driving system.' + IGT_DS[9]]['Available channels'] = str(8)
-config['Equipment.Driving system.' + IGT_DS[9]]['Connection info'] = str(os.path.join(
-    CONFIG_FILE_FOLDER_IGT_DS,
-    'gen_Nijmegen_8_F720.json'))  # should be in the same directory as code
-config['Equipment.Driving system.' + IGT_DS[9]]['Transducer compatibility'] = str('\n'.join(
-    SC_TRAN_4CH + DUMMIES))
-config['Equipment.Driving system.' + IGT_DS[9]]['Active?'] = str(False)
-
-config['Equipment.Driving system.' + IGT_DS[10]] = {}
-config['Equipment.Driving system.' + IGT_DS[10]]['Name'] = IGT + ' 8 ch. - 1 x 4 ch.'
-config['Equipment.Driving system.' + IGT_DS[10]]['Manufacturer'] = IGT
-config['Equipment.Driving system.' + IGT_DS[10]]['Available channels'] = str(4)
-config['Equipment.Driving system.' + IGT_DS[10]]['Connection info'] = str(os.path.join(
-    CONFIG_FILE_FOLDER_IGT_DS,
-    'gen_Nijmegen_4_F720.json'))  # should be in the same directory as code
-config['Equipment.Driving system.' + IGT_DS[10]]['Transducer compatibility'] = str('\n'.join(
-    SC_TRAN_4CH + DUMMIES))
-config['Equipment.Driving system.' + IGT_DS[10]]['Active?'] = str(False)
-
 config['Equipment.Driving system.' + IGT_DS[11]] = {}
-config['Equipment.Driving system.' + IGT_DS[11]]['Name'] = IGT + ' 8 ch. - 2 x 2 ch.'
+config['Equipment.Driving system.' + IGT_DS[11]]['Name'] = IGT + ' 8 ch. - 2 x 4 ch.'
 config['Equipment.Driving system.' + IGT_DS[11]]['Manufacturer'] = IGT
-config['Equipment.Driving system.' + IGT_DS[11]]['Available channels'] = str(4)
+config['Equipment.Driving system.' + IGT_DS[11]]['Available channels'] = str(8)
 config['Equipment.Driving system.' + IGT_DS[11]]['Connection info'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IGT_DS,
-    'gen_Nijmegen_8c4_F720.json'))  # should be in the same directory as code
+    'gen_Nijmegen_8_F720.json'))  # should be in the same directory as code
 config['Equipment.Driving system.' + IGT_DS[11]]['Transducer compatibility'] = str('\n'.join(
-    SC_TRAN_2CH + DUMMIES))
+    SC_TRAN_4CH + DUMMIES))
 config['Equipment.Driving system.' + IGT_DS[11]]['Active?'] = str(False)
 
 config['Equipment.Driving system.' + IGT_DS[12]] = {}
-config['Equipment.Driving system.' + IGT_DS[12]]['Name'] = IGT + ' 8 ch. - 1 x 2 ch.'
+config['Equipment.Driving system.' + IGT_DS[12]]['Name'] = IGT + ' 8 ch. - 1 x 4 ch.'
 config['Equipment.Driving system.' + IGT_DS[12]]['Manufacturer'] = IGT
-config['Equipment.Driving system.' + IGT_DS[12]]['Available channels'] = str(2)
+config['Equipment.Driving system.' + IGT_DS[12]]['Available channels'] = str(4)
 config['Equipment.Driving system.' + IGT_DS[12]]['Connection info'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IGT_DS,
-    'gen_Nijmegen_4c2_F720.json'))  # should be in the same directory as code
+    'gen_Nijmegen_4_F720.json'))  # should be in the same directory as code
 config['Equipment.Driving system.' + IGT_DS[12]]['Transducer compatibility'] = str('\n'.join(
-    SC_TRAN_2CH + DUMMIES))
+    SC_TRAN_4CH + DUMMIES))
 config['Equipment.Driving system.' + IGT_DS[12]]['Active?'] = str(False)
+
+config['Equipment.Driving system.' + IGT_DS[13]] = {}
+config['Equipment.Driving system.' + IGT_DS[13]]['Name'] = IGT + ' 8 ch. - 2 x 2 ch.'
+config['Equipment.Driving system.' + IGT_DS[13]]['Manufacturer'] = IGT
+config['Equipment.Driving system.' + IGT_DS[13]]['Available channels'] = str(4)
+config['Equipment.Driving system.' + IGT_DS[13]]['Connection info'] = str(os.path.join(
+    CONFIG_FILE_FOLDER_IGT_DS,
+    'gen_Nijmegen_8c4_F720.json'))  # should be in the same directory as code
+config['Equipment.Driving system.' + IGT_DS[13]]['Transducer compatibility'] = str('\n'.join(
+    SC_TRAN_2CH + DUMMIES))
+config['Equipment.Driving system.' + IGT_DS[13]]['Active?'] = str(False)
+
+config['Equipment.Driving system.' + IGT_DS[14]] = {}
+config['Equipment.Driving system.' + IGT_DS[14]]['Name'] = IGT + ' 8 ch. - 1 x 2 ch.'
+config['Equipment.Driving system.' + IGT_DS[14]]['Manufacturer'] = IGT
+config['Equipment.Driving system.' + IGT_DS[14]]['Available channels'] = str(2)
+config['Equipment.Driving system.' + IGT_DS[14]]['Connection info'] = str(os.path.join(
+    CONFIG_FILE_FOLDER_IGT_DS,
+    'gen_Nijmegen_4c2_F720.json'))  # should be in the same directory as code
+config['Equipment.Driving system.' + IGT_DS[14]]['Transducer compatibility'] = str('\n'.join(
+    SC_TRAN_2CH + DUMMIES))
+config['Equipment.Driving system.' + IGT_DS[14]]['Active?'] = str(False)
 
 
 #######################################################################################
@@ -536,6 +568,7 @@ config['Equipment.Transducer.' + DUMMY]['Active?'] = str(False)
 # Driving system - transducer combinations
 #######################################################################################
 
+# IGT 128 ch. 2 x 10 - IS_PCD15287_01001
 config['Equipment.Combination.' + DS_TRAN_COMBOS[0]] = {}
 config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['Driving system serial'] = (DS_TRAN_COMBOS[0]
                                                                                  .split('~')[0])
@@ -552,6 +585,7 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2NP a3-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2NP a4-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2NP a5-coeff'] = str(0)
 
+# IGT 128 ch. 2 x 10 - IS_PCD15287_01002
 config['Equipment.Combination.' + DS_TRAN_COMBOS[1]] = {}
 config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['Driving system serial'] = (DS_TRAN_COMBOS[1]
                                                                                  .split('~')[0])
@@ -568,6 +602,7 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2NP a3-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2NP a4-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2NP a5-coeff'] = str(0)
 
+# IGT 128 ch. 2 x 10 - IS_PCD15473_01001
 config['Equipment.Combination.' + DS_TRAN_COMBOS[2]] = {}
 config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['Driving system serial'] = (DS_TRAN_COMBOS[2]
                                                                                  .split('~')[0])
@@ -584,6 +619,7 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2NP a3-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2NP a4-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2NP a5-coeff'] = str(0)
 
+# IGT 128 ch. 2 x 10 - IS_PCD15473_01002
 config['Equipment.Combination.' + DS_TRAN_COMBOS[3]] = {}
 config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['Driving system serial'] = (DS_TRAN_COMBOS[3]
                                                                                  .split('~')[0])
@@ -600,6 +636,7 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2NP a3-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2NP a4-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2NP a5-coeff'] = str(0)
 
+# IGT 128 ch. slot 1 - 1 x 10 - IS_PCD15287_01001
 config['Equipment.Combination.' + DS_TRAN_COMBOS[4]] = {}
 config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['Driving system serial'] = (DS_TRAN_COMBOS[4]
                                                                                  .split('~')[0])
@@ -616,6 +653,7 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2NP a3-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2NP a4-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2NP a5-coeff'] = str(0)
 
+# IGT 128 ch. slot 1 - 1 x 10 - IS_PCD15287_01002
 config['Equipment.Combination.' + DS_TRAN_COMBOS[5]] = {}
 config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['Driving system serial'] = (DS_TRAN_COMBOS[5]
                                                                                  .split('~')[0])
@@ -632,6 +670,7 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2NP a3-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2NP a4-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2NP a5-coeff'] = str(0)
 
+# IGT 128 ch. slot 1 - 1 x 10 - IS_PCD15473_01001
 config['Equipment.Combination.' + DS_TRAN_COMBOS[6]] = {}
 config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['Driving system serial'] = (DS_TRAN_COMBOS[6]
                                                                                  .split('~')[0])
@@ -648,6 +687,7 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2NP a3-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2NP a4-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2NP a5-coeff'] = str(0)
 
+# IGT 128 ch. slot 1 - 1 x 10 - IS_PCD15473_01002
 config['Equipment.Combination.' + DS_TRAN_COMBOS[7]] = {}
 config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['Driving system serial'] = (DS_TRAN_COMBOS[7]
                                                                                  .split('~')[0])
@@ -664,13 +704,14 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2NP a3-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2NP a4-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2NP a5-coeff'] = str(0)
 
+# IGT 128 ch. slot 2 - 1 x 10 - IS_PCD15287_01001
 config['Equipment.Combination.' + DS_TRAN_COMBOS[8]] = {}
 config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['Driving system serial'] = (DS_TRAN_COMBOS[8]
                                                                                  .split('~')[0])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['Transducer serial'] = (DS_TRAN_COMBOS[8]
                                                                              .split('~')[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['V2A a-coeff'] = str(6.1393)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['V2A b-coeff'] = str(-0.7172)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['V2A a-coeff'] = str(6.1122)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['V2A b-coeff'] = str(-0.4917)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['V2P a-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['V2P b-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2NP a0-coeff'] = str(0)
@@ -680,13 +721,14 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2NP a3-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2NP a4-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2NP a5-coeff'] = str(0)
 
+# IGT 128 ch. slot 2 - 1 x 10 - IS_PCD15287_01002
 config['Equipment.Combination.' + DS_TRAN_COMBOS[9]] = {}
 config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['Driving system serial'] = (DS_TRAN_COMBOS[9]
                                                                                  .split('~')[0])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['Transducer serial'] = (DS_TRAN_COMBOS[9]
                                                                              .split('~')[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['V2A a-coeff'] = str(6.1393)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['V2A b-coeff'] = str(-0.7172)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['V2A a-coeff'] = str(6.1122)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['V2A b-coeff'] = str(-0.4917)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['V2P a-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['V2P b-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2NP a0-coeff'] = str(0)
@@ -696,13 +738,14 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2NP a3-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2NP a4-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2NP a5-coeff'] = str(0)
 
+# IGT 128 ch. slot 2 - 1 x 10 - IS_PCD15473_01001
 config['Equipment.Combination.' + DS_TRAN_COMBOS[10]] = {}
 config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['Driving system serial'] = (DS_TRAN_COMBOS[10]
                                                                                   .split('~')[0])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['Transducer serial'] = (DS_TRAN_COMBOS[10]
                                                                               .split('~')[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['V2A a-coeff'] = str(6.1393)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['V2A b-coeff'] = str(-0.7172)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['V2A a-coeff'] = str(6.1122)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['V2A b-coeff'] = str(-0.4917)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['V2P a-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['V2P b-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2NP a0-coeff'] = str(0)
@@ -712,13 +755,14 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2NP a3-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2NP a4-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2NP a5-coeff'] = str(0)
 
+# IGT 128 ch. slot 2 - 1 x 10 - IS_PCD15473_01002
 config['Equipment.Combination.' + DS_TRAN_COMBOS[11]] = {}
 config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['Driving system serial'] = (DS_TRAN_COMBOS[11]
                                                                                   .split('~')[0])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['Transducer serial'] = (DS_TRAN_COMBOS[11]
                                                                               .split('~')[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['V2A a-coeff'] = str(6.1393)
-config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['V2A b-coeff'] = str(-0.7172)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['V2A a-coeff'] = str(6.1122)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['V2A b-coeff'] = str(-0.4917)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['V2P a-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['V2P b-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2NP a0-coeff'] = str(0)
@@ -728,6 +772,7 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2NP a3-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2NP a4-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2NP a5-coeff'] = str(0)
 
+# IGT 32 ch. 2 x 10 - IS_PCD15287_01001
 config['Equipment.Combination.' + DS_TRAN_COMBOS[12]] = {}
 config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['Driving system serial'] = (DS_TRAN_COMBOS[12]
                                                                                   .split('~')[0])
@@ -744,6 +789,7 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2NP a3-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2NP a4-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2NP a5-coeff'] = str(0)
 
+# IGT 32 ch. 2 x 10 - IS_PCD15287_01002
 config['Equipment.Combination.' + DS_TRAN_COMBOS[13]] = {}
 config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['Driving system serial'] = (DS_TRAN_COMBOS[13]
                                                                                   .split('~')[0])
@@ -760,6 +806,7 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2NP a3-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2NP a4-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2NP a5-coeff'] = str(0)
 
+# IGT 32 ch. 2 x 10 - IS_PCD15473_01001
 config['Equipment.Combination.' + DS_TRAN_COMBOS[14]] = {}
 config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['Driving system serial'] = (DS_TRAN_COMBOS[14]
                                                                                   .split('~')[0])
@@ -776,6 +823,7 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2NP a3-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2NP a4-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2NP a5-coeff'] = str(0)
 
+# IGT 32 ch. 2 x 10 - IS_PCD15473_01002
 config['Equipment.Combination.' + DS_TRAN_COMBOS[15]] = {}
 config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['Driving system serial'] = (DS_TRAN_COMBOS[15]
                                                                                   .split('~')[0])
@@ -791,6 +839,143 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2NP a2-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2NP a3-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2NP a4-coeff'] = str(0)
 config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2NP a5-coeff'] = str(0)
+
+# IGT 32 ch. slot 1 - 1 x 10 - IS_PCD15287_01001
+config['Equipment.Combination.' + DS_TRAN_COMBOS[16]] = {}
+config['Equipment.Combination.' + DS_TRAN_COMBOS[16]]['Driving system serial'] = (DS_TRAN_COMBOS[16]
+                                                                                  .split('~')[0])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[16]]['Transducer serial'] = (DS_TRAN_COMBOS[16]
+                                                                              .split('~')[1])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[16]]['V2A a-coeff'] = str(6.1393)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[16]]['V2A b-coeff'] = str(-0.7172)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[16]]['V2P a-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[16]]['V2P b-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[16]]['F2NP a0-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[16]]['F2NP a1-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[16]]['F2NP a2-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[16]]['F2NP a3-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[16]]['F2NP a4-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[16]]['F2NP a5-coeff'] = str(0)
+
+# IGT 32 ch. slot 1 - 1 x 10 - IS_PCD15287_01002
+config['Equipment.Combination.' + DS_TRAN_COMBOS[17]] = {}
+config['Equipment.Combination.' + DS_TRAN_COMBOS[17]]['Driving system serial'] = (DS_TRAN_COMBOS[17]
+                                                                                  .split('~')[0])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[17]]['Transducer serial'] = (DS_TRAN_COMBOS[17]
+                                                                              .split('~')[1])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[17]]['V2A a-coeff'] = str(6.1393)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[17]]['V2A b-coeff'] = str(-0.7172)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[17]]['V2P a-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[17]]['V2P b-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[17]]['F2NP a0-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[17]]['F2NP a1-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[17]]['F2NP a2-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[17]]['F2NP a3-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[17]]['F2NP a4-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[17]]['F2NP a5-coeff'] = str(0)
+
+# IGT 32 ch. slot 1 - 1 x 10 - IS_PCD15473_01001
+config['Equipment.Combination.' + DS_TRAN_COMBOS[18]] = {}
+config['Equipment.Combination.' + DS_TRAN_COMBOS[18]]['Driving system serial'] = (DS_TRAN_COMBOS[18]
+                                                                                  .split('~')[0])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[18]]['Transducer serial'] = (DS_TRAN_COMBOS[18]
+                                                                              .split('~')[1])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[18]]['V2A a-coeff'] = str(6.1393)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[18]]['V2A b-coeff'] = str(-0.7172)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[18]]['V2P a-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[18]]['V2P b-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[18]]['F2NP a0-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[18]]['F2NP a1-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[18]]['F2NP a2-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[18]]['F2NP a3-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[18]]['F2NP a4-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[18]]['F2NP a5-coeff'] = str(0)
+
+# IGT 32 ch. slot 1 - 1 x 10 - IS_PCD15473_01002
+config['Equipment.Combination.' + DS_TRAN_COMBOS[19]] = {}
+config['Equipment.Combination.' + DS_TRAN_COMBOS[19]]['Driving system serial'] = (DS_TRAN_COMBOS[19]
+                                                                                  .split('~')[0])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[19]]['Transducer serial'] = (DS_TRAN_COMBOS[19]
+                                                                              .split('~')[1])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[19]]['V2A a-coeff'] = str(6.1393)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[19]]['V2A b-coeff'] = str(-0.7172)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[19]]['V2P a-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[19]]['V2P b-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[19]]['F2NP a0-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[19]]['F2NP a1-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[19]]['F2NP a2-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[19]]['F2NP a3-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[19]]['F2NP a4-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[19]]['F2NP a5-coeff'] = str(0)
+
+# IGT 32 ch. slot 2 - 1 x 10 - IS_PCD15287_01001
+config['Equipment.Combination.' + DS_TRAN_COMBOS[20]] = {}
+config['Equipment.Combination.' + DS_TRAN_COMBOS[20]]['Driving system serial'] = (DS_TRAN_COMBOS[20]
+                                                                                  .split('~')[0])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[20]]['Transducer serial'] = (DS_TRAN_COMBOS[20]
+                                                                              .split('~')[1])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[20]]['V2A a-coeff'] = str(6.1393)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[20]]['V2A b-coeff'] = str(-0.7172)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[20]]['V2P a-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[20]]['V2P b-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[20]]['F2NP a0-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[20]]['F2NP a1-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[20]]['F2NP a2-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[20]]['F2NP a3-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[20]]['F2NP a4-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[20]]['F2NP a5-coeff'] = str(0)
+
+# IGT 32 ch. slot 2 - 1 x 10 - IS_PCD15287_01002
+config['Equipment.Combination.' + DS_TRAN_COMBOS[21]] = {}
+config['Equipment.Combination.' + DS_TRAN_COMBOS[21]]['Driving system serial'] = (DS_TRAN_COMBOS[21]
+                                                                                  .split('~')[0])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[21]]['Transducer serial'] = (DS_TRAN_COMBOS[21]
+                                                                              .split('~')[1])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[21]]['V2A a-coeff'] = str(6.1393)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[21]]['V2A b-coeff'] = str(-0.7172)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[21]]['V2P a-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[21]]['V2P b-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[21]]['F2NP a0-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[21]]['F2NP a1-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[21]]['F2NP a2-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[21]]['F2NP a3-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[21]]['F2NP a4-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[21]]['F2NP a5-coeff'] = str(0)
+
+# IGT 32 ch. slot 2 - 1 x 10 - IS_PCD15473_01001
+config['Equipment.Combination.' + DS_TRAN_COMBOS[22]] = {}
+config['Equipment.Combination.' + DS_TRAN_COMBOS[22]]['Driving system serial'] = (DS_TRAN_COMBOS[22]
+                                                                                  .split('~')[0])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[22]]['Transducer serial'] = (DS_TRAN_COMBOS[22]
+                                                                              .split('~')[1])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[22]]['V2A a-coeff'] = str(6.1393)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[22]]['V2A b-coeff'] = str(-0.7172)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[22]]['V2P a-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[22]]['V2P b-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[22]]['F2NP a0-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[22]]['F2NP a1-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[22]]['F2NP a2-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[22]]['F2NP a3-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[22]]['F2NP a4-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[22]]['F2NP a5-coeff'] = str(0)
+
+# IGT 32 ch. slot 2 - 1 x 10 - IS_PCD15473_01002
+config['Equipment.Combination.' + DS_TRAN_COMBOS[23]] = {}
+config['Equipment.Combination.' + DS_TRAN_COMBOS[23]]['Driving system serial'] = (DS_TRAN_COMBOS[23]
+                                                                                  .split('~')[0])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[23]]['Transducer serial'] = (DS_TRAN_COMBOS[23]
+                                                                              .split('~')[1])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[23]]['V2A a-coeff'] = str(6.1393)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[23]]['V2A b-coeff'] = str(-0.7172)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[23]]['V2P a-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[23]]['V2P b-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[23]]['F2NP a0-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[23]]['F2NP a1-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[23]]['F2NP a2-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[23]]['F2NP a3-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[23]]['F2NP a4-coeff'] = str(0)
+config['Equipment.Combination.' + DS_TRAN_COMBOS[23]]['F2NP a5-coeff'] = str(0)
+
 
 with open(CONFIG_FILE, 'w') as configfile:
     config.write(configfile)
