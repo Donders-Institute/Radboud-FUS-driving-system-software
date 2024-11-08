@@ -102,6 +102,7 @@ class IGT(ds.ControlDrivingSystem):
             total_sequence_duration_ms (float): Total duration of the sequence in milliseconds.
         """
 
+        self.sent_seqs[seq_num] = {}
         self.sent_seqs[seq_num]['seq'] = seq
         self.sent_seqs[seq_num]['n_pulse_train_rep'] = n_pulse_train_rep
         self.sent_seqs[seq_num]['pulse_train_delay'] = pulse_train_delay
@@ -109,7 +110,7 @@ class IGT(ds.ControlDrivingSystem):
         total_sequence_duration_ms = unifus.sequenceDurationMs(seq, n_pulse_train_rep,
                                                                pulse_train_delay)
 
-        self.sent_seqs[seq_num]['total_sequence_duration_ms'] = total_sequence_duration_ms
+        self.sent_seqs[seq_num]['total_sequence_duration_ms'] = total_sequence_duration_ms + 100
 
     def connect(self, connect_info, log_dir='C:\\Temp', log_name='standalone_igt', attempt=0):
         """

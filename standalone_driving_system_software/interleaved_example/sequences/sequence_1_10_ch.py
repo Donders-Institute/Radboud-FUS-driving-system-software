@@ -32,7 +32,7 @@ def create_sequence_collection():
     # equipment
     # to check available driving systems: print(driving_system.get_ds_serials())
     # choose one driving system from that list as input
-    seq1.driving_sys = 'IGT-32-ch_comb_2x10-ch'
+    seq1.driving_sys = 'IGT-32-ch_2x10-ch'
     use_two_transducers = True  # is true if you are using two transducers simulateneously or interleaved
 
     # to check available transducers: print(transducer.get_tran_serials())
@@ -89,7 +89,7 @@ def create_sequence_collection():
 
     # ## pulse ## #
     seq1.pulse_dur = 45  # [ms], pulse duration
-    seq1.pulse_rep_int = 100  # [ms], pulse repetition interval
+    seq1.pulse_rep_int = 90  # [ms], pulse repetition interval
 
     # pulse ramping
     # to check available ramp shapes: print(seq1.get_ramp_shapes())
@@ -101,7 +101,7 @@ def create_sequence_collection():
 
     # ## pulse train ## #
     # if you only want one pulse train, keep the values equal to the pulse repetition interval
-    seq1.pulse_train_dur = 100  # [ms], pulse train duration
+    seq1.pulse_train_dur = 90  # [ms], pulse train duration
 
     # set wait_for_trigger to true if you want to use trigger
     seq1.wait_for_trigger = False
@@ -114,13 +114,13 @@ def create_sequence_collection():
         seq1.n_triggers = 4  # number of timings above defined sequence will be triggered
 
     else:
-        seq1.pulse_train_rep_int = 100  # [ms], pulse train repetition interval, NOTE: DIFFERENT THAN SC
+        seq1.pulse_train_rep_int = 90  # [ms], pulse train repetition interval, NOTE: DIFFERENT THAN SC
 
         # ## pulse train repetition ## #
         # if you only want one pulse train, keep the value equal to the pulse repetition interval
         # if you only want one pulse train repetition block, keep the value equal to the pulse train
         # repetition interval
-        seq1.pulse_train_rep_dur = 0.1  # [s], pulse train repetition duration, NOTE: DIFFERENT THAN SC
+        seq1.pulse_train_rep_dur = 0.09  # [s], pulse train repetition duration, NOTE: DIFFERENT THAN SC
 
     # to get a summary of your entered sequence: print(seq1)
 

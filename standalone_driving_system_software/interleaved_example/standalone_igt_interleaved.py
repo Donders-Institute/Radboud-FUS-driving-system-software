@@ -17,7 +17,7 @@ from fus_driving_systems.config.config import config_info as config
 
 from fus_driving_systems.config.logging_config import initialize_logger
 
-log_dir = "C://Temp"
+log_dir = "D:\\Users\julkos\logs"
 filename = "standalone_igt"
 logger = initialize_logger(log_dir, filename)
 
@@ -73,8 +73,8 @@ try:
     # send other sequence using different buffer
     igt_driving_sys.send_sequence(seq3, seq4)
 
-    one_interleaved_session_s = seq1.pulse_train_rep_dur + seq3.pulse_train_rep_dur
-    n_sessions = round(total_duration_s / one_interleaved_session_s)
+    one_interleaved_session_ms = seq1.pulse_train_rep_dur + seq3.pulse_train_rep_dur
+    n_sessions = round(total_duration_s / (one_interleaved_session_ms/1000))
     for i in range(n_sessions):
         igt_driving_sys.execute_sequence(seq1, seq2)
         igt_driving_sys.execute_sequence(seq3, seq4)
