@@ -104,7 +104,15 @@ class IGT(ds.ControlDrivingSystem):
         Adds the sequence number of the sent sequence to the sent sequence list.
         """
 
-        self.sent_seq_nums.append(seq_num)
+        self.sent_seqs[seq_num] = {}
+        self.sent_seqs[seq_num]['seq'] = seq
+        self.sent_seqs[seq_num]['n_pulse_train_rep'] = n_pulse_train_rep
+        self.sent_seqs[seq_num]['pulse_train_delay'] = pulse_train_delay
+
+        total_sequence_duration_ms = unifus.sequenceDurationMs(seq, n_pulse_train_rep,
+                                                               pulse_train_delay)
+
+        self.sent_seqs[seq_num]['total_sequence_duration_ms'] = total_sequence_duration_ms + 100
 
     def connect(self, connect_info, log_dir='C:\\Temp', log_name='standalone_igt', attempt=0):
         """
@@ -215,14 +223,17 @@ class IGT(ds.ControlDrivingSystem):
                                   ' 170 us.')
 
         # Ramping check is not required when smooth linear modulation is used
-        use_smoothing = (sequence.pulse_ramp_shape == config['General']['Ramp shape.lin'] and
-                         sequence.pulse_ramp_dur <= 7.253 and sequence.pulse_ramp_dur >= 0.028)
+        if sequence.ampl > 0:
+            ramp_dur_ampl_100_ms = (sequence.pulse_ramp_dur*100)/sequence.ampl  # [ms]
+            use_smoothing = (sequence.pulse_ramp_shape == config['General']['Ramp shape.lin'] and 
+                             ramp_dur_ampl_100_ms <= 7.253 and ramp_dur_ampl_100_ms >= 0.028 and
+                             ramp_dur_ampl_100_ms <= sequence.pulse_dur/2)
 
-        if sequence.pulse_ramp_dur > 0 and (sequence.pulse_ramp_shape !=
-                                            config['General']['Ramp shape.rect']) and not use_smoothing:
-            if sequence.pulse_ramp_dur > sequence.pulse_dur/2 - 0.035:
-                error_messages.append('When applying ramping, there needs to be at least ' +
-                                      '70 us between ramping up and down')
+            if sequence.pulse_ramp_dur > 0 and (sequence.pulse_ramp_shape !=
+                                                config['General']['Ramp shape.rect']) and not use_smoothing:
+                if sequence.pulse_ramp_dur > sequence.pulse_dur/2 - 0.035:
+                    error_messages.append('When applying ramping, there needs to be at least ' +
+                                          '70 us between ramping up and down')
         if sequence.ampl is None:
             error_messages.append("Intensity parameter may be set incorrectly. Amplitude is None.")
 
@@ -272,7 +283,7 @@ class IGT(ds.ControlDrivingSystem):
                                                 seq1.pulse_train_rep_int)
 
             # Apply ramping
-            if seq1.pulse_ramp_shape != config['General']['Ramp shape.rect']:
+            if seq1.pulse_ramp_shape != config['General']['Ramp shape.rect'] and seq1.ampl > 0:
                 self._apply_ramping(seq1)
 
             # (optional) restore disabled channels
@@ -653,7 +664,7 @@ class IGT(ds.ControlDrivingSystem):
 
         # Smooth linear ramping currently only applicable between the range of 0.028 and 7.253 ms
         ramp_dur_ampl_100_ms = (sequence.pulse_ramp_dur*100)/sequence.ampl  # [ms]
-        if sequence.pulse_ramp_shape == config['General']['Ramp shape.lin'] and ramp_dur_ampl_100_ms <= 7.253 and ramp_dur_ampl_100_ms >= 0.028:  # Linear ramping
+        if sequence.pulse_ramp_shape == config['General']['Ramp shape.lin'] and ramp_dur_ampl_100_ms <= 7.253 and ramp_dur_ampl_100_ms >= 0.028 and ramp_dur_ampl_100_ms <= sequence.pulse_dur/2:  # Linear ramping
             self.gen.setPulseRamp(unifus.PulseRamp.Rising, ramp_dur_ampl_100_ms)
             self.gen.setPulseRamp(unifus.PulseRamp.Falling, ramp_dur_ampl_100_ms)
 
