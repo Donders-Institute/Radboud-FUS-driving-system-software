@@ -491,8 +491,8 @@ config['Equipment.Transducer.' + SC_TRANS[7]]['Elements'] = str(4)
 config['Equipment.Transducer.' + SC_TRANS[7]]['Fund. freq.'] = str(500)  # [kHz]
 config['Equipment.Transducer.' + SC_TRANS[7]]['Natural focus'] = str(0)  # [mm] only for Imasonic
 config['Equipment.Transducer.' + SC_TRANS[7]]['Exit plane - first element dist.'] = str(0)  # [mm] only for Imasonic
-config['Equipment.Transducer.' + SC_TRANS[7]]['Min. focus'] = str(0)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + SC_TRANS[7]]['Max. focus'] = str(120)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + SC_TRANS[7]]['Min. focus'] = str(54)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + SC_TRANS[7]]['Max. focus'] = str(122)  # [mm], wrt exit plane
 config['Equipment.Transducer.' + SC_TRANS[7]]['Steer information'] = '' # should be in the same directory as code
 config['Equipment.Transducer.' + SC_TRANS[7]]['Active?'] = str(True)
 
