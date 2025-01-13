@@ -96,12 +96,13 @@ class IGT(ds.ControlDrivingSystem):
 
         return seq_num in self.sent_seqs.keys()
 
-    def register_sent_sequence(self, seq_num, seq, n_pulse_train_rep, pulse_train_delay):
+    def register_sent_sequence(self, seq_num, seq, n_pulse_train_rep, pulse_train_delay, phases=None):
         """
         Adds the sequence number of the sent sequence to the sent sequence list.
             seq: list of pulses representing a pulse train
             n_pulse_train_rep: number of executions of one pulse train
             pulse_train_delay: pulse train delay in miliseconds
+            phases: phases in degrees to reach focal depth
             total_sequence_duration_ms (float): Total duration of the sequence in milliseconds.
         """
 
@@ -109,6 +110,7 @@ class IGT(ds.ControlDrivingSystem):
         self.sent_seqs[seq_num]['seq'] = seq
         self.sent_seqs[seq_num]['n_pulse_train_rep'] = n_pulse_train_rep
         self.sent_seqs[seq_num]['pulse_train_delay'] = pulse_train_delay
+        self.sent_seqs[seq_num]['phases'] = phases
 
         total_sequence_duration_ms = unifus.sequenceDurationMs(seq, n_pulse_train_rep,
                                                                pulse_train_delay)
@@ -269,11 +271,11 @@ class IGT(ds.ControlDrivingSystem):
 
             # define pulse
             if seq2 is None:
-                pulse = self._define_pulse(seq1)
+                pulse, phases = self._define_pulse(seq1)
             else:
                 logger.info('Two sequences are sent indicating two transducers are connected.')
                 logger.info('Timing parameters will be based on first sequence.')
-                pulse = self._define_two_seq_pulse(seq1, seq2)
+                pulse, phases = self._define_two_seq_pulse(seq1, seq2)
 
             # define pulse train
             pulse_train_seq, pulse_train_delay = self._define_pulse_train(seq1, pulse)
@@ -303,7 +305,7 @@ class IGT(ds.ControlDrivingSystem):
             self.gen.sendSequence(seq1.seq_num, pulse_train_seq)
 
             self.register_sent_sequence(seq1.seq_num, pulse_train_seq, n_pulse_train_rep,
-                                        pulse_train_delay)
+                                        pulse_train_delay, phases)
 
         else:
             logger.warning("No connection with driving system.")
@@ -362,7 +364,7 @@ class IGT(ds.ControlDrivingSystem):
         # set amplitude for all channels in percent (of max amplitude)
         pulse.setAmplitudes(ampls)
 
-        return pulse
+        return pulse, phases
 
     def wait_for_trigger(self, seq1, seq2=None, debug_info=False):
         """
@@ -548,14 +550,14 @@ class IGT(ds.ControlDrivingSystem):
         # set same phase offset for all channels (angle in [0,360] degrees)
         if sequence.dephasing_degree is not None and len(sequence.dephasing_degree) == sequence.transducer.elements:
             logger.info(f'Phases are overridden by phases set at dephasing_degree :{sequence.dephasing_degree}')
-            pulse.setPhases(sequence.dephasing_degree)
+            phases = sequence.dephasing_degree
         else:
             phases = self._set_phases(pulse, sequence.focus_wrt_mid_bowl,
                                       sequence.transducer.steer_info,
                                       sequence.transducer.natural_foc, sequence.dephasing_degree)
-            pulse.setPhases(phases)
+        pulse.setPhases(phases)
 
-        return pulse
+        return pulse, phases
 
     def _define_pulse_train(self, sequence, pulse):
         """

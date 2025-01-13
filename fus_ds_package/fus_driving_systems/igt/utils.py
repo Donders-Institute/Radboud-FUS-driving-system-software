@@ -58,27 +58,27 @@ class ExecListener(unifus.FUSListener):
 
     def onConnectStart(self):
         self._connecting = True
-        print("Listener: CONNECTING")
+        logger.info("Listener: CONNECTING")
 
     def onConnectResult(self, result):
         self._connecting = False
         if result == unifus.ConnectResult.Success:
-            print("Listener: CONNECTED")
+            logger.info("Listener: CONNECTED")
         else:
-            print("Listener: CONNECTION FAILED (%s)" % str(result))
+            logger.error("Listener: CONNECTION FAILED (%s)" % str(result))
 
     def onDisconnect(self, reason):
         self._running = False
-        print("Listener: DISCONNECTED (%s)" % str(reason))
+        logger.info("Listener: DISCONNECTED (%s)" % str(reason))
 
     def onSequenceStart(self, execID, buffer, count, delay, flags):
         self._running = True
         self.pulseResults = []
-        print("Listener: EXEC START (buff: %d, count: %d, delay: %g)" % (buffer, count, delay))
+        logger.info("Listener: EXEC START (buff: %d, count: %d, delay: %g)" % (buffer, count, delay))
 
     def onPulseResult(self, result):
         self.pulseResults.append (result)
-        print ("Listener: PULS RESULT (exec: %d, pulse: %d, duration: %g ms, elapsed: %g ms)" %
+        logger.info("Listener: PULS RESULT (exec: %d, pulse: %d, duration: %g ms, elapsed: %g ms)" %
             (result.execIndex(), result.pulseIndex(), result.duration(), result.msFromStart()))
         measures = result.sharedMeasurements()
         if measures is not None:
@@ -100,31 +100,31 @@ class ExecListener(unifus.FUSListener):
     def onSequenceResult(self, execID, execIndex, pulseIndex, errorCode):
         self._running = False
         if errorCode == 0:
-            print("Listener: EXEC RESULT SUCCESS (exec: %d)" % (execIndex))
+            logger.info("Listener: EXEC RESULT SUCCESS (exec: %d)" % (execIndex))
         else:
-            print("Listener: EXEC RESULT ERROR (code: %d, on exec: %d, pulse: %d)" %
+            logger.error("Listener: EXEC RESULT ERROR (code: %d, on exec: %d, pulse: %d)" %
                   (errorCode, execIndex, pulseIndex))
 
     def onMechOriginStart(self):
         self._findingOrigin = True
-        print("Listener: START  finding mech origins")
+        logger.info("Listener: START  finding mech origins")
 
     def onMechOriginResult(self, result, msg):
         self._findingOrigin = False
-        print("Listener: RESULT finding mech origins: %s (%s)" % (result.name, msg))
+        logger.info("Listener: RESULT finding mech origins: %s (%s)" % (result.name, msg))
 
     def onMechStart(self, execID, count):
         self._moving = True
         self.mechResult = None
-        print("Listener: START  motion (id: %d, count: %d)" % (execID, count))
+        logger.info("Listener: START  motion (id: %d, count: %d)" % (execID, count))
 
     def onMechResult(self, execID, result, errorCode):
         self._moving = False
         self.mechResult = result
         if errorCode == 0:
-            print("Listener: RESULT motion success (id: %d)" % (execID))
+            logger.info("Listener: RESULT motion success (id: %d)" % (execID))
         else:
-            print("Listener: RESULT motion error (id: %d, code: %d, result: %s)" %
+            logger.error("Listener: RESULT motion error (id: %d, code: %d, result: %s)" %
                   (execID, errorCode, str(result)))
 
     def waitConnection(self, timeout=5.0):
@@ -186,4 +186,4 @@ class ExecListener(unifus.FUSListener):
             msg += "  message: " + self.execResult.errorMessage()
         else:
             msg += "SUCCESS"
-        print(msg)
+        logger.info(msg)
