@@ -33,7 +33,7 @@ https://github.com/Donders-Institute/Radboud-FUS-measurement-kit
 from setuptools import setup, find_packages
 
 setup(name='fus_driving_systems',
-      version='2.0.2',
+      version='2.0.3',
       description='Abstract structure to communicate with different FUS driving systems',
       url='https://github.com/Donders-Institute/Radboud-FUS-driving-system-software',
       author='Margely Cornelissen',
