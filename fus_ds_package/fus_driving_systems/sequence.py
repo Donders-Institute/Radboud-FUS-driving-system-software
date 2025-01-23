@@ -1466,10 +1466,10 @@ class Sequence():
                                       True, True, True, False)
         if is_validated:
             self._timing_param['pulse_train_dur'] = pulse_train_dur
-            
+
             if self._driving_sys.manufact == config['Equipment.Manufacturer.SC']['Name']:
                 # SC doesn't have a pulse train repetition definition so set to None
-                
+
                 self._timing_param['pulse_train_rep_int'] = None
                 self._timing_param['pulse_train_rep_dur'] = None
     @property
