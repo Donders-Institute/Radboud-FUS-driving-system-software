@@ -184,3 +184,20 @@ def get_tran_list():
         sys.exit('No transducers found in configuration file.')
 
     return tran_list
+
+
+def get_serial_from_name(name):
+    """
+    Returns the serial number matching the given name.
+
+    Args:
+        name (str): The name of the device.
+
+    Returns:
+        str: The serial number, or None if no match is found.
+    """
+
+    for tran in get_tran_list():
+        if tran.name == name:
+
+            return tran.serial

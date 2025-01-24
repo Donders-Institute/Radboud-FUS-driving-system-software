@@ -189,4 +189,20 @@ def get_ds_list():
         sys.exit('No driving systems found in configuration file.')
 
     return ds_list
-    
+
+
+def get_serial_from_name(name):
+    """
+    Returns the serial number matching the given name.
+
+    Args:
+        name (str): The name of the device.
+
+    Returns:
+        str: The serial number, or None if no match is found.
+    """
+
+    for ds in get_ds_list():
+        if ds.name == name:
+
+            return ds.serial
