@@ -285,7 +285,8 @@ class IGT(ds.ControlDrivingSystem):
             n_pulse_train_rep = math.floor(seq1.pulse_train_rep_dur / seq1.pulse_train_rep_int)
 
             # Apply ramping
-            if seq1.pulse_ramp_shape != config['General']['Ramp shape.rect'] and seq1.ampl > 0:
+            average_ampl = sum(seq1.ampl) / len(seq1.ampl)
+            if seq1.pulse_ramp_shape != config['General']['Ramp shape.rect'] and average_ampl > 0:
                 self._apply_ramping(seq1)
             else:
                 self.gen.setPulseModulation([], 0, [], 0)  # disable any modulation
@@ -336,8 +337,10 @@ class IGT(ds.ControlDrivingSystem):
         freqs = []
         ampls = []
         for seq in [seq1, seq2]:
-
-            ampls = ampls + [seq.ampl] * seq.transducer.elements
+            if len(seq.ampl) == 1:
+                ampls = ampls + [seq.ampl] * seq.transducer.elements
+            else:
+                ampls = ampls + seq.ampl
 
             oper_freq_hz = int(seq.oper_freq * 1e3)
             tran_freq = [oper_freq_hz] * seq.transducer.elements
@@ -542,7 +545,7 @@ class IGT(ds.ControlDrivingSystem):
 
         # set same amplitude for all channels in percent (of max amplitude)
         if sequence.ampl is not None:
-            pulse.setAmplitudes([sequence.ampl])
+            pulse.setAmplitudes(sequence.ampl)
         else:
             logger.error("Intensity parameter may be set incorrectly. Amplitude is None.")
             sys.exit()
