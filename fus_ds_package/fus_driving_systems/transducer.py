@@ -37,6 +37,8 @@ import sys
 
 # Own packages
 from fus_driving_systems.config.config import config_info as config
+from fus_driving_systems.config.logging_config import logger
+from fus_driving_systems.utils import get_config_value
 
 
 class Transducer:
@@ -70,7 +72,7 @@ class Transducer:
         self.natural_foc = 0  # [mm]
         self.exit_plane_dist = 0  # [mm]
         self.min_foc = 0  # [mm]
-        self.max_foc = 200  # [mm]
+        self.max_foc = 1000  # [mm]
         self.steer_info = None
         self.is_active = True
 

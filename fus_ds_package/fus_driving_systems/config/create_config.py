@@ -30,19 +30,24 @@ Margely Cornelissen, Stein Fekkes (Radboud University, Nijmegen, The Netherlands
 https://github.com/Donders-Institute/Radboud-FUS-measurement-kit
 """
 
+from fus_driving_systems import utils
 import configparser
 import os
 
-CONFIG_FOLDER = 'config'  # should be in the same directory as code
-CONFIG_FILE = 'ds_config.ini'
+
+CONFIG_FOLDER = utils.get_config_folder()  # should be in the same directory as code
+CONFIG_FILE = utils.get_config_file()
 
 config = configparser.ConfigParser(interpolation=None)
 
 config['General'] = {}
+
+# TODO: General - Logger name is deprecated and replaced by Logging - Logger name
 config['General']['Logger name'] = 'driving_system'
 
 config['General']['Configuration file folder'] = CONFIG_FOLDER
 
+# TODO: General - Temporary logging path is deprecated and replaced by Logging - Temporary logging path
 config['General']['Temporary logging path'] = 'C:\\Temp'
 
 MAX_ALLOWED_PRESSURE = 1.4  # MPa
@@ -89,6 +94,15 @@ FOC_WRT_BOWL = 'Focus wrt mid bowl [mm]'
 config['General']['Focus options'] = '\n'.join([FOC_WRT_EXIT, FOC_WRT_BOWL])
 config['General']['Focus option.exit'] = FOC_WRT_EXIT
 config['General']['Focus option.bowl'] = FOC_WRT_BOWL
+
+config['Logging'] = {}
+config['Logging']['Logger name'] = 'driving_system'
+config['Logging']['Temporary logging path'] = 'C:\\Temp'
+
+TIME_STAMP_FORMAT = '%Y-%m-%d_%H-%M-%S'
+config['Logging']['Timestamp format'] = '%Y-%m-%d_%H-%M-%S'
+config['Logging']['Log level'] = 'INFO'
+config['Logging']['Initial part of log filename'] = 'log_'
 
 config['Equipment'] = {}
 
