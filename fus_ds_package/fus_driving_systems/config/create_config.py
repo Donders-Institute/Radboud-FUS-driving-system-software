@@ -53,7 +53,6 @@ config['Logging']['Logger name'] = 'driving_system'
 config['Logging']['Temporary logging path'] = 'C:\\Temp'
 config['Logging']['Filename faulthandler'] = 'faulthandler_output.log'
 
-TIME_STAMP_FORMAT = '%Y-%m-%d_%H-%M-%S'
 config['Logging']['Timestamp format'] = '%Y-%m-%d_%H-%M-%S'
 config['Logging']['Log level console'] = 'WARNING'
 config['Logging']['Log level file'] = 'INFO'
@@ -1390,64 +1389,6 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2EQF2 a4-coeff'] = str(I
 config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2EQF2 a5-coeff'] = str(IS_15473_1002['f2eqf2_a5_coeff'])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2EQF2 a6-coeff'] = str(IS_15473_1002['f2eqf2_a6_coeff'])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2EQF2 a7-coeff'] = str(IS_15473_1002['f2eqf2_a7_coeff'])
-
-############################ DEPRECATED ################################################
-# TODO: General - Logger name is deprecated and replaced by Logging - Logger name
-config['General']['Logger name'] = 'driving_system'
-
-# TODO: General - Temporary logging path is deprecated and replaced by Logging - Temporary logging path
-config['General']['Temporary logging path'] = 'C:\\Temp'
-
-# TODO: General - Max. allowed pressure is deprecated and replaced by Power - Max. allowed pressure
-MAX_ALLOWED_PRESSURE = 1.4  # MPa
-config['General']['Maximum pressure allowed in free water [MPa]'] = str(MAX_ALLOWED_PRESSURE)
-
-# TODO: General - Ramp options etc. is deprecated and replaced by Ramp - Options etc.
-# if ramp shapes are changed, don't forget to change values used in code as well
-RAMP_RECT = 'Rectangular - no ramping'
-RAMP_LIN = 'Linear'
-RAMP_TUK = 'Tukey'
-RAMP_SHOTA = 'Shota'
-
-config['General']['Ramp shapes'] = '\n'.join([RAMP_RECT, RAMP_LIN, RAMP_TUK])
-config['General']['Ramp shape.rect'] = RAMP_RECT
-config['General']['Ramp shape.lin'] = RAMP_LIN
-config['General']['Ramp shape.tuk'] = RAMP_TUK
-config['General']['Ramp shape.shota'] = RAMP_SHOTA
-
-# TODO: General - Trigger options etc. is deprecated and replaced by Trigger - Options etc.
-# Trigger options
-TRIG_NONE = 'None'
-TRIG_SEQ = 'TriggerSequence'
-TRIG_PTR = 'TriggerOnePulseTrainRepetition'
-
-config['General']['Trigger options'] = '\n'.join([TRIG_NONE, TRIG_SEQ, TRIG_PTR])
-config['General']['Default trigger option'] = TRIG_NONE
-config['General']['Trigger option.none'] = TRIG_NONE
-config['General']['Trigger option.seq'] = TRIG_SEQ
-config['General']['Trigger option.ptr'] = TRIG_PTR
-
-# TODO: General - Power options etc. is deprecated and replaced by Power - Options etc.
-# Power options
-POW_GP = 'Global power [mW]'
-POW_AMPL = 'Amplitude [%]'
-POW_PRESS = 'Max. pressure in free water [MPa]'
-POW_VOLT = 'Voltage [V]'
-
-config['General']['Power options'] = '\n'.join([POW_GP, POW_AMPL, POW_PRESS, POW_VOLT])
-config['General']['Power option.glob_pow'] = POW_GP
-config['General']['Power option.ampl'] = POW_AMPL
-config['General']['Power option.press'] = POW_PRESS
-config['General']['Power option.volt'] = POW_VOLT
-
-# TODO: General - Focus options etc. is deprecated and replaced by Focus - Options etc.
-# Focus options
-FOC_WRT_EXIT = 'Focus wrt exit plane [mm]'
-FOC_WRT_BOWL = 'Focus wrt mid bowl [mm]'
-
-config['General']['Focus options'] = '\n'.join([FOC_WRT_EXIT, FOC_WRT_BOWL])
-config['General']['Focus option.exit'] = FOC_WRT_EXIT
-config['General']['Focus option.bowl'] = FOC_WRT_BOWL
 
 with open(CONFIG_FILE, 'w') as configfile:
     config.write(configfile)
