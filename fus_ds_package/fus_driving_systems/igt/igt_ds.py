@@ -117,7 +117,7 @@ class IGT(ds.ControlDrivingSystem):
 
         self.sent_seqs[seq_num]['total_sequence_duration_ms'] = total_sequence_duration_ms + 100
 
-        logger.debug(f"Stored sequence {seq_num}: {self.sent_seqs[seq_num]}")
+        logger.info(f"Stored sequence {seq_num}: {self.sent_seqs[seq_num]}")
 
     def connect(self, connect_info, log_dir='C:\\Temp', log_name='standalone_igt', attempt=0):
         """
