@@ -32,6 +32,8 @@ https://github.com/Donders-Institute/Radboud-FUS-measurement-kit
 
 # Basic packages
 import os
+import sys
+
 # Miscellaneous packages
 from datetime import datetime
 import logging
@@ -39,6 +41,7 @@ from pathlib import Path
 
 # Own packages
 from fus_driving_systems.config.config import config_info as config
+from fus_driving_systems.utils import get_config_value
 
 logger = None
 
@@ -50,33 +53,48 @@ def initialize_logger(log_dir, filename):
     Path(log_dir).mkdir(parents=True, exist_ok=True)
 
     # reset logging
-    logger = logging.getLogger(config['General']['Logger name'])
+    logger_name = get_config_value(None, config, 'Logging', 'Logger name', 'driving_system')
+    logger = logging.getLogger(logger_name)
     handlers = logger.handlers[:]
     for handler in handlers:
         logger.removeHandler(handler)
         handler.close()
 
-    logging.basicConfig(level=logging.INFO)
+    file_log_level = getattr(logging, get_config_value(None, config, 'Logging', 'Log level file',
+                                                       'INFO').upper())
+    console_log_level = getattr(logging, get_config_value(None, config, 'Logging',
+                                                          'Log level console', 'WARNING').upper())
 
     # create logger
-    logger = logging.getLogger(config['General']['Logger name'])
-    logger.setLevel(logging.INFO)
+    logger = logging.getLogger(logger_name)
 
     # Get current date and time for logging
     date_time = datetime.now()
-    timestamp = date_time.strftime('%Y-%m-%d_%H-%M-%S')
+    timestamp_format = get_config_value(None, config, 'Logging', 'Timestamp format',
+                                        '%Y-%m-%d_%H-%M-%S')
+    timestamp = date_time.strftime(timestamp_format)
 
     # create file handler
-    file_handler = logging.FileHandler(os.path.join(log_dir, f'log_{timestamp}_' + filename
-                                                    + '.txt'), mode='w')
+    initial_part_log_filename = get_config_value(None, config, 'Logging',
+                                                 'Initial part of log filename', 'log_')
+    file_handler = logging.FileHandler(os.path.join(log_dir, initial_part_log_filename +
+                                                    f'{timestamp}_' + filename + '.txt'), mode='w')
+
+    # create console handler
+    console_handler = logging.StreamHandler(sys.stdout)
 
     # create formatter and add it to the handlers
     formatterCompact = logging.Formatter("%(asctime)s - %(levelname)s - %(module)s - " +
                                          "%(funcName)s line %(lineno)d %(message)s")
     file_handler.setFormatter(formatterCompact)
+    console_handler.setFormatter(formatterCompact)
 
     # add the handlers to the logger
-    logger.addHandler(file_handler)
+    file_handler.setLevel(file_log_level)
+    console_handler.setLevel(console_log_level)
+
+    logger.setLevel(console_log_level)
+    logger.addHandler(console_handler)
 
     return logger
 
