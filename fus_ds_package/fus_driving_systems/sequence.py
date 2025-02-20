@@ -498,12 +498,12 @@ class Sequence():
                                       True, True, True, False)
         if is_validated:
             self._n_triggers = n_triggers
-            
+
             # set temporarily the pulse train repetition parameters equal to
-            # the pulse train duration to prevent default being lower than 
+            # the pulse train duration to prevent default being lower than
             # pulse train duration
             self.pulse_train_rep_int = self.pulse_train_dur
-            self.pulse_train_rep_dur = self.pulse_train_dur
+            self.pulse_train_rep_dur = self.pulse_train_dur / 1e3  # convert from ms to s
 
     @property
     def transducer(self):
