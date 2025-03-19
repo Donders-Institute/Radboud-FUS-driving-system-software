@@ -257,20 +257,24 @@ class Sequence():
                 if self.chosen_power != opt_ampl:
                     info += f"Amplitude [%]: {self._ampl} \n "
 
-                # New information about piecewise polynomial fits
+                # Information about piecewise polynomial fits
                 info += "Conversion parameters using piecewise polynomial fits:\n "
 
                 if self._conv_param["volt_curve_pp"] is not None:
-                    info += "- Voltage to amplitude conversion: Using piecewise polynomial fit\n "
+                    info += ("- Voltage to amplitude conversion: Using piecewise polynomial fit " +
+                             f"of {self.volt_curve_file}\n ")
 
                 if self._conv_param["power_curve_pp"] is not None:
-                    info += "- Pressure to amplitude conversion: Using piecewise polynomial fit\n "
+                    info += ("- Pressure to amplitude conversion: Using piecewise polynomial fit " +
+                             f"of {self.power_curve_file}\n ")
 
                 if self._conv_param["focus_curve_pp"] is not None:
-                    info += "- Focus conversion: Using piecewise polynomial fit\n "
+                    info += ("- Focus conversion: Using piecewise polynomial fit of " +
+                             f"{self.focus_curve_file}\n ")
 
                 if self._conv_param["eq_curve_pp"] is not None:
-                    info += "- Normalization factor calculation: Using piecewise polynomial fit\n "
+                    info += ("- Normalization factor calculation: Using piecewise polynomial fit " +
+                             f"of {self.eq_curve_file}\n ")
 
                 info += ("Normalized pressure [-] based on chosen focal depth wrt exit plane of " +
                          f"{self._focus_wrt_exit_plane} [mm]: {self._eq_factor} \n ")
@@ -1427,25 +1431,25 @@ class Sequence():
 
         section_name = 'Equipment.Combination.' + self._ds_tran_combo
 
-        eq_curve_file = get_config_value(logger, config, section_name,
-                                         'EqualizationCurveFit json file', None, True)
+        self.eq_curve_file = get_config_value(logger, config, section_name,
+                                              'EqualizationCurveFit json file', None, True)
 
-        focus_curve_file = get_config_value(logger, config, section_name,
+        self.focus_curve_file = get_config_value(logger, config, section_name,
                                             'FocusCurveFit json file', None, True)
 
-        power_curve_file = get_config_value(logger, config, section_name,
+        self.power_curve_file = get_config_value(logger, config, section_name,
                                             'PowerCurveFit json file', None, True)
 
-        volt_curve_file = get_config_value(logger, config, section_name,
+        self.volt_curve_file = get_config_value(logger, config, section_name,
                                            'VoltageCurveFit json file', None, True)
 
-        eq_pp, eq_breaks = extract_and_define_pp(eq_curve_file, return_breaks=True)
+        eq_pp, eq_breaks = extract_and_define_pp(self.eq_curve_file, return_breaks=True)
 
         self._conv_param = {
-            "focus_curve_pp": extract_and_define_pp(focus_curve_file),
-            "power_curve_pp": extract_and_define_pp(power_curve_file),
+            "focus_curve_pp": extract_and_define_pp(self.focus_curve_file),
+            "power_curve_pp": extract_and_define_pp(self.power_curve_file),
             "eq_curve_pp": eq_pp,
-            "volt_curve_pp": extract_and_define_pp(volt_curve_file),
+            "volt_curve_pp": extract_and_define_pp(self.volt_curve_file),
             }
 
         self.transducer.min_foc = min(eq_breaks)
