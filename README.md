@@ -23,6 +23,8 @@
 - [💻 Getting Started](#getting-started)
   - [Installation](#install)
   - [Usage](#usage)
+- [🔧 Configuration](#config)
+  - [📻 Add your own equipment](#add-equip)
 - [🌟 Installation of new release](#install-new-release)
 - [🔭 Future Features](#future-features)
 - [🤝 Contributing](#contributing)
@@ -71,7 +73,7 @@ This project is facilitated by the Radboud Focused Ultrasound Initiative. For mo
 
 If you use this package in your research or project, please cite it as follows:
 
-Margely Cornelissen, Stein Fekkes (Radboud University, Nijmegen, The Netherlands) & Erik Dumont (Image Guided Therapy, Pessac, France) (2024), Radboud FUS driving system software (version 1.0)
+Margely Cornelissen, Stein Fekkes (Radboud University, Nijmegen, The Netherlands) & Erik Dumont (Image Guided Therapy, Pessac, France) (2024), Radboud FUS driving system software (version 3.0)
 
 <!-- GETTING STARTED -->
 
@@ -258,6 +260,19 @@ To avoid losing your custom standalone scripts:
 *(Optional) Step 4: Restore your custom standalone scripts*
 - If you have custom standalone scripts, copy them to the following location: your_directory_with_cloned_repository\standalone_driving_system_software.
 - Review the release notes to check if any modifications are needed for your scripts to remain compatible.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+<!-- CONFIGURATION -->
+
+# 🔧 CONFIGURATION <a name="config"></a>
+
+
+## 📻 Add your own equipment <a name="add-equip"></a>
+- create new standalone script
+- 
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
