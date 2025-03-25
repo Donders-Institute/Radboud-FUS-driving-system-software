@@ -84,7 +84,7 @@ To get a local copy up and running, follow these steps.
 
 ## 🔧 Installation <a name="install"></a>
 
-*Step 1: Clone this repository to your desired folder*
+### Step 1: Clone this repository to your desired folder
 - Git terminal
 	```
 	cd my-folder
@@ -105,7 +105,7 @@ To get a local copy up and running, follow these steps.
 - GitHub\
 	Download the source code directly for the latest release. Visit the [Latest Release](https://github.com/Donders-Institute/Radboud-FUS-driving-system-software/releases/latest), and download the Source code (zip) file. Extract it to your desired location and proceed with the installation steps.
 
-*Step 2: Download Python 3.10* \
+### Step 2: Download Python 3.10
 Ensure you have Python 3.10 installed and accessible from your command line. If Python is not installed, download it from the [official Python website](https://www.python.org/downloads/release/python-31011/). It is not necessary to add Python to your system's PATH during installation, as virtual environments allow you to manage and switch between Python versions without affecting other projects or code outside the environment.
 
 <div align="center">
@@ -115,7 +115,7 @@ Ensure you have Python 3.10 installed and accessible from your command line. If 
 
 **Note**: The script assumes that Python 3.10 is installed. If you have a different version, make sure to adjust the script accordingly or install Python 3.10.
 
-*Step 3: Create and setup a virtual environment* \
+### Step 3: Create and setup a virtual environment
 Open your command prompt and run the following batch file to set up the virtual environment and install the necessary dependencies. You can use input parameters to customize the environment name or directory, or Python interpreter location. You can use the default values or specify only the parameters you need by leaving others blank with "".
 
 ```
@@ -142,7 +142,7 @@ Example:
 create_venv.bat "" "" "" "DCCN"
 ```
 
-*Step 4: Verify the successful setup of the virtual environment* \
+### Step 4: Verify the successful setup of the virtual environment
 After running the batch file, ensure that the virtual environment and dependencies are installed. You can verify this by:
 
 - Checking for the virtual environment folder in your VENV_DIR directory.
@@ -164,28 +164,28 @@ If you encounter issues with the batch file not being recognized or errors occur
 
 ## 📋 Usage <a name="usage"></a>
 
-*Step 1: Activate your environment* \
+### Step 1: Activate your environment
 With the fus_driving_systems package installed, activate your environment in your command prompt to create and execute sequences. 
 
 ```
 call [VENV_PATH]\Scripts\activate
 ```
 
-*Step 2: Install an IDE* \
+### Step 2: Install an IDE
 While your virtual environment is activated, you can install any IDE of your choice. Spyder is pre-installed by default. To install another IDE, run:
 
 ```
 pip install [IDE]
 ```
 
-*Step 3: Launch the IDE* \
+### Step 3: Launch the IDE
 After installing your IDE, you can launch it directly from the command line while the virtual environment is activated. For Spyder, enter:
 
 ```
 spyder
 ```
 
-*Step 4: Open the main script* \
+### Step 4: Open the main script
 Open one of the Python scripts provided in the 'standalone_driving_system_software' directory in the cloned repository, which serve as examples of how to create and execute a sequence with a driving system from a specific manufacturer.
 
 Follow the instructions within the code to understand how to integrate it into your own codebase. Additionally, these scripts can be utilized to explore the functionality of the package before integrating it into your project.
@@ -218,12 +218,12 @@ How to use the script:
 
 # 🌟 Installation of new release <a name="install-new-release"></a>
 
-*(Optional) Step 1: Backup your current installation* \
+## (Optional) Step 1: Backup your current installation
 To avoid losing your custom standalone scripts:
 - Create a backup by copying your current installation directory to a safe location.
 - Save any custom standalone scripts for reuse.
 
-*Step 2: Clone the repository to your desired folder*
+## Step 2: Clone the repository to your desired folder
 - Git terminal
 	```
 	cd my-folder
@@ -243,7 +243,7 @@ To avoid losing your custom standalone scripts:
 - GitHub\
 	Download the source code directly for the latest release. Visit the [Latest Release](https://github.com/Donders-Institute/Radboud-FUS-driving-system-software/releases/latest), and download the Source code (zip) file. Extract it to your desired location and proceed with the installation steps.
 
-*Step 3: Install the new release in your virtual environment*
+## Step 3: Install the new release in your virtual environment
 - Open your command prompt and activate your virtual environment:
 	```
 	call [VENV_PATH]\Scripts\activate
@@ -258,7 +258,7 @@ To avoid losing your custom standalone scripts:
 	pip install .\fus_ds_package
 	```
 
-*(Optional) Step 4: Restore your custom standalone scripts*
+## (Optional) Step 4: Restore your custom standalone scripts
 - If you have custom standalone scripts, copy them to the following location: your_directory_with_cloned_repository\standalone_driving_system_software.
 - Review the release notes to check if any modifications are needed for your scripts to remain compatible.
 
@@ -328,7 +328,7 @@ def send_sequence(self, sequence):
     Args:
         sequence: A Sequence object containing, amongst other things, of:
 				the ultrasound protocol (focus, pulse duration, pulse rep. interval and etcetera)
-                used equipment (driving system and transducer)
+               			used equipment (driving system and transducer)
     """
     pass
 
