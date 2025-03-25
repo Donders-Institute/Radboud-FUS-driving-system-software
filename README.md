@@ -16,13 +16,13 @@
 # 📗 Table of Contents
 
 - [📖 About the Project](#about-project)
-  - [🚀Features](#features)
-  - [⚠️Important note](#important_note)
+  - [🚀 Features](#features)
+  - [⚠️ Important note](#important_note)
   - [👥 Authors](#authors)
   - [✒️ How to cite](#how-to-cite)
 - [💻 Getting Started](#getting-started)
-  - [🔧Installation](#install)
-  - [📋Usage](#usage)
+  - [🔧 Installation](#install)
+  - [📋 Usage](#usage)
 - [🧰 Configuration](#config)
   - [📻 How to add your own equipment](#add-equip)
   - [⚙️ Configuring System Parameters](#other-config)
