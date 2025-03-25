@@ -365,7 +365,7 @@ Update the `ds_config.ini` file to include your new equipment. The Equipment sec
 3. Specific hardware parameters for each device
 4. Compatible combinations of equipment
 
-#### Add to Equipment Section
+#### 1. Add to Equipment Section
 ```ini
 [Equipment]
 driving systems = 203-035
@@ -388,7 +388,7 @@ inactive_combinations =
 - **combinations**: List of valid equipment combinations. Only needed when conversion equations are required to translate between user-friendly inputs and hardware-specific parameters.
 - **inactive_combinations**: Combinations that exist but are disabled. Only needed when conversion equations are required to translate between user-friendly inputs and hardware-specific parameters.
 
-#### Add Manufacturer Settings
+#### 2. Add Manufacturer Settings
 ```ini
 [Equipment.Manufacturer.YM]  # Use your manufacturer's abbreviation
 name = Your Manufacturer Name
@@ -411,7 +411,7 @@ and/or
 Additional manufacturer-specific settings can be added as needed. For example, the IGT configuration contains more settings related to hardware limits.
 
 
-#### Add Specific Equipment Settings
+#### 3. Add Specific Equipment Settings
 ```ini
 [Equipment.Driving system.YOUR-SYSTEM-ID]
 name = Your System Name
@@ -424,7 +424,7 @@ transducer compatibility = YOUR-TRANSDUCER-ID
 active? = True
 ```
 
-Default settings for driving systems are:
+The driving system identifier must match one of the defined identifiers in the '[Equipment]' section at *driving systems*. Default settings for driving systems are:
 - **name**: Descriptive name of the system
 - **manufacturer**: Must match one of your defined manufacturers
 - **available channels**: Number of channels the system provides
@@ -448,7 +448,7 @@ steer information = path\to\steer\info
 active? = True
 ```
 
-Default settings for transducers are:
+The transducer identifier must match one of the defined identifiers in the '[Equipment]' section at *transducers*.Default settings for transducers are:
 - **name**: Descriptive name of the transducer
 - **manufacturer**: Must match one of your defined manufacturers
 - **elements**: Number of elements in the transducer
@@ -460,7 +460,7 @@ Default settings for transducers are:
 - **steer information**: Path to steering information file if applicable
 - **active?**: Whether this transducer is active and available for use
 
-#### Add Equipment Combinations (advanced feature, if needed)
+#### 4. Add Equipment Combinations (advanced feature, if needed)
 If your system requires conversion equations:
 
 ```ini
