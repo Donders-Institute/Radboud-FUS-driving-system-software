@@ -424,7 +424,7 @@ transducer compatibility = YOUR-TRANSDUCER-ID
 active? = True
 ```
 
-The driving system identifier must match one of the defined identifiers in the '[Equipment]' section at *driving systems*. Default settings for driving systems are:
+The driving system identifier must match one of the identifiers defined in the '[Equipment]' section under *driving systems*. Default settings for driving systems are:
 - **name**: Descriptive name of the system
 - **manufacturer**: Must match one of your defined manufacturers
 - **available channels**: Number of channels the system provides
@@ -448,7 +448,7 @@ steer information = path\to\steer\info
 active? = True
 ```
 
-The transducer identifier must match one of the defined identifiers in the '[Equipment]' section at *transducers*.Default settings for transducers are:
+The transducer identifier must match one of the identifiers defined in the '[Equipment]' section under *transducers*. Default settings for transducers are:
 - **name**: Descriptive name of the transducer
 - **manufacturer**: Must match one of your defined manufacturers
 - **elements**: Number of elements in the transducer
