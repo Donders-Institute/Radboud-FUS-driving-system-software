@@ -544,7 +544,7 @@ The maximum pressure setting (1.4 MPa by default) serves as a safety limit. Adju
 
 ### Trigger, Power, Focus, Ramp and Timing Parameters
 
-The `[Trigger]`, `[Power]`, `[Focus]` and `[Ramp]` sections contain different available and implemented options. When an option is added, the corrensponding structure has to be implemented in the code.
+The `[Trigger]`, `[Power]`, `[Focus]` and `[Ramp]` sections define the available options that can be selected in the software. Adding new options to these sections requires implementing the corresponding functionality in the codebase to support them.
 
 The `[Timing]` section contains default values regarding pulse timing.
 
