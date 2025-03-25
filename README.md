@@ -16,13 +16,13 @@
 # 📗 Table of Contents
 
 - [📖 About the Project](#about-project)
-  - [Features](#features)
-  - [Important note](#important_note)
+  - [🚀Features](#features)
+  - [⚠️Important note](#important_note)
   - [👥 Authors](#authors)
   - [✒️ How to cite](#how-to-cite)
 - [💻 Getting Started](#getting-started)
-  - [Installation](#install)
-  - [Usage](#usage)
+  - [🔧Installation](#install)
+  - [📋Usage](#usage)
 - [🧰 Configuration](#config)
   - [📻 How to add your own equipment](#add-equip)
   - [⚙️ Configuring System Parameters](#other-config)
@@ -39,14 +39,14 @@
 
 The **Radboud FUS driving system software** is designed to streamline the integration of new focused ultrasound equipment into your workflow. It enables control of the equipment while limiting the need for users to familiarize themselves with new software interfaces. 
 
-## Features <a name="features"></a>
+## 🚀 Features <a name="features"></a>
 - **Seamless Integration**: The current version offers essential functionality that can be easily integrated into your experimental code to control the system during your experiments.
 - **Compatibility**: This package is also a prerequisite for the latest version of the [SonoRover One software](https://github.com/Donders-Institute/Radboud-FUS-measurement-kit), which utilizes it to communicate with your focused ultrasound equipment. 
 By adhering to a standardized communication structure, the characterization software does not need to directly handle communication protocols. Instead, it uses the same codebase for both standalone and experimental settings, ensuring consistent and centralized updates to equipment communication.
 
 This project is facilitated by the Radboud Focused Ultrasound Initiative. For more information, please visit the [website](https://www.ru.nl/en/donders-institute/research/research-facilities/focused-ultrasound-initiative-fus).
 
-## Important Note <a name="important_note"></a>
+## ⚠️ Important Note <a name="important_note"></a>
 
 **This package is developed specifically for Windows operating systems.** While it might work in other environments with some modifications, full support is provided only for Windows.
 
@@ -82,7 +82,7 @@ Margely Cornelissen, Stein Fekkes (Radboud University, Nijmegen, The Netherlands
 
 To get a local copy up and running, follow these steps.
 
-## Installation <a name="install"></a>
+## 🔧 Installation <a name="install"></a>
 
 *Step 1: Clone this repository to your desired folder*
 - Git terminal
@@ -162,7 +162,7 @@ If you encounter issues with the batch file not being recognized or errors occur
 - The batch file has the correct permissions to be executed.
 - The repository has been cloned correctly and contains the necessary files.
 
-## Usage <a name="usage"></a>
+## 📋 Usage <a name="usage"></a>
 
 *Step 1: Activate your environment* \
 With the fus_driving_systems package installed, activate your environment in your command prompt to create and execute sequences. 
