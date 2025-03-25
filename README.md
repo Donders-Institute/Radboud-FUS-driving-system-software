@@ -270,7 +270,7 @@ To avoid losing your custom standalone scripts:
 
 The Radboud FUS Driving System software can be customized through its configuration file to match your specific requirements. This section explains what can be configured and how to properly modify settings.
 
-## Configuration File Overview
+**Configuration File Overview**
 
 The package includes a comprehensive configuration file (`fus_ds_package/fus_driving_systems/config/ds_config.ini`) that controls various aspects of the system. You can either modify this file directly or modify and regenerate it using the provided create_config.py script. Before making any changes:
 
@@ -278,7 +278,7 @@ The package includes a comprehensive configuration file (`fus_ds_package/fus_dri
 2. Edit the file using a text editor like Notepad++ or VS Code
 3. Make your changes while preserving the formatting
 4. Save the file with the same name
-5. Restart the application for changes to take effect
+5. Reinstall and restart the application for changes to take effect
 
 The configuration file is organized into these main sections:
 
