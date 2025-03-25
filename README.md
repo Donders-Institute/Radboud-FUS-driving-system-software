@@ -266,7 +266,7 @@ To avoid losing your custom standalone scripts:
 
 <!-- CONFIGURATION -->
 
-# 🧰 CONFIGURATION <a name="config"></a>
+# 🧰 Configuration <a name="config"></a>
 
 The Radboud FUS Driving System software can be customized through its configuration file to match your specific requirements. This section explains what can be configured and how to properly modify settings.
 
