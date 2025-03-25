@@ -132,6 +132,8 @@ class IGT(ds.ControlDrivingSystem):
         self.sent_seqs[seq_num]['total_sequence_duration_ms'] = (total_sequence_duration_ms +
                                                                  wait_time_ms)
 
+        logger.debug(f"Stored sequence {seq_num}: {self.sent_seqs[seq_num]}")
+
     def connect(self, connect_info, log_dir=None, log_name=None, attempt=0):
         """
         Connects to the IGT ultrasound driving system.
