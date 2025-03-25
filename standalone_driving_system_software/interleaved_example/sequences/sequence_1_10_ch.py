@@ -80,7 +80,6 @@ def create_sequence_collection(logger):
     # based on the set focus.
     seq1.dephasing_degree = None  # [degrees]: None, [120] or [0, 135, 239, 90]
 
-    # THE FEATURE IS NOT ENABLED YET! Use amplitude only for now
     # either set maximum pressure in free water [MPa], voltage [V] or amplitude [%]
     seq1.press = 0.5  # [MPa], maximum pressure in free water
     # seq1.volt = 0  # [V], voltage per channel
@@ -120,7 +119,6 @@ def create_sequence_collection(logger):
         # based on the set focus.
         seq2.dephasing_degree = None  # [degrees]: None, [120] or [0, 135, 239, 90]
 
-        # THE FEATURE IS NOT ENABLED YET! Use amplitude only for now
         # either set maximum pressure in free water [MPa], voltage [V] or amplitude [%]
         seq2.press = 0  # [MPa], maximum pressure in free water
         # seq2.volt = 0  # [V], voltage per channel
