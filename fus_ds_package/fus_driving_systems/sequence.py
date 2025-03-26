@@ -829,7 +829,7 @@ class Sequence():
                             round_ampl = f'{self._ampl[0]:.2f}'
                             round_volt = f'{self._volt[0]:.2f}'
 
-                        if not check_list:
+                        if n_entries == 1:
                             # Calculate maximum pressure in free water for logging purposes
                             self._calc_press()
 
@@ -909,7 +909,6 @@ class Sequence():
 
                         round_ampl = f'{self._ampl[0]:.2f}'
                         round_volt = f'{self._volt[0]:.2f}'
-
                         if n_entries > 1:
                             # Equipment is not part a combination, so only set amplitude
                             logger.debug(f'New amplitude value of {round_ampl} [%] results in a ' +
@@ -919,7 +918,6 @@ class Sequence():
                         else:
                             # Convert amplitude to pressure for logging
                             self._calc_press()
- 
                             logger.debug(f'New amplitude value of {round_ampl} [%] results in a ' +
                                          f'maximum pressure in free water of {self._press:.2f} ' +
                                          f'[MPa] and a voltage of {round_volt} [V].')
@@ -1961,10 +1959,8 @@ class Sequence():
                        'Change input value.')
             logger.critical(message)
             sys.exit(message)
-
         elif calc_ampl < 0:
-            logger.debug(('Calculated amplitude below 0%, so cut off the amplitude at 0% and ' +
-                          'recalculate the pressure.'))
+            logger.debug('Calculated amplitude below 0%, so cut off the amplitude at 0%.')
             self._ampl = [0]
             self._calc_press()
             self._calc_volt()
