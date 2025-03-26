@@ -733,7 +733,7 @@ class Sequence():
                             round_ampl = f'{self._ampl[0]:.2f}'
                             round_volt = f'{self._volt[0]:.2f}'
 
-                        if not check_list:
+                        if n_entries == 1:
                             # Calculate maximum pressure in free water for logging purposes
                             self._calc_press()
 
@@ -810,10 +810,9 @@ class Sequence():
 
                 if self.driving_sys.require_conv_eq:
                     if self._ds_tran_combo in self._equip_combos:
-                        if check_list:
-                            # Convert amplitude to voltage for logging
-                            self._calc_volt()
-
+                        # Convert amplitude to voltage for logging
+                        self._calc_volt()
+                        if n_entries > 1:
                             # Equipment is not part a combination, so only set amplitude
                             logger.debug('Amplitude array is given. Pressure cannot ' +
                                          'be calculated for logging purposes.')
@@ -821,12 +820,8 @@ class Sequence():
                             # Convert amplitude to pressure for logging
                             self._calc_press()
 
-                            if n_entries > 1:
-                                round_ampl = [f'{x:.2f}' for x in self._ampl]
-                                round_volt = [f'{x:.2f}' for x in self._volt]
-                            else:
-                                round_ampl = f'{self._ampl[0]:.2f}'
-                                round_volt = f'{self._volt[0]:.2f}'
+                            round_ampl = f'{self._ampl[0]:.2f}'
+                            round_volt = f'{self._volt[0]:.2f}'
 
                             logger.debug(f'New amplitude value of {round_ampl} [%] results in a ' +
                                          f'maximum pressure in free water of {self._press:.2f} ' +
@@ -1435,13 +1430,13 @@ class Sequence():
                                               'EqualizationCurveFit json file', None, True)
 
         self.focus_curve_file = get_config_value(logger, config, section_name,
-                                            'FocusCurveFit json file', None, True)
+                                                 'FocusCurveFit json file', None, True)
 
         self.power_curve_file = get_config_value(logger, config, section_name,
-                                            'PowerCurveFit json file', None, True)
+                                                 'PowerCurveFit json file', None, True)
 
         self.volt_curve_file = get_config_value(logger, config, section_name,
-                                           'VoltageCurveFit json file', None, True)
+                                                'VoltageCurveFit json file', None, True)
 
         eq_pp, eq_breaks = extract_and_define_pp(self.eq_curve_file, return_breaks=True)
 
@@ -1536,8 +1531,7 @@ class Sequence():
             logger.critical(message)
             sys.exit(message)
         elif range_status == "below_range":
-            logger.debug(('Calculated amplitude below 0%, so cut off the amplitude at 0% and ' +
-                            'recalculate the pressure.'))
+            logger.debug('Calculated amplitude below 0%, so cut off the amplitude at 0%.')
             self._ampl = [0]
             self._calc_press()
             self._calc_volt()
@@ -1553,7 +1547,7 @@ class Sequence():
 
         ampl = []
         for volt in self._volt:
-            calc_ampl, range_status = safe_evaluate_pp(self._conv_param['volt_curve_pp'], self._volt)
+            calc_ampl, range_status = safe_evaluate_pp(self._conv_param['volt_curve_pp'], volt)
 
             if range_status == "above_range":
                 self._ampl = [100]
@@ -1564,17 +1558,15 @@ class Sequence():
                            f'[MPa] and/or a voltage of {self._volt[0]:.2f} [V] will result in an ' +
                            'amplitude of 100% at focus wrt exit plane of ' +
                            f'{self._focus_wrt_exit_plane} [mm]. Change input value.')
- 
+
                 logger.critical(message)
                 sys.exit(message)
             elif range_status == "below_range":
                 logger.debug(('Calculated amplitude below 0%, so cut off the amplitude at 0% and ' +
-                                'recalculate the pressure.'))
+                              'recalculate the pressure.'))
                 calc_ampl = 0
-                self._calc_press()
-                self._calc_volt()
 
-            ampl.append(calc_ampl)
+            ampl.append(float(calc_ampl))
 
         self._ampl = ampl
 
