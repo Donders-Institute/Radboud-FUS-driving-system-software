@@ -54,8 +54,8 @@ config['Logging']['Temporary logging path'] = 'C:\\Temp'
 config['Logging']['Filename faulthandler'] = 'faulthandler_output.log'
 
 config['Logging']['Timestamp format'] = '%Y-%m-%d_%H-%M-%S'
-config['Logging']['Log level console'] = 'WARNING'
-config['Logging']['Log level file'] = 'INFO'
+config['Logging']['Log level console'] = 'INFO'
+config['Logging']['Log level file'] = 'DEBUG'
 config['Logging']['Initial part of log filename'] = 'log_'
 
 # Trigger options

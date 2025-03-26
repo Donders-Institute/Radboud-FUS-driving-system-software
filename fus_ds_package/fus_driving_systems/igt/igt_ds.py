@@ -390,7 +390,7 @@ class IGT(ds.ControlDrivingSystem):
         ampls = []
         for seq in [seq1, seq2]:
             if len(seq.ampl) == 1:
-                ampls = ampls + [seq.ampl] * seq.transducer.elements
+                ampls = ampls + seq.ampl * seq.transducer.elements
             else:
                 ampls = ampls + seq.ampl
 
@@ -422,13 +422,11 @@ class IGT(ds.ControlDrivingSystem):
 
         return pulse, phases
 
-    def wait_for_trigger(self, seq1, seq2=None, debug_info=False):
+    def wait_for_trigger(self, seq1, seq2=None, debug_info=True):
         """
         Activates the listener on the IGT ultrasound driving system to wait for the trigger to
         execte the previously sent sequence.
         """
-
-        logger.info('Waiting for trigger...')
 
         if self.is_connected():
             if self.is_sequence_sent(seq1.seq_num):
@@ -493,6 +491,8 @@ class IGT(ds.ControlDrivingSystem):
                         logger.critical(message)
                         sys.exit(message)
 
+                    logger.info(f"Waiting for a total of {seq1.n_triggers} trigger(s)...")
+
                     self.gen.prepareSequence(seq1.seq_num, n_pulse_train_rep, pulse_train_delay,
                                              exec_flags)
 
@@ -518,7 +518,7 @@ class IGT(ds.ControlDrivingSystem):
             self.send_sequence(seq1, seq2)
             self.wait_for_trigger(seq1, seq2)
 
-    def execute_sequence(self, seq1, seq2=None, debug_info=False):
+    def execute_sequence(self, seq1, seq2=None, debug_info=True):
         """
         Executes the previously sent sequence on the IGT ultrasound driving system.
         """

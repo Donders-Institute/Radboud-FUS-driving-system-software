@@ -61,9 +61,9 @@ def initialize_logger(log_dir, filename):
         handler.close()
 
     file_log_level = getattr(logging, get_config_value(None, config, 'Logging', 'Log level file',
-                                                       'INFO').upper())
+                                                       'DEBUG').upper())
     console_log_level = getattr(logging, get_config_value(None, config, 'Logging',
-                                                          'Log level console', 'WARNING').upper())
+                                                          'Log level console', 'INFO').upper())
 
     # create logger
     logger = logging.getLogger(logger_name)
@@ -93,8 +93,10 @@ def initialize_logger(log_dir, filename):
     file_handler.setLevel(file_log_level)
     console_handler.setLevel(console_log_level)
 
-    logger.setLevel(console_log_level)
+    logger.setLevel(min(file_log_level, console_log_level))
+
     logger.addHandler(console_handler)
+    logger.addHandler(file_handler)
 
     return logger
 

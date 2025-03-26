@@ -227,7 +227,7 @@ class Sequence():
                                            back_up_default_tran)
         self.transducer = def_tran_serial
 
-        self._oper_freq = self.transduer.fund_freq  # [kHz]
+        self._oper_freq = self.transducer.fund_freq  # [kHz]
 
         back_up_focus_option = self.get_focus_options()[0]
         self._chosen_focus = get_config_value(logger, config, 'Focus', 'Default option',
@@ -322,7 +322,7 @@ class Sequence():
 
         info += str(self._transducer)
 
-        info += "Chosen power option \n "
+        info += "Chosen power option: "
         opt_glob_pow = get_config_value(logger, config, 'Power', 'Option.glob_pow',
                                         'Global power [mW]')
         opt_ampl = get_config_value(logger, config, 'Power', 'Option.ampl', 'Amplitude [%]')
@@ -330,23 +330,28 @@ class Sequence():
                                      'Max. pressure in free water [MPa]')
         opt_volt = get_config_value(logger, config, 'Power', 'Option.volt', 'Voltage [V]')
 
-        match self.chosen_power:
-            case opt_glob_pow:
-                info += f"Global power [W]: {self._global_power} \n "
-            case opt_ampl:
-                info += f"Amplitude [%]: {self._ampl} \n "
-            case opt_press:
-                info += f"Maximum pressure in free water [MPa]: {self._press} \n "
-            case opt_volt:
-                info += f"Voltage [V]: {self._volt} \n "
-            case _:
-                info += "Unknown power option \n "
+        if self.chosen_power == opt_glob_pow:
+            info += f"Global power [W]: {self._global_power} \n "
+        elif self.chosen_power == opt_ampl:
+            info += f"Amplitude [%]: {self._ampl} \n "
+        elif self.chosen_power == opt_press:
+            info += f"Maximum pressure in free water [MPa]: {self._press} \n "
+        elif self.chosen_power == opt_volt:
+            info += f"Voltage [V]: {self._volt} \n "
+        else:
+            info += "Unknown power option \n "
 
         if self.driving_sys.require_conv_eq:
             if self._ds_tran_combo in self._equip_combos:
-                info += f"Maximum pressure in free water [MPa]: {self._press} \n "
-                info += f"Voltage [V]: {self._volt} \n "
-                info += f"Amplitude [%]: {self._ampl} \n "
+
+                if self.chosen_power != opt_press and len(self._ampl) == 1:
+                    info += f"Maximum pressure in free water [MPa]: {self._press} \n "
+
+                if self.chosen_power != opt_volt:
+                    info += f"Voltage [V]: {self._volt} \n "
+
+                if self.chosen_power != opt_ampl:
+                    info += f"Amplitude [%]: {self._ampl} \n "
 
                 info += ("Voltage [V] vs. amplitude [%] equation (A = a*V + b): A = " +
                          f"{self.V2A_a}*V + {self.V2A_b} \n ")
@@ -750,11 +755,10 @@ class Sequence():
                         # Calculate voltage for logging
                         self._calc_volt()
 
-                        round_ampl = [f'{x:.2f}' for x in self._ampl]
-                        round_volt = [f'{x:.2f}' for x in self._volt]
                         logger.debug('New maximum pressure in free water value of ' +
                                      f'{self._press:.2f} [MPa] results in a voltage of ' +
-                                     f'{round_volt} [V] and an amplitude of {round_ampl} [%].')
+                                     f'{self._volt[0]:.2f} [V] and an amplitude of ' +
+                                     f'{self._ampl[0]:.2f} [%].')
                     else:
                         message = ('Conversion equations unknown but required for ' +
                                    f'{self._ds_tran_combo}.')
@@ -803,8 +807,8 @@ class Sequence():
             n_entries = len(volt)
             if n_entries != self.driving_sys.available_ch and n_entries != 1:
                 message = (f'Number of voltage entries ({n_entries}) does not correspond to ' +
-                           'number of transducer elements ({self.driving_sys.available_ch}). Only' +
-                           ' enter one voltage value or n-values equal to the number of ' +
+                           f'number of transducer elements ({self.driving_sys.available_ch}). ' +
+                           'Only enter one voltage value or n-values equal to the number of ' +
                            'transducer elements.')
                 logger.critical(message)
                 sys.exit(message)
@@ -822,8 +826,13 @@ class Sequence():
                         # Convert required to amplitude
                         self._calc_ampl_using_volt()
 
-                        round_ampl = [f'{x:.2f}' for x in self._ampl]
-                        round_volt = [f'{x:.2f}' for x in self._volt]
+                        if n_entries > 1:
+                            round_ampl = [f'{x:.2f}' for x in self._ampl]
+                            round_volt = [f'{x:.2f}' for x in self._volt]
+                        else:
+                            round_ampl = f'{self._ampl[0]:.2f}'
+                            round_volt = f'{self._volt[0]:.2f}'
+
                         if not check_list:
                             # Calculate maximum pressure in free water for logging purposes
                             self._calc_press()
@@ -885,8 +894,8 @@ class Sequence():
             n_entries = len(ampl)
             if n_entries != self.driving_sys.available_ch and n_entries != 1:
                 message = (f'Number of amplitude entries ({n_entries}) does not correspond to ' +
-                           'number of transducer elements ({self.driving_sys.available_ch}). Only' +
-                           ' enter one amplitude value or n-values equal to the number of ' +
+                           f'number of transducer elements ({self.driving_sys.available_ch}). ' +
+                           'Only enter one amplitude value or n-values equal to the number of ' +
                            'transducer elements.')
                 logger.critical(message)
                 sys.exit(message)
@@ -902,18 +911,22 @@ class Sequence():
                 if self.driving_sys.require_conv_eq:
                     if self._ds_tran_combo in self._equip_combos:
                         if check_list:
-                            # Equipment is not part a combination, so only set amplitude
-                            logger.debug('Amplitude array is given. Pressure and voltage cannot ' +
-                                         'be calculated for logging purposes.')
-                        else:
                             # Convert amplitude to voltage for logging
                             self._calc_volt()
 
+                            # Equipment is not part a combination, so only set amplitude
+                            logger.debug('Amplitude array is given. Pressure cannot ' +
+                                         'be calculated for logging purposes.')
+                        else:
                             # Convert amplitude to pressure for logging
                             self._calc_press()
 
-                            round_ampl = [f'{x:.2f}' for x in self._ampl]
-                            round_volt = [f'{x:.2f}' for x in self._volt]
+                            if n_entries > 1:
+                                round_ampl = [f'{x:.2f}' for x in self._ampl]
+                                round_volt = [f'{x:.2f}' for x in self._volt]
+                            else:
+                                round_ampl = f'{self._ampl[0]:.2f}'
+                                round_volt = f'{self._volt[0]:.2f}'
 
                             logger.debug(f'New amplitude value of {round_ampl} [%] results in a ' +
                                          f'maximum pressure in free water of {self._press:.2f} ' +
@@ -1029,8 +1042,12 @@ class Sequence():
                 # Update voltage accordingly
                 self._calc_volt()
 
-                round_ampl = [f'{x:.2f}' for x in self._ampl]
-                round_volt = [f'{x:.2f}' for x in self._volt]
+                if len(self._ampl) > 1:
+                    round_ampl = [f'{x:.2f}' for x in self._ampl]
+                    round_volt = [f'{x:.2f}' for x in self._volt]
+                else:
+                    round_ampl = f'{self._ampl[0]:.2f}'
+                    round_volt = f'{self._volt[0]:.2f}'
 
                 logger.debug(f"New focus wrt exit plane of {self._focus_wrt_exit_plane:.2f} [mm] " +
                              f" results in an equalization factor of {self._eq_factor:.2f} " +
@@ -1126,10 +1143,14 @@ class Sequence():
                 # Update voltage accordingly
                 self._calc_volt()
 
-                round_ampl = [f'{x:.2f}' for x in self._ampl]
-                round_volt = [f'{x:.2f}' for x in self._volt]
+                if len(self._ampl) > 1:
+                    round_ampl = [f'{x:.2f}' for x in self._ampl]
+                    round_volt = [f'{x:.2f}' for x in self._volt]
+                else:
+                    round_ampl = f'{self._ampl[0]:.2f}'
+                    round_volt = f'{self._volt[0]:.2f}'
 
-                logger.debug(f"New focus wrt exit plane of {self._focus_wrt_mid_bowl:.2f} [mm] " +
+                logger.debug(f"New focus wrt mid bowl of {self._focus_wrt_mid_bowl:.2f} [mm] " +
                              f"results in an equalization factor of {self._eq_factor:.2f} " +
                              "recalcultating the maximum pressure in free water as " +
                              f"{self._press:.2f} [MPa], the voltage as {round_volt} [V], and the " +
@@ -1209,8 +1230,12 @@ class Sequence():
                 # Update voltage accordingly
                 self._calc_volt()
 
-                round_ampl = [f'{x:.2f}' for x in self._ampl]
-                round_volt = [f'{x:.2f}' for x in self._volt]
+                if len(self._ampl) > 1:
+                    round_ampl = [f'{x:.2f}' for x in self._ampl]
+                    round_volt = [f'{x:.2f}' for x in self._volt]
+                else:
+                    round_ampl = f'{self._ampl[0]:.2f}'
+                    round_volt = f'{self._volt[0]:.2f}'
 
                 logger.debug(f"New focus wrt exit plane of {self._focus_wrt_mid_bowl:.2f} [mm] " +
                              f"results in an equalization factor of {self._eq_factor:.2f} " +
@@ -1798,6 +1823,10 @@ class Sequence():
             # convert pulse train repetition duration in seconds to milliseconds
             self._timing_param['pulse_train_rep_dur'] = pulse_train_rep_dur * 1e3
 
+            if self._trigger_option == get_config_value(logger, config, 'Trigger', 'option.ptr',
+                                                        'TriggerOnePulseTrainRepetition'):
+                self._n_triggers = 1
+
     def _update_conv_param(self):
         """
         Update method for the conversion parameters to compensate for decreasing pressure with
@@ -1866,8 +1895,12 @@ class Sequence():
 
         self._calc_volt()
 
-        round_ampl = [f'{x:.2f}' for x in self._ampl]
-        round_volt = [f'{x:.2f}' for x in self._volt]
+        if len(self._ampl) > 1:
+            round_ampl = [f'{x:.2f}' for x in self._ampl]
+            round_volt = [f'{x:.2f}' for x in self._volt]
+        else:
+            round_ampl = f'{self._ampl[0]:.2f}'
+            round_volt = f'{self._volt[0]:.2f}'
 
         logger.debug('New equipment pressure compensation coefficients result in a maximum' +
                      f' pressure in free water of {self._press:.2f} [MPa], a voltage of ' +
@@ -1930,17 +1963,16 @@ class Sequence():
             self._calc_press()
             self._calc_volt()
 
-            round_volt = [f'{x:.2f}' for x in self._volt]
-
             message = (f'Calculated amplitude exceeds 100%. A pressure of {self._press:.2f} [MPa]' +
-                       f' and/or a voltage of {round_volt} [V] will result in an amplitude of ' +
-                       '100%. Change input value.')
+                       f' and/or a voltage of {self._volt[0]:.2f} [V] will result in an amplitude' +
+                       f' of 100% at focus wrt exit plane of {self._focus_wrt_exit_plane} [mm]. ' +
+                       'Change input value.')
             logger.critical(message)
             sys.exit(message)
 
         elif calc_ampl < 0:
-            logger.warning(('Calculated amplitude below 0%, so cut off the amplitude at 0% and ' +
-                            'recalculate the pressure.'))
+            logger.debug(('Calculated amplitude below 0%, so cut off the amplitude at 0% and ' +
+                          'recalculate the pressure.'))
             self._ampl = [0]
             self._calc_press()
             self._calc_volt()
@@ -1956,7 +1988,25 @@ class Sequence():
 
         ampl = []
         for volt in self._volt:
-            ampl.append(self.V2A_a * self._volt + self.V2A_b)
+            calc_ampl = self.V2A_a * volt + self.V2A_b
+            if calc_ampl > 100:
+                self._ampl = [100]
+                self._calc_press()
+                self._calc_volt()
+
+                message = (f'Calculated amplitude exceeds 100%. A pressure of {self._press:.2f} ' +
+                           f'[MPa] and/or a voltage of {self._volt[0]:.2f} [V] will result in an ' +
+                           'amplitude of 100% at focus wrt exit plane of ' +
+                           f'{self._focus_wrt_exit_plane} [mm]. Change input value.')
+                logger.critical(message)
+                sys.exit(message)
+
+            elif calc_ampl < 0:
+                logger.debug(('Calculated amplitude below 0%, so cut off the amplitude at 0% and ' +
+                              'recalculate the pressure.'))
+                calc_ampl = 0
+
+            ampl.append(calc_ampl)
 
         self._ampl = ampl
 

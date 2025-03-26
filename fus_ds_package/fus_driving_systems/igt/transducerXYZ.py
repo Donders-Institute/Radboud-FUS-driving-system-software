@@ -207,8 +207,10 @@ class Transducer(object):
 
         if dephasing_degree is not None:
             if len(dephasing_degree) > 1:
-                message = ('Too few or too many entries given at dephasing_degree.' +
-                           ' Only the first one is now used for dephasing purposes.')
+                message = (f'Number of dephasing entries ({len(dephasing_degree)}) does not ' +
+                           'correspond to number of transducer elements ' +
+                           f'({self.channelCount()}). Only enter one dephasing value or n-values ' +
+                           'equal to the number of transducer elements.')
                 logger.critical(message)
                 sys.exit(message)
 
