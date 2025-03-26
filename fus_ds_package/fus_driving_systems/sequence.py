@@ -1970,7 +1970,7 @@ class Sequence():
             self._calc_volt()
 
         else:
-            self._ampl = [calc_ampl]
+            self._ampl = [round(float(calc_ampl), 2)]
 
     def _calc_ampl_using_volt(self):
         """
@@ -1998,7 +1998,7 @@ class Sequence():
                               'recalculate the pressure.'))
                 calc_ampl = 0
 
-            ampl.append(calc_ampl)
+            ampl.append(round(float(calc_ampl), 2))
 
         self._ampl = ampl
 
