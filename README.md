@@ -24,8 +24,8 @@
   - [🔧 Installation](#install)
   - [📋 Usage](#usage)
 - [🧰 Configuration](#config)
-  - [📻 How to add your own equipment](#add-equip)
   - [⚙️ Configuring System Parameters](#other-config)
+  - [📻 How to add your own equipment](#add-equip)
 - [🌟 Installation of new release](#install-new-release)
 - [🔭 Future Features](#future-features)
 - [🤝 Contributing](#contributing)
@@ -270,7 +270,28 @@ To avoid losing your custom standalone scripts:
 
 The Radboud FUS Driving System software can be customized through its configuration file to match your specific requirements. This section explains what can be configured and how to properly modify settings.
 
-**Configuration File Overview**
+## Common Configuration Tasks
+
+Here are some frequently adjusted settings:
+
+- **Change equipment**: Modify `driving systems` and `transducers` in the `[Equipment]` section
+- **Adjust safety limits**: Update `maximum pressure allowed in free water` in the `[Power]` section
+- **Modify logging behavior**: Change log levels and paths in the `[Logging]` section
+
+## Important Notes
+
+- Some settings are interdependent - for example, changing power options may require corresponding adjustments to equipment configurations or even code modifications
+- Many of the default values in the configuration file are currently used by the GUI of the Radboud-FUS-measurement-kit. In future releases, we plan to develop a dedicated GUI for the Radboud-FUS-driving-system-software that will utilize these same configuration parameters.
+- Always verify system behavior after making configuration changes
+- The maximum values for many parameters are hardware-dependent
+
+If you encounter issues after modifying the configuration:
+1. Verify syntax and formatting in the configuration file
+2. Check hardware connections and compatibility
+3. Review logs for specific error messages
+4. Revert to a known working configuration if needed
+
+## ⚙️ Configuring System Parameters <a name="other-config"></a>
 
 The package includes a comprehensive configuration file (`fus_ds_package/fus_driving_systems/config/ds_config.ini`) that controls various aspects of the system. You can either modify this file directly or modify and regenerate it using the provided create_config.py script. Before making any changes:
 
@@ -291,7 +312,85 @@ The configuration file is organized into these main sections:
 - **Timing**: Default timing parameters
 - **Equipment**: Hardware component and compatibility settings
 
+### General Settings
+
+```ini
+[General]
+configuration file folder = config
+maximum reconnection attempts = 5
+package name = fus_driving_systems
+speed of sound water [m/s] = 1500
+```
+
+These parameters control basic system behavior. 
+- **configuration file folder**: Location of additional configuration files
+- **maximum reconnection attempts**: Number of times the system tries to reconnect to hardware
+- **package name**: The software package identifier
+- **speed of sound water**: The speed of sound value (1500 m/s by default) is particularly important for phase calculations in certain systems like IGT-Imasonic combinations.
+
+### Logging Configuration
+
+```ini
+[Logging]
+logger name = driving_system
+temporary logging path = C:\Temp
+filename faulthandler = faulthandler_output.log
+timestamp format = %Y-%m-%d_%H-%M-%S
+log level console = WARNING
+log level file = INFO
+initial part of log filename = log_
+```
+
+Adjust these settings to control what information is recorded and where. Increasing log levels (DEBUG, INFO, WARNING, ERROR, CRITICAL) provides more detailed information for troubleshooting.
+- **logger name**: Identifier of logger
+- **temporary logging path**: Directory where logs are stored
+- **filename faulthandler**: Name of the file for recording critical errors
+- **timestamp format**: How dates/times appear in logs (Year-Month-Day_Hour-Minute-Second)
+- **log level console**: Minimum severity level shown on screen (WARNING shows warnings and errors)
+- **log level file**: Minimum severity level saved to file (INFO includes informational messages)
+- **initial part of log filename**: Prefix for all log files
+
+### Safety Setting
+
+```ini
+[Power]
+# ...options...
+maximum pressure allowed in free water [mpa] = 1.4
+```
+
+The maximum pressure setting (1.4 MPa by default) serves as a safety limit. Adjust this based on your specific requirements, but exercise caution to maintain safety.
+
+
+### Trigger, Power, Focus, Ramp and Timing Parameters
+
+The `[Trigger]`, `[Power]`, `[Focus]` and `[Ramp]` sections define the available options that can be selected in the software. Adding new options to these sections requires implementing the corresponding functionality in the codebase to support them.
+
+The `[Timing]` section contains default values regarding pulse timing.
+
+
 ## 📻 Adding Your Own Equipment <a name="add-equip"></a>
+
+### Currently Supported Hardware
+
+*Driving systems*
+- Sonic Concepts 203-035
+- Sonic Concepts 105-010
+- IGT 128 channels
+- IGT 32 channels
+
+*Transducers*
+- Sonic Concepts CTX-250-009
+- Sonic Concepts CTX-250-014
+- Sonic Concepts CTX-500-006
+- Sonic Concepts CTX-250-001
+- Sonic Concepts CTX-250-026
+- Sonic Concepts CTX-500-024
+- Sonic Concepts CTX-500-026
+- Sonic Concepts DPX-500-022
+- Imasonic PCD15287_01001
+- Imasonic PCD15287_01002
+- Imasonic PCD15473_01001
+- Imasonic PCD15473_01002
 
 You can extend the software to support new hardware by following these steps:
 
@@ -488,86 +587,6 @@ These conversion equations allow users to specify parameters in intuitive units 
 After making these changes, reinstall the FUS driving system package to apply your updates. 
 
 Now you are ready to use your new standalone script to drive the new equipment.
-
-## ⚙️ Configuring System Parameters <a name="other-config"></a>
-
-Each configuration section controls different aspects of the system's behavior. Here's an overview of the key parameters you might want to customize:
-
-### General Settings
-
-```ini
-[General]
-configuration file folder = config
-maximum reconnection attempts = 5
-package name = fus_driving_systems
-speed of sound water [m/s] = 1500
-```
-
-These parameters control basic system behavior. 
-- **configuration file folder**: Location of additional configuration files
-- **maximum reconnection attempts**: Number of times the system tries to reconnect to hardware
-- **package name**: The software package identifier
-- **speed of sound water**: The speed of sound value (1500 m/s by default) is particularly important for phase calculations in certain systems like IGT-Imasonic combinations.
-
-### Logging Configuration
-
-```ini
-[Logging]
-logger name = driving_system
-temporary logging path = C:\Temp
-filename faulthandler = faulthandler_output.log
-timestamp format = %Y-%m-%d_%H-%M-%S
-log level console = WARNING
-log level file = INFO
-initial part of log filename = log_
-```
-
-Adjust these settings to control what information is recorded and where. Increasing log levels (DEBUG, INFO, WARNING, ERROR, CRITICAL) provides more detailed information for troubleshooting.
-- **logger name**: Identifier of logger
-- **temporary logging path**: Directory where logs are stored
-- **filename faulthandler**: Name of the file for recording critical errors
-- **timestamp format**: How dates/times appear in logs (Year-Month-Day_Hour-Minute-Second)
-- **log level console**: Minimum severity level shown on screen (WARNING shows warnings and errors)
-- **log level file**: Minimum severity level saved to file (INFO includes informational messages)
-- **initial part of log filename**: Prefix for all log files
-
-### Safety Setting
-
-```ini
-[Power]
-# ...options...
-maximum pressure allowed in free water [mpa] = 1.4
-```
-
-The maximum pressure setting (1.4 MPa by default) serves as a safety limit. Adjust this based on your specific requirements, but exercise caution to maintain safety.
-
-
-### Trigger, Power, Focus, Ramp and Timing Parameters
-
-The `[Trigger]`, `[Power]`, `[Focus]` and `[Ramp]` sections define the available options that can be selected in the software. Adding new options to these sections requires implementing the corresponding functionality in the codebase to support them.
-
-The `[Timing]` section contains default values regarding pulse timing.
-
-## Common Configuration Tasks
-
-Here are some frequently adjusted settings:
-
-- **Change equipment**: Modify `driving systems` and `transducers` in the `[Equipment]` section
-- **Adjust safety limits**: Update `maximum pressure allowed in free water` in the `[Power]` section
-- **Modify logging behavior**: Change log levels and paths in the `[Logging]` section
-
-## Important Notes
-
-- Some settings are interdependent - for example, changing power options may require corresponding adjustments to equipment configurations or even code modifications
-- Many of the default values in the configuration file are currently used by the GUI of the Radboud-FUS-measurement-kit. In future releases, we plan to develop a dedicated GUI for the Radboud-FUS-driving-system-software that will utilize these same configuration parameters.
-- Always verify system behavior after making configuration changes
-- The maximum values for many parameters are hardware-dependent
-
-If you encounter issues after modifying the configuration:
-1. Verify syntax and formatting in the configuration file
-2. Check hardware connections and compatibility
-3. Review logs for specific error messages
-4. Revert to a known working configuration if needed
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
