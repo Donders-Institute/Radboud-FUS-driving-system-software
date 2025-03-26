@@ -175,7 +175,7 @@ seq1.pulse_ramp_dur = 0  # [ms], ramp duration, with at least 70 us between ramp
 seq1.pulse_train_dur = 200  # [ms], pulse train duration
 
 # set wait_for_trigger to true if you want to use trigger
-seq1.wait_for_trigger = True
+seq1.wait_for_trigger = False
 
 # When you only want to trigger a pulse train repetition once: 'TriggerOnePulseTrainRepetition'
 # Multiple times triggering a pulse train repetition isn't supported.

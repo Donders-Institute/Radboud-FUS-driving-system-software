@@ -1496,21 +1496,19 @@ class Sequence():
 
         volt = []
         for ampl in self._ampl:
-            try:
-                volt_value, status = find_x_for_y_in_pp(self._conv_param['volt_curve_pp'],
-                                                           ampl)
+            volt_value, status = find_x_for_y_in_pp(self._conv_param['volt_curve_pp'], ampl)
 
-                if status:
-                    logger.debug(f"Found x value: {volt_value} for y = {ampl}")
+            if status:
+                logger.debug(f"Found x value: {volt_value} for y = {ampl}")
 
-                    # Verify
-                    calc_y = self._conv_param['volt_curve_pp'](volt_value)
-                    logger.debug(f"Verification: pp({volt_value}) = {calc_y}")
+                # Verify
+                calc_y = self._conv_param['volt_curve_pp'](volt_value)
+                logger.debug(f"Verification: pp({volt_value}) = {calc_y}")
 
-                else:
-                    volt_value = 0
-                    logger.error(f"Could not find a voltage value for amplitude = {ampl}")
-                    
+            else:
+                volt_value = 0
+                logger.error(f"Could not find a voltage value for amplitude = {ampl}")
+
             volt.append(volt_value)
 
         self._volt = volt
@@ -1722,7 +1720,7 @@ def extract_and_define_pp(json_dir, return_breaks=False):
             logger.error(message)
             sys.exit(message)
     except KeyError:
-        logger.info('xTransform is not part of the file structure.')
+        logger.debug('xTransform is not part of the file structure.')
     except TypeError:
         logger.warning('Data structure does not support this type of access.')
     except ValueError as ve:
@@ -1829,5 +1827,5 @@ def find_x_for_y_in_pp(pp, y_value, x_min=None, x_max=None, tol=1e-6):
             return None, False
 
     except Exception as e:
-        print(f"Error finding x value: {e}")
+        logger.error(f"Error finding x value: {e}")
         return None, False

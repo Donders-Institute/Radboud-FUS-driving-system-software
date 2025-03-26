@@ -108,7 +108,7 @@ config['Focus']['Option.bowl'] = FOC_WRT_BOWL
 
 config['Focus']['Default.exit'] = str(40)  # [mm]
 config['Focus']['Default.bowl'] = str(50)  # [mm]
-config['Focus']['Default.minimum'] = str(0)  # [mm]
+config['Focus']['Default.minimum'] = str(15)  # [mm]
 config['Focus']['Default.maximum'] = str(1000)  # [mm]
 
 # Ramp options
@@ -608,7 +608,7 @@ config['Equipment.Transducer.' + IS_TRANS[0]]['Elements'] = str(10)
 config['Equipment.Transducer.' + IS_TRANS[0]]['Fund. freq.'] = str(300)  # [kHz]
 config['Equipment.Transducer.' + IS_TRANS[0]]['Natural focus'] = str(75)  # [mm]
 config['Equipment.Transducer.' + IS_TRANS[0]]['Exit plane - first element dist.'] = str(9.7)  # [mm]
-config['Equipment.Transducer.' + IS_TRANS[0]]['Min. focus'] = str(0)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + IS_TRANS[0]]['Min. focus'] = str(5)  # [mm], wrt exit plane
 config['Equipment.Transducer.' + IS_TRANS[0]]['Max. focus'] = str(100)  # [mm], wrt exit plane
 config['Equipment.Transducer.' + IS_TRANS[0]]['Steer information'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IS_TRAN,
@@ -623,7 +623,7 @@ config['Equipment.Transducer.' + IS_TRANS[1]]['Elements'] = str(10)
 config['Equipment.Transducer.' + IS_TRANS[1]]['Fund. freq.'] = str(300)  # [kHz]
 config['Equipment.Transducer.' + IS_TRANS[1]]['Natural focus'] = str(75)  # [mm]
 config['Equipment.Transducer.' + IS_TRANS[1]]['Exit plane - first element dist.'] = str(9.7)  # [mm]
-config['Equipment.Transducer.' + IS_TRANS[1]]['Min. focus'] = str(0)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + IS_TRANS[1]]['Min. focus'] = str(5)  # [mm], wrt exit plane
 config['Equipment.Transducer.' + IS_TRANS[1]]['Max. focus'] = str(100)  # [mm], wrt exit plane
 config['Equipment.Transducer.' + IS_TRANS[1]]['Steer information'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IS_TRAN,
@@ -638,7 +638,7 @@ config['Equipment.Transducer.' + IS_TRANS[2]]['Elements'] = str(10)
 config['Equipment.Transducer.' + IS_TRANS[2]]['Fund. freq.'] = str(300)  # [kHz]
 config['Equipment.Transducer.' + IS_TRANS[2]]['Natural focus'] = str(100)  # [mm]
 config['Equipment.Transducer.' + IS_TRANS[2]]['Exit plane - first element dist.'] = str(7.3)  # [mm]
-config['Equipment.Transducer.' + IS_TRANS[2]]['Min. focus'] = str(0)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + IS_TRANS[2]]['Min. focus'] = str(5)  # [mm], wrt exit plane
 config['Equipment.Transducer.' + IS_TRANS[2]]['Max. focus'] = str(100)  # [mm], wrt exit plane
 config['Equipment.Transducer.' + IS_TRANS[2]]['Steer information'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IS_TRAN,
@@ -653,7 +653,7 @@ config['Equipment.Transducer.' + IS_TRANS[3]]['Elements'] = str(10)
 config['Equipment.Transducer.' + IS_TRANS[3]]['Fund. freq.'] = str(300)  # [kHz]
 config['Equipment.Transducer.' + IS_TRANS[3]]['Natural focus'] = str(100)  # [mm]
 config['Equipment.Transducer.' + IS_TRANS[3]]['Exit plane - first element dist.'] = str(7.3)  # [mm]
-config['Equipment.Transducer.' + IS_TRANS[3]]['Min. focus'] = str(0)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + IS_TRANS[3]]['Min. focus'] = str(5)  # [mm], wrt exit plane
 config['Equipment.Transducer.' + IS_TRANS[3]]['Max. focus'] = str(100)  # [mm], wrt exit plane
 config['Equipment.Transducer.' + IS_TRANS[3]]['Steer information'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IS_TRAN,
