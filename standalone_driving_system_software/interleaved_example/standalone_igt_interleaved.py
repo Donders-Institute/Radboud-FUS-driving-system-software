@@ -63,7 +63,7 @@ from sequences import sequence_17_26_ch
 
 seq3, seq4 = sequence_17_26_ch.create_sequence_collection(logger)
 
-total_duration_s = 80  # [s]
+total_duration_ms = 80000  # [ms]
 
 ##############################################################################
 # connect with driving system and execute sequence
@@ -91,17 +91,12 @@ try:
     # you can check if the system is still connected by using the following:
     # print(igt_ds.is_connected())
 
-    igt_driving_sys.send_sequence(seq1, seq2)
+    igt_driving_sys.send_sequence(seq1, seq2, seq3, seq4, total_duration_ms)
 
-    # send other sequence using different buffer
-    igt_driving_sys.send_sequence(seq3, seq4)
+    #igt_driving_sys.execute_sequence(seq1, seq2, seq3, seq4, total_duration_ms)
 
-    one_interleaved_session_ms = seq1.pulse_train_rep_dur + seq3.pulse_train_rep_dur
-    n_sessions = round(total_duration_s / (one_interleaved_session_ms/1000))
-    for i in range(n_sessions):
-        print(f'\n session {i} of {n_sessions} \n')
-        igt_driving_sys.execute_sequence(seq1, seq2)
-        igt_driving_sys.execute_sequence(seq3, seq4)
+    # or even better wait for trigger
+    igt_driving_sys.wait_for_trigger(seq1, seq2, seq3, seq4, total_duration_ms)
 
 finally:
     # When the sequence is executed using execute_sequence(), the system will be disconnected
