@@ -139,7 +139,7 @@ def get_config_value(logger, config, section, key, default, isSysExit=False):
         if isSysExit:
             sys.exit(message)
 
-        message = message + f", using default: {default}"
+        message = message + ", using default: {default}"
         if logger is None:
             print(message)
         else:

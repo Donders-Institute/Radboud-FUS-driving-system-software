@@ -289,7 +289,7 @@ class IGT(ds.ControlDrivingSystem):
 
         return error_messages
 
-    def send_sequence(self, seq1, seq2=None, seq3=None, seq4=None, duration_ms=0):
+    def send_sequence(self, seq1, seq2=None):
         """
         Validates and sends an ultrasound sequence to the IGT ultrasound driving system.
 
@@ -304,9 +304,6 @@ class IGT(ds.ControlDrivingSystem):
         seqs = [seq1]
         if seq2 is not None:
             seqs = [seq1, seq2]
-
-            if seq3 is not None and seq4 is not None:
-                seqs = [seq1, seq2, seq3, seq4]
 
         for seq in seqs:
             logger.debug('Sequence with the following parameters is validated before sending: \n '
@@ -326,30 +323,16 @@ class IGT(ds.ControlDrivingSystem):
             if seq2 is None:
                 pulse, phases = self._define_pulse(seq1)
             else:
-                logger.info('Two sequences are sent indicating two transducers are connected.')
-                logger.info('Timing parameters will be based on first sequence.')
-                pulse, phases = self._define_two_tran_slots(seq1, seq2)
+                logger.debug('Two sequences are sent indicating two transducers are connected.')
+                logger.debug('Timing parameters will be based on first sequence.')
+                pulse, phases = self._define_two_seq_pulse(seq1, seq2)
 
-                if seq3 is not None and seq4 is not None:
-                    pulse2, phases2 = self._define_two_tran_slots(seq3, seq4)
+            # define pulse train
+            pulse_train_seq, pulse_train_delay = self._define_pulse_train(seq1, pulse)
 
-                    # Test if it will not break the SonoRover One code
-                    phases = [phases, phases2]
-
-            if seq3 is not None and seq4 is not None:
-                pulse_train_seq = [pulse, pulse2]
-                pulse_train_delay = 0
-
-                total_pulse_rep_int_ms = seq1.pulse_train_dur + seq3.pulse_train_dur
-                n_pulse_train_rep = math.floor(duration_ms / total_pulse_rep_int_ms)
-
-            else:
-                # define pulse train
-                pulse_train_seq, pulse_train_delay = self._define_pulse_train(seq1, pulse)
-
-                # Define pulse train repetition
-                # number of executions of one pulse train
-                n_pulse_train_rep = math.floor(seq1.pulse_train_rep_dur / seq1.pulse_train_rep_int)
+            # Define pulse train repetition
+            # number of executions of one pulse train
+            n_pulse_train_rep = math.floor(seq1.pulse_train_rep_dur / seq1.pulse_train_rep_int)
 
             # Apply ramping
             average_ampl = sum(seq1.ampl) / len(seq1.ampl)
@@ -385,10 +368,9 @@ class IGT(ds.ControlDrivingSystem):
             self.connect(seq1.driving_sys.connect_info)
             self.send_sequence(seq1, seq2)
 
-    def _define_two_tran_slots(self, seq1, seq2):
+    def _define_two_seq_pulse(self, seq1, seq2):
         """
-        Validates and sends an ultrasound sequence to both transducer slots of the IGT ultrasound
-        driving system.
+        Validates and sends an ultrasound sequence to the IGT ultrasound driving system.
 
         Parameters:
             seq1, seq2 (Object): contains, amongst other things, of:
@@ -440,7 +422,7 @@ class IGT(ds.ControlDrivingSystem):
 
         return pulse, phases
 
-    def wait_for_trigger(self, seq1, seq2=None, seq3=None, seq4=None, duration_ms=0, debug_info=False):
+    def wait_for_trigger(self, seq1, seq2=None, debug_info=False):
         """
         Activates the listener on the IGT ultrasound driving system to wait for the trigger to
         execte the previously sent sequence.
@@ -525,18 +507,18 @@ class IGT(ds.ControlDrivingSystem):
                                'the driving system can wait for a trigger.')
                 logger.warning('Sending sequence...')
 
-                self.send_sequence(seq1, seq2, seq3, seq4, duration_ms)
-                self.wait_for_trigger(seq1, seq2, seq3, seq4, duration_ms)
+                self.send_sequence(seq1, seq2)
+                self.wait_for_trigger(seq1, seq2)
         else:
             logger.warning("No connection with driving system.")
             logger.warning("Reconnecting with driving system...")
 
             # if no connection can be made, program stops preventing infinite loop
             self.connect(seq1.driving_sys.connect_info)
-            self.send_sequence(seq1, seq2, seq3, seq4, duration_ms)
-            self.wait_for_trigger(seq1, seq2, seq3, seq4, duration_ms)
+            self.send_sequence(seq1, seq2)
+            self.wait_for_trigger(seq1, seq2)
 
-    def execute_sequence(self, seq1, seq2=None, seq3=None, seq4=None, duration_ms=0, debug_info=False):
+    def execute_sequence(self, seq1, seq2=None, debug_info=False):
         """
         Executes the previously sent sequence on the IGT ultrasound driving system.
         """
@@ -600,8 +582,8 @@ class IGT(ds.ControlDrivingSystem):
                                'the driving system can execute a sequence.')
                 logger.warning('Sending sequence...')
 
-                self.send_sequence(seq1, seq2, seq3, seq4, duration_ms)
-                self.execute_sequence(seq1, seq2, seq3, seq4, duration_ms)
+                self.send_sequence(seq1, seq2)
+                self.execute_sequence(seq1, seq2)
 
         else:
             logger.warning("No connection with driving system.")
@@ -609,8 +591,8 @@ class IGT(ds.ControlDrivingSystem):
 
             # if no connection can be made, program stops preventing infinite loop
             self.connect(seq1.driving_sys.connect_info)
-            self.send_sequence(seq1, seq2, seq3, seq4, duration_ms)
-            self.execute_sequence(seq1, seq2, seq3, seq4, duration_ms)
+            self.send_sequence(seq1, seq2)
+            self.execute_sequence(seq1, seq2)
 
     def disconnect(self):
         """

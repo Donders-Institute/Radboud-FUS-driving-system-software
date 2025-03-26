@@ -138,7 +138,7 @@ def create_sequence_collection(logger):
     # https://www.socsci.ru.nl/fusinitiative/tuscalculator/
 
     # Compensate for delay measured with PicoScope
-    interleave_diff = 0  # [ms]
+    interleave_diff = 13.9  # [ms]
 
     # ## pulse ## #
     seq1.pulse_dur = 45  # [ms], pulse duration
@@ -157,12 +157,12 @@ def create_sequence_collection(logger):
     seq1.pulse_train_dur = 100 - interleave_diff  # [ms], pulse train duration
 
     # set wait_for_trigger to true if you want to use trigger
-    seq1.wait_for_trigger = True
+    seq1.wait_for_trigger = False
 
     # When you only want to trigger a pulse train repetition once: 'TriggerOnePulseTrainRepetition'
     # Multiple times triggering a pulse train repetition isn't supported.
     # to check available trigger options: print(seq1.get_trigger_options())
-    seq1.trigger_option = 'TriggerOnePulseTrainRepetition'
+    seq1.trigger_option = 'TriggerSequence'
     if seq1.wait_for_trigger and seq1.trigger_option == config['General']['Trigger option.seq']:
         seq1.n_triggers = 4  # number of timings above defined sequence will be triggered
 
