@@ -39,7 +39,6 @@ from importlib import resources as impresources
 
 # Own packages
 from fus_driving_systems import config
-from fus_driving_systems.utils import get_config_file
 
 
 # Initialize ConfigParser
@@ -68,5 +67,5 @@ def sync_config(new_config):
 
 
 # Automatically read the main configuration file when the module is imported
-inp_file = (impresources.files(config) / get_config_file())
+inp_file = (impresources.files(config) / 'ds_config.ini')
 read_config(inp_file)

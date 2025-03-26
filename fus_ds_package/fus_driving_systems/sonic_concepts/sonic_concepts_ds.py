@@ -46,7 +46,6 @@ import serial
 from fus_driving_systems import control_driving_system as ds
 from fus_driving_systems.config.config import config_info as config
 from fus_driving_systems.config.logging_config import logger
-from fus_driving_systems.utils import get_config_value
 
 
 class SonicConcepts(ds.ControlDrivingSystem):
@@ -66,24 +65,21 @@ class SonicConcepts(ds.ControlDrivingSystem):
         Parameters:
             connect_info (str): COM port information.
         """
-
-        logger.info('Connecting...')
-
+        
         # When no connection, it is assumed that sent sequence isn't available (anymore)
         self.sequence_sent = False
 
         self.gen = serial.Serial(connect_info, 115200, timeout=1)
         startup_message = self.gen.readline().decode("ascii").strip()
-        logger.debug("Driving system: %s", startup_message)
+        logger.info("Driving system: %s", startup_message)
 
         if startup_message == 'E2':
             self.connected = False
-            message = "Error E2; connection cannot be made with driving system"
-            logger.critical(message)
-            sys.exit(message)
+            logger.error("Error E2; connection cannot be made with driving system")
+            sys.exit()
         else:
             self.connected = True
-            logger.debug("Connection with driving system %s is established", startup_message)
+            logger.info("Connection with driving system %s is established", startup_message)
 
     def send_sequence(self, sequence):
         """
@@ -95,10 +91,8 @@ class SonicConcepts(ds.ControlDrivingSystem):
                 used equipment (driving system and transducer)
         """
 
-        logger.info('Sending sequence...')
-
-        logger.debug('Sequence with the following parameters is send to the driving system: \n'
-                     + ' %s', sequence)
+        logger.info('Sequence with the following parameters is send to the driving system: \n'
+                    + ' %s', sequence)
 
         if self.is_connected():
 
@@ -117,8 +111,8 @@ class SonicConcepts(ds.ControlDrivingSystem):
                 self._send_command('TRIGGERMODE=1\r\n')
 
         else:
-            logger.error("No connection with driving system.")
-            logger.error("Reconnecting with driving system...")
+            logger.warning("No connection with driving system.")
+            logger.warning("Reconnecting with driving system...")
 
             # if no connection can be made, program stops preventing infinite loop
             self.connect(sequence.driving_sys.connect_info)
@@ -129,8 +123,6 @@ class SonicConcepts(ds.ControlDrivingSystem):
         Executes the previously sent sequence on the Sonic Concepts ultrasound driving system.
         """
 
-        logger.info('Executing sequence...')
-
         if self.is_connected():
             if self.is_sequence_sent():
                 try:
@@ -138,15 +130,13 @@ class SonicConcepts(ds.ControlDrivingSystem):
                     self.gen.write(cmd.encode('ascii'))
                     time.sleep(0.05)
                     line = self.gen.readline()
-                    logger.debug('START: %s', line)
+                    logger.info('START: %s', line)
 
                 except Exception as why:
-                    message = "Exception: %s", str(why)
-                    logger.critical(message)
-                    sys.exit(message)
+                    logger.error("Exception: %s", str(why))
             else:
                 logger.warning('The sequence has to be sent first using send_sequence() before ' +
-                              'the driving system can execute a sequence.')
+                               'the driving system can execute a sequence.')
                 logger.warning('Sending sequence...')
 
                 self.send_sequence(sequence)
@@ -166,12 +156,9 @@ class SonicConcepts(ds.ControlDrivingSystem):
         Disconnects from the Sonic Concepts ultrasound driving system.
         """
 
-        logger.info('Disconnecting...')
-
         if self.gen is not None:
             self.gen.close()
             self.connected = False
-            logger.info("Disconnected.")
 
     def _send_command(self, command, sleep_time_s=1):
         """
@@ -186,15 +173,14 @@ class SonicConcepts(ds.ControlDrivingSystem):
         """
 
         self.gen.write(command.encode("ascii"))
-        logger.debug("Sent to gen: %s", command.strip())
+        logger.info("Sent to gen: %s", command.strip())
         time.sleep(sleep_time_s)
         response = self.gen.readline().decode("ascii").rstrip()
-        logger.debug(f"Response from gen: {response}")
+        logger.info(f"Response from gen: {response}")
 
         if response == 'E2':
-            message = "Error E2"
-            logger.critical(message)
-            sys.exit(message)
+            logger.error("Error E2")
+            sys.exit()
 
         return response
 
@@ -262,9 +248,8 @@ class SonicConcepts(ds.ControlDrivingSystem):
             command = f'GLOBALPOWER={global_power}\r\n'
             self._send_command(command, 0.1)
         else:
-            message = "Power parameter may be set incorrectly. Global power is None."
-            logger.critical(message)
-            sys.exit(message)
+            logger.error("Intensity parameter may be set incorrectly. Global power is None.")
+            sys.exit()
 
     def _set_burst_length(self, burst):
         """
@@ -348,22 +333,20 @@ class SonicConcepts(ds.ControlDrivingSystem):
         # convert ramp_length in milliseconds to micro seconds
         ramp_length = ramp_length * 1e3
 
-        if ramp_mode == get_config_value(logger, config, 'Ramp', 'Option.rect',
-                                         'Rectangular - no ramping'):
+        if ramp_mode == config['General']['Ramp shape.rect']:
             self._reset_ramping()
 
             # Send abort command to allow further control after applying ramping
             command = 'ABORT\r\n'
             self._send_command(command, 0.1)
         else:
-            if ramp_mode == get_config_value(logger, config, 'Ramp', 'Option.lin', 'Linear'):
+            if ramp_mode == config['General']['Ramp shape.lin']:
                 ramp_mode = 1
-            elif ramp_mode == get_config_value(logger, config, 'Ramp', 'Option.tuk', 'Tukey'):
+            elif ramp_mode == config['General']['Ramp shape.tuk']:
                 ramp_mode = 2
             else:
-                message = f"Unknown modulation value: {ramp_mode}"
-                logger.critical(message)
-                sys.exit(message)
+                logger.error("Unknown modulation value: %s", ramp_mode)
+                sys.exit(f"Unknown modulation value: {ramp_mode}")
 
             command = 'RAMPMODE={ramp_mode}\r\n'
             self._send_command(command)
@@ -377,9 +360,7 @@ class SonicConcepts(ds.ControlDrivingSystem):
         the Sonic Concepts ultrasound driving system.
         """
 
-        default_message = 'Ensure the correct TRANSDUCER is selected on the driving system.'
-        message = get_config_value(logger, config, 'Equipment.Manufacturer.SC',
-                                   'Check tran message', default_message)
+        message = config['Equipment.Manufacturer.SC']['Check tran message']
 
         master = tkinter.Tk()
         master.withdraw()
@@ -388,11 +369,10 @@ class SonicConcepts(ds.ControlDrivingSystem):
                                     option_1="Confirm")
         response = message_box.get()
 
-        logger.debug(f"Message box closed with response: {response}")
+        logger.info(f"Message box closed with response: {response}")
 
         if response == 'Confirm':
-            logger.debug("Correct transducer selection is confirmed.")
+            logger.info("Correct transducer selection is confirmed.")
         else:
-            message = "Pipeline is cancelled by user."
-            logger.critical(message)
-            sys.exit(message)
+            logger.error("Pipeline is cancelled by user.")
+            sys.exit()

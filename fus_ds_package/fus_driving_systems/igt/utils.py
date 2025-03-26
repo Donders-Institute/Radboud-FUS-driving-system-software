@@ -38,7 +38,6 @@ from fus_driving_systems.igt import unifus
 # Access the logger
 from fus_driving_systems.config.logging_config import logger
 
-
 class ExecListener(unifus.FUSListener):
     """
     A listener class used to illustrate how to receive events sent by the FUS object,
@@ -59,81 +58,74 @@ class ExecListener(unifus.FUSListener):
 
     def onConnectStart(self):
         self._connecting = True
-        logger.debug("Listener: CONNECTING")
+        logger.info("Listener: CONNECTING")
 
     def onConnectResult(self, result):
         self._connecting = False
         if result == unifus.ConnectResult.Success:
-            logger.debug("Listener: CONNECTED")
+            logger.info("Listener: CONNECTED")
         else:
             logger.error("Listener: CONNECTION FAILED (%s)" % str(result))
 
     def onDisconnect(self, reason):
         self._running = False
-        logger.debug("Listener: DISCONNECTED (%s)" % str(reason))
+        logger.info("Listener: DISCONNECTED (%s)" % str(reason))
 
     def onSequenceStart(self, execID, buffer, count, delay, flags):
         self._running = True
         self.pulseResults = []
-        logger.debug("Listener: EXEC START (buff: %d, count: %d, delay: %g)" % (buffer, count,
-                                                                                delay))
+        logger.info("Listener: EXEC START (buff: %d, count: %d, delay: %g)" % (buffer, count, delay))
 
     def onPulseResult(self, result):
-        self.pulseResults.append(result)
-        logger.debug("Listener: PULS RESULT (exec: %d, pulse: %d, duration: %g ms, elapsed: %g ms)" %
-                     (result.execIndex(), result.pulseIndex(), result.duration(),
-                      result.msFromStart()))
+        self.pulseResults.append (result)
+        logger.info("Listener: PULS RESULT (exec: %d, pulse: %d, duration: %g ms, elapsed: %g ms)" %
+            (result.execIndex(), result.pulseIndex(), result.duration(), result.msFromStart()))
         measures = result.sharedMeasurements()
         if measures is not None:
-            logger.debug("          Available: %d measures for %d board(s), %d measures for %d channel(s)" %
-                         (measures.boardMeasureCount(), measures.boardCount(),
-                          measures.channelMeasureCount(), measures.channelCount()))
+            logger.info("          Available: %d measures for %d board(s), %d measures for %d channel(s)" %
+                (measures.boardMeasureCount(), measures.boardCount(), measures.channelMeasureCount(), measures.channelCount()))
             for channel in range(measures.channelCount()):
-                # Note: it is advised to call measures.physicalChannelMeasureAvailable(measure) to
-                # check before calling .channelPhysicalValue (channel, measure).
+                # Note: it is advised to call measures.physicalChannelMeasureAvailable(measure) to check
+                # before calling .channelPhysicalValue (channel, measure).
                 if measures.channelMeasureCount() == 5:
-                    logger.debug("    ch[%d] V=%#4.3g V, I=%#4.3g A, PhaseV/I=%#4.3g°, PhaseV/Vref=%#5.4g°, Freq=%7d Hz, Pow=%#g W" %
-                                 (channel, measures.channelPhysicalValue(channel, 0),
-                                  measures.channelPhysicalValue(channel, 1),
-                                  measures.channelPhysicalValue(channel, 2),
-                                  measures.channelPhysicalValue(channel, 3),
-                                  measures.channelRawValue(channel, 4), measures.power(channel)))
+                    logger.info("    ch[%d] V=%#4.3g V, I=%#4.3g A, PhaseV/I=%#4.3g°, PhaseV/Vref=%#5.4g°, Freq=%7d Hz, Pow=%#g W" % (channel,
+                        measures.channelPhysicalValue (channel, 0), measures.channelPhysicalValue (channel, 1),
+                        measures.channelPhysicalValue (channel, 2), measures.channelPhysicalValue (channel, 3),
+                        measures.channelRawValue (channel, 4), measures.power(channel)))
                 else:
-                    logger.debug("    ch[%d] Vfwd=%#4.3g V, Vrev=%#4.3g V, PhaseV/Vref=%#5.4g°, Freq=%7d Hz, Pow=%#g W" %
-                                 (channel, measures.channelPhysicalValue(channel, 0),
-                                  measures.channelPhysicalValue(channel, 1),
-                                  measures.channelPhysicalValue(channel, 2),
-                                  measures.channelRawValue(channel, 3), measures.power(channel)))
+                    logger.info("    ch[%d] Vfwd=%#4.3g V, Vrev=%#4.3g V, PhaseV/Vref=%#5.4g°, Freq=%7d Hz, Pow=%#g W" % (channel,
+                        measures.channelPhysicalValue (channel, 0), measures.channelPhysicalValue (channel, 1),
+                        measures.channelPhysicalValue (channel, 2), measures.channelRawValue (channel, 3), measures.power(channel)))
 
     def onSequenceResult(self, execID, execIndex, pulseIndex, errorCode):
         self._running = False
         if errorCode == 0:
-            logger.debug("Listener: EXEC RESULT SUCCESS (exec: %d)" % (execIndex))
+            logger.info("Listener: EXEC RESULT SUCCESS (exec: %d)" % (execIndex))
         else:
             logger.error("Listener: EXEC RESULT ERROR (code: %d, on exec: %d, pulse: %d)" %
-                         (errorCode, execIndex, pulseIndex))
+                  (errorCode, execIndex, pulseIndex))
 
     def onMechOriginStart(self):
         self._findingOrigin = True
-        logger.debug("Listener: START  finding mech origins")
+        logger.info("Listener: START  finding mech origins")
 
     def onMechOriginResult(self, result, msg):
         self._findingOrigin = False
-        logger.debug("Listener: RESULT finding mech origins: %s (%s)" % (result.name, msg))
+        logger.info("Listener: RESULT finding mech origins: %s (%s)" % (result.name, msg))
 
     def onMechStart(self, execID, count):
         self._moving = True
         self.mechResult = None
-        logger.debug("Listener: START  motion (id: %d, count: %d)" % (execID, count))
+        logger.info("Listener: START  motion (id: %d, count: %d)" % (execID, count))
 
     def onMechResult(self, execID, result, errorCode):
         self._moving = False
         self.mechResult = result
         if errorCode == 0:
-            logger.debug("Listener: RESULT motion success (id: %d)" % (execID))
+            logger.info("Listener: RESULT motion success (id: %d)" % (execID))
         else:
             logger.error("Listener: RESULT motion error (id: %d, code: %d, result: %s)" %
-                         (execID, errorCode, str(result)))
+                  (execID, errorCode, str(result)))
 
     def waitConnection(self, timeout=5.0):
         maxWait = time.time() + timeout
@@ -194,4 +186,4 @@ class ExecListener(unifus.FUSListener):
             msg += "  message: " + self.execResult.errorMessage()
         else:
             msg += "SUCCESS"
-        logger.debug(msg)
+        logger.info(msg)
