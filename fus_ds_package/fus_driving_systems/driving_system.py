@@ -38,6 +38,8 @@ import copy
 
 # Own packages
 from fus_driving_systems.config.config import config_info as config
+from fus_driving_systems.config.logging_config import logger
+from fus_driving_systems.utils import get_config_value
 
 
 class DrivingSystem:
@@ -52,6 +54,9 @@ class DrivingSystem:
         connect_info (str): Connection information for the driving system, either COM port (SC) or
         config. file (IGT).
         tran_comp (List[str]): List of transducers the driving system is compatible with.
+        power_options (List[str]): List of power options compatible with the driving system.
+        require_conv_eq (bool.): determines if pressure conversion equations are required or
+            pressure can be used as a direct input.
         is_active (Boolean): Indication if the driving system is used with the code.
     """
 
@@ -67,6 +72,8 @@ class DrivingSystem:
         self.available_ch = 0
         self.connect_info = None
         self.tran_comp = None
+        self.power_options = None
+        self.require_conv_eq = False
         self.is_active = True
 
     def set_ds_info(self, serial):
@@ -77,20 +84,21 @@ class DrivingSystem:
             serial (str): Serial number of the driving system.
         """
 
-        try:
-            self.serial = serial
-            self.name = config['Equipment.Driving system.' + serial]['Name']
-            self.connect_info = config['Equipment.Driving system.' + serial]['Connection info']
-            self.manufact = config['Equipment.Driving system.' + serial]['Manufacturer']
-            self.available_ch = int(config['Equipment.Driving system.' + serial]
-                                          ['Available channels'])
-            self.connect_info = config['Equipment.Driving system.' + serial]['Connection info']
-            self.tran_comp = (config['Equipment.Driving system.' + serial]
-                                    ['Transducer compatibility'].split('\n'))
-            self.is_active = config['Equipment.Driving system.' + serial]['Active?'] == 'True'
-
-        except KeyError:
-            sys.exit(f'No driving system with serial number {serial} found in configuration file.')
+        self.serial = serial
+        section = 'Equipment.Driving system.' + serial
+        self.name = get_config_value(logger, config, section, 'Name', 'Unknown driving system name')
+        self.manufact = get_config_value(logger, config, section, 'Manufacturer',
+                                         'Unknown driving system manufacturer')
+        self.available_ch = int(get_config_value(logger, config, section, 'Available channels',
+                                                 0))
+        self.connect_info = get_config_value(logger, config, section, 'Connection info', None, True)
+        self.tran_comp = get_config_value(logger, config, section, 'Transducer compatibility',
+                                          '').split('\n')
+        self.power_options = get_config_value(logger, config, section, 'Power options',
+                                              '').split('\n')
+        self.require_conv_eq = get_config_value(logger, config, section,
+                                                'Requires conversion equations?', 'False') == 'True'
+        self.is_active = get_config_value(logger, config, section, 'Active?', 'True') == 'True'
 
     def __str__(self):
         """
@@ -106,8 +114,14 @@ class DrivingSystem:
         info += f"Driving system manufacturer: {self.manufact} \n "
         info += f"Driving system available channels: {self.available_ch} \n "
         info += f"Driving system connection info: {self.connect_info} \n "
+
         tran_comp = '\n '.join(self.tran_comp)
         info += f"Driving system tranducer compatibility: {tran_comp} \n "
+
+        power_options = '\n '.join(self.power_options)
+        info += f"Driving system power options: {power_options} \n "
+        info += ("Driving system requires conversion equations?: " +
+                 f"{self.require_conv_eq} \n ")
 
         return info
 
@@ -115,14 +129,14 @@ class DrivingSystem:
         """
         Creates and returns a new instance of the DrivingSystem class with the same attribute
         values.
-    
+
         The new instance is a deep copy of the current instance, ensuring that changes to the cloned
         object do not affect the original object.
-    
+
         Returns:
             CharacSequence: A new instance of the DrivingSystem class with copied attribute values.
         """
-    
+
         new_instance = DrivingSystem()
         new_instance.__dict__ = copy.deepcopy(self.__dict__)  # Copy all attributes
         return new_instance
@@ -136,13 +150,20 @@ def get_ds_serials():
         List[str]: Serial numbers for available driving systems.
     """
 
-    serial_ds = config['Equipment']['Driving systems'].split('\n')
+    serial_ds = get_config_value(logger, config, 'Equipment', 'Driving systems', '',
+                                 True).split('\n')
 
     active_serials = []
     for serial in serial_ds:
         # only extract active driving systems
-        if config['Equipment.Driving system.' + serial]['Active?'] == 'True':
+        section = 'Equipment.Driving system.' + serial
+        if get_config_value(logger, config, section, 'Active?', 'True') == 'True':
             active_serials.append(serial)
+
+    if len(active_serials) < 1:
+        message = 'No active driving systems found in configuration file.'
+        logger.critical(message)
+        sys.exit(message)
 
     return active_serials
 
@@ -157,12 +178,14 @@ def get_ds_names():
 
     names = []
     for serial in get_ds_serials():
-        try:
-            ds_name = config['Equipment.Driving system.' + serial]['Name']
-        except KeyError:
-            sys.exit(f'No driving system with serial number {serial} found in' +
-                     ' configuration file.')
+        section = 'Equipment.Driving system.' + serial
+        ds_name = get_config_value(logger, config, section, 'Name', 'Unknown driving system name')
         names.append(ds_name)
+
+    if len(names) < 1:
+        message = 'No driving systems found in configuration file.'
+        logger.critical(message)
+        sys.exit(message)
 
     return names
 
@@ -181,12 +204,33 @@ def get_ds_list():
             ds = DrivingSystem()
             ds.set_ds_info(serial)
         except KeyError:
-            sys.exit(f'No driving system with serial number {serial} found in' +
-                     ' configuration file.')
+            message = (f'No driving system with serial number {serial} found in' +
+                       ' configuration file.')
+            logger.critical(message)
+            sys.exit(message)
+
         ds_list.append(ds)
 
     if len(ds_list) < 1:
-        sys.exit('No driving systems found in configuration file.')
+        message = 'No driving systems found in configuration file.'
+        logger.critical(message)
+        sys.exit(message)
 
     return ds_list
-    
+
+
+def get_serial_from_name(name):
+    """
+    Returns the serial number matching the given name.
+
+    Args:
+        name (str): The name of the device.
+
+    Returns:
+        str: The serial number, or None if no match is found.
+    """
+
+    for ds in get_ds_list():
+        if ds.name == name:
+
+            return ds.serial

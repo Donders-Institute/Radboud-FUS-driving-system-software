@@ -30,6 +30,7 @@ Margely Cornelissen, Stein Fekkes (Radboud University, Nijmegen, The Netherlands
 https://github.com/Donders-Institute/Radboud-FUS-measurement-kit
 """
 
+import sys
 import logging
 
 import time
@@ -85,3 +86,81 @@ class CustomFormatter(logging.Formatter):
 
         # Concatenate the custom log information with the formatted record
         return f"{log_info} - {formatted_record}"
+
+
+def get_config_value(logger, config, section, key, default, isSysExit=False):
+    """
+    Retrieve a configuration value from a given section and key.
+
+    If the section or key is missing, logs a warning and returns the default value.
+
+    Parameters:
+    - logger (logging.Logger): The logger instance to log warnings.
+    - config (configparser.ConfigParser): The configuration parser object.
+    - section (str): The section in the configuration file.
+    - key (str): The key within the section to retrieve.
+    - default (any): The default value to return if the section or key is missing.
+
+    Returns:
+    - any: The retrieved value or the default if missing.
+    """
+
+    if config is None:
+        message = "Config not found"
+
+        if isSysExit:
+            sys.exit(message)
+
+        message = message + ", using default: {default}"
+        if logger is None:
+            print(message)
+        else:
+            logger.warning(message)
+
+        return default
+
+    if section not in config:
+        message = f"Config section '{section}' not found"
+
+        if isSysExit:
+            sys.exit(message)
+
+        message = message + ", using default: {default}"
+        if logger is None:
+            print(message)
+        else:
+            logger.warning(message)
+
+        return default
+
+    if key not in config[section]:
+        message = f"Config key '{key}' not found in section '{section}'"
+
+        if isSysExit:
+            sys.exit(message)
+
+        message = message + f", using default: {default}"
+        if logger is None:
+            print(message)
+        else:
+            logger.warning(message)
+
+        return default
+
+    return config[section][key]
+
+
+def get_config_folder():
+    """
+    Returns the configuration folder name.
+    """
+
+    return "config"
+
+
+def get_config_file():
+    """
+    Returns the configuration file name.
+    """
+
+    return "ds_config.ini"
