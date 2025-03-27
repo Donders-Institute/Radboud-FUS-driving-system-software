@@ -24,10 +24,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 **Attribution Notice**:
-If you use this kit in your research or project, please include the following attribution:
-Margely Cornelissen, Stein Fekkes (Radboud University, Nijmegen, The Netherlands) & Erik Dumont
-(Image Guided Therapy, Pessac, France) (2024), Radboud FUS measurement kit (version 1.0),
-https://github.com/Donders-Institute/Radboud-FUS-measurement-kit
+If you use this kit in your research or project, please refer to the 'How to Cite' section in the
+README.md file of https://github.com/Donders-Institute/Radboud-FUS-driving-system-software.
 """
 
 # Basic packages
@@ -698,9 +696,7 @@ class Sequence():
         power_option = get_config_value(logger, config, 'Power', 'Option.volt', 'Voltage [V]')
 
         if power_option in self.driving_sys.power_options:
-            check_list = True
             if not isinstance(volt, list):
-                check_list = False
                 volt = [volt]
 
             # Check if enough voltage entries are given
@@ -785,9 +781,7 @@ class Sequence():
 
         power_option = get_config_value(logger, config, 'Power', 'Option.ampl', 'Amplitude [%]')
         if power_option in self.driving_sys.power_options:
-            check_list = True
             if not isinstance(ampl, list):
-                check_list = False
                 ampl = [ampl]
 
             # Check if enough amplitude entries are given
@@ -812,16 +806,19 @@ class Sequence():
                     if self._ds_tran_combo in self._equip_combos:
                         # Convert amplitude to voltage for logging
                         self._calc_volt()
+
+                        round_ampl = f'{self._ampl[0]:.2f}'
+                        round_volt = f'{self._volt[0]:.2f}'
+
                         if n_entries > 1:
                             # Equipment is not part a combination, so only set amplitude
+                            logger.debug(f'New amplitude value of {round_ampl} [%] results in a ' +
+                                         f'voltage of {round_volt} [V].')
                             logger.debug('Amplitude array is given. Pressure cannot ' +
                                          'be calculated for logging purposes.')
                         else:
                             # Convert amplitude to pressure for logging
                             self._calc_press()
-
-                            round_ampl = f'{self._ampl[0]:.2f}'
-                            round_volt = f'{self._volt[0]:.2f}'
 
                             logger.debug(f'New amplitude value of {round_ampl} [%] results in a ' +
                                          f'maximum pressure in free water of {self._press:.2f} ' +
