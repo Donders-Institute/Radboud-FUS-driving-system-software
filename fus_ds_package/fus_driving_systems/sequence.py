@@ -1534,6 +1534,8 @@ class Sequence():
             self._calc_volt()
 
         else:
+            if calc_ampl < 0:
+                calc_ampl = 0
             self._ampl = [round(float(calc_ampl), 2)]
 
     def _calc_ampl_using_volt(self):
@@ -1561,6 +1563,9 @@ class Sequence():
             elif range_status == "below_range":
                 logger.debug(('Calculated amplitude below 0%, so cut off the amplitude at 0% and ' +
                               'recalculate the pressure.'))
+                calc_ampl = 0
+                
+            if calc_ampl < 0:
                 calc_ampl = 0
 
             ampl.append(round(float(calc_ampl), 2))
