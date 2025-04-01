@@ -772,7 +772,7 @@ class Sequence():
 
         Parameters:
             ampl (list(float)): The amplitude array [%] for IGT: one value represents the value
-            for all elements..
+            for all elements.
         """
 
         # set other parameters that determine the intensity to None
@@ -1467,8 +1467,7 @@ class Sequence():
 
     def _calc_eq_factor(self):
         """
-        Calculate equalization factor of the pressure vs. focal depth wrt exit plane [mm] equation
-        (EQF = a0 + a1*f + a2*f^2 + a3*f^3 + a4*f^4 + a5*f^5).
+        Calculate equalization factor of the pressure vs. focal depth wrt exit plane [mm] equation.
         """
 
         try:
@@ -1482,8 +1481,7 @@ class Sequence():
 
     def _calc_volt(self):
         """
-        Calculate amplitude [%] vs. voltage [V] equation V = (A - b)/a when amplitude is
-        updated.
+        Calculate amplitude [%] vs. voltage [V] equation when amplitude is updated.
         """
 
         volt = []
@@ -1507,8 +1505,7 @@ class Sequence():
 
     def _calc_ampl(self):
         """
-        Calculate pressure [Pa] vs. amplitude [%] equation (A = a*(P*EQF) + b) when pressure is
-        updated.
+        Calculate pressure [Pa] vs. amplitude [%] equation when pressure is updated.
         """
 
         press_pa = self._press * 1e6  # convert to Pa
@@ -1540,8 +1537,7 @@ class Sequence():
 
     def _calc_ampl_using_volt(self):
         """
-        Calculate voltage [V] vs. amplitude [%] equation (A = a*V + b) when voltage is
-        updated.
+        Calculate voltage [V] vs. amplitude [%] equation when voltage is updated.
         """
 
         ampl = []
@@ -1564,7 +1560,7 @@ class Sequence():
                 logger.debug(('Calculated amplitude below 0%, so cut off the amplitude at 0% and ' +
                               'recalculate the pressure.'))
                 calc_ampl = 0
-                
+
             if calc_ampl < 0:
                 calc_ampl = 0
 
@@ -1574,8 +1570,7 @@ class Sequence():
 
     def _calc_press(self):
         """
-        Calculate pressure [Pa] vs. amplitude [%] equation (P = (A - b)/(a*EQF)) when amplitude is
-        updated.
+        Calculate pressure [Pa] vs. amplitude [%] equation when amplitude is updated.
         """
 
         target_y_value = self._ampl[0]
