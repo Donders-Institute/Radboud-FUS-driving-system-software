@@ -16,8 +16,7 @@
 # 📗 Table of Contents
 
 - [📖 About the Project](#about-project)
-  - [🚀 Features](#features)
-  - [⚠️ Important note](#important_note)
+  - [🚀 Key Features](#features)
   - [👥 Authors](#authors)
   - [✒️ How to cite](#how-to-cite)
 - [💻 Getting Started](#getting-started)
@@ -43,17 +42,12 @@ This project is facilitated by the Radboud Focused Ultrasound Initiative. For mo
 
 **⚠️ DEVELOPMENT STATUS**: This repository is currently under active development and is provided AS IS. Features may be incomplete, undergo significant changes, or contain bugs. Use at your own discretion.
 
-## 🚀 Features <a name="features"></a>
+## 🚀 Key Features <a name="features"></a>
 - **Seamless Integration**: The current version offers essential functionality that can be easily integrated into your experimental code to control the system during your experiments.
 - **Compatibility**: This package is also a prerequisite for the latest version of the [SonoRover One software](https://github.com/Donders-Institute/Radboud-FUS-measurement-kit), which utilizes it to communicate with your focused ultrasound equipment. 
 By adhering to a standardized communication structure, the characterization software does not need to directly handle communication protocols. Instead, it uses the same codebase for both standalone and experimental settings, ensuring consistent and centralized updates to equipment communication.
 
 This project is facilitated by the Radboud Focused Ultrasound Initiative. For more information, please visit the [website](https://www.ru.nl/en/donders-institute/research/research-facilities/focused-ultrasound-initiative-fus).
-
-## ⚠️ Important Note <a name="important_note"></a>
-
-**This package is developed specifically for Windows operating systems.** While it might work in other environments with some modifications, full support is provided only for Windows.
-
 
 <!-- AUTHORS -->
 
@@ -78,11 +72,13 @@ This project is facilitated by the Radboud Focused Ultrasound Initiative. For mo
 
 If you use this package in your research or project, please cite it as follows:
 
-Margely Cornelissen, Stein Fekkes (Radboud University, Nijmegen, The Netherlands) & Erik Dumont (Image Guided Therapy, Pessac, France) (2024), Radboud FUS driving system software (version 3.0)
+Margely Cornelissen, Stein Fekkes (Radboud University, Nijmegen, The Netherlands) & Erik Dumont (Image Guided Therapy, Pessac, France) (2025), Radboud FUS Driving System Software (version 2.1)
 
 <!-- GETTING STARTED -->
 
 # 💻 Getting Started <a name="getting-started"></a>
+
+**Note:** This package is developed specifically for Windows operating systems. While it might work in other environments with some modifications, full support is provided only for Windows.
 
 To get a local copy up and running, follow these steps.
 
@@ -116,6 +112,7 @@ Ensure you have Python 3.10 installed and accessible from your command line. If 
   <img src="/images/python_path.png" alt="python_path" width="auto"  height="auto" />
 </div>
 
+<br /> 
 
 **Note**: The script assumes that Python 3.10 is installed. If you have a different version, make sure to adjust the script accordingly or install Python 3.10.
 
@@ -190,7 +187,7 @@ spyder
 ```
 
 ### Step 4: Open the main script
-Open one of the Python scripts provided in the 'standalone_driving_system_software' directory in the cloned repository, which serve as examples of how to create and execute a sequence with a driving system from a specific manufacturer.
+Open one of the Python scripts provided in the [standalone_driving_system_software directory](standalone_driving_system_software) in the cloned repository, which serve as examples of how to create and execute a sequence with a driving system from a specific manufacturer.
 
 Follow the instructions within the code to understand how to integrate it into your own codebase. Additionally, these scripts can be utilized to explore the functionality of the package before integrating it into your project.
 
@@ -207,7 +204,7 @@ How to use the script:
 		start_venv_and_ide.bat [VENV_PATH] [IDE]
 		```
 		- VENV_PATH: Specify the path to the virtual environment (e.g., C:/Users/Me/Envs/MyEnv). If not provided, it defaults to C:/Users/{USERPROFILE}/Envs/FUS_DS_PACKAGE.
-		- IDE: Specify the python interpreter. IF not provided, it defaults to spyder.
+		- IDE: Specify the python interpreter. If not provided, it defaults to spyder.
 		
 		**DCCN specific configuration**
 
@@ -297,7 +294,7 @@ If you encounter issues after modifying the configuration:
 
 ## ⚙️ Configuring System Parameters <a name="other-config"></a>
 
-The package includes a comprehensive configuration file (`fus_ds_package/fus_driving_systems/config/ds_config.ini`) that controls various aspects of the system. You can either modify this file directly or modify and regenerate it using the provided create_config.py script. Before making any changes:
+The package includes a comprehensive configuration file [ds_config.ini](fus_ds_package/fus_driving_systems/config/ds_config.ini) that controls various aspects of the system. You can either modify this file directly or modify and regenerate it using the provided [create_config.py](fus_ds_package/fus_driving_systems/config/create_config.py) script. Before making any changes:
 
 1. **Create a backup** of the original configuration file
 2. Edit the file using a text editor like Notepad++ or VS Code
@@ -399,7 +396,7 @@ The `[Timing]` section contains default values regarding pulse timing.
 You can extend the software to support new hardware by following these steps:
 
 ### Step 1: Create a New Manufacturer Module
-1. Create a new folder within `fus_ds_package/fus_driving_systems/` (e.g., `your_manufacturer_name/`)
+1. Create a new folder within [fus_ds_package/fus_driving_systems/](fus_ds_package/fus_driving_systems) (e.g., `your_manufacturer_name/`)
 2. Add an empty `__init__.py` file to that folder
 3. Create a new Python class that inherits from the abstract `ControlDrivingSystem` class
 
@@ -452,16 +449,16 @@ You can add additional helper methods as needed to support your implementation.
 
 ### Step 3: Create a Standalone Script
 
-1. Create a new script in `standalone_driving_system_software/` (e.g., `standalone_your_manufacturer.py`)
-2. Use existing scripts (like `standalone_sonic_concepts.py`) as templates
+1. Create a new script in [standalone_driving_system_software/](standalone_driving_system_software) (e.g., `standalone_your_manufacturer.py`)
+2. Use existing scripts (like [standalone_sonic_concepts.py](standalone_driving_system_software/standalone_sonic_concepts.py) as templates
 3. In the first section: Define user input by setting appropriate Sequence parameters. Configure the code according to your specific equipment by adjusting timing parameters, power input levels, and other relevant settings.
 4. In the second section: Import your new driving system script and initialize an instance of the class. The invocation of the implemented abstract functions (connect, send_sequence, execute_sequence, disconnect) can remain the same.
 
-To use your new equipment with custom serial numbers for driving systems and transducers, you'll need to update the configuration file. You can either modify the `ds_config.ini` file directly or modify and regenerate it using the provided `create_config.py` script. How and what to modify is explained in the next step.
+To use your new equipment with custom serial numbers for driving systems and transducers, you'll need to update the configuration file. You can either modify the [ds_config.ini](fus_ds_package/fus_driving_systems/config/ds_config.ini) file directly or modify and regenerate it using the provided [create_config.py](fus_ds_package/fus_driving_systems/config/create_config.py) script. How and what to modify is explained in the next step.
 
 ### Step 4: Update the Configuration File
 
-Update the `ds_config.ini` file to include your new equipment. The Equipment section is extensive and includes settings for:
+Update the [ds_config.ini](fus_ds_package/fus_driving_systems/config/ds_config.ini) file to include your new equipment. The Equipment section is extensive and includes settings for:
 
 1. Available driving systems and transducers
 2. Manufacturer-specific configurations
@@ -507,7 +504,7 @@ Default settings per manufacturer are:
 - **name**: The manufacturer's full name
 - **config. file folder transducers**: Location of additional config files if required
 - **power options**: (For driving systems) Compatible power options which must be chosen from the Power section of the config
-- **equipment - driving systems**: Available driving systems of this manufacturer, must be listed in the main Equipment section
+- **equipment - driving systems**: Available driving systems of this manufacturer, must be listed in the main Equipment section \
 and/or
 - **equipment - transducers**: Available transducers of this manufacturer, must be listed in the main Equipment section
 
@@ -570,10 +567,7 @@ If your system requires conversion equations:
 [Equipment.Combination.YOUR-SYSTEM-ID~YOUR-TRANSDUCER-ID]
 driving system serial = YOUR-SYSTEM-ID
 transducer serial = YOUR-TRANSDUCER-ID
-equalizationcurvefit json file = path\to\equalization\file.json
-focuscurvefit json file = path\to\focus\file.json
-powercurvefit json file = path\to\power\file.json
-voltagecurvefit json file = path\to\voltage\file.json
+... conversion equations
 ```
 
 These combinations are only required if additional equations are needed to convert user input (e.g., pressure in free water and focus with respect to exit plane) to input the driving system understands (e.g., amplitude and focus with respect to mid bowl). This is required for combinations like IGT-Imasonic.
@@ -598,9 +592,9 @@ Now you are ready to use your new standalone script to drive the new equipment.
 
 # 🔭 Future Features <a name="future-features"></a>
 
-- [ ] **A GUI to display, plan and execute an US sequence**
-- [ ] **Compatibility check of chosen equipment**
-- [x] **Control a driving system with two transducers plugged-in**
+- [ ] Interactive GUI for visualization, planning, and execution of ultrasound sequences
+- [ ] Equipment compatibility verification
+- [ ] Comprehensive unit testing framework
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
