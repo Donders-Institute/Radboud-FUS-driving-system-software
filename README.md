@@ -34,7 +34,7 @@
 
 # 📖 Radboud FUS driving system software <a name="about-project"></a>
 
-(Project id: **0003496** )
+(Project id: **0003496**)
 
 The **Radboud FUS driving system software** is designed to streamline the integration of new focused ultrasound equipment into your workflow. It enables control of the equipment while limiting the need for users to familiarize themselves with new software interfaces. 
 
