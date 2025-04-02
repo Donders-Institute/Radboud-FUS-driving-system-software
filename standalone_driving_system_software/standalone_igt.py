@@ -76,8 +76,8 @@ seq1.seq_num = 0
 # equipment
 # to check available driving systems: print(driving_system.get_ds_serials())
 # choose one driving system from that list as input
-seq1.driving_sys = 'IGT-128-ch_comb_1x10-ch'
-use_two_transducers = False  # is true if you are using two transducers simulateneously or interleaved
+seq1.driving_sys = 'IGT-32-ch_comb_2x10-ch'
+use_two_transducers = True  # is true if you are using two transducers simulateneously or interleaved
 
 # to check available transducers: print(transducer.get_tran_serials())
 # choose one transducer from that list as input
@@ -99,9 +99,9 @@ seq1.focus_wrt_exit_plane = 80  # [mm], focal depth w.r.t. the exit plane and FW
 seq1.dephasing_degree = None  # [degrees]: None, [120] or [0, 135, 239, 90]
 
 # either set maximum pressure in free water [MPa], voltage [V] or amplitude [%]. NOTE: DIFFERENT THAN SC
-# seq1.press = 0.3  # [MPa], maximum pressure in free water
+seq1.press = 0.3  # [MPa], maximum pressure in free water
 # seq1.volt = [4.65]  # [V], voltage per channel, equal for all elements
-seq1.volt = [0, 0, 0, 0, 4.65, 0, 0, 0, 0, 0] # [V], voltage per channel, per element
+# seq1.volt = [0, 0, 0, 0, 4.65, 0, 0, 0, 0, 0] # [V], voltage per channel, per element
 # seq1.ampl = 27.9  # [%], amplitude, equal for all elements
 # seq1.ampl = [27.9, 0, 0, 0, 0, 0, 0, 0, 0, 0]  # [%], amplitude per element
 
@@ -131,6 +131,7 @@ if use_two_transducers:
     # NOTE: Due to compensation equations, the focus has to be set first when using amplitude or
     # voltage as power input.
     seq2.focus_wrt_exit_plane = 80  # [mm], focal depth w.r.t. the exit plane and FWHM middle
+    # seq2.focus_wrt_mid_bowl = 69.1  # [mm], focal depth w.r.t. the radiating surface and FWHM middle
 
     # Degree used to dephase every nth elemen based on chosen degree. None = no dephasing
     # One value (>0) is the degree of dephasing, for example [90] with 4 elements: 1 elem: 0
@@ -139,7 +140,7 @@ if use_two_transducers:
     # based on the set focus.
     seq2.dephasing_degree = None  # [degrees]: None, [120] or [0, 135, 239, 90]
 
-    # either set maximum pressure in free water [MPa], voltage [V] or amplitude [%]
+    # either set maximum pressure in free water [MPa], voltage [V] or amplitude [%]. NOTE: DIFFERENT THAN SC
     seq2.press = 0.3  # [MPa], maximum pressure in free water
     # seq2.volt = [4.65]  # [V], voltage per channel, equal for all elements
     # seq2.volt = [0, 0, 0, 0, 4.65, 0, 0, 0, 0, 0] # [V], voltage per channel, per element
@@ -159,7 +160,7 @@ elif seq1.driving_sys.available_ch != seq1.transducer.elements:
 # https://www.socsci.ru.nl/fusinitiative/tuscalculator/
 
 # ## pulse ## #
-seq1.pulse_dur = 180  # [ms], pulse duration
+seq1.pulse_dur = 10  # [ms], pulse duration
 seq1.pulse_rep_int = 200  # [ms], pulse repetition interval
 
 # pulse ramping

@@ -1531,8 +1531,10 @@ class Sequence():
             self._calc_volt()
 
         else:
+
             if calc_ampl < 0:
                 calc_ampl = 0
+
             self._ampl = [round(float(calc_ampl), 2)]
 
     def _calc_ampl_using_volt(self):
