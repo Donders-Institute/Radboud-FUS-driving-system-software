@@ -32,7 +32,12 @@ README.md file of https://github.com/Donders-Institute/Radboud-FUS-driving-syste
 import sys
 
 # Miscellaneous packages
-import math
+import json
+import numpy as np
+import pkg_resources
+from scipy.interpolate import PPoly
+from scipy import optimize
+
 
 # Own packages
 from fus_driving_systems import driving_system as ds
@@ -72,86 +77,12 @@ class Sequence():
         _focus_wrt_mid_bowl (float): Focal depth of the sequence w.r.t. transducer bowl middle
                                      respresenting the FWHM middle [mm].
         _ds_tran_combo (str): combination of driving system and transducer serial numbers.
-        _conv_param (dict): Conversion parameters to compensate for decreasing pressure with
-        increasing focal depth.
-            voltage [V] vs. amplitude [%] equation (A = a*V + b)
-            V2A_a (float): 1st order coefficient of voltage [V] vs. amplitude [%] equation.
-            V2A_b (float): 0-order coefficient of voltage [V] vs. amplitude [%] equation.
-
-            pressure [Pa] vs. amplitude [%] equation (A = a*P + b)
-            P2A_a (float): 1st order coefficient of pressure [Pa] vs. amplitude [%] equation.
-            P2A_b (float): 0-order coefficient of pressure [Pa] vs. amplitude [%] equation.
-
-            FWHM center wrt exit plane [mm] vs. set focus [%] equation (SF = a*FWHMC + b)
-            DF2SF_a (float): 1st order coefficient of FWHM center wrt exit plane [mm] vs. set focus
-                             [mm] equation.
-            DF2SF_b (float): 0-order coefficient of FWHM center wrt exit plane [mm] vs. set focus
-                             [mm] equation.
-
-            F2EQF1_low_lim (float): The lower limit of the focus wrt exit plane the equation
-                                    accounts for.
-            F2EQF1_up_lim (float): The upper limit of the focus wrt exit plane the equation accounts
-                                   for.
-
-            for range F2EQF1_low_lim <= focus wrt exit plane <= F2EQF1_up_lim
-            normalized pressure vs. focal depth wrt exit plane [mm] equation (EQF1 = F2EQF1_a0 +
-                                                                              F2EQF1_a1*f +
-                                                                              F2EQF1_a2*f^2 +
-                                                                              F2EQF1_a3*f^3 +
-                                                                              F2EQF1_a4*f^4 +
-                                                                              F2EQF1_a5*f^5 +
-                                                                              F2EQF1_a6*f^6 +
-                                                                              F2EQF1_a7*f^7
-                                                                              ).
-            F2EQF1_a0 (float): 0-order coefficient of normalized pressure vs. focal depth wrt exit
-                               plane [mm] equation.
-            F2EQF1_a1 (float): 1st order coefficient of normalized pressure vs. focal depth wrt exit
-                               plane [mm] equation.
-            F2EQF1_a2 (float): 2nd order coefficient of normalized pressure vs. focal depth wrt exit
-                               plane [mm] equation.
-            F2EQF1_a3 (float): 3rd order coefficient of normalized pressure vs. focal depth wrt exit
-                               plane [mm] equation.
-            F2EQF1_a4 (float): 4th order coefficient of normalized pressure vs. focal depth wrt exit
-                               plane [mm] equation.
-            F2EQF1_a5 (float): 5th order coefficient of normalized pressure vs. focal depth wrt exit
-                               plane [mm] equation.
-            F2EQF1_a6 (float): 6th order coefficient of normalized pressure vs. focal depth wrt exit
-                               plane [mm] equation.
-            F2EQF1_a7 (float): 7th order coefficient of normalized pressure vs. focal depth wrt exit
-                               plane [mm] equation.
-
-            F2EQF2_low_lim (float): The lower limit of the focus wrt exit plane the equation
-                                    accounts for.
-            F2EQF2_up_lim (float): The upper limit of the focus wrt exit plane the equation accounts
-                                   for.
-
-            for range F2EQF2_low_lim < focus wrt exit plane <= F2EQF2_up_lim
-            normalized pressure vs. focal depth wrt exit plane [mm] equation (EQF2 = F2EQF2_a0 +
-                                                                              F2EQF2_a1*f +
-                                                                              F2EQF2_a2*f^2 +
-                                                                              F2EQF2_a3*f^3 +
-                                                                              F2EQF2_a4*f^4 +
-                                                                              F2EQF2_a5*f^5 +
-                                                                              F2EQF2_a6*f^6 +
-                                                                              F2EQF2_a7*f^7 +
-                                                                              ).
-            F2EQF2_a0 (float): 0-order coefficient of normalized pressure vs. focal depth wrt exit
-                               plane [mm] equation.
-            F2EQF2_a1 (float): 1st order coefficient of normalized pressure vs. focal depth wrt exit
-                               plane [mm] equation.
-            F2EQF2_a2 (float): 2nd order coefficient of normalized pressure vs. focal depth wrt exit
-                               plane [mm] equation.
-            F2EQF2_a3 (float): 3rd order coefficient of normalized pressure vs. focal depth wrt exit
-                               plane [mm] equation.
-            F2EQF2_a4 (float): 4th order coefficient of normalized pressure vs. focal depth wrt exit
-                               plane [mm] equation.
-            F2EQF2_a5 (float): 5th order coefficient of normalized pressure vs. focal depth wrt exit
-                               plane [mm] equation.
-            F2EQF2_a6 (float): 6th order coefficient of normalized pressure vs. focal depth wrt exit
-                               plane [mm] equation.
-            F2EQF2_a7 (float): 7th order coefficient of normalized pressure vs. focal depth wrt exit
-                               plane [mm] equation.
-
+        _conv_param (dict): Conversion parameters using piecewise polynomial functions for pressure
+                           compensation with increasing focal depth.
+            focus_curve_pp: Piecewise polynomial function for focus conversion
+            power_curve_pp: Piecewise polynomial function for power conversion
+            eq_curve_pp: Piecewise polynomial function for normalization factor calculation
+            volt_curve_pp: Piecewise polynomial function for voltage conversion
         _eq_factor (float): [IGT] normalized pressure based on chosen focal depth wrt exit plane [-]
         _timing_param (dict.):
             _pulse_dur (float): Pulse duration of the sequence [ms].
@@ -235,37 +166,10 @@ class Sequence():
 
         # If applicable, retrieve conversion parameters
         self._conv_param = {
-            "V2A_a": 0,
-            "V2A_b": 0,
-
-            "P2A_a": 0,
-            "P2A_b": 0,
-
-            "DF2SF_a": 0,
-            "DF2SF_b": 0,
-
-            "F2EQF1_low_lim": 0,
-            "F2EQF1_up_lim": 0,
-            "F2EQF1_a0": 0,
-            "F2EQF1_a1": 0,
-            "F2EQF1_a2": 0,
-            "F2EQF1_a3": 0,
-            "F2EQF1_a4": 0,
-            "F2EQF1_a5": 0,
-            "F2EQF1_a6": 0,
-            "F2EQF1_a7": 0,
-
-            "F2EQF2_low_lim": 0,
-            "F2EQF2_up_lim": 0,
-            "F2EQF2_a0": 0,
-            "F2EQF2_a1": 0,
-            "F2EQF2_a2": 0,
-            "F2EQF2_a3": 0,
-            "F2EQF2_a4": 0,
-            "F2EQF2_a5": 0,
-            "F2EQF2_a6": 0,
-            "F2EQF2_a7": 0,
-
+            "focus_curve_pp": None,
+            "power_curve_pp": None,
+            "eq_curve_pp": None,
+            "volt_curve_pp": None,
             }
 
         combo_sign = get_config_value(logger, config, 'Equipment', 'Combination sign', '~')
@@ -351,28 +255,24 @@ class Sequence():
                 if self.chosen_power != opt_ampl:
                     info += f"Amplitude [%]: {self._ampl} \n "
 
-                info += ("Voltage [V] vs. amplitude [%] equation (A = a*V + b): A = " +
-                         f"{self.V2A_a}*V + {self.V2A_b} \n ")
+                # Information about piecewise polynomial fits
+                info += "Conversion parameters using piecewise polynomial fits:\n "
 
-                info += ("Pressure [Pa] vs. amplitude [%] equation (A = a*P + b): A = " +
-                         f"{self.P2A_a}*P + {self.P2A_b} \n ")
+                if self._conv_param["volt_curve_pp"] is not None:
+                    info += ("- Voltage to amplitude conversion: Using piecewise polynomial fit " +
+                             f"of {self.volt_curve_file}\n ")
 
-                info += ("FWHM center wrt exit plane [mm] vs. set focus [%] equation (SF = " +
-                         f"a*FWHMC + b): SF = {self.DF2SF_a}*FWHMC + {self.DF2SF_b} \n ")
+                if self._conv_param["power_curve_pp"] is not None:
+                    info += ("- Pressure to amplitude conversion: Using piecewise polynomial fit " +
+                             f"of {self.power_curve_file}\n ")
 
-                info += ("Normalized pressure [-] vs. focal depth wrt exit plane [mm] equation " +
-                         f"between a focus wrt exit plane of {self.F2EQF1_low_lim} and " +
-                         f"{self.F2EQF1_up_lim} [mm] (EQ1 = a0 + a1*f + a2*f^2 + a3*f^3 + a4*f^4 " +
-                         f"+ a5*f^5): EQ1 = {self.F2EQF1_a0} + {self.F2EQF1_a1}*f + " +
-                         f"{self.F2EQF1_a2}*f^2 + {self.F2EQF1_a3}*f^3 + {self.F2EQF1_a4}*f^4 + " +
-                         f"{self.F2EQF1_a5}*f^5 + {self.F2EQF1_a6}*f^6 + {self.F2EQF1_a7}*f^7 \n ")
+                if self._conv_param["focus_curve_pp"] is not None:
+                    info += ("- Focus conversion: Using piecewise polynomial fit of " +
+                             f"{self.focus_curve_file}\n ")
 
-                info += ("Normalized pressure [-] vs. focal depth wrt exit plane [mm] equation " +
-                         f"between a focus wrt exit plane of {self.F2EQF2_low_lim} and " +
-                         f"{self.F2EQF2_up_lim} [mm] (EQ1 = a0 + a1*f + a2*f^2 + a3*f^3 + a4*f^4 " +
-                         f"+ a5*f^5): EQ1 = {self.F2EQF2_a0} + {self.F2EQF2_a1}*f + " +
-                         f"{self.F2EQF2_a2}*f^2 + {self.F2EQF2_a3}*f^3 + {self.F2EQF2_a4}*f^4 + " +
-                         f"{self.F2EQF2_a5}*f^5 + {self.F2EQF2_a6}*f^6 + {self.F2EQF2_a7}*f^7\n ")
+                if self._conv_param["eq_curve_pp"] is not None:
+                    info += ("- Normalization factor calculation: Using piecewise polynomial fit " +
+                             f"of {self.eq_curve_file}\n ")
 
                 info += ("Normalized pressure [-] based on chosen focal depth wrt exit plane of " +
                          f"{self._focus_wrt_exit_plane} [mm]: {self._eq_factor} \n ")
@@ -589,7 +489,7 @@ class Sequence():
                 if self._ds_tran_combo in self._equip_combos:
                     # New equipment selected, update conversion parameters
                     self._update_conv_param()
-                    self._focus_wrt_mid_bowl = self.DF2SF_a * self._focus_wrt_exit_plane + self.DF2SF_b
+                    self._focus_wrt_mid_bowl = self._conv_param['focus_curve_pp'](self._focus_wrt_exit_plane)
                 else:
                     self._focus_wrt_mid_bowl = (self._focus_wrt_exit_plane +
                                                 self._transducer.exit_plane_dist)
@@ -872,7 +772,7 @@ class Sequence():
 
         Parameters:
             ampl (list(float)): The amplitude array [%] for IGT: one value represents the value
-            for all elements..
+            for all elements.
         """
 
         # set other parameters that determine the intensity to None
@@ -909,6 +809,7 @@ class Sequence():
 
                         round_ampl = f'{self._ampl[0]:.2f}'
                         round_volt = f'{self._volt[0]:.2f}'
+
                         if n_entries > 1:
                             # Equipment is not part a combination, so only set amplitude
                             logger.debug(f'New amplitude value of {round_ampl} [%] results in a ' +
@@ -918,6 +819,7 @@ class Sequence():
                         else:
                             # Convert amplitude to pressure for logging
                             self._calc_press()
+
                             logger.debug(f'New amplitude value of {round_ampl} [%] results in a ' +
                                          f'maximum pressure in free water of {self._press:.2f} ' +
                                          f'[MPa] and a voltage of {round_volt} [V].')
@@ -1001,7 +903,7 @@ class Sequence():
 
             if self.driving_sys.require_conv_eq:
                 if self._ds_tran_combo in self._equip_combos:
-                    self._focus_wrt_mid_bowl = self.DF2SF_a * focus + self.DF2SF_b
+                    self._focus_wrt_mid_bowl = self._conv_param['focus_curve_pp'](focus)
                 else:
                     message = ('Compensation equations are not available. Focus wrt' +
                                ' mid bowl will be calculated based on exit plane distance of ' +
@@ -1083,12 +985,21 @@ class Sequence():
         if is_validated:
             if self.driving_sys.require_conv_eq:
                 if self._ds_tran_combo in self._equip_combos:
-                    if self.DF2SF_a != 0:
-                        self._focus_wrt_exit_plane = (focus - self.DF2SF_b) / self.DF2SF_a
+                    target_y_value = focus
+                    self._focus_wrt_exit_plane, status = find_x_for_y_in_pp(
+                        self._conv_param['focus_curve_pp'], target_y_value)
+
+                    if status:
+                        logger.debug(f"Found x value: {self._focus_wrt_exit_plane} for y = " +
+                                     f"{target_y_value}")
+
+                        # Verify
+                        calc_y = self._conv_param['focus_curve_pp'](self._focus_wrt_exit_plane)
+                        logger.debug(f"Verification: pp({self._focus_wrt_exit_plane}) = {calc_y}")
                     else:
-                        logger.warning('A-coefficient of focus equation (DF2SF_a) is zero. Focus ' +
-                                       'wrt exit plane will be calculated based on exit plane ' +
-                                       f'distance of {self._transducer.exit_plane_dist} [mm].')
+                        logger.warning(f"Could not find an x value for y = {target_y_value}. " +
+                                       'Focus wrt exit plane will be calculated based on exit ' +
+                                       f'plane distance of {self._transducer.exit_plane_dist} [mm].')
 
                         self._focus_wrt_exit_plane = focus - self._transducer.exit_plane_dist
 
@@ -1170,12 +1081,21 @@ class Sequence():
         if is_validated:
             if self.driving_sys.require_conv_eq:
                 if self._ds_tran_combo in self._equip_combos:
-                    if self.DF2SF_a != 0:
-                        self._focus_wrt_exit_plane = (focus - self.DF2SF_b) / self.DF2SF_a
+                    target_y_value = focus
+                    self._focus_wrt_exit_plane, status = find_x_for_y_in_pp(
+                        self._conv_param['focus_curve_pp'], target_y_value)
+
+                    if status:
+                        logger.debug(f"Found x value: {self._focus_wrt_exit_plane} for y = " +
+                                     f"{target_y_value}")
+
+                        # Verify
+                        calc_y = self._conv_param['focus_curve_pp'](self._focus_wrt_exit_plane)
+                        logger.debug(f"Verification: pp({self._focus_wrt_exit_plane}) = {calc_y}")
                     else:
-                        logger.warning('A-coefficient of focus equation (DF2SF_a) is zero. Focus ' +
-                                       'wrt exit plane will be calculated based on exit plane ' +
-                                       f'distance of {self._transducer.exit_plane_dist} [mm].')
+                        logger.warning(f"Could not find an x value for y = {target_y_value}. " +
+                                       'Focus wrt exit plane will be calculated based on exit ' +
+                                       f'plane distance of {self._transducer.exit_plane_dist} [mm].')
 
                         self._focus_wrt_exit_plane = focus - self._transducer.exit_plane_dist
 
@@ -1263,328 +1183,6 @@ class Sequence():
         """
 
         self._dephasing_degree = dephasing_degree
-
-    @property
-    def V2A_a(self):
-        """
-        Getter method for the 1st order coefficient of voltage [V] vs. amplitude [%] equation.
-
-        Returns:
-            float: The 1st order coefficient of voltage [V] vs. amplitude [%] equation.
-        """
-
-        return float(self._conv_param['V2A_a'])
-
-    @property
-    def V2A_b(self):
-        """
-        Getter method for the 0-order coefficient of voltage [V] vs. amplitude [%] equation.
-
-        Returns:
-            float: The 0-order coefficient of voltage [V] vs. amplitude [%] equation.
-        """
-
-        return float(self._conv_param['V2A_b'])
-
-    @property
-    def P2A_a(self):
-        """
-        Getter method for the 1st order coefficient of pressure [Pa] vs. amplitude [%] equation.
-
-        Returns:
-            float: The 1st order coefficient of pressure [Pa] vs. amplitude [%] equation.
-        """
-
-        return float(self._conv_param['P2A_a'])
-
-    @property
-    def P2A_b(self):
-        """
-        Getter method for the 0-order coefficient of pressure [Pa] vs. amplitude [%] equation.
-
-        Returns:
-            float: The 0-order coefficient of pressure [Pa] vs. amplitude [%] equation.
-        """
-
-        return float(self._conv_param['P2A_b'])
-
-    @property
-    def DF2SF_a(self):
-        """
-        Getter method for the 1st order coefficient of FWHM center wrt exit plane [mm] vs. set focus
-        [mm] equation.
-
-        Returns:
-            float: The 1st order coefficient of FWHM center wrt exit plane [mm] vs. set focus [mm]
-            equation.
-        """
-
-        return float(self._conv_param['DF2SF_a'])
-
-    @property
-    def DF2SF_b(self):
-        """
-        Getter method for the 0-order coefficient of FWHM center wrt exit plane [mm] vs. set focus
-        [mm] equation.
-
-        Returns:
-            float: The 0-order coefficient of FWHM center wrt exit plane [mm] vs. set focus [mm]
-            equation.
-        """
-
-        return float(self._conv_param['DF2SF_b'])
-
-    @property
-    def F2EQF1_low_lim(self):
-        """
-        Getter method for the lower limit of F2EQF1 focal depth wrt exit plane [mm].
-
-        Returns:
-            float: The lower limit of F2EQF1 focal depth wrt exit plane [mm].
-        """
-
-        return float(self._conv_param['F2EQF1_low_lim'])
-
-    @property
-    def F2EQF1_up_lim(self):
-        """
-        Getter method for the upper limit of F2EQF1 focal depth wrt exit plane [mm].
-
-        Returns:
-            float: The upper limit of F2EQF1 focal depth wrt exit plane [mm].
-        """
-
-        return float(self._conv_param['F2EQF1_up_lim'])
-
-    @property
-    def F2EQF1_a0(self):
-        """
-        Getter method for the 0-order coefficient of normalized pressure vs. focal depth wrt exit
-        plane [mm] equation.
-
-        Returns:
-            float: The 0-order coefficient of normalized pressure vs. focal depth wrt exit plane
-            [mm] equation.
-        """
-
-        return float(self._conv_param['F2EQF1_a0'])
-
-    @property
-    def F2EQF1_a1(self):
-        """
-        Getter method for the 1st order coefficient of normalized pressure vs. focal depth wrt exit
-        plane [mm] equation.
-
-        Returns:
-            float: The 1st order coefficient of normalized pressure vs. focal depth wrt exit plane
-            [mm] equation.
-        """
-
-        return float(self._conv_param['F2EQF1_a1'])
-
-    @property
-    def F2EQF1_a2(self):
-        """
-        Getter method for the 2nd order coefficient of normalized pressure vs. focal depth wrt exit
-        plane [mm] equation.
-
-        Returns:
-            float: The 2nd order coefficient of normalized pressure vs. focal depth wrt exit plane
-            [mm] equation.
-        """
-
-        return float(self._conv_param['F2EQF1_a2'])
-
-    @property
-    def F2EQF1_a3(self):
-        """
-        Getter method for the 3rd order coefficient of normalized pressure vs. focal depth wrt exit
-        plane [mm] equation.
-
-        Returns:
-            float: The 3rd order coefficient of normalized pressure vs. focal depth wrt exit plane
-            [mm] equation.
-        """
-
-        return float(self._conv_param['F2EQF1_a3'])
-
-    @property
-    def F2EQF1_a4(self):
-        """
-        Getter method for the 4th order coefficient of normalized pressure vs. focal depth wrt exit
-        plane [mm] equation.
-
-        Returns:
-            float: The 4th order coefficient of normalized pressure vs. focal depth wrt exit plane
-            [mm] equation.
-        """
-
-        return float(self._conv_param['F2EQF1_a4'])
-
-    @property
-    def F2EQF1_a5(self):
-        """
-        Getter method for the 5th order coefficient of normalized pressure vs. focal depth wrt exit
-        plane [mm] equation.
-
-        Returns:
-            float: The 5th order coefficient of normalized pressure vs. focal depth wrt exit plane
-            [mm] equation.
-        """
-
-        return float(self._conv_param['F2EQF1_a5'])
-
-    @property
-    def F2EQF1_a6(self):
-        """
-        Getter method for the 6th order coefficient of normalized pressure vs. focal depth wrt exit
-        plane [mm] equation.
-
-        Returns:
-            float: The 6th order coefficient of normalized pressure vs. focal depth wrt exit plane
-            [mm] equation.
-        """
-
-        return float(self._conv_param['F2EQF1_a6'])
-
-    @property
-    def F2EQF1_a7(self):
-        """
-        Getter method for the 7th order coefficient of normalized pressure vs. focal depth wrt exit
-        plane [mm] equation.
-
-        Returns:
-            float: The 7th order coefficient of normalized pressure vs. focal depth wrt exit plane
-            [mm] equation.
-        """
-
-        return float(self._conv_param['F2EQF1_a7'])
-
-    @property
-    def F2EQF2_low_lim(self):
-        """
-        Getter method for the lower limit of F2EQF2 focal depth wrt exit plane [mm].
-
-        Returns:
-            float: The lower limit of F2EQF2 focal depth wrt exit plane [mm].
-        """
-
-        return float(self._conv_param['F2EQF2_low_lim'])
-
-    @property
-    def F2EQF2_up_lim(self):
-        """
-        Getter method for the upper limit of F2EQF2 focal depth wrt exit plane [mm].
-
-        Returns:
-            float: The upper limit of F2EQF2 focal depth wrt exit plane [mm].
-        """
-
-        return float(self._conv_param['F2EQF2_up_lim'])
-
-    @property
-    def F2EQF2_a0(self):
-        """
-        Getter method for the 0-order coefficient of normalized pressure vs. focal depth wrt exit
-        plane [mm] equation.
-
-        Returns:
-            float: The 0-order coefficient of normalized pressure vs. focal depth wrt exit plane
-            [mm] equation.
-        """
-
-        return float(self._conv_param['F2EQF2_a0'])
-
-    @property
-    def F2EQF2_a1(self):
-        """
-        Getter method for the 1st order coefficient of normalized pressure vs. focal depth wrt exit
-        plane [mm] equation.
-
-        Returns:
-            float: The 1st order coefficient of normalized pressure vs. focal depth wrt exit plane
-            [mm] equation.
-        """
-
-        return float(self._conv_param['F2EQF2_a1'])
-
-    @property
-    def F2EQF2_a2(self):
-        """
-        Getter method for the 2nd order coefficient of normalized pressure vs. focal depth wrt exit
-        plane [mm] equation.
-
-        Returns:
-            float: The 2nd order coefficient of normalized pressure vs. focal depth wrt exit plane
-            [mm] equation.
-        """
-
-        return float(self._conv_param['F2EQF2_a2'])
-
-    @property
-    def F2EQF2_a3(self):
-        """
-        Getter method for the 3rd order coefficient of normalized pressure vs. focal depth wrt exit
-        plane [mm] equation.
-
-        Returns:
-            float: The 3rd order coefficient of normalized pressure vs. focal depth wrt exit plane
-            [mm] equation.
-        """
-
-        return float(self._conv_param['F2EQF2_a3'])
-
-    @property
-    def F2EQF2_a4(self):
-        """
-        Getter method for the 4th order coefficient of normalized pressure vs. focal depth wrt exit
-        plane [mm] equation.
-
-        Returns:
-            float: The 4th order coefficient of normalized pressure vs. focal depth wrt exit plane
-            [mm] equation.
-        """
-
-        return float(self._conv_param['F2EQF2_a4'])
-
-    @property
-    def F2EQF2_a5(self):
-        """
-        Getter method for the 5th order coefficient of normalized pressure vs. focal depth wrt exit
-        plane [mm] equation.
-
-        Returns:
-            float: The 5th order coefficient of normalized pressure vs. focal depth wrt exit plane
-            [mm] equation.
-        """
-
-        return float(self._conv_param['F2EQF2_a5'])
-
-    @property
-    def F2EQF2_a6(self):
-        """
-        Getter method for the 6th order coefficient of normalized pressure vs. focal depth wrt exit
-        plane [mm] equation.
-
-        Returns:
-            float: The 6th order coefficient of normalized pressure vs. focal depth wrt exit plane
-            [mm] equation.
-        """
-
-        return float(self._conv_param['F2EQF2_a6'])
-
-    @property
-    def F2EQF2_a7(self):
-        """
-        Getter method for the 7th order coefficient of normalized pressure vs. focal depth wrt exit
-        plane [mm] equation.
-
-        Returns:
-            float: The 5th order coefficient of normalized pressure vs. focal depth wrt exit plane
-            [mm] equation.
-        """
-
-        return float(self._conv_param['F2EQF2_a7'])
 
     @property
     def eq_factor(self):
@@ -1825,58 +1423,29 @@ class Sequence():
 
         section_name = 'Equipment.Combination.' + self._ds_tran_combo
 
+        self.eq_curve_file = get_config_value(logger, config, section_name,
+                                              'EqualizationCurveFit json file', None, True)
+
+        self.focus_curve_file = get_config_value(logger, config, section_name,
+                                                 'FocusCurveFit json file', None, True)
+
+        self.power_curve_file = get_config_value(logger, config, section_name,
+                                                 'PowerCurveFit json file', None, True)
+
+        self.volt_curve_file = get_config_value(logger, config, section_name,
+                                                'VoltageCurveFit json file', None, True)
+
+        eq_pp, eq_breaks = extract_and_define_pp(self.eq_curve_file, return_breaks=True)
+
         self._conv_param = {
-            "V2A_a": float(get_config_value(logger, config, section_name, 'V2A a-coeff', 0)),
-            "V2A_b": float(get_config_value(logger, config, section_name, 'V2A b-coeff', 0)),
-
-            "P2A_a": float(get_config_value(logger, config, section_name, 'P2A a-coeff', 0)),
-            "P2A_b": float(get_config_value(logger, config, section_name, 'P2A b-coeff', 0)),
-
-            "DF2SF_a": float(get_config_value(logger, config, section_name, 'DF2SF a-coeff', 0)),
-            "DF2SF_b": float(get_config_value(logger, config, section_name, 'DF2SF b-coeff', 0)),
-
-            "F2EQF1_low_lim": float(get_config_value(logger, config, section_name,
-                                                     'F2EQF1 foc. low lim.', 0)),
-            "F2EQF1_up_lim": float(get_config_value(logger, config, section_name,
-                                                    'F2EQF1 foc. upper lim.', 0)),
-            "F2EQF1_a0": float(get_config_value(logger, config, section_name, 'F2EQF1 a0-coeff',
-                                                0)),
-            "F2EQF1_a1": float(get_config_value(logger, config, section_name, 'F2EQF1 a1-coeff',
-                                                0)),
-            "F2EQF1_a2": float(get_config_value(logger, config, section_name, 'F2EQF1 a2-coeff',
-                                                0)),
-            "F2EQF1_a3": float(get_config_value(logger, config, section_name, 'F2EQF1 a3-coeff',
-                                                0)),
-            "F2EQF1_a4": float(get_config_value(logger, config, section_name, 'F2EQF1 a4-coeff',
-                                                0)),
-            "F2EQF1_a5": float(get_config_value(logger, config, section_name, 'F2EQF1 a5-coeff',
-                                                0)),
-            "F2EQF1_a6": float(get_config_value(logger, config, section_name, 'F2EQF1 a6-coeff',
-                                                0)),
-            "F2EQF1_a7": float(get_config_value(logger, config, section_name, 'F2EQF1 a7-coeff',
-                                                0)),
-
-            "F2EQF2_low_lim": float(get_config_value(logger, config, section_name,
-                                                     'F2EQF2 foc. low lim.', 0)),
-            "F2EQF2_up_lim": float(get_config_value(logger, config, section_name,
-                                                    'F2EQF2 foc. upper lim.', 0)),
-            "F2EQF2_a0": float(get_config_value(logger, config, section_name, 'F2EQF2 a0-coeff',
-                                                0)),
-            "F2EQF2_a1": float(get_config_value(logger, config, section_name, 'F2EQF2 a1-coeff',
-                                                0)),
-            "F2EQF2_a2": float(get_config_value(logger, config, section_name, 'F2EQF2 a2-coeff',
-                                                0)),
-            "F2EQF2_a3": float(get_config_value(logger, config, section_name, 'F2EQF2 a3-coeff',
-                                                0)),
-            "F2EQF2_a4": float(get_config_value(logger, config, section_name, 'F2EQF2 a4-coeff',
-                                                0)),
-            "F2EQF2_a5": float(get_config_value(logger, config, section_name, 'F2EQF2 a5-coeff',
-                                                0)),
-            "F2EQF2_a6": float(get_config_value(logger, config, section_name, 'F2EQF2 a6-coeff',
-                                                0)),
-            "F2EQF2_a7": float(get_config_value(logger, config, section_name, 'F2EQF2 a7-coeff',
-                                                0))
+            "focus_curve_pp": extract_and_define_pp(self.focus_curve_file),
+            "power_curve_pp": extract_and_define_pp(self.power_curve_file),
+            "eq_curve_pp": eq_pp,
+            "volt_curve_pp": extract_and_define_pp(self.volt_curve_file),
             }
+
+        self.transducer.min_foc = min(eq_breaks)
+        self.transducer.max_foc = max(eq_breaks)
 
         self._calc_eq_factor()
 
@@ -1898,57 +1467,53 @@ class Sequence():
 
     def _calc_eq_factor(self):
         """
-        Calculate equalization factor of the pressure vs. focal depth wrt exit plane [mm] equation
-        (EQF = a0 + a1*f + a2*f^2 + a3*f^3 + a4*f^4 + a5*f^5).
+        Calculate equalization factor of the pressure vs. focal depth wrt exit plane [mm] equation.
         """
 
-        if self._focus_wrt_exit_plane >= self.F2EQF1_low_lim and self._focus_wrt_exit_plane <= self.F2EQF1_up_lim:
-            self._eq_factor = (self.F2EQF1_a0 + self.F2EQF1_a1*self._focus_wrt_exit_plane +
-                               self.F2EQF1_a2*math.pow(self._focus_wrt_exit_plane, 2) +
-                               self.F2EQF1_a3*math.pow(self._focus_wrt_exit_plane, 3) +
-                               self.F2EQF1_a4*math.pow(self._focus_wrt_exit_plane, 4) +
-                               self.F2EQF1_a5*math.pow(self._focus_wrt_exit_plane, 5) +
-                               self.F2EQF1_a6*math.pow(self._focus_wrt_exit_plane, 6) +
-                               self.F2EQF1_a7*math.pow(self._focus_wrt_exit_plane, 7))
-        elif self._focus_wrt_exit_plane > self.F2EQF2_low_lim and self._focus_wrt_exit_plane <= self.F2EQF2_up_lim:
-            self._eq_factor = (self.F2EQF2_a0 + self.F2EQF2_a1*self._focus_wrt_exit_plane +
-                               self.F2EQF2_a2*math.pow(self._focus_wrt_exit_plane, 2) +
-                               self.F2EQF2_a3*math.pow(self._focus_wrt_exit_plane, 3) +
-                               self.F2EQF2_a4*math.pow(self._focus_wrt_exit_plane, 4) +
-                               self.F2EQF2_a5*math.pow(self._focus_wrt_exit_plane, 5) +
-                               self.F2EQF2_a6*math.pow(self._focus_wrt_exit_plane, 6) +
-                               self.F2EQF2_a7*math.pow(self._focus_wrt_exit_plane, 7))
-        else:
-            message = (f'Focus wrt exit plane of {self._focus_wrt_exit_plane} mm is not within ' +
-                       f'the limits of {self.F2EQF1_low_lim} and {self.F2EQF2_up_lim} [mm].')
+        try:
+            self._eq_factor = self._conv_param['eq_curve_pp'](self._focus_wrt_exit_plane)
+        except ValueError as e:
+            message = (f'{e} \n Focus wrt exit plane of {self._focus_wrt_exit_plane} mm is not ' +
+                       f'within the limits of {self.transducer.min_foc} and ' +
+                       f'{self.transducer.max_foc} [mm].')
             logger.critical(message)
             sys.exit(message)
 
     def _calc_volt(self):
         """
-        Calculate amplitude [%] vs. voltage [V] equation V = (A - b)/a when amplitude is
-        updated.
+        Calculate amplitude [%] vs. voltage [V] equation when amplitude is updated.
         """
 
         volt = []
         for ampl in self._ampl:
-            # Prevent division by zero
-            if self.V2A_a == 0:
-                volt.append(0)
+            volt_value, status = find_x_for_y_in_pp(self._conv_param['volt_curve_pp'], ampl)
+
+            if status:
+                logger.debug(f"Found x value: {volt_value} for y = {ampl}")
+
+                # Verify
+                calc_y = self._conv_param['volt_curve_pp'](volt_value)
+                logger.debug(f"Verification: pp({volt_value}) = {calc_y}")
+
             else:
-                volt.append((ampl - self.V2A_b) / self.V2A_a)
+                volt_value = 0
+                logger.error(f"Could not find a voltage value for amplitude = {ampl}")
+
+            volt.append(volt_value)
 
         self._volt = volt
 
     def _calc_ampl(self):
         """
-        Calculate pressure [Pa] vs. amplitude [%] equation (A = a*(P*EQF) + b) when pressure is
-        updated.
+        Calculate pressure [Pa] vs. amplitude [%] equation when pressure is updated.
         """
 
         press_pa = self._press * 1e6  # convert to Pa
-        calc_ampl = self.P2A_a * (press_pa * self._eq_factor) + self.P2A_b
-        if calc_ampl > 100:
+
+        x_value = press_pa * self._eq_factor
+        calc_ampl, range_status = safe_evaluate_pp(self._conv_param['power_curve_pp'], x_value)
+
+        if range_status == "above_range":
             self._ampl = [100]
             self._calc_press()
             self._calc_volt()
@@ -1959,25 +1524,29 @@ class Sequence():
                        'Change input value.')
             logger.critical(message)
             sys.exit(message)
-        elif calc_ampl < 0:
+        elif range_status == "below_range":
             logger.debug('Calculated amplitude below 0%, so cut off the amplitude at 0%.')
             self._ampl = [0]
             self._calc_press()
             self._calc_volt()
 
         else:
+
+            if calc_ampl < 0:
+                calc_ampl = 0
+
             self._ampl = [round(float(calc_ampl), 2)]
 
     def _calc_ampl_using_volt(self):
         """
-        Calculate voltage [V] vs. amplitude [%] equation (A = a*V + b) when voltage is
-        updated.
+        Calculate voltage [V] vs. amplitude [%] equation when voltage is updated.
         """
 
         ampl = []
         for volt in self._volt:
-            calc_ampl = self.V2A_a * volt + self.V2A_b
-            if calc_ampl > 100:
+            calc_ampl, range_status = safe_evaluate_pp(self._conv_param['volt_curve_pp'], volt)
+
+            if range_status == "above_range":
                 self._ampl = [100]
                 self._calc_press()
                 self._calc_volt()
@@ -1986,12 +1555,15 @@ class Sequence():
                            f'[MPa] and/or a voltage of {self._volt[0]:.2f} [V] will result in an ' +
                            'amplitude of 100% at focus wrt exit plane of ' +
                            f'{self._focus_wrt_exit_plane} [mm]. Change input value.')
+
                 logger.critical(message)
                 sys.exit(message)
-
-            elif calc_ampl < 0:
+            elif range_status == "below_range":
                 logger.debug(('Calculated amplitude below 0%, so cut off the amplitude at 0% and ' +
                               'recalculate the pressure.'))
+                calc_ampl = 0
+
+            if calc_ampl < 0:
                 calc_ampl = 0
 
             ampl.append(round(float(calc_ampl), 2))
@@ -2000,23 +1572,34 @@ class Sequence():
 
     def _calc_press(self):
         """
-        Calculate pressure [Pa] vs. amplitude [%] equation (P = (A - b)/(a*EQF)) when amplitude is
-        updated.
+        Calculate pressure [Pa] vs. amplitude [%] equation when amplitude is updated.
         """
 
-        press_pa = (self._ampl[0] - self.P2A_b) / (self.P2A_a * self._eq_factor)
-        press_mpa = press_pa * 1e-6  # convert to MPa
+        target_y_value = self._ampl[0]
+        press_pa_with_eq_fact, status = find_x_for_y_in_pp(self._conv_param['power_curve_pp'],
+                                                           target_y_value)
 
-        max_press = float(get_config_value(logger, config, 'Power',
-                                           'Maximum pressure allowed in free water [MPa]', 1.4))
-        if press_mpa > max_press:
-            message = (f'The set maximum pressure in free water of {press_mpa} [MPa] is ' +
-                       f'crossing the allowed limit of {max_press} [MPa]. Please change' +
-                       ' your value.')
-            logger.critical(message)
-            sys.exit(message)
+        if status:
+            logger.debug(f"Found x value: {press_pa_with_eq_fact} for y = {target_y_value}")
 
-        self._press = press_mpa  # convert to MPa
+            # Verify
+            calc_y = self._conv_param['power_curve_pp'](press_pa_with_eq_fact)
+            logger.debug(f"Verification: pp({press_pa_with_eq_fact}) = {calc_y}")
+
+            press_mpa = (press_pa_with_eq_fact / self._eq_factor) * 1e-6
+            max_press = float(get_config_value(logger, config, 'Power',
+                                               'Maximum pressure allowed in free water [MPa]', 1.4))
+            if press_mpa > max_press:
+                message = (f'The set maximum pressure in free water of {press_mpa} [MPa] is ' +
+                           f'crossing the allowed limit of {max_press} [MPa]. Please change' +
+                           ' your value.')
+                logger.critical(message)
+                sys.exit(message)
+
+            self._press = press_mpa  # convert to MPa
+        else:
+            self._press = None
+            logger.error(f"Could not find a pressure value for amplitude = {target_y_value}")
 
 
 def validate_value(value, input_param, check_num, check_pos, check_nonzero, check_bool,
@@ -2089,3 +1672,151 @@ def _check_parameter(val_messages, value, input_name, check_nonzero, check_num, 
     if check_bool and not isinstance(value, bool):
         val_messages.append(f'{input_name} should be a boolean.')
     return val_messages
+
+
+def extract_and_define_pp(json_dir, return_breaks=False):
+    """
+    This function loads polynomial coefficients and breakpoints from a JSON file that was exported
+    from MATLAB. It handles potential format inconsistencies and converts the data to be compatible
+    with SciPy's PPoly class.
+
+    Parameters:
+        json_path (str): Path to the JSON file containing the piecewise polynomial parameters.
+        return_breaks (bool): If True, returns both the PPoly object and the breakpoints array.
+            Default is False.
+
+    Returns:
+        scipy.interpolate.PPoly: A piecewise polynomial object that can be used for interpolation.
+        numpy.ndarray, optional: Array of breakpoints if return_breaks=True.
+
+    Raises:
+        SystemExit: If xTransform is specified but not 'none', as transforms are not implemented.
+
+    Notes:
+        The function expects coefficients in the format used by MATLAB and converts them to
+        the format expected by SciPy's PPoly constructor. For linear functions (order=2),
+        coefficients are reversed. The resulting PPoly has extrapolation disabled.
+    """
+
+    # Load the JSON file
+    json_path = pkg_resources.resource_filename('fus_driving_systems', json_dir)
+    with open(json_path, 'r') as f:
+        data = json.load(f)
+
+    # Extract only the necessary components
+    try:
+        xTransform = np.array(data['xTransform'])
+        if xTransform.item() != 'none':
+            message = 'A transform of the x value is expected, but not implemented.'
+            logger.error(message)
+            sys.exit(message)
+    except KeyError:
+        logger.debug('xTransform is not part of the file structure.')
+    except TypeError:
+        logger.warning('Data structure does not support this type of access.')
+    except ValueError as ve:
+        logger.warning(f'Error converting xTransform to numpy array: {ve}')
+    except Exception as e:
+        logger.warning(f'Unknown error checking for xTransform: {str(e)}')
+
+    breaks = np.array(data['FitParams']['breaks'])
+    coefs_data = data['FitParams']['coefs']
+
+    order = len(coefs_data[0])
+
+    # Calculate number of pieces from breaks
+    pieces = len(breaks) - 1
+
+    logger.debug(f"Extracted order: {order}")
+    logger.debug(f"Number of pieces: {pieces}")
+
+    # Convert coefficients to the format expected by PPoly
+    # SciPy expects shape (k, m) where k is order and m is pieces
+    coefs = np.zeros((order, pieces))
+    for i, coef_set in enumerate(coefs_data):
+        # For linear functions (order=2), just reverse
+        if order == 2:
+            coefs[:, i] = coef_set[::-1]
+        else:
+            # For higher order polynomials, we need to be more careful
+            # This assumes MATLAB provides coefficients in descending order
+            coefs[:, i] = coef_set
+
+    # Create the PPoly object
+    pp = PPoly(coefs, breaks, extrapolate=False)
+
+    if return_breaks:
+        return pp, breaks
+
+    return pp
+
+
+def safe_evaluate_pp(pp, x_value):
+    """
+    Safely evaluate polynomial with range information
+    """
+
+    # Get domain boundaries
+    x_min = pp.x[0]
+    x_max = pp.x[-1]
+
+    # Determine if value is outside range
+    if x_value < x_min:
+        return None, "below_range"
+    elif x_value > x_max:
+        return None, "above_range"
+    else:
+        return pp(x_value), "in_range"
+
+
+def find_x_for_y_in_pp(pp, y_value, x_min=None, x_max=None, tol=1e-6):
+    """
+    Find the x value corresponding to a given y value in a monotonic piecewise polynomial.
+
+    Args:
+        pp: Piecewise polynomial object (from scipy.interpolate)
+        y_value: Target y value to find the corresponding x value for
+        x_min: Minimum x value to consider (defaults to pp.x[0])
+        x_max: Maximum x value to consider (defaults to pp.x[-1])
+        tol: Tolerance for the root finding algorithm
+
+    Returns:
+        tuple: (x_value, status_code)
+            - x_value: The x value corresponding to y_value, or None if not found
+            - status_code: True if an x value was found, False otherwise
+    """
+    # Set default bounds if not provided
+    if x_min is None:
+        x_min = pp.x[0]
+    if x_max is None:
+        x_max = pp.x[-1]
+
+    # Define the objective function: pp(x) - y_value = 0
+    def objective(x):
+        return pp(x) - y_value
+
+    try:
+        # Check if y_value is within the range of pp
+        y_min = pp(x_min)
+        y_max = pp(x_max)
+
+        # Determine if pp is increasing or decreasing
+        is_increasing = y_max > y_min
+
+        # Check if y_value is within range
+        if (is_increasing and (y_value < y_min or y_value > y_max)) or \
+           (not is_increasing and (y_value > y_min or y_value < y_max)):
+            return None, False
+
+        # Use root finding to find the x value
+        result = optimize.brentq(objective, x_min, x_max, xtol=tol)
+
+        # Verify the result
+        if abs(pp(result) - y_value) <= tol:
+            return result, True
+        else:
+            return None, False
+
+    except Exception as e:
+        logger.error(f"Error finding x value: {e}")
+        return None, False

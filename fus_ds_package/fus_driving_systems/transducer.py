@@ -70,8 +70,8 @@ class Transducer:
         self.fund_freq = 0  # [kHz]
         self.natural_foc = 0  # [mm]
         self.exit_plane_dist = 0  # [mm]
-        self.min_foc = float(get_config_value(logger, config, 'Focus', 'default.minimum', 0))  # [mm]
-        self.max_foc = float(get_config_value(logger, config, 'Focus', 'default.maximum', 1000))  # [mm]
+        self.min_foc = float(get_config_value(logger, config, 'Focus', 'Default.minimum', 0))  # [mm]
+        self.max_foc = float(get_config_value(logger, config, 'Focus', 'Default.maximum', 1000))  # [mm]
         self.steer_info = None
         self.is_active = True
 
@@ -94,12 +94,12 @@ class Transducer:
             self.natural_foc = float(get_config_value(logger, config, section, 'Natural focus', 0))
             self.exit_plane_dist = float(get_config_value(logger, config, section,
                                                           'Exit plane - first element dist.', 0))
-
-            default_min = float(get_config_value(logger, config, 'Focus', 'default.minimum', 0))
+            default_min = float(get_config_value(logger, config, 'Focus', 'Default.minimum', 0))
             self.min_foc = float(get_config_value(logger, config, section, 'Min. focus',
                                                   default_min))
 
-            default_max = float(get_config_value(logger, config, 'Focus', 'default.maximum', 1000))
+            default_max = float(get_config_value(logger, config, 'Focus', 'Default.maximum', 1000))
+
             self.max_foc = float(get_config_value(logger, config, section, 'Max. focus',
                                                   default_max))
 

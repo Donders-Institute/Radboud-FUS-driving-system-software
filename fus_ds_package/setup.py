@@ -39,6 +39,7 @@ setup(name='fus_driving_systems',
       packages=find_packages(),
       package_data={'fus_driving_systems': ['config/*', 'igt/config/imasonic_transducers/*',
                                             'igt/config/sonic_concepts_transducers/*',
+                                            'igt/config/conversion_data/*',
                                             'igt/config/*.json', 'igt/*.pyd']},
       py_modules=['driving_system', 'transducer', 'control_driving_system', 'sequence', 'utils'],
       zip_safe=False)
