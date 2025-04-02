@@ -141,8 +141,10 @@ if use_two_transducers:
 
     # either set maximum pressure in free water [MPa], voltage [V] or amplitude [%]
     seq2.press = 0.3  # [MPa], maximum pressure in free water
-    # seq2.volt = 0  # [V], voltage per channel
-    # seq2.ampl = 10  # [%], amplitude. NOTE: DIFFERENT THAN SC
+    # seq2.volt = [4.65]  # [V], voltage per channel, equal for all elements
+    # seq2.volt = [0, 0, 0, 0, 4.65, 0, 0, 0, 0, 0] # [V], voltage per channel, per element
+    # seq2.ampl = 27.9  # [%], amplitude, equal for all elements
+    # seq2.ampl = [27.9, 0, 0, 0, 0, 0, 0, 0, 0, 0]  # [%], amplitude per element
 
 # Check if available channels is equal to the number of elements of the transducer
 elif seq1.driving_sys.available_ch != seq1.transducer.elements:
@@ -178,7 +180,7 @@ seq1.wait_for_trigger = False
 # When you only want to trigger a pulse train repetition once: 'TriggerOnePulseTrainRepetition'
 # Multiple times triggering a pulse train repetition isn't supported.
 # to check available trigger options: print(seq1.get_trigger_options())
-seq1.trigger_option = 'TriggerOnePulseTrainRepetition'
+seq1.trigger_option = 'TriggerSequence'
 if seq1.wait_for_trigger and seq1.trigger_option == get_config_value(logger, config, 'Trigger',
                                                                      'option.seq',
                                                                      'TriggerSequence'):

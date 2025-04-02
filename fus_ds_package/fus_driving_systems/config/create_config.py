@@ -44,6 +44,8 @@ config['General']['Configuration file folder'] = CONFIG_FOLDER
 config['General']['Maximum reconnection attempts'] = str(5)
 config['General']['Package name'] = 'fus_driving_systems'
 config['General']['Speed of sound water [m/s]'] = str(1500)
+# DEPRECATED
+config['General']['Trigger option.seq'] = 'TriggerSequence'
 
 # Logging
 config['Logging'] = {}
