@@ -37,6 +37,7 @@ import sys
 from fus_driving_systems.config.config import config_info as config
 from fus_driving_systems import driving_system, transducer
 from fus_driving_systems import sequence
+from fus_driving_systems.utils import get_config_value
 
 
 def create_sequence_collection(logger):
@@ -160,7 +161,9 @@ def create_sequence_collection(logger):
     # Multiple times triggering a pulse train repetition isn't supported.
     # to check available trigger options: print(seq3.get_trigger_options())
     seq3.trigger_option = 'TriggerOnePulseTrainRepetition'
-    if seq3.wait_for_trigger and seq3.trigger_option == config['General']['Trigger option.seq']:
+    if seq3.wait_for_trigger and seq3.trigger_option == get_config_value(logger, config, 'Trigger',
+                                                                         'option.seq',
+                                                                         'TriggerSequence'):
         seq3.n_triggers = 4  # number of timings above defined sequence will be triggered
 
     else:
