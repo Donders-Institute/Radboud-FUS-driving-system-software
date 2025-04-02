@@ -24,10 +24,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 **Attribution Notice**:
-If you use this kit in your research or project, please include the following attribution:
-Margely Cornelissen, Stein Fekkes (Radboud University, Nijmegen, The Netherlands) & Erik Dumont
-(Image Guided Therapy, Pessac, France) (2024), Radboud FUS measurement kit (version 1.0),
-https://github.com/Donders-Institute/Radboud-FUS-measurement-kit
+If you use this kit in your research or project, please refer to the 'How to Cite' section in the
+README.md file of https://github.com/Donders-Institute/Radboud-FUS-measurement-kit.
 """
 
 # -------------------------------------------------------------------------------
@@ -42,7 +40,10 @@ https://github.com/Donders-Institute/Radboud-FUS-measurement-kit
 # -------------------------------------------------------------------------------
 
 # Access the logger
+from fus_driving_systems.config.config import config_info as config
+from fus_driving_systems.utils import get_config_value
 from fus_driving_systems.config.logging_config import logger
+
 import sys
 import math
 try:  # for Python 2/3 compatibility
@@ -55,7 +56,9 @@ except ImportError:
     import configparser as cfg
 
 
-SOUND_SPEED_WATER = 1500.0  # sound speed in water, m.s-1
+SOUND_SPEED_WATER = float(get_config_value(logger, config, 'General',
+                                           'Speed of sound water [m/s]',
+                                           1500.0))  # sound speed in water, m.s-1
 TWO_PI = 2.0 * math.pi      # 2 pi, rad
 
 
@@ -96,14 +99,20 @@ class Transducer(object):
                     text += line
             return self.loadFromString(text)
         except IOError as e:
-            print("Error: "+str(e))
+            message = f'Error: {e}'
+            logger.critical(message)
+            sys.exit(message)
+
             return False
 
     def loadFromString(self, definition):
         config = cfg.ConfigParser()
         stringio = StringIO(definition)
         if config.readfp(stringio) == []:
-            print("Error: empty content")
+            message = 'Error: empty content'
+            logger.critical(message)
+            sys.exit(message)
+
             return False
         return self._loadConfig(config)
 
@@ -115,10 +124,16 @@ class Transducer(object):
             # self.focalLength = config.getfloat ("transducer", "focalLength") / 1000.0
             size = config.getint("elements", "size")
         except:
-            print("Error: missing 'elements.size' parameter")
+            message = "Error: missing 'elements.size' parameter"
+            logger.critical(message)
+            sys.exit(message)
+
             return False
         if size == 0:
-            print("Error: size is 0")
+            message = "Error: size is 0"
+            logger.critical(message)
+            sys.exit(message)
+
             return False
 
         self.elements = []
@@ -130,7 +145,10 @@ class Transducer(object):
                 item = (float(coords[0])/1000.0, float(coords[1])/1000.0, float(coords[2])/1000.0)
                 self.elements.append(item)
             except Exception as ex:
-                print("Error: "+str(ex))
+                message = f"Error: {ex}"
+                logger.critical(message)
+                sys.exit(message)
+
                 return False
 
         return True
@@ -155,14 +173,20 @@ class Transducer(object):
 
         freqCount = pulse.frequencyCount()
         if freqCount == 0 or pulse.frequency(0) == 0:
-            print("Error: the frequencies must be defined in the pulse before calling" +
-                  "computePhases().")
+            message = ("Error: the frequencies must be defined in the pulse before calling" +
+                       "computePhases().")
+            logger.critical(message)
+            sys.exit(message)
+
             return False
         if freqCount == 1:
             wavelen = SOUND_SPEED_WATER / pulse.frequency(0)
         elif freqCount != self.channelCount():
-            print("Error: bad number of frequencies (%d in pulse, %d elements in transducer)"
-                  % (freqCount, self.channelCount()))
+            message = (f"Error: bad number of frequencies ({freqCount} in pulse, " +
+                       f"{self.channelCount()} elements in transducer)")
+            logger.critical(message)
+            sys.exit(message)
+
             return False
 
         phases = [0.0] * self.channelCount()
@@ -181,9 +205,12 @@ class Transducer(object):
 
         if dephasing_degree is not None:
             if len(dephasing_degree) > 1:
-                logger.error('Too few or too many entries given at dephasing_degree.' +
-                             ' Only the first one is now used for dephasing purposes.')
-                sys.exit()
+                message = (f'Number of dephasing entries ({len(dephasing_degree)}) does not ' +
+                           'correspond to number of transducer elements ' +
+                           f'({self.channelCount()}). Only enter one dephasing value or n-values ' +
+                           'equal to the number of transducer elements.')
+                logger.critical(message)
+                sys.exit(message)
 
             dephasing_degree = dephasing_degree[0]
 
@@ -200,7 +227,7 @@ class Transducer(object):
 
         phases_str = ', '.join([format(x, '.2f') for x in phases])
         natural_foc = set_focus_mm + point_mm[2]
-        logger.info(f'Computed phases for focus wrt mid bowl of {set_focus_mm} and aim w.r.t. ' +
-                    f'natural focus of {natural_foc}: {phases_str}')
+        logger.debug(f'Computed phases for focus wrt mid bowl of {set_focus_mm} and aim w.r.t. ' +
+                     f'natural focus of {natural_foc}: {phases_str}')
 
         return phases

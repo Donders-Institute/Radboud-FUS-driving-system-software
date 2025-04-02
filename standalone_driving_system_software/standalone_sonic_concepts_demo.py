@@ -38,7 +38,7 @@ README.md file of https://github.com/Donders-Institute/Radboud-FUS-driving-syste
 from fus_driving_systems.config.logging_config import initialize_logger
 
 log_dir = "C://Temp"
-filename = "standalone_sc"
+filename = "standalone_sc_demo"
 logger = initialize_logger(log_dir, filename)
 
 # When this code is embedded in other code with logging, ignore above commands and sync the logger
@@ -62,48 +62,88 @@ from fus_driving_systems import sequence
 # later on in the code
 ##############################################################################
 
-seq = sequence.Sequence()
+slow_seq = sequence.Sequence()
 
 # equipment
 # to check available driving systems: print(driving_system.get_ds_serials())
 # choose one driving system from that list as input
-seq.driving_sys = '105-010'
-seq.driving_sys.connect_info = 'COM5'  # COM port the driving system is connected to
+slow_seq.driving_sys = '203-035'
+slow_seq.driving_sys.connect_info = 'COM5'  # COM port the driving system is connected to
 
 # set wait_for_trigger to true if you want to use trigger
-seq.wait_for_trigger = False
+slow_seq.wait_for_trigger = False
 
 # to check available transducers: print(transducer.get_tran_serials())
 # choose one transducer from that list as input
-seq.transducer = 'CTX-500-026'
+slow_seq.transducer = 'CTX-250-014'
 
 # set general parameters
-seq.oper_freq = 500  # [kHz], operating frequency
-seq.focus_wrt_exit_plane = 40  # [mm], focal depth
-seq.global_power = 2.5  # [W], global power. NOTE: DIFFERENT THAN IGT
+slow_seq.oper_freq = 250  # [kHz], operating frequency
+slow_seq.focus_wrt_exit_plane = 40  # [mm], focal depth
+slow_seq.global_power = 15  # [W], global power. NOTE: DIFFERENT THAN IGT
 
 # # timing parameters # #
 # you can use the TUS Calculator to visualize the timing parameters:
 # https://www.socsci.ru.nl/fusinitiative/tuscalculator/
 
 # ## pulse ## #
-seq.pulse_dur = 10  # [ms], pulse duration
-seq.pulse_rep_int = 200  # [ms], pulse repetition interval
+slow_seq.pulse_dur = 100  # [ms], pulse duration
+slow_seq.pulse_rep_int = 1000  # [ms], pulse repetition interval
 
 # pulse ramping
 # to check available ramp shapes: print(seq.get_ramp_shapes())
 # choose one ramp shape from that list as input
-seq.pulse_ramp_shape = 'Rectangular - no ramping'
+slow_seq.pulse_ramp_shape = 'Rectangular - no ramping'
 
 # ramping up and ramping down duration are equal and are equal to ramp duration
-seq.pulse_ramp_dur = 0  # [ms], ramp duration
+slow_seq.pulse_ramp_dur = 0  # [ms], ramp duration
 
 # ## pulse train ## #
 # if you only want one pulse train, keep the values equal to the pulse repetition interval
-seq.pulse_train_dur = 200  # [ms], pulse train duration
+slow_seq.pulse_train_dur = 80000  # [ms], pulse train duration
 
-# to get a summary of your entered sequence: print(seq)
-logger.info(f'The following sequence is used: {seq}')
+
+#################################################################
+
+fast_seq = sequence.Sequence()
+
+# equipment
+# to check available driving systems: print(driving_system.get_ds_serials())
+# choose one driving system from that list as input
+fast_seq.driving_sys = '203-035'
+fast_seq.driving_sys.connect_info = 'COM5'  # COM port the driving system is connected to
+
+# set wait_for_trigger to true if you want to use trigger
+fast_seq.wait_for_trigger = False
+
+# to check available transducers: print(transducer.get_tran_serials())
+# choose one transducer from that list as input
+fast_seq.transducer = 'CTX-250-014'
+
+# set general parameters
+fast_seq.oper_freq = 250  # [kHz], operating frequency
+fast_seq.focus_wrt_exit_plane = 40  # [mm], focal depth
+fast_seq.global_power = 15  # [W], global power. NOTE: DIFFERENT THAN IGT
+
+# # timing parameters # #
+# you can use the TUS Calculator to visualize the timing parameters:
+# https://www.socsci.ru.nl/fusinitiative/tuscalculator/
+
+# ## pulse ## #
+fast_seq.pulse_dur = 0.1  # [ms], pulse duration
+fast_seq.pulse_rep_int = 1  # [ms], pulse repetition interval
+
+# pulse ramping
+# to check available ramp shapes: print(seq.get_ramp_shapes())
+# choose one ramp shape from that list as input
+fast_seq.pulse_ramp_shape = 'Rectangular - no ramping'
+
+# ramping up and ramping down duration are equal and are equal to ramp duration
+fast_seq.pulse_ramp_dur = 0  # [ms], ramp duration
+
+# ## pulse train ## #
+# if you only want one pulse train, keep the values equal to the pulse repetition interval
+fast_seq.pulse_train_dur = 80000  # [ms], pulse train duration
 
 ##############################################################################
 # connect with driving system and execute sequence
@@ -131,7 +171,7 @@ from fus_driving_systems.sonic_concepts import sonic_concepts_ds
 sc_ds = sonic_concepts_ds.SonicConcepts()
 
 try:
-    sc_ds.connect(seq.driving_sys.connect_info)
+    sc_ds.connect(slow_seq.driving_sys.connect_info)
 
     # you can check if the system is still connected by using the following:
     # print(sc_ds.is_connected())
@@ -140,18 +180,21 @@ try:
     sc_ds.check_tran_sel()
 
     # If wait_for_trigger is true, only the sequence is sent and will be executed by the external trigger
-    if seq.wait_for_trigger:
-        sc_ds.send_sequence(seq)  # currently, triggermode is set to 1. Triggermode of 2 is not supported yet.
+    if slow_seq.wait_for_trigger:
+        sc_ds.send_sequence(slow_seq)  # currently, triggermode is set to 1. Triggermode of 2 is not supported yet.
 
     # If wait_for_trigger is false, the sequence is sent and can be executed directly using the execute_sequence() function
     else:
-        sc_ds.send_sequence(seq)
-        sc_ds.execute_sequence(seq)
+        sc_ds.send_sequence(slow_seq)
+        sc_ds.execute_sequence(slow_seq)
+
+        sc_ds.send_sequence(fast_seq)
+        sc_ds.execute_sequence(fast_seq)
 
 finally:
     # When the sequence is executed using execute_sequence(), the system will be disconnected automatically,
     # In the case your code is stopped abruptly, the driving system will be disconnected. Otherwise, there
     # is a change that it keeps on firing ultrasound sequences.
     # When using the external trigger, disconnect the driving system yourself.
-    if not seq.wait_for_trigger:
+    if not slow_seq.wait_for_trigger:
         sc_ds.disconnect()

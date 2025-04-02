@@ -24,10 +24,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 **Attribution Notice**:
-If you use this kit in your research or project, please include the following attribution:
-Margely Cornelissen, Stein Fekkes (Radboud University, Nijmegen, The Netherlands) & Erik Dumont
-(Image Guided Therapy, Pessac, France) (2024), Radboud FUS measurement kit (version 1.0),
-https://github.com/Donders-Institute/Radboud-FUS-measurement-kit
+If you use this kit in your research or project, please refer to the 'How to Cite' section in the
+README.md file of https://github.com/Donders-Institute/Radboud-FUS-driving-system-software.
 """
 
 # IGT example
@@ -60,6 +58,7 @@ import sys
 
 from fus_driving_systems import driving_system, transducer
 from fus_driving_systems import sequence
+from fus_driving_systems.utils import get_config_value
 
 ##############################################################################
 # create a sequence for an IGT driving system
@@ -89,7 +88,8 @@ seq1.oper_freq = 300  # [kHz], operating frequency
 
 # NOTE: Due to compensation equations, the focus has to be set first when using amplitude or
 # voltage as power input.
-seq1.focus_wrt_exit_plane = 40  # [mm], focal depth w.r.t. the exit plane and FWHM middle
+seq1.focus_wrt_exit_plane = 80  # [mm], focal depth w.r.t. the exit plane and FWHM middle
+# seq1.focus_wrt_mid_bowl = 69.1  # [mm], focal depth w.r.t. the radiating surface and FWHM middle
 
 # Degree used to dephase every nth elemen based on chosen degree. None = no dephasing
 # One value (>0) is the degree of dephasing, for example [90] with 4 elements: 1 elem: 0 dephasing,
@@ -98,10 +98,12 @@ seq1.focus_wrt_exit_plane = 40  # [mm], focal depth w.r.t. the exit plane and FW
 # based on the set focus.
 seq1.dephasing_degree = None  # [degrees]: None, [120] or [0, 135, 239, 90]
 
-# either set maximum pressure in free water [MPa], voltage [V] or amplitude [%]
-seq1.press = 0.5  # [MPa], maximum pressure in free water
-# seq1.volt = 5  # [V], voltage per channel
-# seq1.ampl = 10  # [%], amplitude. NOTE: DIFFERENT THAN SC
+# either set maximum pressure in free water [MPa], voltage [V] or amplitude [%]. NOTE: DIFFERENT THAN SC
+seq1.press = 0.3  # [MPa], maximum pressure in free water
+# seq1.volt = [4.65]  # [V], voltage per channel, equal for all elements
+# seq1.volt = [0, 0, 0, 0, 4.65, 0, 0, 0, 0, 0] # [V], voltage per channel, per element
+# seq1.ampl = 27.9  # [%], amplitude, equal for all elements
+# seq1.ampl = [27.9, 0, 0, 0, 0, 0, 0, 0, 0, 0]  # [%], amplitude per element
 
 seq2 = None  # seq2 is None of a second transducer isn't used
 if use_two_transducers:
@@ -129,6 +131,7 @@ if use_two_transducers:
     # NOTE: Due to compensation equations, the focus has to be set first when using amplitude or
     # voltage as power input.
     seq2.focus_wrt_exit_plane = 80  # [mm], focal depth w.r.t. the exit plane and FWHM middle
+    # seq2.focus_wrt_mid_bowl = 69.1  # [mm], focal depth w.r.t. the radiating surface and FWHM middle
 
     # Degree used to dephase every nth elemen based on chosen degree. None = no dephasing
     # One value (>0) is the degree of dephasing, for example [90] with 4 elements: 1 elem: 0
@@ -137,10 +140,14 @@ if use_two_transducers:
     # based on the set focus.
     seq2.dephasing_degree = None  # [degrees]: None, [120] or [0, 135, 239, 90]
 
-    # either set maximum pressure in free water [MPa], voltage [V] or amplitude [%]
-    seq2.press = 0.7  # [MPa], maximum pressure in free water
-    # seq2.volt = 0  # [V], voltage per channel
-    # seq2.ampl = 10  # [%], amplitude. NOTE: DIFFERENT THAN SC
+    # either set maximum pressure in free water [MPa], voltage [V] or amplitude [%]. NOTE: DIFFERENT THAN SC
+    seq2.press = 0.3  # [MPa], maximum pressure in free water
+    seq2.press = 0.3  # [MPa], maximum pressure in free water
+    # seq2.volt = [4.65]  # [V], voltage per channel, equal for all elements
+    # seq2.volt = [0, 0, 0, 0, 4.65, 0, 0, 0, 0, 0] # [V], voltage per channel, per element
+    # seq2.ampl = 27.9  # [%], amplitude, equal for all elements
+    # seq2.ampl = [27.9, 0, 0, 0, 0, 0, 0, 0, 0, 0]  # [%], amplitude per element
+
 
 # Check if available channels is equal to the number of elements of the transducer
 elif seq1.driving_sys.available_ch != seq1.transducer.elements:
@@ -177,8 +184,9 @@ seq1.wait_for_trigger = True
 # Multiple times triggering a pulse train repetition isn't supported.
 # to check available trigger options: print(seq1.get_trigger_options())
 seq1.trigger_option = 'TriggerSequence'
-
-if seq1.wait_for_trigger and seq1.trigger_option == config['General']['Trigger option.seq']:
+if seq1.wait_for_trigger and seq1.trigger_option == get_config_value(logger, config, 'Trigger',
+                                                                     'option.seq',
+                                                                     'TriggerSequence'):
     seq1.n_triggers = 4  # number of timings above defined sequence will be triggered
 
 else:

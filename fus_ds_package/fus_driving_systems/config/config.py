@@ -24,10 +24,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 **Attribution Notice**:
-If you use this kit in your research or project, please include the following attribution:
-Margely Cornelissen, Stein Fekkes (Radboud University, Nijmegen, The Netherlands) & Erik Dumont
-(Image Guided Therapy, Pessac, France) (2024), Radboud FUS measurement kit (version 1.0),
-https://github.com/Donders-Institute/Radboud-FUS-measurement-kit
+If you use this kit in your research or project, please refer to the 'How to Cite' section in the
+README.md file of https://github.com/Donders-Institute/Radboud-FUS-measurement-kit.
 """
 
 # Basic packages
@@ -39,6 +37,7 @@ from importlib import resources as impresources
 
 # Own packages
 from fus_driving_systems import config
+from fus_driving_systems.utils import get_config_file
 
 
 # Initialize ConfigParser
@@ -67,5 +66,5 @@ def sync_config(new_config):
 
 
 # Automatically read the main configuration file when the module is imported
-inp_file = (impresources.files(config) / 'ds_config.ini')
+inp_file = (impresources.files(config) / get_config_file())
 read_config(inp_file)
