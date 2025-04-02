@@ -57,14 +57,14 @@ This project is facilitated by the Radboud Focused Ultrasound Initiative. For mo
 - GitHub: [@MaCuinea](https://github.com/MaCuinea)
 - [LinkedIn](https://linkedin.com/in/margely-cornelissen)
 
-👤 **Erik Dumont, [Image Guided Therapy (IGT)](http://www.imageguidedtherapy.com/)**
-- GitHub: [@erikdumontigt](https://github.com/erikdumontigt)
-- [LinkedIn](https://linkedin.com/in/erik-dumont-986a814)
-
 👤 **[Stein Fekkes](https://www.ru.nl/en/people/fekkes-s), [FUS Initiative](https://www.ru.nl/en/donders-institute/research/research-facilities/focused-ultrasound-initiative-fus), Radboud University**
 
 - GitHub: [@StefFek-GIT](https://github.com/StefFek-GIT)
 - [LinkedIn](https://linkedin.com/in/sfekkes)
+
+👤 **Erik Dumont, [Image Guided Therapy (IGT)](http://www.imageguidedtherapy.com/)**
+- GitHub: [@erikdumontigt](https://github.com/erikdumontigt)
+- [LinkedIn](https://linkedin.com/in/erik-dumont-986a814)
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -72,7 +72,9 @@ This project is facilitated by the Radboud Focused Ultrasound Initiative. For mo
 
 If you use this package in your research or project, please cite it as follows:
 
-Margely Cornelissen, Stein Fekkes (Radboud University, Nijmegen, The Netherlands) & Erik Dumont (Image Guided Therapy, Pessac, France) (2025), Radboud FUS Driving System Software (version 2.1)
+Margely Cornelissen, Stein Fekkes (Radboud University, Nijmegen, The Netherlands) & Erik Dumont (Image Guided Therapy, Pessac, France) (2024-2025), Radboud FUS Driving System Software (version 2.1)
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 <!-- GETTING STARTED -->
 
