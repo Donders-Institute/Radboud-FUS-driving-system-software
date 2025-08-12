@@ -262,8 +262,8 @@ DS_TRAN_COMBOS = [
     COMBO_JOIN_SIGN.join([IGT_DS[8], IS_TRANS[4]]), COMBO_JOIN_SIGN.join([IGT_DS[8], IS_TRANS[5]])
                                                      ]
 
-config['Equipment']['Combinations'] = ''
-config['Equipment']['inactive_combinations'] = '\n'.join(DS_TRAN_COMBOS)
+config['Equipment']['Combinations'] = '\n'.join(DS_TRAN_COMBOS)
+config['Equipment']['inactive_combinations'] = ''
 
 #######################################################################################
 # Sonic Concepts - Driving systems
@@ -395,7 +395,7 @@ config['Equipment.Driving system.' + IGT_DS[6]]['Power options'] = '\n'.join([PO
                                                                               POW_VOLT])
 config['Equipment.Driving system.' + IGT_DS[6]]['Transducer compatibility'] = str('\n'.join(
     DUMMIES))
-config['Equipment.Driving system.' + IGT_DS[6]]['Requires conversion equations?'] = str(False)
+config['Equipment.Driving system.' + IGT_DS[6]]['Requires conversion equations?'] = str(True)
 config['Equipment.Driving system.' + IGT_DS[6]]['Active?'] = str(True)
 
 config['Equipment.Driving system.' + IGT_DS[7]] = {}
@@ -409,7 +409,7 @@ config['Equipment.Driving system.' + IGT_DS[7]]['Transducer compatibility'] = st
     IS_TRANS + DUMMIES))
 config['Equipment.Driving system.' + IGT_DS[7]]['Power options'] = '\n'.join([POW_AMPL, POW_PRESS,
                                                                               POW_VOLT])
-config['Equipment.Driving system.' + IGT_DS[7]]['Requires conversion equations?'] = str(False)
+config['Equipment.Driving system.' + IGT_DS[7]]['Requires conversion equations?'] = str(True)
 config['Equipment.Driving system.' + IGT_DS[7]]['Active?'] = str(True)
 
 config['Equipment.Driving system.' + IGT_DS[8]] = {}
@@ -423,7 +423,7 @@ config['Equipment.Driving system.' + IGT_DS[8]]['Transducer compatibility'] = st
     IS_TRANS + DUMMIES))
 config['Equipment.Driving system.' + IGT_DS[8]]['Power options'] = '\n'.join([POW_AMPL, POW_PRESS,
                                                                               POW_VOLT])
-config['Equipment.Driving system.' + IGT_DS[8]]['Requires conversion equations?'] = str(False)
+config['Equipment.Driving system.' + IGT_DS[8]]['Requires conversion equations?'] = str(True)
 config['Equipment.Driving system.' + IGT_DS[8]]['Active?'] = str(True)
 
 
