@@ -611,8 +611,8 @@ config['Equipment.Transducer.' + IS_TRANS[0]]['Elements'] = str(10)
 config['Equipment.Transducer.' + IS_TRANS[0]]['Fund. freq.'] = str(300)  # [kHz]
 config['Equipment.Transducer.' + IS_TRANS[0]]['Natural focus'] = str(75)  # [mm]
 config['Equipment.Transducer.' + IS_TRANS[0]]['Exit plane - first element dist.'] = str(9.7)  # [mm]
-config['Equipment.Transducer.' + IS_TRANS[0]]['Min. focus'] = str(0)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + IS_TRANS[0]]['Max. focus'] = str(200)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + IS_TRANS[0]]['Min. focus'] = str(5.32)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + IS_TRANS[0]]['Max. focus'] = str(92.17)  # [mm], wrt exit plane
 config['Equipment.Transducer.' + IS_TRANS[0]]['Steer information'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IS_TRAN,
     'transducer_15287_10_300kHz.ini'))  # should be in the same directory as code
@@ -626,8 +626,8 @@ config['Equipment.Transducer.' + IS_TRANS[1]]['Elements'] = str(10)
 config['Equipment.Transducer.' + IS_TRANS[1]]['Fund. freq.'] = str(300)  # [kHz]
 config['Equipment.Transducer.' + IS_TRANS[1]]['Natural focus'] = str(75)  # [mm]
 config['Equipment.Transducer.' + IS_TRANS[1]]['Exit plane - first element dist.'] = str(9.7)  # [mm]
-config['Equipment.Transducer.' + IS_TRANS[1]]['Min. focus'] = str(0)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + IS_TRANS[1]]['Max. focus'] = str(200)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + IS_TRANS[1]]['Min. focus'] = str(5.32)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + IS_TRANS[1]]['Max. focus'] = str(92.17)  # [mm], wrt exit plane
 config['Equipment.Transducer.' + IS_TRANS[1]]['Steer information'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IS_TRAN,
     'transducer_15287_10_300kHz.ini'))  # should be in the same directory as code
@@ -641,8 +641,8 @@ config['Equipment.Transducer.' + IS_TRANS[2]]['Elements'] = str(10)
 config['Equipment.Transducer.' + IS_TRANS[2]]['Fund. freq.'] = str(300)  # [kHz]
 config['Equipment.Transducer.' + IS_TRANS[2]]['Natural focus'] = str(100)  # [mm]
 config['Equipment.Transducer.' + IS_TRANS[2]]['Exit plane - first element dist.'] = str(7.3)  # [mm]
-config['Equipment.Transducer.' + IS_TRANS[2]]['Min. focus'] = str(0)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + IS_TRANS[2]]['Max. focus'] = str(200)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + IS_TRANS[2]]['Min. focus'] = str(5.32)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + IS_TRANS[2]]['Max. focus'] = str(92.17)  # [mm], wrt exit plane
 config['Equipment.Transducer.' + IS_TRANS[2]]['Steer information'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IS_TRAN,
     'transducer_15473_10_300kHz.ini'))  # should be in the same directory as code
@@ -656,8 +656,8 @@ config['Equipment.Transducer.' + IS_TRANS[3]]['Elements'] = str(10)
 config['Equipment.Transducer.' + IS_TRANS[3]]['Fund. freq.'] = str(300)  # [kHz]
 config['Equipment.Transducer.' + IS_TRANS[3]]['Natural focus'] = str(100)  # [mm]
 config['Equipment.Transducer.' + IS_TRANS[3]]['Exit plane - first element dist.'] = str(7.3)  # [mm]
-config['Equipment.Transducer.' + IS_TRANS[3]]['Min. focus'] = str(0)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + IS_TRANS[3]]['Max. focus'] = str(200)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + IS_TRANS[3]]['Min. focus'] = str(5.32)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + IS_TRANS[3]]['Max. focus'] = str(92.17)  # [mm], wrt exit plane
 config['Equipment.Transducer.' + IS_TRANS[3]]['Steer information'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IS_TRAN,
     'transducer_15473_10_300kHz.ini'))  # should be in the same directory as code
@@ -675,8 +675,8 @@ config['Equipment.Transducer.' + IS_TRANS[4]]['Elements'] = str(10)
 config['Equipment.Transducer.' + IS_TRANS[4]]['Fund. freq.'] = str(300)  # [kHz]
 config['Equipment.Transducer.' + IS_TRANS[4]]['Natural focus'] = str(100)  # [mm]
 config['Equipment.Transducer.' + IS_TRANS[4]]['Exit plane - first element dist.'] = str(7.3)  # [mm]
-config['Equipment.Transducer.' + IS_TRANS[4]]['Min. focus'] = str(0)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + IS_TRANS[4]]['Max. focus'] = str(200)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + IS_TRANS[4]]['Min. focus'] = str(5.32)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + IS_TRANS[4]]['Max. focus'] = str(92.17)  # [mm], wrt exit plane
 config['Equipment.Transducer.' + IS_TRANS[4]]['Steer information'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IS_TRAN,
     'transducer_15473_10_300kHz.ini'))  # should be in the same directory as code
@@ -690,8 +690,8 @@ config['Equipment.Transducer.' + IS_TRANS[5]]['Elements'] = str(10)
 config['Equipment.Transducer.' + IS_TRANS[5]]['Fund. freq.'] = str(300)  # [kHz]
 config['Equipment.Transducer.' + IS_TRANS[5]]['Natural focus'] = str(100)  # [mm]
 config['Equipment.Transducer.' + IS_TRANS[5]]['Exit plane - first element dist.'] = str(7.3)  # [mm]
-config['Equipment.Transducer.' + IS_TRANS[5]]['Min. focus'] = str(0)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + IS_TRANS[5]]['Max. focus'] = str(200)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + IS_TRANS[5]]['Min. focus'] = str(5.32)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + IS_TRANS[5]]['Max. focus'] = str(92.17)  # [mm], wrt exit plane
 config['Equipment.Transducer.' + IS_TRANS[5]]['Steer information'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IS_TRAN,
     'transducer_15473_10_300kHz.ini'))  # should be in the same directory as code
