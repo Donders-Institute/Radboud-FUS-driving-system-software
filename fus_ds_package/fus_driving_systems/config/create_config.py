@@ -698,7 +698,7 @@ config['Equipment.Transducer.' + IS_TRANS[5]]['Min. focus'] = str(5.32)  # [mm],
 config['Equipment.Transducer.' + IS_TRANS[5]]['Max. focus'] = str(92.17)  # [mm], wrt exit plane
 config['Equipment.Transducer.' + IS_TRANS[5]]['Steer information'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IS_TRAN,
-    'transducer_15473_10_300kHz.ini'))  # should be in the same directory as code
+    'transducer_15473_10_300kHz_inverted_OPM.ini'))  # should be in the same directory as code
 config['Equipment.Transducer.' + IS_TRANS[5]]['Active?'] = str(True)
 
 config['Equipment.Transducer.' + IS_TRANS[6]] = {}
@@ -713,7 +713,7 @@ config['Equipment.Transducer.' + IS_TRANS[6]]['Min. focus'] = str(5.32)  # [mm],
 config['Equipment.Transducer.' + IS_TRANS[6]]['Max. focus'] = str(92.17)  # [mm], wrt exit plane
 config['Equipment.Transducer.' + IS_TRANS[6]]['Steer information'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IS_TRAN,
-    'transducer_15473_10_300kHz.ini'))  # should be in the same directory as code
+    'transducer_15473_10_300kHz_inverted_OPM.ini'))  # should be in the same directory as code
 config['Equipment.Transducer.' + IS_TRANS[6]]['Active?'] = str(True)
 
 #######################################################################################
