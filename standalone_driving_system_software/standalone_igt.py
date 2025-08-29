@@ -98,12 +98,8 @@ seq1.focus_wrt_exit_plane = 80  # [mm], focal depth w.r.t. the exit plane and FW
 # based on the set focus.
 seq1.dephasing_degree = None  # [degrees]: None, [120] or [0, 135, 239, 90]
 
-# either set maximum pressure in free water [MPa], voltage [V] or amplitude [%]. NOTE: DIFFERENT THAN SC
+# Set maximum pressure in free water [MPa]. NOTE: DIFFERENT THAN SC
 seq1.press = 0.3  # [MPa], maximum pressure in free water
-# seq1.volt = [4.65]  # [V], voltage per channel, equal for all elements
-# seq1.volt = [0, 0, 0, 0, 4.65, 0, 0, 0, 0, 0] # [V], voltage per channel, per element
-# seq1.ampl = 27.9  # [%], amplitude, equal for all elements
-# seq1.ampl = [27.9, 0, 0, 0, 0, 0, 0, 0, 0, 0]  # [%], amplitude per element
 
 seq2 = None  # seq2 is None of a second transducer isn't used
 if use_two_transducers:
@@ -140,12 +136,8 @@ if use_two_transducers:
     # based on the set focus.
     seq2.dephasing_degree = None  # [degrees]: None, [120] or [0, 135, 239, 90]
 
-    # either set maximum pressure in free water [MPa], voltage [V] or amplitude [%]. NOTE: DIFFERENT THAN SC
+    # Set maximum pressure in free water [MPa]. NOTE: DIFFERENT THAN SC
     seq2.press = 0.3  # [MPa], maximum pressure in free water
-    # seq2.volt = [4.65]  # [V], voltage per channel, equal for all elements
-    # seq2.volt = [0, 0, 0, 0, 4.65, 0, 0, 0, 0, 0] # [V], voltage per channel, per element
-    # seq2.ampl = 27.9  # [%], amplitude, equal for all elements
-    # seq2.ampl = [27.9, 0, 0, 0, 0, 0, 0, 0, 0, 0]  # [%], amplitude per element
 
 # Check if available channels is equal to the number of elements of the transducer
 elif seq1.driving_sys.available_ch != seq1.transducer.elements:
