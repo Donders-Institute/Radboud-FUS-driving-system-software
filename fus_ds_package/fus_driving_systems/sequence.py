@@ -84,6 +84,10 @@ class Sequence():
             eq_curve_pp: Piecewise polynomial function for normalization factor calculation
             volt_curve_pp: Piecewise polynomial function for voltage conversion
         _eq_factor (float): [IGT] normalized pressure based on chosen focal depth wrt exit plane [-]
+        _eq_press_mpa (float): [IGT] equalized pressure based on chosen focal depth wrt exit plane [MPa]
+        _input_press_mpa (float): [IGT] input pressure based on chosen focal depth wrt exit plane [MPa]
+        _calculated_ampl (float): [IGT] calculated amplitude to reach desired pressure on chosen
+                                  focal depth wrt exit plane [-]
         _timing_param (dict.):
             _pulse_dur (float): Pulse duration of the sequence [ms].
             _pulse_rep_int (float): Pulse repetition interval of the sequence [ms].
@@ -143,6 +147,14 @@ class Sequence():
 
         self._eq_factor = int(get_config_value(logger, config, 'Power', 'Default.eq_factor',
                                                0))  # IGT: normalized pressure
+
+        # IGT: input pressure in free water [MPa]
+        self._input_press_mpa = float(get_config_value(logger, config, 'Power',
+                                                       'Default.input_press', 0))
+        # IGT: equalized pressure in free water [MPa]
+        self._eq_press_mpa = float(get_config_value(logger, config, 'Power', 'Default.eq_press', 0))
+        self._calculated_ampl = float(get_config_value(logger, config, 'Power', 'Default.calc_ampl',
+                                                       0))  # IGT: calculated amplitude [%]
 
         self._focus_wrt_mid_bowl = int(get_config_value(logger, config, 'Focus', 'Default.bowl',
                                                         50))  # [mm]
@@ -238,6 +250,9 @@ class Sequence():
             info += f"Amplitude [%]: {self._ampl} \n "
         elif self.chosen_power == opt_press:
             info += f"Maximum pressure in free water [MPa]: {self._press} \n "
+            info += f"Input pressure in free water [MPa]: {self._input_press_mpa} \n "
+            info += f"Equalized pressure in free water [MPa]: {self._eq_press_mpa} \n "
+            info += f"Calculated amplitude [%]: {self._calculated_ampl} \n "
         elif self.chosen_power == opt_volt:
             info += f"Voltage [V]: {self._volt} \n "
         else:
@@ -1196,6 +1211,46 @@ class Sequence():
         return self._eq_factor
 
     @property
+    def input_press_mpa(self):
+        """
+        Getter method for the desired maximum pressure in free water at chosen focal depth wrt exit
+        plane [MPa].
+
+        Returns:
+            float: The desired maximum pressure in free water at chosen focal depth wrt exit plane
+            [MPa].
+        """
+
+        return self._input_press_mpa
+
+    @property
+    def eq_press_mpa(self):
+        """
+        Getter method for the equalized pressure at chosen focal depth wrt exit plane [MPa]
+        (= desired pressure * eq_factor).
+
+        Returns:
+            float: The equalized pressure at chosen focal depth wrt exit plane [MPa]
+            (= desired pressure * eq_factor).
+        """
+
+        return self._eq_press_mpa
+
+    @property
+    def calculated_ampl(self):
+        """
+        Getter method for the calculated amplitude to reach desired pressure at chosen focal depth
+        wrt exit plane [-].
+.
+
+        Returns:
+            float: The calculated amplitude to reach desired pressure at chosen focal depth wrt exit
+            plane [-].
+        """
+
+        return self._calculated_ampl
+
+    @property
     def pulse_dur(self):
         """
         Getter method for the pulse duration.
@@ -1512,6 +1567,11 @@ class Sequence():
 
         x_value = press_pa * self._eq_factor
         calc_ampl, range_status = safe_evaluate_pp(self._conv_param['power_curve_pp'], x_value)
+
+        # Save additional information for logging purposes
+        self._input_press_mpa = self._press
+        self._eq_press_mpa = x_value / 1e6
+        self._calculated_ampl = calc_ampl
 
         if range_status == "above_range":
             self._ampl = [100]

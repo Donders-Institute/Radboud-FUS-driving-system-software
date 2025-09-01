@@ -92,6 +92,9 @@ config['Power']['Default.press'] = str(0)
 config['Power']['Default.volt'] = str(0)
 
 config['Power']['Default.eq_factor'] = str(0)
+config['Power']['Default.eq_press'] = str(0)
+config['Power']['Default.input_press'] = str(0)
+config['Power']['Default.calc_ampl'] = str(0)
 
 MAX_ALLOWED_PRESSURE = 1.4  # MPa
 config['Power']['Maximum pressure allowed in free water [MPa]'] = str(MAX_ALLOWED_PRESSURE)
