@@ -136,17 +136,17 @@ class Sequence():
         # set a temporary focus wrt mid bowl and operating frequency to set a default transducer
         self._chosen_power = None
 
-        self._global_power = int(get_config_value(logger, config, 'Power', 'Default.glob_pow',
-                                                  0))  # SC: global power [W]
-        self._press = int(get_config_value(logger, config, 'Power', 'Default.press',
-                                           0))  # IGT: maximum pressure in free water [MPa]
-        self._volt = int(get_config_value(logger, config, 'Power', 'Default.volt',
-                                          0))  # IGT: voltage [V]
-        self._ampl = int(get_config_value(logger, config, 'Power', 'Default.ampl',
-                                          0))  # IGT: amplitude [%]
+        self._global_power = float(get_config_value(logger, config, 'Power', 'Default.glob_pow',
+                                                    0))  # SC: global power [W]
+        self._press = float(get_config_value(logger, config, 'Power', 'Default.press',
+                                             0))  # IGT: maximum pressure in free water [MPa]
+        self._volt = float(get_config_value(logger, config, 'Power', 'Default.volt',
+                                            0))  # IGT: voltage [V]
+        self._ampl = float(get_config_value(logger, config, 'Power', 'Default.ampl',
+                                            0))  # IGT: amplitude [%]
 
-        self._eq_factor = int(get_config_value(logger, config, 'Power', 'Default.eq_factor',
-                                               0))  # IGT: normalized pressure
+        self._eq_factor = float(get_config_value(logger, config, 'Power', 'Default.eq_factor',
+                                                 0))  # IGT: normalized pressure
 
         # IGT: input pressure in free water [MPa]
         self._input_press_mpa = float(get_config_value(logger, config, 'Power',
@@ -156,8 +156,8 @@ class Sequence():
         self._calculated_ampl = float(get_config_value(logger, config, 'Power', 'Default.calc_ampl',
                                                        0))  # IGT: calculated amplitude [%]
 
-        self._focus_wrt_mid_bowl = int(get_config_value(logger, config, 'Focus', 'Default.bowl',
-                                                        50))  # [mm]
+        self._focus_wrt_mid_bowl = float(get_config_value(logger, config, 'Focus', 'Default.bowl',
+                                                          50))  # [mm]
 
         # Degree used to dephase every nth elemen based on chosen degree. (None = no dephasing).
         self._dephasing_degree = None
