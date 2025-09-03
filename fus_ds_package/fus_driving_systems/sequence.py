@@ -1581,29 +1581,36 @@ class Sequence():
         self._eq_press_mpa = x_value / 1e6
         self._calculated_ampl = calc_ampl
 
-        if range_status == "above_range":
-            self._ampl = [100]
-            self._calc_press()
-            self._calc_volt()
+        x_min_mpa = self._conv_param['power_curve_pp'].x[0] / 1e6
+        x_max_mpa = self._conv_param['power_curve_pp'].x[-1] / 1e6
 
-            message = (f'Calculated amplitude exceeds 100%. A pressure of {self._press:.2f} [MPa]' +
-                       f' and/or a voltage of {self._volt[0]:.2f} [V] will result in an amplitude' +
-                       f' of 100% at focus wrt exit plane of {self._focus_wrt_exit_plane} [mm]. ' +
-                       'Change input value.')
+        if range_status == "above_range" or range_status == "below_range":
+            message = (f'Equalized pressure of {self._eq_press_mpa} [MPa] is outside of pp ' +
+                       f'limits ({x_min_mpa:.2f} - {x_max_mpa:.2f} [MPa]). Change input value.')
             logger.critical(message)
             sys.exit(message)
-        elif range_status == "below_range":
-            logger.debug('Calculated amplitude below 0%, so cut off the amplitude at 0%.')
-            self._ampl = [0]
-            self._calc_press()
-            self._calc_volt()
 
-        else:
+        elif range_status == "in_range":
+            if calc_ampl > 100:
+                self._ampl = [100]
+                self._calc_press()
+                self._calc_volt()
 
-            if calc_ampl < 0:
-                calc_ampl = 0
+                message = (f'Calculated amplitude of {calc_ampl:.2f} exceeds 100%. A pressure of ' +
+                           f'{self._press:.2f} [MPa] and/or a voltage of {self._volt[0]:.2f} [V] ' +
+                           'will result in an amplitude of 100% at focus wrt exit plane of ' +
+                           f'{self._focus_wrt_exit_plane} [mm]. Change input value.')
+                logger.critical(message)
+                sys.exit(message)
+            elif calc_ampl < 0:
+                logger.debug(f'Calculated amplitude of {calc_ampl:.2f} is below 0%, so cut off ' +
+                             'the amplitude at 0%.')
+                self._ampl = [0]
+                self._calc_press()
+                self._calc_volt()
 
-            self._ampl = [round(float(calc_ampl), 2)]
+            else:
+                self._ampl = [round(float(calc_ampl), 2)]
 
     def _calc_ampl_using_volt(self):
         """
@@ -1803,7 +1810,7 @@ def extract_and_define_pp(json_dir, return_breaks=False):
     coefs = np.zeros((order, pieces))
     for i, coef_set in enumerate(coefs_data):
         # For linear functions (order=2), just reverse
-        if order == 2:
+        if pieces == 1:
             coefs[:, i] = coef_set[::-1]
         else:
             # For higher order polynomials, we need to be more careful
