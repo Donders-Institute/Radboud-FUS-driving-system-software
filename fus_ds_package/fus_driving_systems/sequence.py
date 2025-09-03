@@ -104,10 +104,12 @@ class Sequence():
         getters and setters (attribute name without _) for above attributes.
     """
 
-    def __init__(self):
+    def __init__(self, engineering_mode=False):
         """
         Initializes a Sequence object with default values and loads configuration settings.
         """
+
+        self._engineering_mode = engineering_mode
 
         self._seq_num = 0
 
@@ -704,6 +706,9 @@ class Sequence():
             volt (float): The voltage [V] for IGT.
         """
 
+        if not self._engineering_mode:
+            raise RuntimeError("Voltage mode is disabled. Use maximum pressure in free water instead.")
+
         # set other parameters determine the intensity to None
         self._global_power = 0
         self._volt = 0
@@ -789,6 +794,9 @@ class Sequence():
             ampl (list(float)): The amplitude array [%] for IGT: one value represents the value
             for all elements.
         """
+
+        if not self._engineering_mode:
+            raise RuntimeError("Amplitude mode is disabled. Use maximum pressure in free water instead.")
 
         # set other parameters that determine the intensity to None
         self._global_power = 0
