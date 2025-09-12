@@ -1040,7 +1040,7 @@ class Sequence():
 
             # Check if focus is within range if compensation equations are not applicable
             if self._focus_wrt_exit_plane < self._transducer.min_foc or self._focus_wrt_exit_plane > self._transducer.max_foc:
-                message = (f'Focus wrt exit plane of {focus} [mm] is not within the set ' +
+                message = (f'Focus wrt exit plane of {self._focus_wrt_exit_plane} [mm] is not within the set ' +
                            f'focus range of {self._transducer.min_foc} and ' +
                            f'{self._transducer.max_foc} [mm] of transducer ' +
                            f'{self._transducer.name}.')
@@ -1136,7 +1136,7 @@ class Sequence():
 
             # Check if focus is within range if compensation equations are not applicable
             if self._focus_wrt_exit_plane < self._transducer.min_foc or self._focus_wrt_exit_plane > self._transducer.max_foc:
-                message = (f'Focus wrt exit plane of {focus} [mm] is not within the set ' +
+                message = (f'Focus wrt exit plane of {self._focus_wrt_exit_plane} [mm] is not within the set ' +
                            f'focus range of {self._transducer.min_foc} and ' +
                            f'{self._transducer.max_foc} [mm] of transducer ' +
                            f'{self._transducer.name}.')
