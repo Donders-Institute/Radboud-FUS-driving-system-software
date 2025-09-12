@@ -540,6 +540,12 @@ class IGT(ds.ControlDrivingSystem):
         Executes the previously sent sequence on the IGT ultrasound driving system.
         """
 
+        max_press = get_config_value(logger, config, 'Power',
+                                     'Maximum pressure allowed in free water [MPa]',
+                                     'Not found')
+
+        logger.debug(f'Maximum allowed pressure is: {max_press} MPa')
+
         logger.info('Executing sequence...')
 
         if self.is_connected():

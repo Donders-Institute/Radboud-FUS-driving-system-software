@@ -98,12 +98,8 @@ seq1.focus_wrt_exit_plane = 80  # [mm], focal depth w.r.t. the exit plane and FW
 # based on the set focus.
 seq1.dephasing_degree = None  # [degrees]: None, [120] or [0, 135, 239, 90]
 
-# either set maximum pressure in free water [MPa], voltage [V] or amplitude [%]. NOTE: DIFFERENT THAN SC
+# Set maximum pressure in free water [MPa]. NOTE: DIFFERENT THAN SC
 seq1.press = 0.3  # [MPa], maximum pressure in free water
-# seq1.volt = [4.65]  # [V], voltage per channel, equal for all elements
-# seq1.volt = [0, 0, 0, 0, 4.65, 0, 0, 0, 0, 0] # [V], voltage per channel, per element
-# seq1.ampl = 27.9  # [%], amplitude, equal for all elements
-# seq1.ampl = [27.9, 0, 0, 0, 0, 0, 0, 0, 0, 0]  # [%], amplitude per element
 
 seq2 = None  # seq2 is None of a second transducer isn't used
 if use_two_transducers:
@@ -140,13 +136,8 @@ if use_two_transducers:
     # based on the set focus.
     seq2.dephasing_degree = None  # [degrees]: None, [120] or [0, 135, 239, 90]
 
-    # either set maximum pressure in free water [MPa], voltage [V] or amplitude [%]. NOTE: DIFFERENT THAN SC
+    # Set maximum pressure in free water [MPa]. NOTE: DIFFERENT THAN SC
     seq2.press = 0.3  # [MPa], maximum pressure in free water
-    # seq2.volt = [4.65]  # [V], voltage per channel, equal for all elements
-    # seq2.volt = [0, 0, 0, 0, 4.65, 0, 0, 0, 0, 0] # [V], voltage per channel, per element
-    # seq2.ampl = 27.9  # [%], amplitude, equal for all elements
-    # seq2.ampl = [27.9, 0, 0, 0, 0, 0, 0, 0, 0, 0]  # [%], amplitude per element
-
 
 # Check if available channels is equal to the number of elements of the transducer
 elif seq1.driving_sys.available_ch != seq1.transducer.elements:
@@ -177,13 +168,15 @@ seq1.pulse_ramp_dur = 0  # [ms], ramp duration, with at least 70 us between ramp
 seq1.pulse_train_dur = 200  # [ms], pulse train duration
 
 # set wait_for_trigger to true if you want to use trigger
-seq1.wait_for_trigger = True
+seq1.wait_for_trigger = False
 
 # When you only want to trigger a pulse train repetition once: 'TriggerOnePulseTrainRepetition'
 # Multiple times triggering a pulse train repetition isn't supported.
 # to check available trigger options: print(seq1.get_trigger_options())
 seq1.trigger_option = 'TriggerSequence'
-if seq1.wait_for_trigger and seq1.trigger_option == config['General']['Trigger option.seq']:
+if seq1.wait_for_trigger and seq1.trigger_option == get_config_value(logger, config, 'Trigger',
+                                                                     'option.seq',
+                                                                     'TriggerSequence'):
     seq1.n_triggers = 4  # number of timings above defined sequence will be triggered
 
 else:

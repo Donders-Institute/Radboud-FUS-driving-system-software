@@ -72,7 +72,7 @@ This project is facilitated by the Radboud Focused Ultrasound Initiative. For mo
 
 If you use this package in your research or project, please cite it as follows:
 
-Margely Cornelissen, Stein Fekkes (Radboud University, Nijmegen, The Netherlands) & Erik Dumont (Image Guided Therapy, Pessac, France) (2024-2025), Radboud FUS Driving System Software (version 2.1)
+Margely Cornelissen, Stein Fekkes (Radboud University, Nijmegen, The Netherlands) & Erik Dumont (Image Guided Therapy, Pessac, France) (2024-2025), Radboud FUS Driving System Software (version 2.2)
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 

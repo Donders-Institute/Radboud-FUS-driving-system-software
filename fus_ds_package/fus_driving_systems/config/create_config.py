@@ -92,6 +92,9 @@ config['Power']['Default.press'] = str(0)
 config['Power']['Default.volt'] = str(0)
 
 config['Power']['Default.eq_factor'] = str(0)
+config['Power']['Default.eq_press'] = str(0)
+config['Power']['Default.input_press'] = str(0)
+config['Power']['Default.calc_ampl'] = str(0)
 
 MAX_ALLOWED_PRESSURE = 1.4  # MPa
 config['Power']['Maximum pressure allowed in free water [MPa]'] = str(MAX_ALLOWED_PRESSURE)
@@ -108,7 +111,7 @@ config['Focus']['Option.bowl'] = FOC_WRT_BOWL
 
 config['Focus']['Default.exit'] = str(40)  # [mm]
 config['Focus']['Default.bowl'] = str(50)  # [mm]
-config['Focus']['Default.minimum'] = str(0)  # [mm]
+config['Focus']['Default.minimum'] = str(15)  # [mm]
 config['Focus']['Default.maximum'] = str(1000)  # [mm]
 
 # Ramp options
@@ -206,6 +209,8 @@ IGT_DS = ['IGT-128-ch', 'IGT-128-ch_comb_2x10-ch', 'IGT-128-ch_comb_1x10-ch',
 
 config['Equipment.Manufacturer.IGT']['Equipment - Driving systems'] = '\n'.join(IGT_DS)
 
+CONFIG_FILE_FOLDER_CONVERSION_DATA = 'igt\\config\\conversion_data'
+config['Equipment.Manufacturer.IGT']['Config. file folder conversioin data'] = CONFIG_FILE_FOLDER_CONVERSION_DATA
 
 #######################################################################################
 # Imasonic
@@ -217,7 +222,9 @@ config['Equipment.Manufacturer.IS'] = {}
 config['Equipment.Manufacturer.IS']['Name'] = IMASONIC
 config['Equipment.Manufacturer.IS']['Config. file folder transducers'] = CONFIG_FILE_FOLDER_IS_TRAN
 
-IS_TRANS = ['IS_PCD15287_01001', 'IS_PCD15287_01002', 'IS_PCD15473_01001', 'IS_PCD15473_01002']
+IS_TRANS = ['IS_PCD15287_01001', 'IS_PCD15287_01002', 'IS_PCD15473_01001',
+            'IS_PCD15473_01002', 'IS_PCD15473_01003', 'IS_PCD15473_01001_OPM',
+            'IS_PCD15473_01003_OPM']
 
 
 #######################################################################################
@@ -240,21 +247,27 @@ COMBO_JOIN_SIGN = '~'
 config['Equipment']['Combination sign'] = COMBO_JOIN_SIGN
 
 DS_TRAN_COMBOS = [
-    # IGT 128 ch. 2 x 10
-    COMBO_JOIN_SIGN.join([IGT_DS[1], IS_TRANS[0]]), COMBO_JOIN_SIGN.join([IGT_DS[1], IS_TRANS[1]]),
-    COMBO_JOIN_SIGN.join([IGT_DS[1], IS_TRANS[2]]), COMBO_JOIN_SIGN.join([IGT_DS[1], IS_TRANS[3]]),
+    # # IGT 128 ch. 2 x 10
+    # COMBO_JOIN_SIGN.join([IGT_DS[1], IS_TRANS[0]]), COMBO_JOIN_SIGN.join([IGT_DS[1], IS_TRANS[1]]),
+    # COMBO_JOIN_SIGN.join([IGT_DS[1], IS_TRANS[2]]), COMBO_JOIN_SIGN.join([IGT_DS[1], IS_TRANS[3]]),
+    # COMBO_JOIN_SIGN.join([IGT_DS[1], IS_TRANS[4]]),
 
-    # IGT 128 ch. 1 x 10
-    COMBO_JOIN_SIGN.join([IGT_DS[2], IS_TRANS[0]]), COMBO_JOIN_SIGN.join([IGT_DS[2], IS_TRANS[1]]),
-    COMBO_JOIN_SIGN.join([IGT_DS[2], IS_TRANS[2]]), COMBO_JOIN_SIGN.join([IGT_DS[2], IS_TRANS[3]]),
+    # # IGT 128 ch. 1 x 10
+    # COMBO_JOIN_SIGN.join([IGT_DS[2], IS_TRANS[0]]), COMBO_JOIN_SIGN.join([IGT_DS[2], IS_TRANS[1]]),
+    # COMBO_JOIN_SIGN.join([IGT_DS[2], IS_TRANS[2]]), COMBO_JOIN_SIGN.join([IGT_DS[2], IS_TRANS[3]]),
+    # COMBO_JOIN_SIGN.join([IGT_DS[2], IS_TRANS[4]]),
 
     # IGT 32 ch. 2 x 10
     COMBO_JOIN_SIGN.join([IGT_DS[7], IS_TRANS[0]]), COMBO_JOIN_SIGN.join([IGT_DS[7], IS_TRANS[1]]),
     COMBO_JOIN_SIGN.join([IGT_DS[7], IS_TRANS[2]]), COMBO_JOIN_SIGN.join([IGT_DS[7], IS_TRANS[3]]),
+    COMBO_JOIN_SIGN.join([IGT_DS[7], IS_TRANS[4]]), COMBO_JOIN_SIGN.join([IGT_DS[7], IS_TRANS[5]]),
+    COMBO_JOIN_SIGN.join([IGT_DS[7], IS_TRANS[6]]),
 
     # IGT 32 ch. 1 x 10
     COMBO_JOIN_SIGN.join([IGT_DS[8], IS_TRANS[0]]), COMBO_JOIN_SIGN.join([IGT_DS[8], IS_TRANS[1]]),
-    COMBO_JOIN_SIGN.join([IGT_DS[8], IS_TRANS[2]]), COMBO_JOIN_SIGN.join([IGT_DS[8], IS_TRANS[3]])
+    COMBO_JOIN_SIGN.join([IGT_DS[8], IS_TRANS[2]]), COMBO_JOIN_SIGN.join([IGT_DS[8], IS_TRANS[3]]),
+    COMBO_JOIN_SIGN.join([IGT_DS[8], IS_TRANS[4]]), COMBO_JOIN_SIGN.join([IGT_DS[8], IS_TRANS[5]]),
+    COMBO_JOIN_SIGN.join([IGT_DS[8], IS_TRANS[6]])
                                                      ]
 
 config['Equipment']['Combinations'] = '\n'.join(DS_TRAN_COMBOS)
@@ -294,10 +307,6 @@ config['Equipment.Driving system.' + SC_DS[1]]['Active?'] = str(True)
 #######################################################################################
 
 # # 128 ch. # #
-IGT_128_ch = {}
-IGT_128_ch['v2a_a_coeff'] = 6.1122
-IGT_128_ch['v2a_b_coeff'] = -0.4917
-
 config['Equipment.Driving system.' + IGT_DS[0]] = {}
 config['Equipment.Driving system.' + IGT_DS[0]]['Name'] = IGT + ' 128 ch. - all channels'
 config['Equipment.Driving system.' + IGT_DS[0]]['Manufacturer'] = IGT
@@ -383,18 +392,13 @@ config['Equipment.Driving system.' + IGT_DS[5]]['Requires conversion equations?'
 config['Equipment.Driving system.' + IGT_DS[5]]['Active?'] = str(False)
 
 # # 32 ch. # #
-
-IGT_32_ch = {}
-IGT_32_ch['v2a_a_coeff'] = 6.1393
-IGT_32_ch['v2a_b_coeff'] = -0.7172
-
 config['Equipment.Driving system.' + IGT_DS[6]] = {}
 config['Equipment.Driving system.' + IGT_DS[6]]['Name'] = IGT + ' 32 ch. - all channels'
 config['Equipment.Driving system.' + IGT_DS[6]]['Manufacturer'] = IGT
 config['Equipment.Driving system.' + IGT_DS[6]]['Available channels'] = str(32)
 config['Equipment.Driving system.' + IGT_DS[6]]['Connection info'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IGT_DS,
-    'gen_Nijmegen32_71D8.json'))  # should be in the same directory as code
+    'gen_Nijmegen32_71D8_10W.json'))  # should be in the same directory as code
 config['Equipment.Driving system.' + IGT_DS[6]]['Power options'] = '\n'.join([POW_AMPL, POW_PRESS,
                                                                               POW_VOLT])
 config['Equipment.Driving system.' + IGT_DS[6]]['Transducer compatibility'] = str('\n'.join(
@@ -408,7 +412,7 @@ config['Equipment.Driving system.' + IGT_DS[7]]['Manufacturer'] = IGT
 config['Equipment.Driving system.' + IGT_DS[7]]['Available channels'] = str(20)
 config['Equipment.Driving system.' + IGT_DS[7]]['Connection info'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IGT_DS,
-    'gen_Nijmegen32_2x10c_71D8.json'))  # should be in the same directory as code
+    'gen_Nijmegen32_2x10c_71D8_10W.json'))  # should be in the same directory as code
 config['Equipment.Driving system.' + IGT_DS[7]]['Transducer compatibility'] = str('\n'.join(
     IS_TRANS + DUMMIES))
 config['Equipment.Driving system.' + IGT_DS[7]]['Power options'] = '\n'.join([POW_AMPL, POW_PRESS,
@@ -422,7 +426,7 @@ config['Equipment.Driving system.' + IGT_DS[8]]['Manufacturer'] = IGT
 config['Equipment.Driving system.' + IGT_DS[8]]['Available channels'] = str(10)
 config['Equipment.Driving system.' + IGT_DS[8]]['Connection info'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IGT_DS,
-    'gen_Nijmegen32_10c_71D8.json'))  # should be in the same directory as code
+    'gen_Nijmegen32_10c_71D8_10W.json'))  # should be in the same directory as code
 config['Equipment.Driving system.' + IGT_DS[8]]['Transducer compatibility'] = str('\n'.join(
     IS_TRANS + DUMMIES))
 config['Equipment.Driving system.' + IGT_DS[8]]['Power options'] = '\n'.join([POW_AMPL, POW_PRESS,
@@ -432,11 +436,6 @@ config['Equipment.Driving system.' + IGT_DS[8]]['Active?'] = str(True)
 
 
 # # 8 ch. # #
-
-IGT_8_ch = {}
-IGT_8_ch['v2a_a_coeff'] = 0
-IGT_8_ch['v2a_b_coeff'] = 0
-
 config['Equipment.Driving system.' + IGT_DS[9]] = {}
 config['Equipment.Driving system.' + IGT_DS[9]]['Name'] = IGT + ' 8 ch. - 2 x 4 ch.'
 config['Equipment.Driving system.' + IGT_DS[9]]['Manufacturer'] = IGT
@@ -548,8 +547,8 @@ config['Equipment.Transducer.' + SC_TRANS[3]]['Elements'] = str(4)
 config['Equipment.Transducer.' + SC_TRANS[3]]['Fund. freq.'] = str(250)  # [kHz]
 config['Equipment.Transducer.' + SC_TRANS[3]]['Natural focus'] = str(0)  # [mm] only for Imasonic
 config['Equipment.Transducer.' + SC_TRANS[3]]['Exit plane - first element dist.'] = str(0)  # [mm] only for Imasonic
-config['Equipment.Transducer.' + SC_TRANS[3]]['Min. focus'] = str(14.2)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + SC_TRANS[3]]['Max. focus'] = str(60.9)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + SC_TRANS[3]]['Min. focus'] = str(13.7)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + SC_TRANS[3]]['Max. focus'] = str(61.5)  # [mm], wrt exit plane
 config['Equipment.Transducer.' + SC_TRANS[3]]['Steer information'] = str(os.path.join(
     CONFIG_FILE_FOLDER_SC_TRAN,
     'CTX-250-001 - TPO-105-010 - Steer Table.xlsx'))  # should be in the same directory as code
@@ -612,33 +611,6 @@ config['Equipment.Transducer.' + SC_TRANS[7]]['Active?'] = str(True)
 #######################################################################################
 # Imasonic - Tranducers
 #######################################################################################
-
-IS_15287_1001 = {}
-IS_15287_1001['p2a_a_coeff'] = 0.000082054668313
-IS_15287_1001['p2a_b_coeff'] = -0.033911682289495
-IS_15287_1001['df2sf_a_coeff'] = 1.018224584320300
-IS_15287_1001['df2sf_b_coeff'] = 9.639417185685110
-IS_15287_1001['f2eqf1_foc_low_lim'] = 7.19
-IS_15287_1001['f2eqf1_foc_upper_lim'] = 18.74
-IS_15287_1001['f2eqf1_a0_coeff'] = -4.15658138190493
-IS_15287_1001['f2eqf1_a1_coeff'] = 2.0850949129438
-IS_15287_1001['f2eqf1_a2_coeff'] = -0.298158433937165
-IS_15287_1001['f2eqf1_a3_coeff'] = 0.0192639743467205
-IS_15287_1001['f2eqf1_a4_coeff'] = -0.000583222233476554
-IS_15287_1001['f2eqf1_a5_coeff'] = 6.72077922560719e-06
-IS_15287_1001['f2eqf1_a6_coeff'] = 0
-IS_15287_1001['f2eqf1_a7_coeff'] = 0
-IS_15287_1001['f2eqf2_foc_low_lim'] = 18.74
-IS_15287_1001['f2eqf2_foc_upper_lim'] = 96.01
-IS_15287_1001['f2eqf2_a0_coeff'] = 0.461307101083033
-IS_15287_1001['f2eqf2_a1_coeff'] = 0.00624309239733177
-IS_15287_1001['f2eqf2_a2_coeff'] = 4.47711157280263e-05
-IS_15287_1001['f2eqf2_a3_coeff'] = -1.92923194701268e-07
-IS_15287_1001['f2eqf2_a4_coeff'] = 0
-IS_15287_1001['f2eqf2_a5_coeff'] = 0
-IS_15287_1001['f2eqf2_a6_coeff'] = 0
-IS_15287_1001['f2eqf2_a7_coeff'] = 0
-
 config['Equipment.Transducer.' + IS_TRANS[0]] = {}
 config['Equipment.Transducer.' + IS_TRANS[0]]['Name'] = (IMASONIC +
                                                          ' 10 ch. PCD15287_01001 ROC 75 mm')
@@ -647,38 +619,12 @@ config['Equipment.Transducer.' + IS_TRANS[0]]['Elements'] = str(10)
 config['Equipment.Transducer.' + IS_TRANS[0]]['Fund. freq.'] = str(300)  # [kHz]
 config['Equipment.Transducer.' + IS_TRANS[0]]['Natural focus'] = str(75)  # [mm]
 config['Equipment.Transducer.' + IS_TRANS[0]]['Exit plane - first element dist.'] = str(9.7)  # [mm]
-config['Equipment.Transducer.' + IS_TRANS[0]]['Min. focus'] = str(IS_15287_1001['f2eqf1_foc_low_lim'])  # [mm], wrt exit plane
-config['Equipment.Transducer.' + IS_TRANS[0]]['Max. focus'] = str(IS_15287_1001['f2eqf2_foc_upper_lim'])  # [mm], wrt exit plane
+config['Equipment.Transducer.' + IS_TRANS[0]]['Min. focus'] = str(5.0)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + IS_TRANS[0]]['Max. focus'] = str(91.7)  # [mm], wrt exit plane
 config['Equipment.Transducer.' + IS_TRANS[0]]['Steer information'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IS_TRAN,
     'transducer_15287_10_300kHz.ini'))  # should be in the same directory as code
 config['Equipment.Transducer.' + IS_TRANS[0]]['Active?'] = str(True)
-
-IS_15287_1002 = {}
-IS_15287_1002['p2a_a_coeff'] = 0.000082382997297
-IS_15287_1002['p2a_b_coeff'] = -0.074808010677911
-IS_15287_1002['df2sf_a_coeff'] = 1.008225863268538
-IS_15287_1002['df2sf_b_coeff'] = 8.851388328773629
-IS_15287_1002['f2eqf1_foc_low_lim'] = 7.05
-IS_15287_1002['f2eqf1_foc_upper_lim'] = 19.65
-IS_15287_1002['f2eqf1_a0_coeff'] = 30.6830498533291
-IS_15287_1002['f2eqf1_a1_coeff'] = -18.0451551494184
-IS_15287_1002['f2eqf1_a2_coeff'] = 4.54917445340624
-IS_15287_1002['f2eqf1_a3_coeff'] = -0.613218695316875
-IS_15287_1002['f2eqf1_a4_coeff'] = 0.0478107944123514
-IS_15287_1002['f2eqf1_a5_coeff'] = -0.00216778531206177
-IS_15287_1002['f2eqf1_a6_coeff'] = 5.31961813315904e-05
-IS_15287_1002['f2eqf1_a7_coeff'] = -5.4723963282926e-07
-IS_15287_1002['f2eqf2_foc_low_lim'] = 19.65
-IS_15287_1002['f2eqf2_foc_upper_lim'] = 93.92
-IS_15287_1002['f2eqf2_a0_coeff'] = 0.898964661744547
-IS_15287_1002['f2eqf2_a1_coeff'] = -0.038286218314933
-IS_15287_1002['f2eqf2_a2_coeff'] = 0.00165181603456986
-IS_15287_1002['f2eqf2_a3_coeff'] = -2.72985702783128e-05
-IS_15287_1002['f2eqf2_a4_coeff'] = 2.16917491436039e-07
-IS_15287_1002['f2eqf2_a5_coeff'] = -6.66061534849006e-10
-IS_15287_1002['f2eqf2_a6_coeff'] = 0
-IS_15287_1002['f2eqf2_a7_coeff'] = 0
 
 config['Equipment.Transducer.' + IS_TRANS[1]] = {}
 config['Equipment.Transducer.' + IS_TRANS[1]]['Name'] = (IMASONIC +
@@ -688,38 +634,12 @@ config['Equipment.Transducer.' + IS_TRANS[1]]['Elements'] = str(10)
 config['Equipment.Transducer.' + IS_TRANS[1]]['Fund. freq.'] = str(300)  # [kHz]
 config['Equipment.Transducer.' + IS_TRANS[1]]['Natural focus'] = str(75)  # [mm]
 config['Equipment.Transducer.' + IS_TRANS[1]]['Exit plane - first element dist.'] = str(9.7)  # [mm]
-config['Equipment.Transducer.' + IS_TRANS[1]]['Min. focus'] = str(IS_15287_1002['f2eqf1_foc_low_lim'])  # [mm], wrt exit plane
-config['Equipment.Transducer.' + IS_TRANS[1]]['Max. focus'] = str(IS_15287_1002['f2eqf2_foc_upper_lim'])  # [mm], wrt exit plane
+config['Equipment.Transducer.' + IS_TRANS[1]]['Min. focus'] = str(6.1)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + IS_TRANS[1]]['Max. focus'] = str(93.2)  # [mm], wrt exit plane
 config['Equipment.Transducer.' + IS_TRANS[1]]['Steer information'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IS_TRAN,
     'transducer_15287_10_300kHz.ini'))  # should be in the same directory as code
 config['Equipment.Transducer.' + IS_TRANS[1]]['Active?'] = str(True)
-
-IS_15473_1001 = {}
-IS_15473_1001['p2a_a_coeff'] = 0.000108856063340
-IS_15473_1001['p2a_b_coeff'] = -0.040608603214349
-IS_15473_1001['df2sf_a_coeff'] = 1.001417337686330
-IS_15473_1001['df2sf_b_coeff'] = 6.501919735352103
-IS_15473_1001['f2eqf1_foc_low_lim'] = 11.41
-IS_15473_1001['f2eqf1_foc_upper_lim'] = 23.91
-IS_15473_1001['f2eqf1_a0_coeff'] = 155.456141425652
-IS_15473_1001['f2eqf1_a1_coeff'] = -62.4159468007929
-IS_15473_1001['f2eqf1_a2_coeff'] = 10.572862781395
-IS_15473_1001['f2eqf1_a3_coeff'] = -0.974118502758613
-IS_15473_1001['f2eqf1_a4_coeff'] = 0.0527778625069939
-IS_15473_1001['f2eqf1_a5_coeff'] = -0.00168495870404901
-IS_15473_1001['f2eqf1_a6_coeff'] = 2.94099609801237e-05
-IS_15473_1001['f2eqf1_a7_coeff'] = -2.1689610110201e-07
-IS_15473_1001['f2eqf2_foc_low_lim'] = 23.91
-IS_15473_1001['f2eqf2_foc_upper_lim'] = 92.51
-IS_15473_1001['f2eqf2_a0_coeff'] = 0.708228661808233
-IS_15473_1001['f2eqf2_a1_coeff'] = -0.0251942648277707
-IS_15473_1001['f2eqf2_a2_coeff'] = 0.000994917874925799
-IS_15473_1001['f2eqf2_a3_coeff'] = -1.46061580177157e-05
-IS_15473_1001['f2eqf2_a4_coeff'] = 1.0470213175301e-07
-IS_15473_1001['f2eqf2_a5_coeff'] = -2.94628257086522e-10
-IS_15473_1001['f2eqf2_a6_coeff'] = 0
-IS_15473_1001['f2eqf2_a7_coeff'] = 0
 
 config['Equipment.Transducer.' + IS_TRANS[2]] = {}
 config['Equipment.Transducer.' + IS_TRANS[2]]['Name'] = (IMASONIC +
@@ -729,53 +649,75 @@ config['Equipment.Transducer.' + IS_TRANS[2]]['Elements'] = str(10)
 config['Equipment.Transducer.' + IS_TRANS[2]]['Fund. freq.'] = str(300)  # [kHz]
 config['Equipment.Transducer.' + IS_TRANS[2]]['Natural focus'] = str(100)  # [mm]
 config['Equipment.Transducer.' + IS_TRANS[2]]['Exit plane - first element dist.'] = str(7.3)  # [mm]
-config['Equipment.Transducer.' + IS_TRANS[2]]['Min. focus'] = str(IS_15473_1001['f2eqf1_foc_low_lim'])  # [mm], wrt exit plane
-config['Equipment.Transducer.' + IS_TRANS[2]]['Max. focus'] = str(IS_15473_1001['f2eqf2_foc_upper_lim'])  # [mm], wrt exit plane
+config['Equipment.Transducer.' + IS_TRANS[2]]['Min. focus'] = str(6.7)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + IS_TRANS[2]]['Max. focus'] = str(92.6)  # [mm], wrt exit plane
 config['Equipment.Transducer.' + IS_TRANS[2]]['Steer information'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IS_TRAN,
     'transducer_15473_10_300kHz.ini'))  # should be in the same directory as code
 config['Equipment.Transducer.' + IS_TRANS[2]]['Active?'] = str(True)
 
-IS_15473_1002 = {}
-IS_15473_1002['p2a_a_coeff'] = 0.000109652030606
-IS_15473_1002['p2a_b_coeff'] = -0.049100892347670
-IS_15473_1002['df2sf_a_coeff'] = 0.985997294283070
-IS_15473_1002['df2sf_b_coeff'] = 6.839965574252088
-IS_15473_1002['f2eqf1_foc_low_lim'] = 11.81
-IS_15473_1002['f2eqf1_foc_upper_lim'] = 23.19
-IS_15473_1002['f2eqf1_a0_coeff'] = 215.873867616457
-IS_15473_1002['f2eqf1_a1_coeff'] = -86.1814700183455
-IS_15473_1002['f2eqf1_a2_coeff'] = 14.5225303056864
-IS_15473_1002['f2eqf1_a3_coeff'] = -1.33371123213391
-IS_15473_1002['f2eqf1_a4_coeff'] = 0.0721670489572786
-IS_15473_1002['f2eqf1_a5_coeff'] = -0.00230487726262542
-IS_15473_1002['f2eqf1_a6_coeff'] = 4.03049687566001e-05
-IS_15473_1002['f2eqf1_a7_coeff'] = -2.9817886302987e-07
-IS_15473_1002['f2eqf2_foc_low_lim'] = 23.19
-IS_15473_1002['f2eqf2_foc_upper_lim'] = 94.63
-IS_15473_1002['f2eqf2_a0_coeff'] = 0.74295672516508
-IS_15473_1002['f2eqf2_a1_coeff'] = -0.0239057128267281
-IS_15473_1002['f2eqf2_a2_coeff'] = 0.000765054513772272
-IS_15473_1002['f2eqf2_a3_coeff'] = -8.34872753646803e-06
-IS_15473_1002['f2eqf2_a4_coeff'] = 3.93567876712398e-08
-IS_15473_1002['f2eqf2_a5_coeff'] = -5.44529271912347e-11
-IS_15473_1002['f2eqf2_a6_coeff'] = 0
-IS_15473_1002['f2eqf2_a7_coeff'] = 0
-
 config['Equipment.Transducer.' + IS_TRANS[3]] = {}
 config['Equipment.Transducer.' + IS_TRANS[3]]['Name'] = (IMASONIC +
-                                                         ' 10 ch. PCD15473_01002 ROC 100 mm')
+                                                         ' 10 ch. PCD15473_01002 ROC 100 mm BROKEN')
 config['Equipment.Transducer.' + IS_TRANS[3]]['Manufacturer'] = IMASONIC
 config['Equipment.Transducer.' + IS_TRANS[3]]['Elements'] = str(10)
 config['Equipment.Transducer.' + IS_TRANS[3]]['Fund. freq.'] = str(300)  # [kHz]
 config['Equipment.Transducer.' + IS_TRANS[3]]['Natural focus'] = str(100)  # [mm]
 config['Equipment.Transducer.' + IS_TRANS[3]]['Exit plane - first element dist.'] = str(7.3)  # [mm]
-config['Equipment.Transducer.' + IS_TRANS[3]]['Min. focus'] = str(IS_15473_1002['f2eqf1_foc_low_lim'])  # [mm], wrt exit plane
-config['Equipment.Transducer.' + IS_TRANS[3]]['Max. focus'] = str(IS_15473_1002['f2eqf2_foc_upper_lim'])  # [mm], wrt exit plane
+config['Equipment.Transducer.' + IS_TRANS[3]]['Min. focus'] = str(5.32)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + IS_TRANS[3]]['Max. focus'] = str(92.17)  # [mm], wrt exit plane
 config['Equipment.Transducer.' + IS_TRANS[3]]['Steer information'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IS_TRAN,
     'transducer_15473_10_300kHz.ini'))  # should be in the same directory as code
-config['Equipment.Transducer.' + IS_TRANS[3]]['Active?'] = str(True)
+config['Equipment.Transducer.' + IS_TRANS[3]]['Active?'] = str(False)
+
+config['Equipment.Transducer.' + IS_TRANS[4]] = {}
+config['Equipment.Transducer.' + IS_TRANS[4]]['Name'] = (IMASONIC +
+                                                         ' 10 ch. PCD15473_01003 ROC 100 mm')
+config['Equipment.Transducer.' + IS_TRANS[4]]['Manufacturer'] = IMASONIC
+config['Equipment.Transducer.' + IS_TRANS[4]]['Elements'] = str(10)
+config['Equipment.Transducer.' + IS_TRANS[4]]['Fund. freq.'] = str(300)  # [kHz]
+config['Equipment.Transducer.' + IS_TRANS[4]]['Natural focus'] = str(100)  # [mm]
+config['Equipment.Transducer.' + IS_TRANS[4]]['Exit plane - first element dist.'] = str(7.3)  # [mm]
+config['Equipment.Transducer.' + IS_TRANS[4]]['Min. focus'] = str(7.2)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + IS_TRANS[4]]['Max. focus'] = str(93.6)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + IS_TRANS[4]]['Steer information'] = str(os.path.join(
+    CONFIG_FILE_FOLDER_IS_TRAN,
+    'transducer_15473_10_300kHz.ini'))  # should be in the same directory as code
+config['Equipment.Transducer.' + IS_TRANS[4]]['Active?'] = str(True)
+
+#######################################################################################
+# OPM setup R100 Imasonic tranducers
+#######################################################################################
+config['Equipment.Transducer.' + IS_TRANS[5]] = {}
+config['Equipment.Transducer.' + IS_TRANS[5]]['Name'] = (IMASONIC +
+                                                         ' 10 ch. PCD15473_01001 ROC 100 mm - OPM setup')
+config['Equipment.Transducer.' + IS_TRANS[5]]['Manufacturer'] = IMASONIC
+config['Equipment.Transducer.' + IS_TRANS[5]]['Elements'] = str(10)
+config['Equipment.Transducer.' + IS_TRANS[5]]['Fund. freq.'] = str(300)  # [kHz]
+config['Equipment.Transducer.' + IS_TRANS[5]]['Natural focus'] = str(100)  # [mm]
+config['Equipment.Transducer.' + IS_TRANS[5]]['Exit plane - first element dist.'] = str(7.3)  # [mm]
+config['Equipment.Transducer.' + IS_TRANS[5]]['Min. focus'] = str(7.8)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + IS_TRANS[5]]['Max. focus'] = str(92.0)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + IS_TRANS[5]]['Steer information'] = str(os.path.join(
+    CONFIG_FILE_FOLDER_IS_TRAN,
+    'transducer_15473_10_300kHz_inverted_OPM.ini'))  # should be in the same directory as code
+config['Equipment.Transducer.' + IS_TRANS[5]]['Active?'] = str(True)
+
+config['Equipment.Transducer.' + IS_TRANS[6]] = {}
+config['Equipment.Transducer.' + IS_TRANS[6]]['Name'] = (IMASONIC +
+                                                         ' 10 ch. PCD15473_01003 ROC 100 mm - OPM setup')
+config['Equipment.Transducer.' + IS_TRANS[6]]['Manufacturer'] = IMASONIC
+config['Equipment.Transducer.' + IS_TRANS[6]]['Elements'] = str(10)
+config['Equipment.Transducer.' + IS_TRANS[6]]['Fund. freq.'] = str(300)  # [kHz]
+config['Equipment.Transducer.' + IS_TRANS[6]]['Natural focus'] = str(100)  # [mm]
+config['Equipment.Transducer.' + IS_TRANS[6]]['Exit plane - first element dist.'] = str(7.3)  # [mm]
+config['Equipment.Transducer.' + IS_TRANS[6]]['Min. focus'] = str(6.7)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + IS_TRANS[6]]['Max. focus'] = str(93.2)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + IS_TRANS[6]]['Steer information'] = str(os.path.join(
+    CONFIG_FILE_FOLDER_IS_TRAN,
+    'transducer_15473_10_300kHz_inverted_OPM.ini'))  # should be in the same directory as code
+config['Equipment.Transducer.' + IS_TRANS[6]]['Active?'] = str(True)
 
 #######################################################################################
 # Dummy tranducer
@@ -797,598 +739,369 @@ config['Equipment.Transducer.' + DUMMY]['Active?'] = str(False)
 # Driving system - transducer combinations
 #######################################################################################
 
-# IGT-128-ch_comb_2x10-ch~IS_PCD15287_01001
+# # IGT-128-ch_comb_2x10-ch~IS_PCD15287_01001
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[0]] = {}
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['Driving system serial'] = (DS_TRAN_COMBOS[0]
+#                                                                                  .split(COMBO_JOIN_SIGN)[0])
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['Transducer serial'] = (DS_TRAN_COMBOS[0]
+#                                                                              .split(COMBO_JOIN_SIGN)[1])
+
+# # should be in the same directory as code
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['EqualizationCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01001_equalizationCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['FocusCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01001_focusCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['PowerCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01001_powerCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['VoltageCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_128_ch.json'))
+
+
+# # IGT-128-ch_comb_2x10-ch~IS_PCD15287_01002
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[1]] = {}
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['Driving system serial'] = (DS_TRAN_COMBOS[1]
+#                                                                                  .split(COMBO_JOIN_SIGN)[0])
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['Transducer serial'] = (DS_TRAN_COMBOS[1]
+#                                                                              .split(COMBO_JOIN_SIGN)[1])
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['EqualizationCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01002_equalizationCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['FocusCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01002_focusCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['PowerCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01002_powerCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['VoltageCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_128_ch.json'))
+
+# # IGT-128-ch_comb_2x10-ch~IS_PCD15473_01001
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[2]] = {}
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['Driving system serial'] = (DS_TRAN_COMBOS[2]
+#                                                                                  .split(COMBO_JOIN_SIGN)[0])
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['Transducer serial'] = (DS_TRAN_COMBOS[2]
+#                                                                              .split(COMBO_JOIN_SIGN)[1])
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['EqualizationCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01001_equalizationCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['FocusCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01001_focusCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['PowerCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01001_powerCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['VoltageCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_128_ch.json'))
+
+# # IGT-128-ch_comb_2x10-ch~IS_PCD15473_01002
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[3]] = {}
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['Driving system serial'] = (DS_TRAN_COMBOS[3]
+#                                                                                  .split(COMBO_JOIN_SIGN)[0])
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['Transducer serial'] = (DS_TRAN_COMBOS[3]
+#                                                                              .split(COMBO_JOIN_SIGN)[1])
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['EqualizationCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01002_equalizationCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['FocusCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01002_focusCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['PowerCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01002_powerCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['VoltageCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_128_ch.json'))
+
+# # IGT-128-ch_comb_2x10-ch~IS_PCD15473_01003
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[4]] = {}
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['Driving system serial'] = (DS_TRAN_COMBOS[4]
+#                                                                                  .split(COMBO_JOIN_SIGN)[0])
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['Transducer serial'] = (DS_TRAN_COMBOS[4]
+#                                                                              .split(COMBO_JOIN_SIGN)[1])
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['EqualizationCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01003_equalizationCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['FocusCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01003_focusCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['PowerCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01003_powerCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['VoltageCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_128_ch.json'))
+
+# # IGT-128-ch_comb_1x10-ch~IS_PCD15287_01001
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[5]] = {}
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['Driving system serial'] = (DS_TRAN_COMBOS[5]
+#                                                                                  .split(COMBO_JOIN_SIGN)[0])
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['Transducer serial'] = (DS_TRAN_COMBOS[5]
+#                                                                              .split(COMBO_JOIN_SIGN)[1])
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['EqualizationCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01001_equalizationCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['FocusCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01001_focusCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['PowerCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01001_powerCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['VoltageCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_128_ch.json'))
+
+# # IGT-128-ch_comb_1x10-ch~IS_PCD15287_01002
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[6]] = {}
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['Driving system serial'] = (DS_TRAN_COMBOS[6]
+#                                                                                  .split(COMBO_JOIN_SIGN)[0])
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['Transducer serial'] = (DS_TRAN_COMBOS[6]
+#                                                                              .split(COMBO_JOIN_SIGN)[1])
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['EqualizationCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01002_equalizationCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['FocusCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01002_focusCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['PowerCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01002_powerCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['VoltageCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_128_ch.json'))
+
+# # IGT-128-ch_comb_1x10-ch~IS_PCD15473_01001
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[7]] = {}
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['Driving system serial'] = (DS_TRAN_COMBOS[7]
+#                                                                                  .split(COMBO_JOIN_SIGN)[0])
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['Transducer serial'] = (DS_TRAN_COMBOS[7]
+#                                                                              .split(COMBO_JOIN_SIGN)[1])
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['EqualizationCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01001_equalizationCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['FocusCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01001_focusCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['PowerCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01001_powerCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['VoltageCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_128_ch.json'))
+
+# # IGT-128-ch_comb_1x10-ch~IS_PCD15473_01002
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[8]] = {}
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['Driving system serial'] = (DS_TRAN_COMBOS[8]
+#                                                                                  .split(COMBO_JOIN_SIGN)[0])
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['Transducer serial'] = (DS_TRAN_COMBOS[8]
+#                                                                              .split(COMBO_JOIN_SIGN)[1])
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['EqualizationCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01002_equalizationCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['FocusCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01002_focusCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['PowerCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01002_powerCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['VoltageCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_128_ch.json'))
+
+# # IGT-128-ch_comb_1x10-ch~IS_PCD15473_01003
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[9]] = {}
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['Driving system serial'] = (DS_TRAN_COMBOS[9]
+#                                                                                  .split(COMBO_JOIN_SIGN)[0])
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['Transducer serial'] = (DS_TRAN_COMBOS[9]
+#                                                                              .split(COMBO_JOIN_SIGN)[1])
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['EqualizationCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01003_equalizationCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['FocusCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01003_focusCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['PowerCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01003_powerCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['VoltageCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_128_ch.json'))
+
+# IGT-32-ch_comb_2x10-ch~IS_PCD15287_01001
 config['Equipment.Combination.' + DS_TRAN_COMBOS[0]] = {}
 config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['Driving system serial'] = (DS_TRAN_COMBOS[0]
                                                                                  .split(COMBO_JOIN_SIGN)[0])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['Transducer serial'] = (DS_TRAN_COMBOS[0]
                                                                              .split(COMBO_JOIN_SIGN)[1])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['EqualizationCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01001_equalizationCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['FocusCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01001_focusCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['PowerCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01001_powerCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['VoltageCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
 
-config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['V2A a-coeff'] = str(IGT_128_ch['v2a_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['V2A b-coeff'] = str(IGT_128_ch['v2a_b_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['P2A a-coeff'] = str(IS_15287_1001['p2a_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['P2A b-coeff'] = str(IS_15287_1001['p2a_b_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['DF2SF a-coeff'] = str(IS_15287_1001['df2sf_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['DF2SF b-coeff'] = str(IS_15287_1001['df2sf_b_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2EQF1 foc. low lim.'] = str(IS_15287_1001['f2eqf1_foc_low_lim'])  # >=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2EQF1 foc. upper lim.'] = str(IS_15287_1001['f2eqf1_foc_upper_lim']) # <=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2EQF1 a0-coeff'] = str(IS_15287_1001['f2eqf1_a0_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2EQF1 a1-coeff'] = str(IS_15287_1001['f2eqf1_a1_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2EQF1 a2-coeff'] = str(IS_15287_1001['f2eqf1_a2_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2EQF1 a3-coeff'] = str(IS_15287_1001['f2eqf1_a3_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2EQF1 a4-coeff'] = str(IS_15287_1001['f2eqf1_a4_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2EQF1 a5-coeff'] = str(IS_15287_1001['f2eqf1_a5_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2EQF1 a6-coeff'] = str(IS_15287_1001['f2eqf1_a6_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2EQF1 a7-coeff'] = str(IS_15287_1001['f2eqf1_a7_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2EQF2 foc. low lim.'] = str(IS_15287_1001['f2eqf2_foc_low_lim'])  # >
-config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2EQF2 foc. upper lim.'] = str(IS_15287_1001['f2eqf2_foc_upper_lim'])  # <=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2EQF2 a0-coeff'] = str(IS_15287_1001['f2eqf2_a0_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2EQF2 a1-coeff'] = str(IS_15287_1001['f2eqf2_a1_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2EQF2 a2-coeff'] = str(IS_15287_1001['f2eqf2_a2_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2EQF2 a3-coeff'] = str(IS_15287_1001['f2eqf2_a3_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2EQF2 a4-coeff'] = str(IS_15287_1001['f2eqf2_a4_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2EQF2 a5-coeff'] = str(IS_15287_1001['f2eqf2_a5_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2EQF2 a6-coeff'] = str(IS_15287_1001['f2eqf2_a6_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['F2EQF2 a7-coeff'] = str(IS_15287_1001['f2eqf2_a7_coeff'])
-
-# IGT-128-ch_comb_2x10-ch~IS_PCD15287_01002
+# IGT-32-ch_comb_2x10-ch~IS_PCD15287_01002
 config['Equipment.Combination.' + DS_TRAN_COMBOS[1]] = {}
 config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['Driving system serial'] = (DS_TRAN_COMBOS[1]
                                                                                  .split(COMBO_JOIN_SIGN)[0])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['Transducer serial'] = (DS_TRAN_COMBOS[1]
                                                                              .split(COMBO_JOIN_SIGN)[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['V2A a-coeff'] = str(IGT_128_ch['v2a_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['V2A b-coeff'] = str(IGT_128_ch['v2a_b_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['P2A a-coeff'] = str(IS_15287_1002['p2a_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['P2A b-coeff'] = str(IS_15287_1002['p2a_b_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['DF2SF a-coeff'] = str(IS_15287_1002['df2sf_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['DF2SF b-coeff'] = str(IS_15287_1002['df2sf_b_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2EQF1 foc. low lim.'] = str(IS_15287_1002['f2eqf1_foc_low_lim'])  # >=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2EQF1 foc. upper lim.'] = str(IS_15287_1002['f2eqf1_foc_upper_lim'])  # <=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2EQF1 a0-coeff'] = str(IS_15287_1002['f2eqf1_a0_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2EQF1 a1-coeff'] = str(IS_15287_1002['f2eqf1_a1_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2EQF1 a2-coeff'] = str(IS_15287_1002['f2eqf1_a2_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2EQF1 a3-coeff'] = str(IS_15287_1002['f2eqf1_a3_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2EQF1 a4-coeff'] = str(IS_15287_1002['f2eqf1_a4_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2EQF1 a5-coeff'] = str(IS_15287_1002['f2eqf1_a5_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2EQF1 a6-coeff'] = str(IS_15287_1002['f2eqf1_a6_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2EQF1 a7-coeff'] = str(IS_15287_1002['f2eqf1_a7_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2EQF2 foc. low lim.'] = str(IS_15287_1002['f2eqf2_foc_low_lim'])  # >
-config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2EQF2 foc. upper lim.'] = str(IS_15287_1002['f2eqf2_foc_upper_lim'])  # <=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2EQF2 a0-coeff'] = str(IS_15287_1002['f2eqf2_a0_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2EQF2 a1-coeff'] = str(IS_15287_1002['f2eqf2_a1_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2EQF2 a2-coeff'] = str(IS_15287_1002['f2eqf2_a2_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2EQF2 a3-coeff'] = str(IS_15287_1002['f2eqf2_a3_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2EQF2 a4-coeff'] = str(IS_15287_1002['f2eqf2_a4_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2EQF2 a5-coeff'] = str(IS_15287_1002['f2eqf2_a5_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2EQF2 a6-coeff'] = str(IS_15287_1002['f2eqf2_a6_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['F2EQF2 a7-coeff'] = str(IS_15287_1002['f2eqf2_a7_coeff'])
-
-# IGT-128-ch_comb_2x10-ch~IS_PCD15473_01001
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]] = {}
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['Driving system serial'] = (DS_TRAN_COMBOS[2]
-                                                                                 .split(COMBO_JOIN_SIGN)[0])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['Transducer serial'] = (DS_TRAN_COMBOS[2]
-                                                                             .split(COMBO_JOIN_SIGN)[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['V2A a-coeff'] = str(IGT_128_ch['v2a_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['V2A b-coeff'] = str(IGT_128_ch['v2a_b_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['P2A a-coeff'] = str(IS_15473_1001['p2a_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['P2A b-coeff'] = str(IS_15473_1001['p2a_b_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['DF2SF a-coeff'] = str(IS_15473_1001['df2sf_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['DF2SF b-coeff'] = str(IS_15473_1001['df2sf_b_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2EQF1 foc. low lim.'] = str(IS_15473_1001['f2eqf1_foc_low_lim'])  # >=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2EQF1 foc. upper lim.'] = str(IS_15473_1001['f2eqf1_foc_upper_lim'])  # <=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2EQF1 a0-coeff'] = str(IS_15473_1001['f2eqf1_a0_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2EQF1 a1-coeff'] = str(IS_15473_1001['f2eqf1_a1_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2EQF1 a2-coeff'] = str(IS_15473_1001['f2eqf1_a2_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2EQF1 a3-coeff'] = str(IS_15473_1001['f2eqf1_a3_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2EQF1 a4-coeff'] = str(IS_15473_1001['f2eqf1_a4_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2EQF1 a5-coeff'] = str(IS_15473_1001['f2eqf1_a5_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2EQF1 a6-coeff'] = str(IS_15473_1001['f2eqf1_a6_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2EQF1 a7-coeff'] = str(IS_15473_1001['f2eqf1_a7_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2EQF2 foc. low lim.'] = str(IS_15473_1001['f2eqf2_foc_low_lim'])  # >
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2EQF2 foc. upper lim.'] = str(IS_15473_1001['f2eqf2_foc_upper_lim'])  # <=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2EQF2 a0-coeff'] = str(IS_15473_1001['f2eqf2_a0_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2EQF2 a1-coeff'] = str(IS_15473_1001['f2eqf2_a1_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2EQF2 a2-coeff'] = str(IS_15473_1001['f2eqf2_a2_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2EQF2 a3-coeff'] = str(IS_15473_1001['f2eqf2_a3_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2EQF2 a4-coeff'] = str(IS_15473_1001['f2eqf2_a4_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2EQF2 a5-coeff'] = str(IS_15473_1001['f2eqf2_a5_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2EQF2 a6-coeff'] = str(IS_15473_1001['f2eqf2_a6_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['F2EQF2 a7-coeff'] = str(IS_15473_1001['f2eqf2_a7_coeff'])
-
-# IGT-128-ch_comb_2x10-ch~IS_PCD15473_01002
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]] = {}
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['Driving system serial'] = (DS_TRAN_COMBOS[3]
-                                                                                 .split(COMBO_JOIN_SIGN)[0])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['Transducer serial'] = (DS_TRAN_COMBOS[3]
-                                                                             .split(COMBO_JOIN_SIGN)[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['V2A a-coeff'] = str(IGT_128_ch['v2a_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['V2A b-coeff'] = str(IGT_128_ch['v2a_b_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['P2A a-coeff'] = str(IS_15473_1002['p2a_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['P2A b-coeff'] = str(IS_15473_1002['p2a_b_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['DF2SF a-coeff'] = str(IS_15473_1002['df2sf_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['DF2SF b-coeff'] = str(IS_15473_1002['df2sf_b_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2EQF1 foc. low lim.'] = str(IS_15473_1002['f2eqf1_foc_low_lim'])  # >=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2EQF1 foc. upper lim.'] = str(IS_15473_1002['f2eqf1_foc_upper_lim'])  # <=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2EQF1 a0-coeff'] = str(IS_15473_1002['f2eqf1_a0_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2EQF1 a1-coeff'] = str(IS_15473_1002['f2eqf1_a1_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2EQF1 a2-coeff'] = str(IS_15473_1002['f2eqf1_a2_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2EQF1 a3-coeff'] = str(IS_15473_1002['f2eqf1_a3_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2EQF1 a4-coeff'] = str(IS_15473_1002['f2eqf1_a4_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2EQF1 a5-coeff'] = str(IS_15473_1002['f2eqf1_a5_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2EQF1 a6-coeff'] = str(IS_15473_1002['f2eqf1_a6_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2EQF1 a7-coeff'] = str(IS_15473_1002['f2eqf1_a7_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2EQF2 foc. low lim.'] = str(IS_15473_1002['f2eqf2_foc_low_lim'])  # >
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2EQF2 foc. upper lim.'] = str(IS_15473_1002['f2eqf2_foc_upper_lim'])  # <=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2EQF2 a0-coeff'] = str(IS_15473_1002['f2eqf2_a0_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2EQF2 a1-coeff'] = str(IS_15473_1002['f2eqf2_a1_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2EQF2 a2-coeff'] = str(IS_15473_1002['f2eqf2_a2_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2EQF2 a3-coeff'] = str(IS_15473_1002['f2eqf2_a3_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2EQF2 a4-coeff'] = str(IS_15473_1002['f2eqf2_a4_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2EQF2 a5-coeff'] = str(IS_15473_1002['f2eqf2_a5_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2EQF2 a6-coeff'] = str(IS_15473_1002['f2eqf2_a6_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['F2EQF2 a7-coeff'] = str(IS_15473_1002['f2eqf2_a7_coeff'])
-
-# IGT-128-ch_comb_1x10-ch~IS_PCD15287_01001
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]] = {}
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['Driving system serial'] = (DS_TRAN_COMBOS[4]
-                                                                                 .split(COMBO_JOIN_SIGN)[0])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['Transducer serial'] = (DS_TRAN_COMBOS[4]
-                                                                             .split(COMBO_JOIN_SIGN)[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['V2A a-coeff'] = str(IGT_128_ch['v2a_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['V2A b-coeff'] = str(IGT_128_ch['v2a_b_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['P2A a-coeff'] = str(IS_15287_1001['p2a_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['P2A b-coeff'] = str(IS_15287_1001['p2a_b_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['DF2SF a-coeff'] = str(IS_15287_1001['df2sf_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['DF2SF b-coeff'] = str(IS_15287_1001['df2sf_b_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2EQF1 foc. low lim.'] = str(IS_15287_1001['f2eqf1_foc_low_lim'])  # >=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2EQF1 foc. upper lim.'] = str(IS_15287_1001['f2eqf1_foc_upper_lim'])  # <=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2EQF1 a0-coeff'] = str(IS_15287_1001['f2eqf1_a0_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2EQF1 a1-coeff'] = str(IS_15287_1001['f2eqf1_a1_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2EQF1 a2-coeff'] = str(IS_15287_1001['f2eqf1_a2_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2EQF1 a3-coeff'] = str(IS_15287_1001['f2eqf1_a3_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2EQF1 a4-coeff'] = str(IS_15287_1001['f2eqf1_a4_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2EQF1 a5-coeff'] = str(IS_15287_1001['f2eqf1_a5_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2EQF1 a6-coeff'] = str(IS_15287_1001['f2eqf1_a6_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2EQF1 a7-coeff'] = str(IS_15287_1001['f2eqf1_a7_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2EQF2 foc. low lim.'] = str(IS_15287_1001['f2eqf2_foc_low_lim'])  # >
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2EQF2 foc. upper lim.'] = str(IS_15287_1001['f2eqf2_foc_upper_lim'])  # <=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2EQF2 a0-coeff'] = str(IS_15287_1001['f2eqf2_a0_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2EQF2 a1-coeff'] = str(IS_15287_1001['f2eqf2_a1_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2EQF2 a2-coeff'] = str(IS_15287_1001['f2eqf2_a2_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2EQF2 a3-coeff'] = str(IS_15287_1001['f2eqf2_a3_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2EQF2 a4-coeff'] = str(IS_15287_1001['f2eqf2_a4_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2EQF2 a5-coeff'] = str(IS_15287_1001['f2eqf2_a5_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2EQF2 a6-coeff'] = str(IS_15287_1001['f2eqf2_a6_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['F2EQF2 a7-coeff'] = str(IS_15287_1001['f2eqf2_a7_coeff'])
-
-# IGT-128-ch_comb_1x10-ch~IS_PCD15287_01002
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]] = {}
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['Driving system serial'] = (DS_TRAN_COMBOS[5]
-                                                                                 .split(COMBO_JOIN_SIGN)[0])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['Transducer serial'] = (DS_TRAN_COMBOS[5]
-                                                                             .split(COMBO_JOIN_SIGN)[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['V2A a-coeff'] = str(IGT_128_ch['v2a_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['V2A b-coeff'] = str(IGT_128_ch['v2a_b_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['P2A a-coeff'] = str(IS_15287_1002['p2a_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['P2A b-coeff'] = str(IS_15287_1002['p2a_b_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['DF2SF a-coeff'] = str(IS_15287_1002['df2sf_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['DF2SF b-coeff'] = str(IS_15287_1002['df2sf_b_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2EQF1 foc. low lim.'] = str(IS_15287_1002['f2eqf1_foc_low_lim'])  # >=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2EQF1 foc. upper lim.'] = str(IS_15287_1002['f2eqf1_foc_upper_lim'])  # <=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2EQF1 a0-coeff'] = str(IS_15287_1002['f2eqf1_a0_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2EQF1 a1-coeff'] = str(IS_15287_1002['f2eqf1_a1_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2EQF1 a2-coeff'] = str(IS_15287_1002['f2eqf1_a2_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2EQF1 a3-coeff'] = str(IS_15287_1002['f2eqf1_a3_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2EQF1 a4-coeff'] = str(IS_15287_1002['f2eqf1_a4_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2EQF1 a5-coeff'] = str(IS_15287_1002['f2eqf1_a5_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2EQF1 a6-coeff'] = str(IS_15287_1002['f2eqf1_a6_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2EQF1 a7-coeff'] = str(IS_15287_1002['f2eqf1_a7_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2EQF2 foc. low lim.'] = str(IS_15287_1002['f2eqf2_foc_low_lim'])  # >
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2EQF2 foc. upper lim.'] = str(IS_15287_1002['f2eqf2_foc_upper_lim'])  # <=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2EQF2 a0-coeff'] = str(IS_15287_1002['f2eqf2_a0_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2EQF2 a1-coeff'] = str(IS_15287_1002['f2eqf2_a1_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2EQF2 a2-coeff'] = str(IS_15287_1002['f2eqf2_a2_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2EQF2 a3-coeff'] = str(IS_15287_1002['f2eqf2_a3_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2EQF2 a4-coeff'] = str(IS_15287_1002['f2eqf2_a4_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2EQF2 a5-coeff'] = str(IS_15287_1002['f2eqf2_a5_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2EQF2 a6-coeff'] = str(IS_15287_1002['f2eqf2_a6_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['F2EQF2 a7-coeff'] = str(IS_15287_1002['f2eqf2_a7_coeff'])
-
-# IGT-128-ch_comb_1x10-ch~IS_PCD15473_01001
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]] = {}
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['Driving system serial'] = (DS_TRAN_COMBOS[6]
-                                                                                 .split(COMBO_JOIN_SIGN)[0])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['Transducer serial'] = (DS_TRAN_COMBOS[6]
-                                                                             .split(COMBO_JOIN_SIGN)[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['V2A a-coeff'] = str(IGT_128_ch['v2a_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['V2A b-coeff'] = str(IGT_128_ch['v2a_b_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['P2A a-coeff'] = str(IS_15473_1001['p2a_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['P2A b-coeff'] = str(IS_15473_1001['p2a_b_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['DF2SF a-coeff'] = str(IS_15473_1001['df2sf_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['DF2SF b-coeff'] = str(IS_15473_1001['df2sf_b_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2EQF1 foc. low lim.'] = str(IS_15473_1001['f2eqf1_foc_low_lim'])  # >=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2EQF1 foc. upper lim.'] = str(IS_15473_1001['f2eqf1_foc_upper_lim'])  # <=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2EQF1 a0-coeff'] = str(IS_15473_1001['f2eqf1_a0_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2EQF1 a1-coeff'] = str(IS_15473_1001['f2eqf1_a1_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2EQF1 a2-coeff'] = str(IS_15473_1001['f2eqf1_a2_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2EQF1 a3-coeff'] = str(IS_15473_1001['f2eqf1_a3_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2EQF1 a4-coeff'] = str(IS_15473_1001['f2eqf1_a4_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2EQF1 a5-coeff'] = str(IS_15473_1001['f2eqf1_a5_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2EQF1 a6-coeff'] = str(IS_15473_1001['f2eqf1_a6_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2EQF1 a7-coeff'] = str(IS_15473_1001['f2eqf1_a7_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2EQF2 foc. low lim.'] = str(IS_15473_1001['f2eqf2_foc_low_lim'])  # >
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2EQF2 foc. upper lim.'] = str(IS_15473_1001['f2eqf2_foc_upper_lim'])  # <=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2EQF2 a0-coeff'] = str(IS_15473_1001['f2eqf2_a0_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2EQF2 a1-coeff'] = str(IS_15473_1001['f2eqf2_a1_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2EQF2 a2-coeff'] = str(IS_15473_1001['f2eqf2_a2_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2EQF2 a3-coeff'] = str(IS_15473_1001['f2eqf2_a3_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2EQF2 a4-coeff'] = str(IS_15473_1001['f2eqf2_a4_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2EQF2 a5-coeff'] = str(IS_15473_1001['f2eqf2_a5_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2EQF2 a6-coeff'] = str(IS_15473_1001['f2eqf2_a6_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['F2EQF2 a7-coeff'] = str(IS_15473_1001['f2eqf2_a7_coeff'])
-
-# IGT-128-ch_comb_1x10-ch~IS_PCD15473_01002
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]] = {}
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['Driving system serial'] = (DS_TRAN_COMBOS[7]
-                                                                                 .split(COMBO_JOIN_SIGN)[0])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['Transducer serial'] = (DS_TRAN_COMBOS[7]
-                                                                             .split(COMBO_JOIN_SIGN)[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['V2A a-coeff'] = str(IGT_128_ch['v2a_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['V2A b-coeff'] = str(IGT_128_ch['v2a_b_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['P2A a-coeff'] = str(IS_15473_1002['p2a_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['P2A b-coeff'] = str(IS_15473_1002['p2a_b_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['DF2SF a-coeff'] = str(IS_15473_1002['df2sf_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['DF2SF b-coeff'] = str(IS_15473_1002['df2sf_b_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2EQF1 foc. low lim.'] = str(IS_15473_1002['f2eqf1_foc_low_lim'])  # >=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2EQF1 foc. upper lim.'] = str(IS_15473_1002['f2eqf1_foc_upper_lim'])  # <=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2EQF1 a0-coeff'] = str(IS_15473_1002['f2eqf1_a0_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2EQF1 a1-coeff'] = str(IS_15473_1002['f2eqf1_a1_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2EQF1 a2-coeff'] = str(IS_15473_1002['f2eqf1_a2_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2EQF1 a3-coeff'] = str(IS_15473_1002['f2eqf1_a3_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2EQF1 a4-coeff'] = str(IS_15473_1002['f2eqf1_a4_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2EQF1 a5-coeff'] = str(IS_15473_1002['f2eqf1_a5_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2EQF1 a6-coeff'] = str(IS_15473_1002['f2eqf1_a6_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2EQF1 a7-coeff'] = str(IS_15473_1002['f2eqf1_a7_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2EQF2 foc. low lim.'] = str(IS_15473_1002['f2eqf2_foc_low_lim'])  # >
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2EQF2 foc. upper lim.'] = str(IS_15473_1002['f2eqf2_foc_upper_lim'])  # <=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2EQF2 a0-coeff'] = str(IS_15473_1002['f2eqf2_a0_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2EQF2 a1-coeff'] = str(IS_15473_1002['f2eqf2_a1_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2EQF2 a2-coeff'] = str(IS_15473_1002['f2eqf2_a2_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2EQF2 a3-coeff'] = str(IS_15473_1002['f2eqf2_a3_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2EQF2 a4-coeff'] = str(IS_15473_1002['f2eqf2_a4_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2EQF2 a5-coeff'] = str(IS_15473_1002['f2eqf2_a5_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2EQF2 a6-coeff'] = str(IS_15473_1002['f2eqf2_a6_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['F2EQF2 a7-coeff'] = str(IS_15473_1002['f2eqf2_a7_coeff'])
-
-# IGT-32-ch_comb_2x10-ch~IS_PCD15287_01001
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]] = {}
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['Driving system serial'] = (DS_TRAN_COMBOS[8]
-                                                                                 .split(COMBO_JOIN_SIGN)[0])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['Transducer serial'] = (DS_TRAN_COMBOS[8]
-                                                                             .split(COMBO_JOIN_SIGN)[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['V2A a-coeff'] = str(IGT_32_ch['v2a_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['V2A b-coeff'] = str(IGT_32_ch['v2a_b_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['P2A a-coeff'] = str(IS_15287_1001['p2a_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['P2A b-coeff'] = str(IS_15287_1001['p2a_b_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['DF2SF a-coeff'] = str(IS_15287_1001['df2sf_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['DF2SF b-coeff'] = str(IS_15287_1001['df2sf_b_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2EQF1 foc. low lim.'] = str(IS_15287_1001['f2eqf1_foc_low_lim'])  # >=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2EQF1 foc. upper lim.'] = str(IS_15287_1001['f2eqf1_foc_upper_lim'])  # <=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2EQF1 a0-coeff'] = str(IS_15287_1001['f2eqf1_a0_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2EQF1 a1-coeff'] = str(IS_15287_1001['f2eqf1_a1_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2EQF1 a2-coeff'] = str(IS_15287_1001['f2eqf1_a2_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2EQF1 a3-coeff'] = str(IS_15287_1001['f2eqf1_a3_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2EQF1 a4-coeff'] = str(IS_15287_1001['f2eqf1_a4_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2EQF1 a5-coeff'] = str(IS_15287_1001['f2eqf1_a5_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2EQF1 a6-coeff'] = str(IS_15287_1001['f2eqf1_a6_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2EQF1 a7-coeff'] = str(IS_15287_1001['f2eqf1_a7_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2EQF2 foc. low lim.'] = str(IS_15287_1001['f2eqf2_foc_low_lim'])  # >
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2EQF2 foc. upper lim.'] = str(IS_15287_1001['f2eqf2_foc_upper_lim'])  # <=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2EQF2 a0-coeff'] = str(IS_15287_1001['f2eqf2_a0_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2EQF2 a1-coeff'] = str(IS_15287_1001['f2eqf2_a1_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2EQF2 a2-coeff'] = str(IS_15287_1001['f2eqf2_a2_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2EQF2 a3-coeff'] = str(IS_15287_1001['f2eqf2_a3_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2EQF2 a4-coeff'] = str(IS_15287_1001['f2eqf2_a4_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2EQF2 a5-coeff'] = str(IS_15287_1001['f2eqf2_a5_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2EQF2 a6-coeff'] = str(IS_15287_1001['f2eqf2_a6_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['F2EQF2 a7-coeff'] = str(IS_15287_1001['f2eqf2_a7_coeff'])
-
-# IGT-32-ch_comb_2x10-ch~IS_PCD15287_01002
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]] = {}
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['Driving system serial'] = (DS_TRAN_COMBOS[9]
-                                                                                 .split(COMBO_JOIN_SIGN)[0])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['Transducer serial'] = (DS_TRAN_COMBOS[9]
-                                                                             .split(COMBO_JOIN_SIGN)[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['V2A a-coeff'] = str(IGT_32_ch['v2a_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['V2A b-coeff'] = str(IGT_32_ch['v2a_b_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['P2A a-coeff'] = str(IS_15287_1002['p2a_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['P2A b-coeff'] = str(IS_15287_1002['p2a_b_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['DF2SF a-coeff'] = str(IS_15287_1002['df2sf_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['DF2SF b-coeff'] = str(IS_15287_1002['df2sf_b_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2EQF1 foc. low lim.'] = str(IS_15287_1002['f2eqf1_foc_low_lim'])  # >=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2EQF1 foc. upper lim.'] = str(IS_15287_1002['f2eqf1_foc_upper_lim'])  # <=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2EQF1 a0-coeff'] = str(IS_15287_1002['f2eqf1_a0_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2EQF1 a1-coeff'] = str(IS_15287_1002['f2eqf1_a1_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2EQF1 a2-coeff'] = str(IS_15287_1002['f2eqf1_a2_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2EQF1 a3-coeff'] = str(IS_15287_1002['f2eqf1_a3_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2EQF1 a4-coeff'] = str(IS_15287_1002['f2eqf1_a4_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2EQF1 a5-coeff'] = str(IS_15287_1002['f2eqf1_a5_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2EQF1 a6-coeff'] = str(IS_15287_1002['f2eqf1_a6_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2EQF1 a7-coeff'] = str(IS_15287_1002['f2eqf1_a7_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2EQF2 foc. low lim.'] = str(IS_15287_1002['f2eqf2_foc_low_lim'])  # >
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2EQF2 foc. upper lim.'] = str(IS_15287_1002['f2eqf2_foc_upper_lim'])  # <=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2EQF2 a0-coeff'] = str(IS_15287_1002['f2eqf2_a0_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2EQF2 a1-coeff'] = str(IS_15287_1002['f2eqf2_a1_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2EQF2 a2-coeff'] = str(IS_15287_1002['f2eqf2_a2_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2EQF2 a3-coeff'] = str(IS_15287_1002['f2eqf2_a3_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2EQF2 a4-coeff'] = str(IS_15287_1002['f2eqf2_a4_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2EQF2 a5-coeff'] = str(IS_15287_1002['f2eqf2_a5_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2EQF2 a6-coeff'] = str(IS_15287_1002['f2eqf2_a6_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['F2EQF2 a7-coeff'] = str(IS_15287_1002['f2eqf2_a7_coeff'])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['EqualizationCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01002_equalizationCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['FocusCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01002_focusCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['PowerCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01002_powerCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['VoltageCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
 
 # IGT-32-ch_comb_2x10-ch~IS_PCD15473_01001
+config['Equipment.Combination.' + DS_TRAN_COMBOS[2]] = {}
+config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['Driving system serial'] = (DS_TRAN_COMBOS[2]
+                                                                                  .split(COMBO_JOIN_SIGN)[0])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['Transducer serial'] = (DS_TRAN_COMBOS[2]
+                                                                              .split(COMBO_JOIN_SIGN)[1])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['EqualizationCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01001_equalizationCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['FocusCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01001_focusCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['PowerCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01001_powerCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['VoltageCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
+
+# IGT-32-ch_comb_2x10-ch~IS_PCD15473_01002
+config['Equipment.Combination.' + DS_TRAN_COMBOS[3]] = {}
+config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['Driving system serial'] = (DS_TRAN_COMBOS[3]
+                                                                                  .split(COMBO_JOIN_SIGN)[0])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['Transducer serial'] = (DS_TRAN_COMBOS[3]
+                                                                              .split(COMBO_JOIN_SIGN)[1])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['EqualizationCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01002_equalizationCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['FocusCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01002_focusCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['PowerCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01002_powerCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['VoltageCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
+
+# IGT-32-ch_comb_2x10-ch~IS_PCD15473_01003
+config['Equipment.Combination.' + DS_TRAN_COMBOS[4]] = {}
+config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['Driving system serial'] = (DS_TRAN_COMBOS[4]
+                                                                                  .split(COMBO_JOIN_SIGN)[0])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['Transducer serial'] = (DS_TRAN_COMBOS[4]
+                                                                              .split(COMBO_JOIN_SIGN)[1])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['EqualizationCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01003_equalizationCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['FocusCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01003_focusCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['PowerCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01003_powerCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['VoltageCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
+
+# IGT-32-ch_comb_2x10-ch~IS_PCD15473_01001_OPM
+config['Equipment.Combination.' + DS_TRAN_COMBOS[5]] = {}
+config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['Driving system serial'] = (DS_TRAN_COMBOS[5]
+                                                                                  .split(COMBO_JOIN_SIGN)[0])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['Transducer serial'] = (DS_TRAN_COMBOS[5]
+                                                                              .split(COMBO_JOIN_SIGN)[1])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['EqualizationCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01001_OPM_equalizationCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['FocusCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01001_OPM_focusCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['PowerCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01001_OPM_powerCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['VoltageCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
+
+# IGT-32-ch_comb_2x10-ch~IS_PCD15473_01003_OPM
+config['Equipment.Combination.' + DS_TRAN_COMBOS[6]] = {}
+config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['Driving system serial'] = (DS_TRAN_COMBOS[6]
+                                                                                  .split(COMBO_JOIN_SIGN)[0])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['Transducer serial'] = (DS_TRAN_COMBOS[6]
+                                                                              .split(COMBO_JOIN_SIGN)[1])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['EqualizationCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01003_OPM_equalizationCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['FocusCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01003_OPM_focusCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['PowerCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01003_OPM_powerCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['VoltageCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
+
+# IGT-32-ch_comb_1x10-ch~IS_PCD15287_01001
+config['Equipment.Combination.' + DS_TRAN_COMBOS[7]] = {}
+config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['Driving system serial'] = (DS_TRAN_COMBOS[7]
+                                                                                  .split(COMBO_JOIN_SIGN)[0])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['Transducer serial'] = (DS_TRAN_COMBOS[7]
+                                                                              .split(COMBO_JOIN_SIGN)[1])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['EqualizationCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01001_equalizationCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['FocusCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01001_focusCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['PowerCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01001_powerCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['VoltageCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
+
+# IGT-32-ch_comb_1x10-ch~IS_PCD15287_01002
+config['Equipment.Combination.' + DS_TRAN_COMBOS[8]] = {}
+config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['Driving system serial'] = (DS_TRAN_COMBOS[8]
+                                                                                  .split(COMBO_JOIN_SIGN)[0])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['Transducer serial'] = (DS_TRAN_COMBOS[8]
+                                                                              .split(COMBO_JOIN_SIGN)[1])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['EqualizationCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01002_equalizationCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['FocusCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01002_focusCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['PowerCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01002_powerCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['VoltageCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
+
+# IGT-32-ch_comb_1x10-ch~IS_PCD15473_01001
+config['Equipment.Combination.' + DS_TRAN_COMBOS[9]] = {}
+config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['Driving system serial'] = (DS_TRAN_COMBOS[9]
+                                                                                  .split(COMBO_JOIN_SIGN)[0])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['Transducer serial'] = (DS_TRAN_COMBOS[9]
+                                                                              .split(COMBO_JOIN_SIGN)[1])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['EqualizationCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01001_equalizationCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['FocusCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01001_focusCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['PowerCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01001_powerCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['VoltageCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
+
+# IGT-32-ch_comb_1x10-ch~IS_PCD15473_01002
 config['Equipment.Combination.' + DS_TRAN_COMBOS[10]] = {}
 config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['Driving system serial'] = (DS_TRAN_COMBOS[10]
                                                                                   .split(COMBO_JOIN_SIGN)[0])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['Transducer serial'] = (DS_TRAN_COMBOS[10]
                                                                               .split(COMBO_JOIN_SIGN)[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['V2A a-coeff'] = str(IGT_32_ch['v2a_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['V2A b-coeff'] = str(IGT_32_ch['v2a_b_coeff'])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['EqualizationCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01002_equalizationCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['FocusCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01002_focusCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['PowerCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01002_powerCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['VoltageCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
 
-config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['P2A a-coeff'] = str(IS_15473_1001['p2a_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['P2A b-coeff'] = str(IS_15473_1001['p2a_b_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['DF2SF a-coeff'] = str(IS_15473_1001['df2sf_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['DF2SF b-coeff'] = str(IS_15473_1001['df2sf_b_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2EQF1 foc. low lim.'] = str(IS_15473_1001['f2eqf1_foc_low_lim'])  # >=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2EQF1 foc. upper lim.'] = str(IS_15473_1001['f2eqf1_foc_upper_lim'])  # <=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2EQF1 a0-coeff'] = str(IS_15473_1001['f2eqf1_a0_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2EQF1 a1-coeff'] = str(IS_15473_1001['f2eqf1_a1_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2EQF1 a2-coeff'] = str(IS_15473_1001['f2eqf1_a2_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2EQF1 a3-coeff'] = str(IS_15473_1001['f2eqf1_a3_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2EQF1 a4-coeff'] = str(IS_15473_1001['f2eqf1_a4_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2EQF1 a5-coeff'] = str(IS_15473_1001['f2eqf1_a5_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2EQF1 a6-coeff'] = str(IS_15473_1001['f2eqf1_a6_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2EQF1 a7-coeff'] = str(IS_15473_1001['f2eqf1_a7_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2EQF2 foc. low lim.'] = str(IS_15473_1001['f2eqf2_foc_low_lim'])  # >
-config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2EQF2 foc. upper lim.'] = str(IS_15473_1001['f2eqf2_foc_upper_lim'])  # <=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2EQF2 a0-coeff'] = str(IS_15473_1001['f2eqf2_a0_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2EQF2 a1-coeff'] = str(IS_15473_1001['f2eqf2_a1_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2EQF2 a2-coeff'] = str(IS_15473_1001['f2eqf2_a2_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2EQF2 a3-coeff'] = str(IS_15473_1001['f2eqf2_a3_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2EQF2 a4-coeff'] = str(IS_15473_1001['f2eqf2_a4_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2EQF2 a5-coeff'] = str(IS_15473_1001['f2eqf2_a5_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2EQF2 a6-coeff'] = str(IS_15473_1001['f2eqf2_a6_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['F2EQF2 a7-coeff'] = str(IS_15473_1001['f2eqf2_a7_coeff'])
-
-# IGT-32-ch_comb_2x10-ch~IS_PCD15473_01002
+# IGT-32-ch_comb_1x10-ch~IS_PCD15473_01003
 config['Equipment.Combination.' + DS_TRAN_COMBOS[11]] = {}
 config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['Driving system serial'] = (DS_TRAN_COMBOS[11]
                                                                                   .split(COMBO_JOIN_SIGN)[0])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['Transducer serial'] = (DS_TRAN_COMBOS[11]
                                                                               .split(COMBO_JOIN_SIGN)[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['V2A a-coeff'] = str(IGT_32_ch['v2a_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['V2A b-coeff'] = str(IGT_32_ch['v2a_b_coeff'])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['EqualizationCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01003_equalizationCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['FocusCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01003_focusCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['PowerCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01003_powerCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['VoltageCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
 
-config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['P2A a-coeff'] = str(IS_15473_1002['p2a_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['P2A b-coeff'] = str(IS_15473_1002['p2a_b_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['DF2SF a-coeff'] = str(IS_15473_1002['df2sf_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['DF2SF b-coeff'] = str(IS_15473_1002['df2sf_b_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2EQF1 foc. low lim.'] = str(IS_15473_1002['f2eqf1_foc_low_lim'])  # >=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2EQF1 foc. upper lim.'] = str(IS_15473_1002['f2eqf1_foc_upper_lim'])  # <=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2EQF1 a0-coeff'] = str(IS_15473_1002['f2eqf1_a0_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2EQF1 a1-coeff'] = str(IS_15473_1002['f2eqf1_a1_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2EQF1 a2-coeff'] = str(IS_15473_1002['f2eqf1_a2_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2EQF1 a3-coeff'] = str(IS_15473_1002['f2eqf1_a3_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2EQF1 a4-coeff'] = str(IS_15473_1002['f2eqf1_a4_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2EQF1 a5-coeff'] = str(IS_15473_1002['f2eqf1_a5_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2EQF1 a6-coeff'] = str(IS_15473_1002['f2eqf1_a6_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2EQF1 a7-coeff'] = str(IS_15473_1002['f2eqf1_a7_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2EQF2 foc. low lim.'] = str(IS_15473_1002['f2eqf2_foc_low_lim'])  # >
-config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2EQF2 foc. upper lim.'] = str(IS_15473_1002['f2eqf2_foc_upper_lim'])  # <=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2EQF2 a0-coeff'] = str(IS_15473_1002['f2eqf2_a0_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2EQF2 a1-coeff'] = str(IS_15473_1002['f2eqf2_a1_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2EQF2 a2-coeff'] = str(IS_15473_1002['f2eqf2_a2_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2EQF2 a3-coeff'] = str(IS_15473_1002['f2eqf2_a3_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2EQF2 a4-coeff'] = str(IS_15473_1002['f2eqf2_a4_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2EQF2 a5-coeff'] = str(IS_15473_1002['f2eqf2_a5_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2EQF2 a6-coeff'] = str(IS_15473_1002['f2eqf2_a6_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['F2EQF2 a7-coeff'] = str(IS_15473_1002['f2eqf2_a7_coeff'])
-
-# IGT-32-ch_comb_1x10-ch~IS_PCD15287_01001
+# IGT-32-ch_comb_1x10-ch~IS_PCD15473_01001_OPM
 config['Equipment.Combination.' + DS_TRAN_COMBOS[12]] = {}
 config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['Driving system serial'] = (DS_TRAN_COMBOS[12]
                                                                                   .split(COMBO_JOIN_SIGN)[0])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['Transducer serial'] = (DS_TRAN_COMBOS[12]
                                                                               .split(COMBO_JOIN_SIGN)[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['V2A a-coeff'] = str(IGT_32_ch['v2a_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['V2A b-coeff'] = str(IGT_32_ch['v2a_b_coeff'])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['EqualizationCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01001_OPM_equalizationCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['FocusCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01001_OPM_focusCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['PowerCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01001_OPM_powerCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['VoltageCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
 
-config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['P2A a-coeff'] = str(IS_15287_1001['p2a_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['P2A b-coeff'] = str(IS_15287_1001['p2a_b_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['DF2SF a-coeff'] = str(IS_15287_1001['df2sf_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['DF2SF b-coeff'] = str(IS_15287_1001['df2sf_b_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2EQF1 foc. low lim.'] = str(IS_15287_1001['f2eqf1_foc_low_lim'])  # >=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2EQF1 foc. upper lim.'] = str(IS_15287_1001['f2eqf1_foc_upper_lim'])  # <=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2EQF1 a0-coeff'] = str(IS_15287_1001['f2eqf1_a0_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2EQF1 a1-coeff'] = str(IS_15287_1001['f2eqf1_a1_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2EQF1 a2-coeff'] = str(IS_15287_1001['f2eqf1_a2_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2EQF1 a3-coeff'] = str(IS_15287_1001['f2eqf1_a3_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2EQF1 a4-coeff'] = str(IS_15287_1001['f2eqf1_a4_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2EQF1 a5-coeff'] = str(IS_15287_1001['f2eqf1_a5_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2EQF1 a6-coeff'] = str(IS_15287_1001['f2eqf1_a6_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2EQF1 a7-coeff'] = str(IS_15287_1001['f2eqf1_a7_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2EQF2 foc. low lim.'] = str(IS_15287_1001['f2eqf2_foc_low_lim'])  # >
-config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2EQF2 foc. upper lim.'] = str(IS_15287_1001['f2eqf2_foc_upper_lim'])  # <=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2EQF2 a0-coeff'] = str(IS_15287_1001['f2eqf2_a0_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2EQF2 a1-coeff'] = str(IS_15287_1001['f2eqf2_a1_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2EQF2 a2-coeff'] = str(IS_15287_1001['f2eqf2_a2_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2EQF2 a3-coeff'] = str(IS_15287_1001['f2eqf2_a3_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2EQF2 a4-coeff'] = str(IS_15287_1001['f2eqf2_a4_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2EQF2 a5-coeff'] = str(IS_15287_1001['f2eqf2_a5_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2EQF2 a6-coeff'] = str(IS_15287_1001['f2eqf2_a6_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['F2EQF2 a7-coeff'] = str(IS_15287_1001['f2eqf2_a7_coeff'])
-
-# IGT-32-ch_comb_1x10-ch~IS_PCD15287_01002
+# IGT-32-ch_comb_1x10-ch~IS_PCD15473_01003_OPM
 config['Equipment.Combination.' + DS_TRAN_COMBOS[13]] = {}
 config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['Driving system serial'] = (DS_TRAN_COMBOS[13]
                                                                                   .split(COMBO_JOIN_SIGN)[0])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['Transducer serial'] = (DS_TRAN_COMBOS[13]
                                                                               .split(COMBO_JOIN_SIGN)[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['V2A a-coeff'] = str(IGT_32_ch['v2a_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['V2A b-coeff'] = str(IGT_32_ch['v2a_b_coeff'])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['EqualizationCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01003_OPM_equalizationCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['FocusCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01003_OPM_focusCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['PowerCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01003_OPM_powerCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['VoltageCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
 
-config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['P2A a-coeff'] = str(IS_15287_1002['p2a_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['P2A b-coeff'] = str(IS_15287_1002['p2a_b_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['DF2SF a-coeff'] = str(IS_15287_1002['df2sf_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['DF2SF b-coeff'] = str(IS_15287_1002['df2sf_b_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2EQF1 foc. low lim.'] = str(IS_15287_1002['f2eqf1_foc_low_lim'])  # >=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2EQF1 foc. upper lim.'] = str(IS_15287_1002['f2eqf1_foc_upper_lim'])  # <=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2EQF1 a0-coeff'] = str(IS_15287_1002['f2eqf1_a0_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2EQF1 a1-coeff'] = str(IS_15287_1002['f2eqf1_a1_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2EQF1 a2-coeff'] = str(IS_15287_1002['f2eqf1_a2_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2EQF1 a3-coeff'] = str(IS_15287_1002['f2eqf1_a3_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2EQF1 a4-coeff'] = str(IS_15287_1002['f2eqf1_a4_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2EQF1 a5-coeff'] = str(IS_15287_1002['f2eqf1_a5_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2EQF1 a6-coeff'] = str(IS_15287_1002['f2eqf1_a6_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2EQF1 a7-coeff'] = str(IS_15287_1002['f2eqf1_a7_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2EQF2 foc. low lim.'] = str(IS_15287_1002['f2eqf2_foc_low_lim'])  # >
-config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2EQF2 foc. upper lim.'] = str(IS_15287_1002['f2eqf2_foc_upper_lim'])  # <=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2EQF2 a0-coeff'] = str(IS_15287_1002['f2eqf2_a0_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2EQF2 a1-coeff'] = str(IS_15287_1002['f2eqf2_a1_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2EQF2 a2-coeff'] = str(IS_15287_1002['f2eqf2_a2_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2EQF2 a3-coeff'] = str(IS_15287_1002['f2eqf2_a3_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2EQF2 a4-coeff'] = str(IS_15287_1002['f2eqf2_a4_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2EQF2 a5-coeff'] = str(IS_15287_1002['f2eqf2_a5_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2EQF2 a6-coeff'] = str(IS_15287_1002['f2eqf2_a6_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['F2EQF2 a7-coeff'] = str(IS_15287_1002['f2eqf2_a7_coeff'])
-
-# IGT-32-ch_comb_1x10-ch~IS_PCD15473_01001
-config['Equipment.Combination.' + DS_TRAN_COMBOS[14]] = {}
-config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['Driving system serial'] = (DS_TRAN_COMBOS[14]
-                                                                                  .split(COMBO_JOIN_SIGN)[0])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['Transducer serial'] = (DS_TRAN_COMBOS[14]
-                                                                              .split(COMBO_JOIN_SIGN)[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['V2A a-coeff'] = str(IGT_32_ch['v2a_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['V2A b-coeff'] = str(IGT_32_ch['v2a_b_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['P2A a-coeff'] = str(IS_15473_1001['p2a_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['P2A b-coeff'] = str(IS_15473_1001['p2a_b_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['DF2SF a-coeff'] = str(IS_15473_1001['df2sf_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['DF2SF b-coeff'] = str(IS_15473_1001['df2sf_b_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2EQF1 foc. low lim.'] = str(IS_15473_1001['f2eqf1_foc_low_lim'])  # >=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2EQF1 foc. upper lim.'] = str(IS_15473_1001['f2eqf1_foc_upper_lim'])  # <=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2EQF1 a0-coeff'] = str(IS_15473_1001['f2eqf1_a0_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2EQF1 a1-coeff'] = str(IS_15473_1001['f2eqf1_a1_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2EQF1 a2-coeff'] = str(IS_15473_1001['f2eqf1_a2_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2EQF1 a3-coeff'] = str(IS_15473_1001['f2eqf1_a3_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2EQF1 a4-coeff'] = str(IS_15473_1001['f2eqf1_a4_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2EQF1 a5-coeff'] = str(IS_15473_1001['f2eqf1_a5_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2EQF1 a6-coeff'] = str(IS_15473_1001['f2eqf1_a6_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2EQF1 a7-coeff'] = str(IS_15473_1001['f2eqf1_a7_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2EQF2 foc. low lim.'] = str(IS_15473_1001['f2eqf2_foc_low_lim'])  # >
-config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2EQF2 foc. upper lim.'] = str(IS_15473_1001['f2eqf2_foc_upper_lim'])  # <=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2EQF2 a0-coeff'] = str(IS_15473_1001['f2eqf2_a0_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2EQF2 a1-coeff'] = str(IS_15473_1001['f2eqf2_a1_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2EQF2 a2-coeff'] = str(IS_15473_1001['f2eqf2_a2_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2EQF2 a3-coeff'] = str(IS_15473_1001['f2eqf2_a3_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2EQF2 a4-coeff'] = str(IS_15473_1001['f2eqf2_a4_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2EQF2 a5-coeff'] = str(IS_15473_1001['f2eqf2_a5_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2EQF2 a6-coeff'] = str(IS_15473_1001['f2eqf2_a6_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['F2EQF2 a7-coeff'] = str(IS_15473_1001['f2eqf2_a7_coeff'])
-
-# IGT-32-ch_comb_1x10-ch~IS_PCD15473_01002
-config['Equipment.Combination.' + DS_TRAN_COMBOS[15]] = {}
-config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['Driving system serial'] = (DS_TRAN_COMBOS[15]
-                                                                                  .split(COMBO_JOIN_SIGN)[0])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['Transducer serial'] = (DS_TRAN_COMBOS[15]
-                                                                              .split(COMBO_JOIN_SIGN)[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['V2A a-coeff'] = str(IGT_32_ch['v2a_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['V2A b-coeff'] = str(IGT_32_ch['v2a_b_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['P2A a-coeff'] = str(IS_15473_1002['p2a_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['P2A b-coeff'] = str(IS_15473_1002['p2a_b_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['DF2SF a-coeff'] = str(IS_15473_1002['df2sf_a_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['DF2SF b-coeff'] = str(IS_15473_1002['df2sf_b_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2EQF1 foc. low lim.'] = str(IS_15473_1002['f2eqf1_foc_low_lim'])  # >=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2EQF1 foc. upper lim.'] = str(IS_15473_1002['f2eqf1_foc_upper_lim'])  # <=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2EQF1 a0-coeff'] = str(IS_15473_1002['f2eqf1_a0_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2EQF1 a1-coeff'] = str(IS_15473_1002['f2eqf1_a1_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2EQF1 a2-coeff'] = str(IS_15473_1002['f2eqf1_a2_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2EQF1 a3-coeff'] = str(IS_15473_1002['f2eqf1_a3_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2EQF1 a4-coeff'] = str(IS_15473_1002['f2eqf1_a4_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2EQF1 a5-coeff'] = str(IS_15473_1002['f2eqf1_a5_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2EQF1 a6-coeff'] = str(IS_15473_1002['f2eqf1_a6_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2EQF1 a7-coeff'] = str(IS_15473_1002['f2eqf1_a7_coeff'])
-
-config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2EQF2 foc. low lim.'] = str(IS_15473_1002['f2eqf2_foc_low_lim'])  # >
-config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2EQF2 foc. upper lim.'] = str(IS_15473_1002['f2eqf2_foc_upper_lim'])  # <=
-config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2EQF2 a0-coeff'] = str(IS_15473_1002['f2eqf2_a0_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2EQF2 a1-coeff'] = str(IS_15473_1002['f2eqf2_a1_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2EQF2 a2-coeff'] = str(IS_15473_1002['f2eqf2_a2_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2EQF2 a3-coeff'] = str(IS_15473_1002['f2eqf2_a3_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2EQF2 a4-coeff'] = str(IS_15473_1002['f2eqf2_a4_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2EQF2 a5-coeff'] = str(IS_15473_1002['f2eqf2_a5_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2EQF2 a6-coeff'] = str(IS_15473_1002['f2eqf2_a6_coeff'])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['F2EQF2 a7-coeff'] = str(IS_15473_1002['f2eqf2_a7_coeff'])
 
 with open(CONFIG_FILE, 'w') as configfile:
     config.write(configfile)

@@ -31,7 +31,7 @@ README.md file of https://github.com/Donders-Institute/Radboud-FUS-driving-syste
 from setuptools import setup, find_packages
 
 setup(name='fus_driving_systems',
-      version='2.1.0',
+      version='2.2.0',
       description='Abstract structure to communicate with different FUS driving systems',
       url='https://github.com/Donders-Institute/Radboud-FUS-driving-system-software',
       author='Margely Cornelissen',
@@ -39,6 +39,7 @@ setup(name='fus_driving_systems',
       packages=find_packages(),
       package_data={'fus_driving_systems': ['config/*', 'igt/config/imasonic_transducers/*',
                                             'igt/config/sonic_concepts_transducers/*',
+                                            'igt/config/conversion_data/*',
                                             'igt/config/*.json', 'igt/*.pyd']},
       py_modules=['driving_system', 'transducer', 'control_driving_system', 'sequence', 'utils'],
       zip_safe=False)
