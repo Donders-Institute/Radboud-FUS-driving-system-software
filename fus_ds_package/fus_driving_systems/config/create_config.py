@@ -92,6 +92,9 @@ config['Power']['Default.press'] = str(0)
 config['Power']['Default.volt'] = str(0)
 
 config['Power']['Default.eq_factor'] = str(0)
+config['Power']['Default.eq_press'] = str(0)
+config['Power']['Default.input_press'] = str(0)
+config['Power']['Default.calc_ampl'] = str(0)
 
 MAX_ALLOWED_PRESSURE = 1.4  # MPa
 config['Power']['Maximum pressure allowed in free water [MPa]'] = str(MAX_ALLOWED_PRESSURE)
@@ -219,7 +222,9 @@ config['Equipment.Manufacturer.IS'] = {}
 config['Equipment.Manufacturer.IS']['Name'] = IMASONIC
 config['Equipment.Manufacturer.IS']['Config. file folder transducers'] = CONFIG_FILE_FOLDER_IS_TRAN
 
-IS_TRANS = ['IS_PCD15287_01001', 'IS_PCD15287_01002', 'IS_PCD15473_01001', 'IS_PCD15473_01002']
+IS_TRANS = ['IS_PCD15287_01001', 'IS_PCD15287_01002', 'IS_PCD15473_01001',
+            'IS_PCD15473_01002', 'IS_PCD15473_01003', 'IS_PCD15473_01001_OPM',
+            'IS_PCD15473_01003_OPM']
 
 
 #######################################################################################
@@ -242,21 +247,27 @@ COMBO_JOIN_SIGN = '~'
 config['Equipment']['Combination sign'] = COMBO_JOIN_SIGN
 
 DS_TRAN_COMBOS = [
-    # IGT 128 ch. 2 x 10
-    COMBO_JOIN_SIGN.join([IGT_DS[1], IS_TRANS[0]]), COMBO_JOIN_SIGN.join([IGT_DS[1], IS_TRANS[1]]),
-    COMBO_JOIN_SIGN.join([IGT_DS[1], IS_TRANS[2]]), COMBO_JOIN_SIGN.join([IGT_DS[1], IS_TRANS[3]]),
+    # # IGT 128 ch. 2 x 10
+    # COMBO_JOIN_SIGN.join([IGT_DS[1], IS_TRANS[0]]), COMBO_JOIN_SIGN.join([IGT_DS[1], IS_TRANS[1]]),
+    # COMBO_JOIN_SIGN.join([IGT_DS[1], IS_TRANS[2]]), COMBO_JOIN_SIGN.join([IGT_DS[1], IS_TRANS[3]]),
+    # COMBO_JOIN_SIGN.join([IGT_DS[1], IS_TRANS[4]]),
 
-    # IGT 128 ch. 1 x 10
-    COMBO_JOIN_SIGN.join([IGT_DS[2], IS_TRANS[0]]), COMBO_JOIN_SIGN.join([IGT_DS[2], IS_TRANS[1]]),
-    COMBO_JOIN_SIGN.join([IGT_DS[2], IS_TRANS[2]]), COMBO_JOIN_SIGN.join([IGT_DS[2], IS_TRANS[3]]),
+    # # IGT 128 ch. 1 x 10
+    # COMBO_JOIN_SIGN.join([IGT_DS[2], IS_TRANS[0]]), COMBO_JOIN_SIGN.join([IGT_DS[2], IS_TRANS[1]]),
+    # COMBO_JOIN_SIGN.join([IGT_DS[2], IS_TRANS[2]]), COMBO_JOIN_SIGN.join([IGT_DS[2], IS_TRANS[3]]),
+    # COMBO_JOIN_SIGN.join([IGT_DS[2], IS_TRANS[4]]),
 
     # IGT 32 ch. 2 x 10
     COMBO_JOIN_SIGN.join([IGT_DS[7], IS_TRANS[0]]), COMBO_JOIN_SIGN.join([IGT_DS[7], IS_TRANS[1]]),
     COMBO_JOIN_SIGN.join([IGT_DS[7], IS_TRANS[2]]), COMBO_JOIN_SIGN.join([IGT_DS[7], IS_TRANS[3]]),
+    COMBO_JOIN_SIGN.join([IGT_DS[7], IS_TRANS[4]]), COMBO_JOIN_SIGN.join([IGT_DS[7], IS_TRANS[5]]),
+    COMBO_JOIN_SIGN.join([IGT_DS[7], IS_TRANS[6]]),
 
     # IGT 32 ch. 1 x 10
     COMBO_JOIN_SIGN.join([IGT_DS[8], IS_TRANS[0]]), COMBO_JOIN_SIGN.join([IGT_DS[8], IS_TRANS[1]]),
-    COMBO_JOIN_SIGN.join([IGT_DS[8], IS_TRANS[2]]), COMBO_JOIN_SIGN.join([IGT_DS[8], IS_TRANS[3]])
+    COMBO_JOIN_SIGN.join([IGT_DS[8], IS_TRANS[2]]), COMBO_JOIN_SIGN.join([IGT_DS[8], IS_TRANS[3]]),
+    COMBO_JOIN_SIGN.join([IGT_DS[8], IS_TRANS[4]]), COMBO_JOIN_SIGN.join([IGT_DS[8], IS_TRANS[5]]),
+    COMBO_JOIN_SIGN.join([IGT_DS[8], IS_TRANS[6]])
                                                      ]
 
 config['Equipment']['Combinations'] = '\n'.join(DS_TRAN_COMBOS)
@@ -387,7 +398,7 @@ config['Equipment.Driving system.' + IGT_DS[6]]['Manufacturer'] = IGT
 config['Equipment.Driving system.' + IGT_DS[6]]['Available channels'] = str(32)
 config['Equipment.Driving system.' + IGT_DS[6]]['Connection info'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IGT_DS,
-    'gen_Nijmegen32_71D8.json'))  # should be in the same directory as code
+    'gen_Nijmegen32_71D8_10W.json'))  # should be in the same directory as code
 config['Equipment.Driving system.' + IGT_DS[6]]['Power options'] = '\n'.join([POW_AMPL, POW_PRESS,
                                                                               POW_VOLT])
 config['Equipment.Driving system.' + IGT_DS[6]]['Transducer compatibility'] = str('\n'.join(
@@ -401,7 +412,7 @@ config['Equipment.Driving system.' + IGT_DS[7]]['Manufacturer'] = IGT
 config['Equipment.Driving system.' + IGT_DS[7]]['Available channels'] = str(20)
 config['Equipment.Driving system.' + IGT_DS[7]]['Connection info'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IGT_DS,
-    'gen_Nijmegen32_2x10c_71D8.json'))  # should be in the same directory as code
+    'gen_Nijmegen32_2x10c_71D8_10W.json'))  # should be in the same directory as code
 config['Equipment.Driving system.' + IGT_DS[7]]['Transducer compatibility'] = str('\n'.join(
     IS_TRANS + DUMMIES))
 config['Equipment.Driving system.' + IGT_DS[7]]['Power options'] = '\n'.join([POW_AMPL, POW_PRESS,
@@ -415,7 +426,7 @@ config['Equipment.Driving system.' + IGT_DS[8]]['Manufacturer'] = IGT
 config['Equipment.Driving system.' + IGT_DS[8]]['Available channels'] = str(10)
 config['Equipment.Driving system.' + IGT_DS[8]]['Connection info'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IGT_DS,
-    'gen_Nijmegen32_10c_71D8.json'))  # should be in the same directory as code
+    'gen_Nijmegen32_10c_71D8_10W.json'))  # should be in the same directory as code
 config['Equipment.Driving system.' + IGT_DS[8]]['Transducer compatibility'] = str('\n'.join(
     IS_TRANS + DUMMIES))
 config['Equipment.Driving system.' + IGT_DS[8]]['Power options'] = '\n'.join([POW_AMPL, POW_PRESS,
@@ -536,8 +547,8 @@ config['Equipment.Transducer.' + SC_TRANS[3]]['Elements'] = str(4)
 config['Equipment.Transducer.' + SC_TRANS[3]]['Fund. freq.'] = str(250)  # [kHz]
 config['Equipment.Transducer.' + SC_TRANS[3]]['Natural focus'] = str(0)  # [mm] only for Imasonic
 config['Equipment.Transducer.' + SC_TRANS[3]]['Exit plane - first element dist.'] = str(0)  # [mm] only for Imasonic
-config['Equipment.Transducer.' + SC_TRANS[3]]['Min. focus'] = str(14.2)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + SC_TRANS[3]]['Max. focus'] = str(60.9)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + SC_TRANS[3]]['Min. focus'] = str(13.7)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + SC_TRANS[3]]['Max. focus'] = str(61.5)  # [mm], wrt exit plane
 config['Equipment.Transducer.' + SC_TRANS[3]]['Steer information'] = str(os.path.join(
     CONFIG_FILE_FOLDER_SC_TRAN,
     'CTX-250-001 - TPO-105-010 - Steer Table.xlsx'))  # should be in the same directory as code
@@ -608,8 +619,8 @@ config['Equipment.Transducer.' + IS_TRANS[0]]['Elements'] = str(10)
 config['Equipment.Transducer.' + IS_TRANS[0]]['Fund. freq.'] = str(300)  # [kHz]
 config['Equipment.Transducer.' + IS_TRANS[0]]['Natural focus'] = str(75)  # [mm]
 config['Equipment.Transducer.' + IS_TRANS[0]]['Exit plane - first element dist.'] = str(9.7)  # [mm]
-config['Equipment.Transducer.' + IS_TRANS[0]]['Min. focus'] = str(10)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + IS_TRANS[0]]['Max. focus'] = str(100)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + IS_TRANS[0]]['Min. focus'] = str(5.0)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + IS_TRANS[0]]['Max. focus'] = str(91.7)  # [mm], wrt exit plane
 config['Equipment.Transducer.' + IS_TRANS[0]]['Steer information'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IS_TRAN,
     'transducer_15287_10_300kHz.ini'))  # should be in the same directory as code
@@ -623,8 +634,8 @@ config['Equipment.Transducer.' + IS_TRANS[1]]['Elements'] = str(10)
 config['Equipment.Transducer.' + IS_TRANS[1]]['Fund. freq.'] = str(300)  # [kHz]
 config['Equipment.Transducer.' + IS_TRANS[1]]['Natural focus'] = str(75)  # [mm]
 config['Equipment.Transducer.' + IS_TRANS[1]]['Exit plane - first element dist.'] = str(9.7)  # [mm]
-config['Equipment.Transducer.' + IS_TRANS[1]]['Min. focus'] = str(10)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + IS_TRANS[1]]['Max. focus'] = str(100)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + IS_TRANS[1]]['Min. focus'] = str(6.1)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + IS_TRANS[1]]['Max. focus'] = str(93.2)  # [mm], wrt exit plane
 config['Equipment.Transducer.' + IS_TRANS[1]]['Steer information'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IS_TRAN,
     'transducer_15287_10_300kHz.ini'))  # should be in the same directory as code
@@ -638,8 +649,8 @@ config['Equipment.Transducer.' + IS_TRANS[2]]['Elements'] = str(10)
 config['Equipment.Transducer.' + IS_TRANS[2]]['Fund. freq.'] = str(300)  # [kHz]
 config['Equipment.Transducer.' + IS_TRANS[2]]['Natural focus'] = str(100)  # [mm]
 config['Equipment.Transducer.' + IS_TRANS[2]]['Exit plane - first element dist.'] = str(7.3)  # [mm]
-config['Equipment.Transducer.' + IS_TRANS[2]]['Min. focus'] = str(10)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + IS_TRANS[2]]['Max. focus'] = str(100)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + IS_TRANS[2]]['Min. focus'] = str(6.7)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + IS_TRANS[2]]['Max. focus'] = str(92.6)  # [mm], wrt exit plane
 config['Equipment.Transducer.' + IS_TRANS[2]]['Steer information'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IS_TRAN,
     'transducer_15473_10_300kHz.ini'))  # should be in the same directory as code
@@ -647,18 +658,66 @@ config['Equipment.Transducer.' + IS_TRANS[2]]['Active?'] = str(True)
 
 config['Equipment.Transducer.' + IS_TRANS[3]] = {}
 config['Equipment.Transducer.' + IS_TRANS[3]]['Name'] = (IMASONIC +
-                                                         ' 10 ch. PCD15473_01002 ROC 100 mm')
+                                                         ' 10 ch. PCD15473_01002 ROC 100 mm BROKEN')
 config['Equipment.Transducer.' + IS_TRANS[3]]['Manufacturer'] = IMASONIC
 config['Equipment.Transducer.' + IS_TRANS[3]]['Elements'] = str(10)
 config['Equipment.Transducer.' + IS_TRANS[3]]['Fund. freq.'] = str(300)  # [kHz]
 config['Equipment.Transducer.' + IS_TRANS[3]]['Natural focus'] = str(100)  # [mm]
 config['Equipment.Transducer.' + IS_TRANS[3]]['Exit plane - first element dist.'] = str(7.3)  # [mm]
-config['Equipment.Transducer.' + IS_TRANS[3]]['Min. focus'] = str(10)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + IS_TRANS[3]]['Max. focus'] = str(100)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + IS_TRANS[3]]['Min. focus'] = str(5.32)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + IS_TRANS[3]]['Max. focus'] = str(92.17)  # [mm], wrt exit plane
 config['Equipment.Transducer.' + IS_TRANS[3]]['Steer information'] = str(os.path.join(
     CONFIG_FILE_FOLDER_IS_TRAN,
     'transducer_15473_10_300kHz.ini'))  # should be in the same directory as code
-config['Equipment.Transducer.' + IS_TRANS[3]]['Active?'] = str(True)
+config['Equipment.Transducer.' + IS_TRANS[3]]['Active?'] = str(False)
+
+config['Equipment.Transducer.' + IS_TRANS[4]] = {}
+config['Equipment.Transducer.' + IS_TRANS[4]]['Name'] = (IMASONIC +
+                                                         ' 10 ch. PCD15473_01003 ROC 100 mm')
+config['Equipment.Transducer.' + IS_TRANS[4]]['Manufacturer'] = IMASONIC
+config['Equipment.Transducer.' + IS_TRANS[4]]['Elements'] = str(10)
+config['Equipment.Transducer.' + IS_TRANS[4]]['Fund. freq.'] = str(300)  # [kHz]
+config['Equipment.Transducer.' + IS_TRANS[4]]['Natural focus'] = str(100)  # [mm]
+config['Equipment.Transducer.' + IS_TRANS[4]]['Exit plane - first element dist.'] = str(7.3)  # [mm]
+config['Equipment.Transducer.' + IS_TRANS[4]]['Min. focus'] = str(7.2)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + IS_TRANS[4]]['Max. focus'] = str(93.6)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + IS_TRANS[4]]['Steer information'] = str(os.path.join(
+    CONFIG_FILE_FOLDER_IS_TRAN,
+    'transducer_15473_10_300kHz.ini'))  # should be in the same directory as code
+config['Equipment.Transducer.' + IS_TRANS[4]]['Active?'] = str(True)
+
+#######################################################################################
+# OPM setup R100 Imasonic tranducers
+#######################################################################################
+config['Equipment.Transducer.' + IS_TRANS[5]] = {}
+config['Equipment.Transducer.' + IS_TRANS[5]]['Name'] = (IMASONIC +
+                                                         ' 10 ch. PCD15473_01001 ROC 100 mm - OPM setup')
+config['Equipment.Transducer.' + IS_TRANS[5]]['Manufacturer'] = IMASONIC
+config['Equipment.Transducer.' + IS_TRANS[5]]['Elements'] = str(10)
+config['Equipment.Transducer.' + IS_TRANS[5]]['Fund. freq.'] = str(300)  # [kHz]
+config['Equipment.Transducer.' + IS_TRANS[5]]['Natural focus'] = str(100)  # [mm]
+config['Equipment.Transducer.' + IS_TRANS[5]]['Exit plane - first element dist.'] = str(7.3)  # [mm]
+config['Equipment.Transducer.' + IS_TRANS[5]]['Min. focus'] = str(7.8)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + IS_TRANS[5]]['Max. focus'] = str(92.0)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + IS_TRANS[5]]['Steer information'] = str(os.path.join(
+    CONFIG_FILE_FOLDER_IS_TRAN,
+    'transducer_15473_10_300kHz_inverted_OPM.ini'))  # should be in the same directory as code
+config['Equipment.Transducer.' + IS_TRANS[5]]['Active?'] = str(True)
+
+config['Equipment.Transducer.' + IS_TRANS[6]] = {}
+config['Equipment.Transducer.' + IS_TRANS[6]]['Name'] = (IMASONIC +
+                                                         ' 10 ch. PCD15473_01003 ROC 100 mm - OPM setup')
+config['Equipment.Transducer.' + IS_TRANS[6]]['Manufacturer'] = IMASONIC
+config['Equipment.Transducer.' + IS_TRANS[6]]['Elements'] = str(10)
+config['Equipment.Transducer.' + IS_TRANS[6]]['Fund. freq.'] = str(300)  # [kHz]
+config['Equipment.Transducer.' + IS_TRANS[6]]['Natural focus'] = str(100)  # [mm]
+config['Equipment.Transducer.' + IS_TRANS[6]]['Exit plane - first element dist.'] = str(7.3)  # [mm]
+config['Equipment.Transducer.' + IS_TRANS[6]]['Min. focus'] = str(6.7)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + IS_TRANS[6]]['Max. focus'] = str(93.2)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + IS_TRANS[6]]['Steer information'] = str(os.path.join(
+    CONFIG_FILE_FOLDER_IS_TRAN,
+    'transducer_15473_10_300kHz_inverted_OPM.ini'))  # should be in the same directory as code
+config['Equipment.Transducer.' + IS_TRANS[6]]['Active?'] = str(True)
 
 #######################################################################################
 # Dummy tranducer
@@ -680,248 +739,369 @@ config['Equipment.Transducer.' + DUMMY]['Active?'] = str(False)
 # Driving system - transducer combinations
 #######################################################################################
 
-# IGT-128-ch_comb_2x10-ch~IS_PCD15287_01001
+# # IGT-128-ch_comb_2x10-ch~IS_PCD15287_01001
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[0]] = {}
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['Driving system serial'] = (DS_TRAN_COMBOS[0]
+#                                                                                  .split(COMBO_JOIN_SIGN)[0])
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['Transducer serial'] = (DS_TRAN_COMBOS[0]
+#                                                                              .split(COMBO_JOIN_SIGN)[1])
+
+# # should be in the same directory as code
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['EqualizationCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01001_equalizationCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['FocusCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01001_focusCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['PowerCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01001_powerCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['VoltageCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_128_ch.json'))
+
+
+# # IGT-128-ch_comb_2x10-ch~IS_PCD15287_01002
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[1]] = {}
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['Driving system serial'] = (DS_TRAN_COMBOS[1]
+#                                                                                  .split(COMBO_JOIN_SIGN)[0])
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['Transducer serial'] = (DS_TRAN_COMBOS[1]
+#                                                                              .split(COMBO_JOIN_SIGN)[1])
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['EqualizationCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01002_equalizationCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['FocusCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01002_focusCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['PowerCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01002_powerCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['VoltageCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_128_ch.json'))
+
+# # IGT-128-ch_comb_2x10-ch~IS_PCD15473_01001
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[2]] = {}
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['Driving system serial'] = (DS_TRAN_COMBOS[2]
+#                                                                                  .split(COMBO_JOIN_SIGN)[0])
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['Transducer serial'] = (DS_TRAN_COMBOS[2]
+#                                                                              .split(COMBO_JOIN_SIGN)[1])
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['EqualizationCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01001_equalizationCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['FocusCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01001_focusCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['PowerCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01001_powerCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['VoltageCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_128_ch.json'))
+
+# # IGT-128-ch_comb_2x10-ch~IS_PCD15473_01002
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[3]] = {}
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['Driving system serial'] = (DS_TRAN_COMBOS[3]
+#                                                                                  .split(COMBO_JOIN_SIGN)[0])
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['Transducer serial'] = (DS_TRAN_COMBOS[3]
+#                                                                              .split(COMBO_JOIN_SIGN)[1])
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['EqualizationCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01002_equalizationCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['FocusCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01002_focusCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['PowerCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01002_powerCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['VoltageCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_128_ch.json'))
+
+# # IGT-128-ch_comb_2x10-ch~IS_PCD15473_01003
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[4]] = {}
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['Driving system serial'] = (DS_TRAN_COMBOS[4]
+#                                                                                  .split(COMBO_JOIN_SIGN)[0])
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['Transducer serial'] = (DS_TRAN_COMBOS[4]
+#                                                                              .split(COMBO_JOIN_SIGN)[1])
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['EqualizationCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01003_equalizationCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['FocusCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01003_focusCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['PowerCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01003_powerCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['VoltageCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_128_ch.json'))
+
+# # IGT-128-ch_comb_1x10-ch~IS_PCD15287_01001
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[5]] = {}
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['Driving system serial'] = (DS_TRAN_COMBOS[5]
+#                                                                                  .split(COMBO_JOIN_SIGN)[0])
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['Transducer serial'] = (DS_TRAN_COMBOS[5]
+#                                                                              .split(COMBO_JOIN_SIGN)[1])
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['EqualizationCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01001_equalizationCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['FocusCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01001_focusCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['PowerCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01001_powerCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['VoltageCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_128_ch.json'))
+
+# # IGT-128-ch_comb_1x10-ch~IS_PCD15287_01002
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[6]] = {}
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['Driving system serial'] = (DS_TRAN_COMBOS[6]
+#                                                                                  .split(COMBO_JOIN_SIGN)[0])
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['Transducer serial'] = (DS_TRAN_COMBOS[6]
+#                                                                              .split(COMBO_JOIN_SIGN)[1])
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['EqualizationCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01002_equalizationCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['FocusCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01002_focusCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['PowerCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01002_powerCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['VoltageCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_128_ch.json'))
+
+# # IGT-128-ch_comb_1x10-ch~IS_PCD15473_01001
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[7]] = {}
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['Driving system serial'] = (DS_TRAN_COMBOS[7]
+#                                                                                  .split(COMBO_JOIN_SIGN)[0])
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['Transducer serial'] = (DS_TRAN_COMBOS[7]
+#                                                                              .split(COMBO_JOIN_SIGN)[1])
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['EqualizationCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01001_equalizationCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['FocusCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01001_focusCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['PowerCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01001_powerCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['VoltageCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_128_ch.json'))
+
+# # IGT-128-ch_comb_1x10-ch~IS_PCD15473_01002
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[8]] = {}
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['Driving system serial'] = (DS_TRAN_COMBOS[8]
+#                                                                                  .split(COMBO_JOIN_SIGN)[0])
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['Transducer serial'] = (DS_TRAN_COMBOS[8]
+#                                                                              .split(COMBO_JOIN_SIGN)[1])
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['EqualizationCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01002_equalizationCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['FocusCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01002_focusCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['PowerCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01002_powerCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['VoltageCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_128_ch.json'))
+
+# # IGT-128-ch_comb_1x10-ch~IS_PCD15473_01003
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[9]] = {}
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['Driving system serial'] = (DS_TRAN_COMBOS[9]
+#                                                                                  .split(COMBO_JOIN_SIGN)[0])
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['Transducer serial'] = (DS_TRAN_COMBOS[9]
+#                                                                              .split(COMBO_JOIN_SIGN)[1])
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['EqualizationCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01003_equalizationCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['FocusCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01003_focusCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['PowerCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01003_powerCurveFitExport.json'))
+# config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['VoltageCurveFit json file'] = str(
+#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_128_ch.json'))
+
+# IGT-32-ch_comb_2x10-ch~IS_PCD15287_01001
 config['Equipment.Combination.' + DS_TRAN_COMBOS[0]] = {}
 config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['Driving system serial'] = (DS_TRAN_COMBOS[0]
                                                                                  .split(COMBO_JOIN_SIGN)[0])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['Transducer serial'] = (DS_TRAN_COMBOS[0]
                                                                              .split(COMBO_JOIN_SIGN)[1])
-
-# should be in the same directory as code
 config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['EqualizationCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'equalizationCurveFitExport.json'))
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01001_equalizationCurveFitExport.json'))
 config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['FocusCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'focusCurveFitExport.json'))
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01001_focusCurveFitExport.json'))
 config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['PowerCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'powerCurveFitExport.json'))
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01001_powerCurveFitExport.json'))
 config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['VoltageCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_128_ch.json'))
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
 
-
-# IGT-128-ch_comb_2x10-ch~IS_PCD15287_01002
+# IGT-32-ch_comb_2x10-ch~IS_PCD15287_01002
 config['Equipment.Combination.' + DS_TRAN_COMBOS[1]] = {}
 config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['Driving system serial'] = (DS_TRAN_COMBOS[1]
                                                                                  .split(COMBO_JOIN_SIGN)[0])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['Transducer serial'] = (DS_TRAN_COMBOS[1]
                                                                              .split(COMBO_JOIN_SIGN)[1])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['EqualizationCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'equalizationCurveFitExport.json'))
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01002_equalizationCurveFitExport.json'))
 config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['FocusCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'focusCurveFitExport.json'))
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01002_focusCurveFitExport.json'))
 config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['PowerCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'powerCurveFitExport.json'))
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01002_powerCurveFitExport.json'))
 config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['VoltageCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_128_ch.json'))
-
-# IGT-128-ch_comb_2x10-ch~IS_PCD15473_01001
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]] = {}
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['Driving system serial'] = (DS_TRAN_COMBOS[2]
-                                                                                 .split(COMBO_JOIN_SIGN)[0])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['Transducer serial'] = (DS_TRAN_COMBOS[2]
-                                                                             .split(COMBO_JOIN_SIGN)[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['EqualizationCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'equalizationCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['FocusCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'focusCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['PowerCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'powerCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['VoltageCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_128_ch.json'))
-
-# IGT-128-ch_comb_2x10-ch~IS_PCD15473_01002
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]] = {}
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['Driving system serial'] = (DS_TRAN_COMBOS[3]
-                                                                                 .split(COMBO_JOIN_SIGN)[0])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['Transducer serial'] = (DS_TRAN_COMBOS[3]
-                                                                             .split(COMBO_JOIN_SIGN)[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['EqualizationCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'equalizationCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['FocusCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'focusCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['PowerCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'powerCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['VoltageCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_128_ch.json'))
-
-# IGT-128-ch_comb_1x10-ch~IS_PCD15287_01001
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]] = {}
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['Driving system serial'] = (DS_TRAN_COMBOS[4]
-                                                                                 .split(COMBO_JOIN_SIGN)[0])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['Transducer serial'] = (DS_TRAN_COMBOS[4]
-                                                                             .split(COMBO_JOIN_SIGN)[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['EqualizationCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'equalizationCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['FocusCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'focusCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['PowerCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'powerCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['VoltageCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_128_ch.json'))
-
-# IGT-128-ch_comb_1x10-ch~IS_PCD15287_01002
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]] = {}
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['Driving system serial'] = (DS_TRAN_COMBOS[5]
-                                                                                 .split(COMBO_JOIN_SIGN)[0])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['Transducer serial'] = (DS_TRAN_COMBOS[5]
-                                                                             .split(COMBO_JOIN_SIGN)[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['EqualizationCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'equalizationCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['FocusCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'focusCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['PowerCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'powerCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['VoltageCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_128_ch.json'))
-
-# IGT-128-ch_comb_1x10-ch~IS_PCD15473_01001
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]] = {}
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['Driving system serial'] = (DS_TRAN_COMBOS[6]
-                                                                                 .split(COMBO_JOIN_SIGN)[0])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['Transducer serial'] = (DS_TRAN_COMBOS[6]
-                                                                             .split(COMBO_JOIN_SIGN)[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['EqualizationCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'equalizationCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['FocusCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'focusCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['PowerCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'powerCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['VoltageCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_128_ch.json'))
-
-# IGT-128-ch_comb_1x10-ch~IS_PCD15473_01002
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]] = {}
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['Driving system serial'] = (DS_TRAN_COMBOS[7]
-                                                                                 .split(COMBO_JOIN_SIGN)[0])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['Transducer serial'] = (DS_TRAN_COMBOS[7]
-                                                                             .split(COMBO_JOIN_SIGN)[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['EqualizationCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'equalizationCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['FocusCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'focusCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['PowerCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'powerCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['VoltageCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_128_ch.json'))
-
-# IGT-32-ch_comb_2x10-ch~IS_PCD15287_01001
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]] = {}
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['Driving system serial'] = (DS_TRAN_COMBOS[8]
-                                                                                 .split(COMBO_JOIN_SIGN)[0])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['Transducer serial'] = (DS_TRAN_COMBOS[8]
-                                                                             .split(COMBO_JOIN_SIGN)[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['EqualizationCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'equalizationCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['FocusCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'focusCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['PowerCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'powerCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['VoltageCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
-
-# IGT-32-ch_comb_2x10-ch~IS_PCD15287_01002
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]] = {}
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['Driving system serial'] = (DS_TRAN_COMBOS[9]
-                                                                                 .split(COMBO_JOIN_SIGN)[0])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['Transducer serial'] = (DS_TRAN_COMBOS[9]
-                                                                             .split(COMBO_JOIN_SIGN)[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['EqualizationCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'equalizationCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['FocusCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'focusCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['PowerCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'powerCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['VoltageCurveFit json file'] = str(
     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
 
 # IGT-32-ch_comb_2x10-ch~IS_PCD15473_01001
+config['Equipment.Combination.' + DS_TRAN_COMBOS[2]] = {}
+config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['Driving system serial'] = (DS_TRAN_COMBOS[2]
+                                                                                  .split(COMBO_JOIN_SIGN)[0])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['Transducer serial'] = (DS_TRAN_COMBOS[2]
+                                                                              .split(COMBO_JOIN_SIGN)[1])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['EqualizationCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01001_equalizationCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['FocusCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01001_focusCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['PowerCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01001_powerCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['VoltageCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
+
+# IGT-32-ch_comb_2x10-ch~IS_PCD15473_01002
+config['Equipment.Combination.' + DS_TRAN_COMBOS[3]] = {}
+config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['Driving system serial'] = (DS_TRAN_COMBOS[3]
+                                                                                  .split(COMBO_JOIN_SIGN)[0])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['Transducer serial'] = (DS_TRAN_COMBOS[3]
+                                                                              .split(COMBO_JOIN_SIGN)[1])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['EqualizationCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01002_equalizationCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['FocusCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01002_focusCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['PowerCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01002_powerCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['VoltageCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
+
+# IGT-32-ch_comb_2x10-ch~IS_PCD15473_01003
+config['Equipment.Combination.' + DS_TRAN_COMBOS[4]] = {}
+config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['Driving system serial'] = (DS_TRAN_COMBOS[4]
+                                                                                  .split(COMBO_JOIN_SIGN)[0])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['Transducer serial'] = (DS_TRAN_COMBOS[4]
+                                                                              .split(COMBO_JOIN_SIGN)[1])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['EqualizationCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01003_equalizationCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['FocusCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01003_focusCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['PowerCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01003_powerCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['VoltageCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
+
+# IGT-32-ch_comb_2x10-ch~IS_PCD15473_01001_OPM
+config['Equipment.Combination.' + DS_TRAN_COMBOS[5]] = {}
+config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['Driving system serial'] = (DS_TRAN_COMBOS[5]
+                                                                                  .split(COMBO_JOIN_SIGN)[0])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['Transducer serial'] = (DS_TRAN_COMBOS[5]
+                                                                              .split(COMBO_JOIN_SIGN)[1])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['EqualizationCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01001_OPM_equalizationCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['FocusCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01001_OPM_focusCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['PowerCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01001_OPM_powerCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['VoltageCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
+
+# IGT-32-ch_comb_2x10-ch~IS_PCD15473_01003_OPM
+config['Equipment.Combination.' + DS_TRAN_COMBOS[6]] = {}
+config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['Driving system serial'] = (DS_TRAN_COMBOS[6]
+                                                                                  .split(COMBO_JOIN_SIGN)[0])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['Transducer serial'] = (DS_TRAN_COMBOS[6]
+                                                                              .split(COMBO_JOIN_SIGN)[1])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['EqualizationCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01003_OPM_equalizationCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['FocusCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01003_OPM_focusCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['PowerCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01003_OPM_powerCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['VoltageCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
+
+# IGT-32-ch_comb_1x10-ch~IS_PCD15287_01001
+config['Equipment.Combination.' + DS_TRAN_COMBOS[7]] = {}
+config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['Driving system serial'] = (DS_TRAN_COMBOS[7]
+                                                                                  .split(COMBO_JOIN_SIGN)[0])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['Transducer serial'] = (DS_TRAN_COMBOS[7]
+                                                                              .split(COMBO_JOIN_SIGN)[1])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['EqualizationCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01001_equalizationCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['FocusCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01001_focusCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['PowerCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01001_powerCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['VoltageCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
+
+# IGT-32-ch_comb_1x10-ch~IS_PCD15287_01002
+config['Equipment.Combination.' + DS_TRAN_COMBOS[8]] = {}
+config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['Driving system serial'] = (DS_TRAN_COMBOS[8]
+                                                                                  .split(COMBO_JOIN_SIGN)[0])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['Transducer serial'] = (DS_TRAN_COMBOS[8]
+                                                                              .split(COMBO_JOIN_SIGN)[1])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['EqualizationCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01002_equalizationCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['FocusCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01002_focusCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['PowerCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01002_powerCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['VoltageCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
+
+# IGT-32-ch_comb_1x10-ch~IS_PCD15473_01001
+config['Equipment.Combination.' + DS_TRAN_COMBOS[9]] = {}
+config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['Driving system serial'] = (DS_TRAN_COMBOS[9]
+                                                                                  .split(COMBO_JOIN_SIGN)[0])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['Transducer serial'] = (DS_TRAN_COMBOS[9]
+                                                                              .split(COMBO_JOIN_SIGN)[1])
+config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['EqualizationCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01001_equalizationCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['FocusCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01001_focusCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['PowerCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01001_powerCurveFitExport.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['VoltageCurveFit json file'] = str(
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
+
+# IGT-32-ch_comb_1x10-ch~IS_PCD15473_01002
 config['Equipment.Combination.' + DS_TRAN_COMBOS[10]] = {}
 config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['Driving system serial'] = (DS_TRAN_COMBOS[10]
                                                                                   .split(COMBO_JOIN_SIGN)[0])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['Transducer serial'] = (DS_TRAN_COMBOS[10]
                                                                               .split(COMBO_JOIN_SIGN)[1])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['EqualizationCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'equalizationCurveFitExport.json'))
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01002_equalizationCurveFitExport.json'))
 config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['FocusCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'focusCurveFitExport.json'))
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01002_focusCurveFitExport.json'))
 config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['PowerCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'powerCurveFitExport.json'))
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01002_powerCurveFitExport.json'))
 config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['VoltageCurveFit json file'] = str(
     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
 
-# IGT-32-ch_comb_2x10-ch~IS_PCD15473_01002
+# IGT-32-ch_comb_1x10-ch~IS_PCD15473_01003
 config['Equipment.Combination.' + DS_TRAN_COMBOS[11]] = {}
 config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['Driving system serial'] = (DS_TRAN_COMBOS[11]
                                                                                   .split(COMBO_JOIN_SIGN)[0])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['Transducer serial'] = (DS_TRAN_COMBOS[11]
                                                                               .split(COMBO_JOIN_SIGN)[1])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['EqualizationCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'equalizationCurveFitExport.json'))
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01003_equalizationCurveFitExport.json'))
 config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['FocusCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'focusCurveFitExport.json'))
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01003_focusCurveFitExport.json'))
 config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['PowerCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'powerCurveFitExport.json'))
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01003_powerCurveFitExport.json'))
 config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['VoltageCurveFit json file'] = str(
     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
 
-# IGT-32-ch_comb_1x10-ch~IS_PCD15287_01001
+# IGT-32-ch_comb_1x10-ch~IS_PCD15473_01001_OPM
 config['Equipment.Combination.' + DS_TRAN_COMBOS[12]] = {}
 config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['Driving system serial'] = (DS_TRAN_COMBOS[12]
                                                                                   .split(COMBO_JOIN_SIGN)[0])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['Transducer serial'] = (DS_TRAN_COMBOS[12]
                                                                               .split(COMBO_JOIN_SIGN)[1])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['EqualizationCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'equalizationCurveFitExport.json'))
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01001_OPM_equalizationCurveFitExport.json'))
 config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['FocusCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'focusCurveFitExport.json'))
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01001_OPM_focusCurveFitExport.json'))
 config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['PowerCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'powerCurveFitExport.json'))
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01001_OPM_powerCurveFitExport.json'))
 config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['VoltageCurveFit json file'] = str(
     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
 
-# IGT-32-ch_comb_1x10-ch~IS_PCD15287_01002
+# IGT-32-ch_comb_1x10-ch~IS_PCD15473_01003_OPM
 config['Equipment.Combination.' + DS_TRAN_COMBOS[13]] = {}
 config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['Driving system serial'] = (DS_TRAN_COMBOS[13]
                                                                                   .split(COMBO_JOIN_SIGN)[0])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['Transducer serial'] = (DS_TRAN_COMBOS[13]
                                                                               .split(COMBO_JOIN_SIGN)[1])
 config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['EqualizationCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'equalizationCurveFitExport.json'))
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01003_OPM_equalizationCurveFitExport.json'))
 config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['FocusCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'focusCurveFitExport.json'))
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01003_OPM_focusCurveFitExport.json'))
 config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['PowerCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'powerCurveFitExport.json'))
+    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01003_OPM_powerCurveFitExport.json'))
 config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['VoltageCurveFit json file'] = str(
     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
 
-# IGT-32-ch_comb_1x10-ch~IS_PCD15473_01001
-config['Equipment.Combination.' + DS_TRAN_COMBOS[14]] = {}
-config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['Driving system serial'] = (DS_TRAN_COMBOS[14]
-                                                                                  .split(COMBO_JOIN_SIGN)[0])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['Transducer serial'] = (DS_TRAN_COMBOS[14]
-                                                                              .split(COMBO_JOIN_SIGN)[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['EqualizationCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'equalizationCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['FocusCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'focusCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['PowerCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'powerCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[14]]['VoltageCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
-
-# IGT-32-ch_comb_1x10-ch~IS_PCD15473_01002
-config['Equipment.Combination.' + DS_TRAN_COMBOS[15]] = {}
-config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['Driving system serial'] = (DS_TRAN_COMBOS[15]
-                                                                                  .split(COMBO_JOIN_SIGN)[0])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['Transducer serial'] = (DS_TRAN_COMBOS[15]
-                                                                              .split(COMBO_JOIN_SIGN)[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['EqualizationCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'equalizationCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['FocusCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'focusCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['PowerCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'powerCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[15]]['VoltageCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
 
 with open(CONFIG_FILE, 'w') as configfile:
     config.write(configfile)

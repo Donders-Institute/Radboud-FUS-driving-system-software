@@ -31,7 +31,7 @@ README.md file of https://github.com/Donders-Institute/Radboud-FUS-driving-syste
 from setuptools import setup, find_packages
 
 setup(name='fus_driving_systems',
-      version='2.1.0',
+      version='2.2.0',
       description='Abstract structure to communicate with different FUS driving systems',
       url='https://github.com/Donders-Institute/Radboud-FUS-driving-system-software',
       author='Margely Cornelissen',

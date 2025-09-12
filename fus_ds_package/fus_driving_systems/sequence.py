@@ -84,6 +84,10 @@ class Sequence():
             eq_curve_pp: Piecewise polynomial function for normalization factor calculation
             volt_curve_pp: Piecewise polynomial function for voltage conversion
         _eq_factor (float): [IGT] normalized pressure based on chosen focal depth wrt exit plane [-]
+        _eq_press_mpa (float): [IGT] equalized pressure based on chosen focal depth wrt exit plane [MPa]
+        _input_press_mpa (float): [IGT] input pressure based on chosen focal depth wrt exit plane [MPa]
+        _calculated_ampl (float): [IGT] calculated amplitude to reach desired pressure on chosen
+                                  focal depth wrt exit plane [-]
         _timing_param (dict.):
             _pulse_dur (float): Pulse duration of the sequence [ms].
             _pulse_rep_int (float): Pulse repetition interval of the sequence [ms].
@@ -100,10 +104,12 @@ class Sequence():
         getters and setters (attribute name without _) for above attributes.
     """
 
-    def __init__(self):
+    def __init__(self, engineering_mode=False):
         """
         Initializes a Sequence object with default values and loads configuration settings.
         """
+
+        self._engineering_mode = engineering_mode
 
         self._seq_num = 0
 
@@ -132,20 +138,28 @@ class Sequence():
         # set a temporary focus wrt mid bowl and operating frequency to set a default transducer
         self._chosen_power = None
 
-        self._global_power = int(get_config_value(logger, config, 'Power', 'Default.glob_pow',
-                                                  0))  # SC: global power [W]
-        self._press = int(get_config_value(logger, config, 'Power', 'Default.press',
-                                           0))  # IGT: maximum pressure in free water [MPa]
-        self._volt = int(get_config_value(logger, config, 'Power', 'Default.volt',
-                                          0))  # IGT: voltage [V]
-        self._ampl = int(get_config_value(logger, config, 'Power', 'Default.ampl',
-                                          0))  # IGT: amplitude [%]
+        self._global_power = float(get_config_value(logger, config, 'Power', 'Default.glob_pow',
+                                                    0))  # SC: global power [W]
+        self._press = float(get_config_value(logger, config, 'Power', 'Default.press',
+                                             0))  # IGT: maximum pressure in free water [MPa]
+        self._volt = float(get_config_value(logger, config, 'Power', 'Default.volt',
+                                            0))  # IGT: voltage [V]
+        self._ampl = float(get_config_value(logger, config, 'Power', 'Default.ampl',
+                                            0))  # IGT: amplitude [%]
 
-        self._eq_factor = int(get_config_value(logger, config, 'Power', 'Default.eq_factor',
-                                               0))  # IGT: normalized pressure
+        self._eq_factor = float(get_config_value(logger, config, 'Power', 'Default.eq_factor',
+                                                 0))  # IGT: normalized pressure
 
-        self._focus_wrt_mid_bowl = int(get_config_value(logger, config, 'Focus', 'Default.bowl',
-                                                        50))  # [mm]
+        # IGT: input pressure in free water [MPa]
+        self._input_press_mpa = float(get_config_value(logger, config, 'Power',
+                                                       'Default.input_press', 0))
+        # IGT: equalized pressure in free water [MPa]
+        self._eq_press_mpa = float(get_config_value(logger, config, 'Power', 'Default.eq_press', 0))
+        self._calculated_ampl = float(get_config_value(logger, config, 'Power', 'Default.calc_ampl',
+                                                       0))  # IGT: calculated amplitude [%]
+
+        self._focus_wrt_mid_bowl = float(get_config_value(logger, config, 'Focus', 'Default.bowl',
+                                                          50))  # [mm]
 
         # Degree used to dephase every nth elemen based on chosen degree. (None = no dephasing).
         self._dephasing_degree = None
@@ -238,6 +252,9 @@ class Sequence():
             info += f"Amplitude [%]: {self._ampl} \n "
         elif self.chosen_power == opt_press:
             info += f"Maximum pressure in free water [MPa]: {self._press} \n "
+            info += f"Input pressure in free water [MPa]: {self._input_press_mpa} \n "
+            info += f"Equalized pressure in free water [MPa]: {self._eq_press_mpa} \n "
+            info += f"Calculated amplitude [%]: {self._calculated_ampl} \n "
         elif self.chosen_power == opt_volt:
             info += f"Voltage [V]: {self._volt} \n "
         else:
@@ -689,6 +706,9 @@ class Sequence():
             volt (float): The voltage [V] for IGT.
         """
 
+        if not self._engineering_mode:
+            raise RuntimeError("Voltage mode is disabled. Use maximum pressure in free water instead.")
+
         # set other parameters determine the intensity to None
         self._global_power = 0
         self._volt = 0
@@ -774,6 +794,9 @@ class Sequence():
             ampl (list(float)): The amplitude array [%] for IGT: one value represents the value
             for all elements.
         """
+
+        if not self._engineering_mode:
+            raise RuntimeError("Amplitude mode is disabled. Use maximum pressure in free water instead.")
 
         # set other parameters that determine the intensity to None
         self._global_power = 0
@@ -1017,7 +1040,7 @@ class Sequence():
 
             # Check if focus is within range if compensation equations are not applicable
             if self._focus_wrt_exit_plane < self._transducer.min_foc or self._focus_wrt_exit_plane > self._transducer.max_foc:
-                message = (f'Focus wrt exit plane of {focus} [mm] is not within the set ' +
+                message = (f'Focus wrt exit plane of {self._focus_wrt_exit_plane} [mm] is not within the set ' +
                            f'focus range of {self._transducer.min_foc} and ' +
                            f'{self._transducer.max_foc} [mm] of transducer ' +
                            f'{self._transducer.name}.')
@@ -1113,7 +1136,7 @@ class Sequence():
 
             # Check if focus is within range if compensation equations are not applicable
             if self._focus_wrt_exit_plane < self._transducer.min_foc or self._focus_wrt_exit_plane > self._transducer.max_foc:
-                message = (f'Focus wrt exit plane of {focus} [mm] is not within the set ' +
+                message = (f'Focus wrt exit plane of {self._focus_wrt_exit_plane} [mm] is not within the set ' +
                            f'focus range of {self._transducer.min_foc} and ' +
                            f'{self._transducer.max_foc} [mm] of transducer ' +
                            f'{self._transducer.name}.')
@@ -1194,6 +1217,46 @@ class Sequence():
         """
 
         return self._eq_factor
+
+    @property
+    def input_press_mpa(self):
+        """
+        Getter method for the desired maximum pressure in free water at chosen focal depth wrt exit
+        plane [MPa].
+
+        Returns:
+            float: The desired maximum pressure in free water at chosen focal depth wrt exit plane
+            [MPa].
+        """
+
+        return self._input_press_mpa
+
+    @property
+    def eq_press_mpa(self):
+        """
+        Getter method for the equalized pressure at chosen focal depth wrt exit plane [MPa]
+        (= desired pressure * eq_factor).
+
+        Returns:
+            float: The equalized pressure at chosen focal depth wrt exit plane [MPa]
+            (= desired pressure * eq_factor).
+        """
+
+        return self._eq_press_mpa
+
+    @property
+    def calculated_ampl(self):
+        """
+        Getter method for the calculated amplitude to reach desired pressure at chosen focal depth
+        wrt exit plane [-].
+.
+
+        Returns:
+            float: The calculated amplitude to reach desired pressure at chosen focal depth wrt exit
+            plane [-].
+        """
+
+        return self._calculated_ampl
 
     @property
     def pulse_dur(self):
@@ -1513,29 +1576,41 @@ class Sequence():
         x_value = press_pa * self._eq_factor
         calc_ampl, range_status = safe_evaluate_pp(self._conv_param['power_curve_pp'], x_value)
 
-        if range_status == "above_range":
-            self._ampl = [100]
-            self._calc_press()
-            self._calc_volt()
+        # Save additional information for logging purposes
+        self._input_press_mpa = self._press
+        self._eq_press_mpa = x_value / 1e6
+        self._calculated_ampl = calc_ampl
 
-            message = (f'Calculated amplitude exceeds 100%. A pressure of {self._press:.2f} [MPa]' +
-                       f' and/or a voltage of {self._volt[0]:.2f} [V] will result in an amplitude' +
-                       f' of 100% at focus wrt exit plane of {self._focus_wrt_exit_plane} [mm]. ' +
-                       'Change input value.')
+        x_min_mpa = self._conv_param['power_curve_pp'].x[0] / 1e6
+        x_max_mpa = self._conv_param['power_curve_pp'].x[-1] / 1e6
+
+        if range_status == "above_range" or range_status == "below_range":
+            message = (f'Equalized pressure of {self._eq_press_mpa} [MPa] is outside of pp ' +
+                       f'limits ({x_min_mpa:.2f} - {x_max_mpa:.2f} [MPa]). Change input value.')
             logger.critical(message)
             sys.exit(message)
-        elif range_status == "below_range":
-            logger.debug('Calculated amplitude below 0%, so cut off the amplitude at 0%.')
-            self._ampl = [0]
-            self._calc_press()
-            self._calc_volt()
 
-        else:
+        elif range_status == "in_range":
+            if calc_ampl > 100:
+                self._ampl = [100]
+                self._calc_press()
+                self._calc_volt()
 
-            if calc_ampl < 0:
-                calc_ampl = 0
+                message = (f'Calculated amplitude of {calc_ampl:.2f} exceeds 100%. A pressure of ' +
+                           f'{self._press:.2f} [MPa] and/or a voltage of {self._volt[0]:.2f} [V] ' +
+                           'will result in an amplitude of 100% at focus wrt exit plane of ' +
+                           f'{self._focus_wrt_exit_plane} [mm]. Change input value.')
+                logger.critical(message)
+                sys.exit(message)
+            elif calc_ampl < 0:
+                logger.debug(f'Calculated amplitude of {calc_ampl:.2f} is below 0%, so cut off ' +
+                             'the amplitude at 0%.')
+                self._ampl = [0]
+                self._calc_press()
+                self._calc_volt()
 
-            self._ampl = [round(float(calc_ampl), 2)]
+            else:
+                self._ampl = [round(float(calc_ampl), 2)]
 
     def _calc_ampl_using_volt(self):
         """
@@ -1735,7 +1810,7 @@ def extract_and_define_pp(json_dir, return_breaks=False):
     coefs = np.zeros((order, pieces))
     for i, coef_set in enumerate(coefs_data):
         # For linear functions (order=2), just reverse
-        if order == 2:
+        if pieces == 1:
             coefs[:, i] = coef_set[::-1]
         else:
             # For higher order polynomials, we need to be more careful
