@@ -350,10 +350,9 @@ class IGT(ds.ControlDrivingSystem):
                 n_pulse_train_rep = math.floor(seq1.pulse_train_rep_dur / seq1.pulse_train_rep_int)
 
             # Apply ramping
-            average_ampl = sum(seq1.ampl) / len(seq1.ampl)
             rect_ramp = get_config_value(logger, config, 'Ramp', 'Option.rect',
                                          'Rectangular - no ramping')
-            if seq1.pulse_ramp_shape != rect_ramp and average_ampl > 0:
+            if seq1.pulse_ramp_shape != rect_ramp:
                 self._apply_ramping(seq1)
             else:
                 self.gen.setPulseModulation([], 0, [], 0)  # disable any modulation
