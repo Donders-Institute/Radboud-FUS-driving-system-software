@@ -30,6 +30,7 @@ README.md file of https://github.com/Donders-Institute/Radboud-FUS-driving-syste
 
 # Basis packages
 import serial
+import time
 
 # Miscellaneous packages
 
@@ -85,7 +86,7 @@ class CITRUS(ds.ControlDrivingSystem):
 
         logger.info('Sending sequence...')
 
-    def execute_sequence(self):
+    def execute_sequence(self, seq):
         """
         Executes the previously sent sequence on the CITRUS ultrasound driving system.
         """
@@ -95,10 +96,10 @@ class CITRUS(ds.ControlDrivingSystem):
         # Stimulation onset (send starting trigger to execute sequence)
         binary = '00100000'  # 32
         decimal_number = int(binary, 2)
-        print(decimal_number)
         byte_value = bytes([decimal_number])
-        print(byte_value)
         self.serBITSI.write(byte_value)
+        self.serBITSI.flush()
+        time.sleep(0.7)
 
     def disconnect(self):
         """
