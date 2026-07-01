@@ -226,6 +226,24 @@ IS_TRANS = ['IS_PCD15287_01001', 'IS_PCD15287_01002', 'IS_PCD15473_01001',
             'IS_PCD15473_01002', 'IS_PCD15473_01003', 'IS_PCD15473_01001_OPM',
             'IS_PCD15473_01003_OPM']
 
+#######################################################################################
+# CITRUS
+#######################################################################################
+
+CITRUS = 'CITRUS'
+config['Equipment.Manufacturer.CITRUS'] = {}
+config['Equipment.Manufacturer.CITRUS']['Name'] = CITRUS
+
+config['Equipment.Manufacturer.CITRUS']['Power options'] = '\n'.join([POW_VOLT])
+config['Equipment.Manufacturer.CITRUS']['Additional charac. discon. message'] = ''
+
+CITRUS_DS = ['CITRUS_V2']
+
+config['Equipment.Manufacturer.CITRUS']['Equipment - Driving systems'] = '\n'.join(CITRUS_DS)
+
+CITRUS_TRANS = ['CITRUS_V2_465kHz_256_#5', 'CITRUS_V2_465kHz_128_#6', 'CITRUS_V2_465kHz_128_#7']
+
+config['Equipment.Manufacturer.CITRUS']['Equipment - Transducers'] = '\n'.join(CITRUS_TRANS)
 
 #######################################################################################
 # Equipment collection
@@ -234,13 +252,13 @@ IS_TRANS = ['IS_PCD15287_01001', 'IS_PCD15287_01002', 'IS_PCD15473_01001',
 config['Equipment.Manufacturer.IS']['Equipment - Transducers'] = '\n'.join(IS_TRANS)
 
 # list of driving system 'serial numbers'
-config['Equipment']['Driving systems'] = str('\n'.join(SC_DS + IGT_DS))
+config['Equipment']['Driving systems'] = str('\n'.join(SC_DS + IGT_DS + CITRUS_DS))
 config['Equipment']['Default driving system serial'] = SC_DS[0]
 
 DUMMY = 'Dummy'
 DUMMIES = [DUMMY]
 # list of transducer 'serial numbers'
-config['Equipment']['Transducers'] = str('\n'.join(SC_TRANS + IS_TRANS + DUMMIES))
+config['Equipment']['Transducers'] = str('\n'.join(SC_TRANS + IS_TRANS + CITRUS_TRANS + DUMMIES))
 config['Equipment']['Default transducer serial'] = SC_TRANS[0]
 
 COMBO_JOIN_SIGN = '~'
@@ -492,6 +510,20 @@ config['Equipment.Driving system.' + IGT_DS[12]]['Power options'] = '\n'.join([P
 config['Equipment.Driving system.' + IGT_DS[12]]['Requires conversion equations?'] = str(True)
 config['Equipment.Driving system.' + IGT_DS[12]]['Active?'] = str(False)
 
+#######################################################################################
+# CITRUS - Driving systems
+#######################################################################################
+
+config['Equipment.Driving system.' + CITRUS_DS[0]] = {}
+config['Equipment.Driving system.' + CITRUS_DS[0]]['Name'] = CITRUS + ' 256 ch.'
+config['Equipment.Driving system.' + CITRUS_DS[0]]['Manufacturer'] = CITRUS
+config['Equipment.Driving system.' + CITRUS_DS[0]]['Available channels'] = str(256)
+config['Equipment.Driving system.' + CITRUS_DS[0]]['Connection info'] = 'COM1'
+config['Equipment.Driving system.' + CITRUS_DS[0]]['Transducer compatibility'] = str('\n'.join(
+    CITRUS_TRANS + DUMMIES))
+config['Equipment.Driving system.' + CITRUS_DS[0]]['Power options'] = '\n'.join([POW_VOLT])
+config['Equipment.Driving system.' + CITRUS_DS[0]]['Requires conversion equations?'] = str(False)
+config['Equipment.Driving system.' + CITRUS_DS[0]]['Active?'] = str(True)
 
 #######################################################################################
 # Sonic Concepts - Tranducers
@@ -734,6 +766,46 @@ config['Equipment.Transducer.' + DUMMY]['Min. focus'] = str(0)  # [mm]
 config['Equipment.Transducer.' + DUMMY]['Max. focus'] = str(1000)  # [mm]
 config['Equipment.Transducer.' + DUMMY]['Steer information'] = ''
 config['Equipment.Transducer.' + DUMMY]['Active?'] = str(False)
+
+#######################################################################################
+# CITRUS - Tranducers
+#######################################################################################
+
+config['Equipment.Transducer.' + CITRUS_TRANS[0]] = {}
+config['Equipment.Transducer.' + CITRUS_TRANS[0]]['Name'] = 'CITRUS_V2_465kHz_256_#5'
+config['Equipment.Transducer.' + CITRUS_TRANS[0]]['Manufacturer'] = CITRUS
+config['Equipment.Transducer.' + CITRUS_TRANS[0]]['Elements'] = str(256)
+config['Equipment.Transducer.' + CITRUS_TRANS[0]]['Fund. freq.'] = str(465)  # [kHz]
+config['Equipment.Transducer.' + CITRUS_TRANS[0]]['Natural focus'] = str(0)  # [mm] only for Imasonic
+config['Equipment.Transducer.' + CITRUS_TRANS[0]]['Exit plane - first element dist.'] = str(0)  # [mm] only for Imasonic
+config['Equipment.Transducer.' + CITRUS_TRANS[0]]['Min. focus'] = str(0)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + CITRUS_TRANS[0]]['Max. focus'] = str(200)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + CITRUS_TRANS[0]]['Steer information'] = ''  # should be in the same directory as code
+config['Equipment.Transducer.' + CITRUS_TRANS[0]]['Active?'] = str(True)
+
+config['Equipment.Transducer.' + CITRUS_TRANS[1]] = {}
+config['Equipment.Transducer.' + CITRUS_TRANS[1]]['Name'] = 'CITRUS_V2_465kHz_128_#6'
+config['Equipment.Transducer.' + CITRUS_TRANS[1]]['Manufacturer'] = CITRUS
+config['Equipment.Transducer.' + CITRUS_TRANS[1]]['Elements'] = str(128)
+config['Equipment.Transducer.' + CITRUS_TRANS[1]]['Fund. freq.'] = str(465)  # [kHz]
+config['Equipment.Transducer.' + CITRUS_TRANS[1]]['Natural focus'] = str(0)  # [mm] only for Imasonic
+config['Equipment.Transducer.' + CITRUS_TRANS[1]]['Exit plane - first element dist.'] = str(0)  # [mm] only for Imasonic
+config['Equipment.Transducer.' + CITRUS_TRANS[1]]['Min. focus'] = str(0)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + CITRUS_TRANS[1]]['Max. focus'] = str(200)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + CITRUS_TRANS[1]]['Steer information'] = ''  # should be in the same directory as code
+config['Equipment.Transducer.' + CITRUS_TRANS[1]]['Active?'] = str(True)
+
+config['Equipment.Transducer.' + CITRUS_TRANS[2]] = {}
+config['Equipment.Transducer.' + CITRUS_TRANS[2]]['Name'] = 'CITRUS_V2_465kHz_128_#7'
+config['Equipment.Transducer.' + CITRUS_TRANS[2]]['Manufacturer'] = CITRUS
+config['Equipment.Transducer.' + CITRUS_TRANS[2]]['Elements'] = str(128)
+config['Equipment.Transducer.' + CITRUS_TRANS[2]]['Fund. freq.'] = str(465)  # [kHz]
+config['Equipment.Transducer.' + CITRUS_TRANS[2]]['Natural focus'] = str(0)  # [mm] only for Imasonic
+config['Equipment.Transducer.' + CITRUS_TRANS[2]]['Exit plane - first element dist.'] = str(0)  # [mm] only for Imasonic
+config['Equipment.Transducer.' + CITRUS_TRANS[2]]['Min. focus'] = str(0)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + CITRUS_TRANS[2]]['Max. focus'] = str(200)  # [mm], wrt exit plane
+config['Equipment.Transducer.' + CITRUS_TRANS[2]]['Steer information'] = ''  # should be in the same directory as code
+config['Equipment.Transducer.' + CITRUS_TRANS[2]]['Active?'] = str(True)
 
 #######################################################################################
 # Driving system - transducer combinations
