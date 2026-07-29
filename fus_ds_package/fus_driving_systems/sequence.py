@@ -1809,13 +1809,8 @@ def extract_and_define_pp(json_dir, return_breaks=False):
     # SciPy expects shape (k, m) where k is order and m is pieces
     coefs = np.zeros((order, pieces))
     for i, coef_set in enumerate(coefs_data):
-        # For linear functions (order=2), just reverse
-        if pieces == 1:
-            coefs[:, i] = coef_set[::-1]
-        else:
-            # For higher order polynomials, we need to be more careful
-            # This assumes MATLAB provides coefficients in descending order
-            coefs[:, i] = coef_set
+        # This assumes MATLAB provides coefficients in descending order
+        coefs[:, i] = coef_set
 
     # Create the PPoly object
     pp = PPoly(coefs, breaks, extrapolate=False)

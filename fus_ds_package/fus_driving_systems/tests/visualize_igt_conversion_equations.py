@@ -227,10 +227,10 @@ if __name__ == "__main__":
 
     # Define test file paths - update these to your actual paths
     path = ('igt\\config\\conversion_data\\')
-    eq_curve_file = path + 'equalizationCurveFitExport.json'
-    focus_curve_file = path + 'focusCurveFitExport.json'
-    power_curve_file = path + 'powerCurveFitExport.json'
-    volt_curve_file = path + 'voltageCurveFit_IGT_32_ch.json'
+    eq_curve_file = path + 'IS_PCD15473_01001_OPM_equalizationCurveFitExport.json'
+    focus_curve_file = path + 'IS_PCD15473_01001_OPM_focusCurveFitExport.json'
+    power_curve_file = path + 'IS_PCD15473_01001_OPM_powerCurveFitExport.json'
+    volt_curve_file = path + 'voltageCurveFit_IGT_128_ch.json'
 
     # Run specific tests on power curve
     logger.info("Testing power curve conversions")
