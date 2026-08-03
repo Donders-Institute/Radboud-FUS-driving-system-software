@@ -78,26 +78,30 @@ class ExecListener(unifus.FUSListener):
 
     def onPulseResult(self, result):
         self.pulseResults.append(result)
-        logger.debug("Listener: PULS RESULT (exec: %d, pulse: %d, duration: %g ms, elapsed: %g ms)" %
+        logger.debug("Listener: PULS RESULT (exec: %d, pulse: %d, duration: %g ms, "
+                     "elapsed: %g ms)" %
                      (result.execIndex(), result.pulseIndex(), result.duration(),
                       result.msFromStart()))
         measures = result.sharedMeasurements()
         if measures is not None:
-            logger.debug("          Available: %d measures for %d board(s), %d measures for %d channel(s)" %
+            logger.debug("          Available: %d measures for %d board(s), %d measures for "
+                         "%d channel(s)" %
                          (measures.boardMeasureCount(), measures.boardCount(),
                           measures.channelMeasureCount(), measures.channelCount()))
             for channel in range(measures.channelCount()):
                 # Note: it is advised to call measures.physicalChannelMeasureAvailable(measure) to
                 # check before calling .channelPhysicalValue (channel, measure).
                 if measures.channelMeasureCount() == 5:
-                    logger.debug("    ch[%d] V=%#4.3g V, I=%#4.3g A, PhaseV/I=%#4.3g°, PhaseV/Vref=%#5.4g°, Freq=%7d Hz, Pow=%#g W" %
+                    logger.debug("    ch[%d] V=%#4.3g V, I=%#4.3g A, PhaseV/I=%#4.3g°, "
+                                 "PhaseV/Vref=%#5.4g°, Freq=%7d Hz, Pow=%#g W" %
                                  (channel, measures.channelPhysicalValue(channel, 0),
                                   measures.channelPhysicalValue(channel, 1),
                                   measures.channelPhysicalValue(channel, 2),
                                   measures.channelPhysicalValue(channel, 3),
                                   measures.channelRawValue(channel, 4), measures.power(channel)))
                 else:
-                    logger.debug("    ch[%d] Vfwd=%#4.3g V, Vrev=%#4.3g V, PhaseV/Vref=%#5.4g°, Freq=%7d Hz, Pow=%#g W" %
+                    logger.debug("    ch[%d] Vfwd=%#4.3g V, Vrev=%#4.3g V, PhaseV/Vref=%#5.4g°, "
+                                 "Freq=%7d Hz, Pow=%#g W" %
                                  (channel, measures.channelPhysicalValue(channel, 0),
                                   measures.channelPhysicalValue(channel, 1),
                                   measures.channelPhysicalValue(channel, 2),
@@ -144,7 +148,8 @@ class ExecListener(unifus.FUSListener):
 
     def waitSequence(self, timeout=5.0):
         """
-            Wait until the current ultrasound sequence is finished, or specified timeout in seconds.
+            Wait until the current ultrasound sequence is finished, or specified timeout in
+            seconds.
         """
         maxWait = time.time() + timeout
         # Start with a sleep to make sure the start event has been received

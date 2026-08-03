@@ -232,8 +232,8 @@ def test_disconnect_closes_gen_and_marks_disconnected(connected_instance):
 def test_send_sequence_calls_setters_in_order_and_marks_sent(mocker, connected_instance):
     manager = mocker.Mock()
     for name in ['_reset_parameters', '_set_operating_freq', '_set_focus',
-                '_set_global_power', '_set_burst_and_period', '_set_timer',
-                '_set_ramping']:
+                 '_set_global_power', '_set_burst_and_period', '_set_timer',
+                 '_set_ramping']:
         manager.attach_mock(mocker.patch.object(connected_instance, name), name)
     manager.attach_mock(mocker.patch.object(connected_instance, '_send_command'),
                         '_send_command')
@@ -275,8 +275,8 @@ def test_send_sequence_reconnects_when_not_connected(mocker):
         instance.connected = True
     mock_connect = mocker.patch.object(instance, 'connect', side_effect=fake_connect)
     for name in ['_reset_parameters', '_set_operating_freq', '_set_focus',
-                '_set_global_power', '_set_burst_and_period', '_set_timer',
-                '_set_ramping']:
+                 '_set_global_power', '_set_burst_and_period', '_set_timer',
+                 '_set_ramping']:
         mocker.patch.object(instance, name)
 
     fake_sequence = mocker.Mock()

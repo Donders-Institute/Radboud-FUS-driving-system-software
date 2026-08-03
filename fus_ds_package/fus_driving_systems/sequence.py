@@ -58,7 +58,8 @@ class Sequence():
         _equip_combos (list): List of driving system and transducer combinations that require
         pressure compensation with an increasing focal depth.
         _driving_sys (DrivingSystem): The driving system associated with the sequence.
-        _wait_for_trigger (bool): Boolean indicating if the driving system is waiting for a trigger.
+        _wait_for_trigger (bool): Boolean indicating if the driving system is waiting for a
+                                  trigger.
         _trigger_option (str): chosen trigger option.
         _n_triggers (int): number of times a trigger will be sent.
         _transducer (Transducer): The transducer associated with the sequence.
@@ -83,9 +84,12 @@ class Sequence():
             power_curve_pp: Piecewise polynomial function for power conversion
             eq_curve_pp: Piecewise polynomial function for normalization factor calculation
             volt_curve_pp: Piecewise polynomial function for voltage conversion
-        _eq_factor (float): [IGT] normalized pressure based on chosen focal depth wrt exit plane [-]
-        _eq_press_mpa (float): [IGT] equalized pressure based on chosen focal depth wrt exit plane [MPa]
-        _input_press_mpa (float): [IGT] input pressure based on chosen focal depth wrt exit plane [MPa]
+        _eq_factor (float): [IGT] normalized pressure based on chosen focal depth wrt exit
+                            plane [-]
+        _eq_press_mpa (float): [IGT] equalized pressure based on chosen focal depth wrt exit
+                               plane [MPa]
+        _input_press_mpa (float): [IGT] input pressure based on chosen focal depth wrt exit
+                                  plane [MPa]
         _calculated_ampl (float): [IGT] calculated amplitude to reach desired pressure on chosen
                                   focal depth wrt exit plane [-]
         _timing_param (dict.):
@@ -154,8 +158,10 @@ class Sequence():
         self._input_press_mpa = float(get_config_value(logger, config, 'Power',
                                                        'Default.input_press', 0))
         # IGT: equalized pressure in free water [MPa]
-        self._eq_press_mpa = float(get_config_value(logger, config, 'Power', 'Default.eq_press', 0))
-        self._calculated_ampl = float(get_config_value(logger, config, 'Power', 'Default.calc_ampl',
+        self._eq_press_mpa = float(get_config_value(logger, config, 'Power',
+                                                    'Default.eq_press', 0))
+        self._calculated_ampl = float(get_config_value(logger, config, 'Power',
+                                                       'Default.calc_ampl',
                                                        0))  # IGT: calculated amplitude [%]
 
         self._focus_wrt_mid_bowl = float(get_config_value(logger, config, 'Focus', 'Default.bowl',
@@ -166,7 +172,8 @@ class Sequence():
 
         self._transducer = tran.Transducer()
         back_up_default_tran = tran.get_tran_serials()[0]
-        def_tran_serial = get_config_value(logger, config, 'Equipment', 'Default transducer serial',
+        def_tran_serial = get_config_value(logger, config, 'Equipment',
+                                           'Default transducer serial',
                                            back_up_default_tran)
         self.transducer = def_tran_serial
 
@@ -280,24 +287,24 @@ class Sequence():
                              f"of {self.volt_curve_file}\n ")
 
                 if self._conv_param["power_curve_pp"] is not None:
-                    info += ("- Pressure to amplitude conversion: Using piecewise polynomial fit " +
-                             f"of {self.power_curve_file}\n ")
+                    info += ("- Pressure to amplitude conversion: Using piecewise polynomial " +
+                             f"fit of {self.power_curve_file}\n ")
 
                 if self._conv_param["focus_curve_pp"] is not None:
                     info += ("- Focus conversion: Using piecewise polynomial fit of " +
                              f"{self.focus_curve_file}\n ")
 
                 if self._conv_param["eq_curve_pp"] is not None:
-                    info += ("- Normalization factor calculation: Using piecewise polynomial fit " +
-                             f"of {self.eq_curve_file}\n ")
+                    info += ("- Normalization factor calculation: Using piecewise polynomial " +
+                             f"fit of {self.eq_curve_file}\n ")
 
                 info += ("Normalized pressure [-] based on chosen focal depth wrt exit plane of " +
                          f"{self._focus_wrt_exit_plane} [mm]: {self._eq_factor} \n ")
 
             else:
-                info += ("Pressure correction with an increasing focal depth not available in the" +
-                         " configuration file for this driving system and transducer combination!" +
-                         " \n ")
+                info += ("Pressure correction with an increasing focal depth not available in " +
+                         "the configuration file for this driving system and transducer " +
+                         "combination! \n ")
 
         info += f"Operating frequency [kHz]: {self._oper_freq} \n "
         info += f"Focal depth wrt exit plane [mm]: {self._focus_wrt_exit_plane} \n "
@@ -506,7 +513,8 @@ class Sequence():
                 if self._ds_tran_combo in self._equip_combos:
                     # New equipment selected, update conversion parameters
                     self._update_conv_param()
-                    self._focus_wrt_mid_bowl = self._conv_param['focus_curve_pp'](self._focus_wrt_exit_plane)
+                    self._focus_wrt_mid_bowl = self._conv_param['focus_curve_pp'](
+                        self._focus_wrt_exit_plane)
                 else:
                     self._focus_wrt_mid_bowl = (self._focus_wrt_exit_plane +
                                                 self._transducer.exit_plane_dist)
@@ -707,7 +715,8 @@ class Sequence():
         """
 
         if not self._engineering_mode:
-            raise RuntimeError("Voltage mode is disabled. Use maximum pressure in free water instead.")
+            raise RuntimeError(
+                "Voltage mode is disabled. Use maximum pressure in free water instead.")
 
         # set other parameters determine the intensity to None
         self._global_power = 0
@@ -780,7 +789,8 @@ class Sequence():
         Getter method for the amplitude.
 
         Returns:
-            float: The amplitude array [%] for IGT: one value represents the value for all elements.
+            float: The amplitude array [%] for IGT: one value represents the value for all
+            elements.
         """
 
         return self._ampl
@@ -796,7 +806,8 @@ class Sequence():
         """
 
         if not self._engineering_mode:
-            raise RuntimeError("Amplitude mode is disabled. Use maximum pressure in free water instead.")
+            raise RuntimeError(
+                "Amplitude mode is disabled. Use maximum pressure in free water instead.")
 
         # set other parameters that determine the intensity to None
         self._global_power = 0
@@ -890,7 +901,8 @@ class Sequence():
     @property
     def focus_wrt_exit_plane(self):
         """
-        Getter method for the focal depth w.r.t. the exit plane representing the middle of the FWHM.
+        Getter method for the focal depth w.r.t. the exit plane representing the middle of the
+        FWHM.
 
         Returns:
             float: The focal depth [mm] w.r.t. the exit plane representing the middle of the FWHM.
@@ -901,8 +913,8 @@ class Sequence():
     @focus_wrt_exit_plane.setter
     def focus_wrt_exit_plane(self, focus):
         """
-        Setter method for the focal depth w.r.t. middle of the transducer bowl and w.r.t. exit plane
-        representing the middle of the FWHM.
+        Setter method for the focal depth w.r.t. middle of the transducer bowl and w.r.t. exit
+        plane representing the middle of the FWHM.
 
         Parameters:
             focus (float): Focal depth [mm] w.r.t. the exit plane representing the middle of the
@@ -964,11 +976,12 @@ class Sequence():
                     round_ampl = f'{self._ampl[0]:.2f}'
                     round_volt = f'{self._volt[0]:.2f}'
 
-                logger.debug(f"New focus wrt exit plane of {self._focus_wrt_exit_plane:.2f} [mm] " +
+                logger.debug("New focus wrt exit plane of " +
+                             f"{self._focus_wrt_exit_plane:.2f} [mm] " +
                              f" results in an equalization factor of {self._eq_factor:.2f} " +
                              "recalcultating the maximum pressure in free water as " +
-                             f"{self._press:.2f} [MPa], the voltage as {round_volt} [V], and the " +
-                             f"amplitude as {round_ampl} [%].")
+                             f"{self._press:.2f} [MPa], the voltage as {round_volt} [V], " +
+                             f"and the amplitude as {round_ampl} [%].")
             else:
                 message = ('Conversion equations unknown but required for ' +
                            f'{self._ds_tran_combo}.')
@@ -1021,15 +1034,16 @@ class Sequence():
                         logger.debug(f"Verification: pp({self._focus_wrt_exit_plane}) = {calc_y}")
                     else:
                         logger.warning(f"Could not find an x value for y = {target_y_value}. " +
-                                       'Focus wrt exit plane will be calculated based on exit ' +
-                                       f'plane distance of {self._transducer.exit_plane_dist} [mm].')
+                                       'Focus wrt exit plane will be calculated based on ' +
+                                       'exit plane distance of ' +
+                                       f'{self._transducer.exit_plane_dist} [mm].')
 
                         self._focus_wrt_exit_plane = focus - self._transducer.exit_plane_dist
 
                 else:
-                    message = ('Compensation equations are not available or applicable. Focus wrt' +
-                               ' exit plane will be calculated based on exit plane distance of ' +
-                               f'{self._transducer.exit_plane_dist} [mm].')
+                    message = ('Compensation equations are not available or applicable. ' +
+                               'Focus wrt exit plane will be calculated based on exit plane ' +
+                               f'distance of {self._transducer.exit_plane_dist} [mm].')
                     logger.warning(message)
 
                     self._focus_wrt_exit_plane = focus - self._transducer.exit_plane_dist
@@ -1039,8 +1053,10 @@ class Sequence():
                 self._focus_wrt_exit_plane = focus - self._transducer.exit_plane_dist
 
             # Check if focus is within range if compensation equations are not applicable
-            if self._focus_wrt_exit_plane < self._transducer.min_foc or self._focus_wrt_exit_plane > self._transducer.max_foc:
-                message = (f'Focus wrt exit plane of {self._focus_wrt_exit_plane} [mm] is not within the set ' +
+            if (self._focus_wrt_exit_plane < self._transducer.min_foc
+                    or self._focus_wrt_exit_plane > self._transducer.max_foc):
+                message = (f'Focus wrt exit plane of {self._focus_wrt_exit_plane} [mm] is not ' +
+                           'within the set ' +
                            f'focus range of {self._transducer.min_foc} and ' +
                            f'{self._transducer.max_foc} [mm] of transducer ' +
                            f'{self._transducer.name}.')
@@ -1077,8 +1093,8 @@ class Sequence():
                 logger.debug(f"New focus wrt mid bowl of {self._focus_wrt_mid_bowl:.2f} [mm] " +
                              f"results in an equalization factor of {self._eq_factor:.2f} " +
                              "recalcultating the maximum pressure in free water as " +
-                             f"{self._press:.2f} [MPa], the voltage as {round_volt} [V], and the " +
-                             f"amplitude as {round_ampl} [%].")
+                             f"{self._press:.2f} [MPa], the voltage as {round_volt} [V], " +
+                             f"and the amplitude as {round_ampl} [%].")
             else:
                 message = ('Conversion equations unknown but required for ' +
                            f'{self._ds_tran_combo}.')
@@ -1117,15 +1133,16 @@ class Sequence():
                         logger.debug(f"Verification: pp({self._focus_wrt_exit_plane}) = {calc_y}")
                     else:
                         logger.warning(f"Could not find an x value for y = {target_y_value}. " +
-                                       'Focus wrt exit plane will be calculated based on exit ' +
-                                       f'plane distance of {self._transducer.exit_plane_dist} [mm].')
+                                       'Focus wrt exit plane will be calculated based on ' +
+                                       'exit plane distance of ' +
+                                       f'{self._transducer.exit_plane_dist} [mm].')
 
                         self._focus_wrt_exit_plane = focus - self._transducer.exit_plane_dist
 
                 else:
-                    message = ('Compensation equations are not available or applicable. Focus wrt' +
-                               ' exit plane will be calculated based on exit plane distance of ' +
-                               f'{self._transducer.exit_plane_dist} [mm].')
+                    message = ('Compensation equations are not available or applicable. ' +
+                               'Focus wrt exit plane will be calculated based on exit plane ' +
+                               f'distance of {self._transducer.exit_plane_dist} [mm].')
                     logger.warning(message)
 
                     self._focus_wrt_exit_plane = focus - self._transducer.exit_plane_dist
@@ -1135,8 +1152,10 @@ class Sequence():
                 self._focus_wrt_exit_plane = focus - self._transducer.exit_plane_dist
 
             # Check if focus is within range if compensation equations are not applicable
-            if self._focus_wrt_exit_plane < self._transducer.min_foc or self._focus_wrt_exit_plane > self._transducer.max_foc:
-                message = (f'Focus wrt exit plane of {self._focus_wrt_exit_plane} [mm] is not within the set ' +
+            if (self._focus_wrt_exit_plane < self._transducer.min_foc
+                    or self._focus_wrt_exit_plane > self._transducer.max_foc):
+                message = (f'Focus wrt exit plane of {self._focus_wrt_exit_plane} [mm] is not ' +
+                           'within the set ' +
                            f'focus range of {self._transducer.min_foc} and ' +
                            f'{self._transducer.max_foc} [mm] of transducer ' +
                            f'{self._transducer.name}.')
@@ -1173,8 +1192,8 @@ class Sequence():
                 logger.debug(f"New focus wrt exit plane of {self._focus_wrt_mid_bowl:.2f} [mm] " +
                              f"results in an equalization factor of {self._eq_factor:.2f} " +
                              "recalcultating the maximum pressure in free water as " +
-                             f"{self._press:.2f} [MPa], the voltage as {round_volt} [V], and the " +
-                             f"amplitude as {round_ampl} [%].")
+                             f"{self._press:.2f} [MPa], the voltage as {round_volt} [V], " +
+                             f"and the amplitude as {round_ampl} [%].")
             else:
                 message = ('Conversion equations unknown but required for ' +
                            f'{self._ds_tran_combo}.')
@@ -1188,8 +1207,8 @@ class Sequence():
 
         Returns:
             list(float): The degree used to dephase n elements in one cycle.
-            None = no dephasing. If the list is equal to the number of elements, the phases based on
-            the focus are overriden.
+            None = no dephasing. If the list is equal to the number of elements, the phases
+            based on the focus are overriden.
         """
 
         return self._dephasing_degree
@@ -1201,8 +1220,8 @@ class Sequence():
 
         Parameters:
             dephasing_degree (list(float)): The degree used to dephase n elements in one cycle.
-            None = no dephasing. If the list is equal to the number of elements, the phases based on
-            the focus wrt middle of the transducer bowl are overriden.
+            None = no dephasing. If the list is equal to the number of elements, the phases
+            based on the focus wrt middle of the transducer bowl are overriden.
         """
 
         self._dephasing_degree = dephasing_degree
@@ -1249,11 +1268,10 @@ class Sequence():
         """
         Getter method for the calculated amplitude to reach desired pressure at chosen focal depth
         wrt exit plane [-].
-.
 
         Returns:
-            float: The calculated amplitude to reach desired pressure at chosen focal depth wrt exit
-            plane [-].
+            float: The calculated amplitude to reach desired pressure at chosen focal depth wrt
+            exit plane [-].
         """
 
         return self._calculated_ampl
@@ -1596,10 +1614,11 @@ class Sequence():
                 self._calc_press()
                 self._calc_volt()
 
-                message = (f'Calculated amplitude of {calc_ampl:.2f} exceeds 100%. A pressure of ' +
-                           f'{self._press:.2f} [MPa] and/or a voltage of {self._volt[0]:.2f} [V] ' +
-                           'will result in an amplitude of 100% at focus wrt exit plane of ' +
-                           f'{self._focus_wrt_exit_plane} [mm]. Change input value.')
+                message = (f'Calculated amplitude of {calc_ampl:.2f} exceeds 100%. A pressure ' +
+                           f'of {self._press:.2f} [MPa] and/or a voltage of ' +
+                           f'{self._volt[0]:.2f} [V] will result in an amplitude of 100% at ' +
+                           f'focus wrt exit plane of {self._focus_wrt_exit_plane} [mm]. Change ' +
+                           'input value.')
                 logger.critical(message)
                 sys.exit(message)
             elif calc_ampl < 0:
@@ -1626,16 +1645,17 @@ class Sequence():
                 self._calc_press()
                 self._calc_volt()
 
-                message = (f'Calculated amplitude exceeds 100%. A pressure of {self._press:.2f} ' +
-                           f'[MPa] and/or a voltage of {self._volt[0]:.2f} [V] will result in an ' +
-                           'amplitude of 100% at focus wrt exit plane of ' +
-                           f'{self._focus_wrt_exit_plane} [mm]. Change input value.')
+                message = ('Calculated amplitude exceeds 100%. A pressure of ' +
+                           f'{self._press:.2f} [MPa] and/or a voltage of ' +
+                           f'{self._volt[0]:.2f} [V] will result in an amplitude of 100% at ' +
+                           f'focus wrt exit plane of {self._focus_wrt_exit_plane} [mm]. Change ' +
+                           'input value.')
 
                 logger.critical(message)
                 sys.exit(message)
             elif range_status == "below_range":
-                logger.debug(('Calculated amplitude below 0%, so cut off the amplitude at 0% and ' +
-                              'recalculate the pressure.'))
+                logger.debug(('Calculated amplitude below 0%, so cut off the amplitude at 0% ' +
+                              'and recalculate the pressure.'))
                 calc_ampl = 0
 
             if calc_ampl < 0:
@@ -1662,8 +1682,9 @@ class Sequence():
             logger.debug(f"Verification: pp({press_pa_with_eq_fact}) = {calc_y}")
 
             press_mpa = (press_pa_with_eq_fact / self._eq_factor) * 1e-6
-            max_press = float(get_config_value(logger, config, 'Power',
-                                               'Maximum pressure allowed in free water [MPa]', 1.4))
+            max_press = float(get_config_value(
+                logger, config, 'Power',
+                'Maximum pressure allowed in free water [MPa]', 1.4))
             if press_mpa > max_press:
                 message = (f'The set maximum pressure in free water of {press_mpa} [MPa] is ' +
                            f'crossing the allowed limit of {max_press} [MPa]. Please change' +

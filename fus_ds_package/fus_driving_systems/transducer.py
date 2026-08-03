@@ -70,8 +70,10 @@ class Transducer:
         self.fund_freq = 0  # [kHz]
         self.natural_foc = 0  # [mm]
         self.exit_plane_dist = 0  # [mm]
-        self.min_foc = float(get_config_value(logger, config, 'Focus', 'Default.minimum', 0))  # [mm]
-        self.max_foc = float(get_config_value(logger, config, 'Focus', 'Default.maximum', 1000))  # [mm]
+        self.min_foc = float(get_config_value(logger, config, 'Focus',
+                                              'Default.minimum', 0))  # [mm]
+        self.max_foc = float(get_config_value(logger, config, 'Focus',
+                                              'Default.maximum', 1000))  # [mm]
         self.steer_info = None
         self.is_active = True
 
@@ -86,7 +88,8 @@ class Transducer:
         try:
             self.serial = serial
             section = 'Equipment.Transducer.' + serial
-            self.name = get_config_value(logger, config, section, 'Name', 'Unknown transducer name')
+            self.name = get_config_value(logger, config, section, 'Name',
+                                         'Unknown transducer name')
             self.manufact = get_config_value(logger, config, section, 'Manufacturer',
                                              'Unknown transducer manufacturer')
             self.elements = int(get_config_value(logger, config, section, 'Elements', 0, True))
@@ -140,8 +143,8 @@ class Transducer:
         Creates and returns a new instance of the Transducer class with the same attribute
         values.
 
-        The new instance is a deep copy of the current instance, ensuring that changes to the cloned
-        object do not affect the original object.
+        The new instance is a deep copy of the current instance, ensuring that changes to the
+        cloned object do not affect the original object.
 
         Returns:
             CharacSequence: A new instance of the Transducer class with copied attribute values.
@@ -190,7 +193,8 @@ def get_tran_names():
     for serial in get_tran_serials():
         try:
             section = 'Equipment.Transducer.' + serial
-            tran_name = get_config_value(logger, config, section, 'Name', 'Unknown transducer name')
+            tran_name = get_config_value(logger, config, section, 'Name',
+                                         'Unknown transducer name')
         except KeyError:
             message = (f'No transducer with serial number {serial} found in' +
                        ' configuration file.')

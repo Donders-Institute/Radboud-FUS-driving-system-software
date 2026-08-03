@@ -120,7 +120,7 @@ class TestComputePhases:
 
         with pytest.raises(SystemExit):
             trans.computePhases(pulse, (0, 0, 0), set_focus_mm=50,
-                               dephasing_degree=[10.0, 20.0])
+                                dephasing_degree=[10.0, 20.0])
 
 
 class TestLoadFromString:
