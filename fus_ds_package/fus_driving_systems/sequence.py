@@ -33,8 +33,8 @@ import sys
 
 # Miscellaneous packages
 import json
+import importlib.resources
 import numpy as np
-import pkg_resources
 from scipy.interpolate import PPoly
 from scipy import optimize
 
@@ -1774,7 +1774,7 @@ def extract_and_define_pp(json_dir, return_breaks=False):
     """
 
     # Load the JSON file
-    json_path = pkg_resources.resource_filename('fus_driving_systems', json_dir)
+    json_path = str(importlib.resources.files('fus_driving_systems').joinpath(json_dir))
     with open(json_path, 'r') as f:
         data = json.load(f)
 

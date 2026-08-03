@@ -1,0 +1,14 @@
+[tool.pytest.ini_options]
+testpaths = ["fus_driving_systems/tests"]
+markers = [
+    "hardware: requires physical hardware / real serial port or native SDK; skipped by default",
+]
+addopts = """
+-ra
+--strict-markers
+-m 'not hardware'
+--cov=fus_driving_systems
+--cov-report=term-missing
+--cov-report=html
+--cov-fail-under=80
+"""

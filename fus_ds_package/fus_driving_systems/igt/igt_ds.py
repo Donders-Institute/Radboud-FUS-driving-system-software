@@ -37,10 +37,10 @@ import time
 import faulthandler
 import math
 
+import importlib.resources
 import numpy as np
 
 import pandas as pd
-import pkg_resources
 
 # Own packages
 from fus_driving_systems import control_driving_system as ds
@@ -178,7 +178,7 @@ class IGT(ds.ControlDrivingSystem):
 
         try:
             # Update the name of your configuration file
-            igt_config_path = pkg_resources.resource_filename('fus_driving_systems', connect_info)
+            igt_config_path = str(importlib.resources.files('fus_driving_systems').joinpath(connect_info))
             logger.debug(f'igt_config_path: {igt_config_path} found....')
             if igt_config_path != '':
                 self.fus.loadConfig(igt_config_path)
@@ -732,7 +732,7 @@ class IGT(ds.ControlDrivingSystem):
         if steer_info.endswith('.ini'):
 
             trans = transducerXYZ.Transducer()
-            ini_path = pkg_resources.resource_filename(package_name, steer_info)
+            ini_path = str(importlib.resources.files(package_name).joinpath(steer_info))
             if not trans.load(ini_path):
                 message = f'Error: can not load the transducer definition from {ini_path}'
                 logger.critical(message)
@@ -748,7 +748,7 @@ class IGT(ds.ControlDrivingSystem):
 
         else:
             # Import excel file containing phases per focal depth
-            excel_path = pkg_resources.resource_filename(package_name, steer_info)
+            excel_path = str(importlib.resources.files(package_name).joinpath(steer_info))
 
             logger.debug('Extract phase information from %s', excel_path)
 
