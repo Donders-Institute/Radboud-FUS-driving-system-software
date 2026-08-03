@@ -10,4 +10,5 @@ addopts = """
 --cov=fus_driving_systems
 --cov-report=term-missing
 --cov-report=html
+--cov-fail-under=80
 """
