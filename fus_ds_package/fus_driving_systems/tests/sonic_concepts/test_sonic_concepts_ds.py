@@ -165,6 +165,44 @@ def test_set_ramping_linear_sends_malformed_rampmode_command(mocker, connected_i
     assert first_call_command == 'RAMPMODE={ramp_mode}\r\n'
 
 
+def test_set_ramping_tukey_sends_ramplength_command(mocker, connected_instance, patch_config):
+    """Covers the previously-untested Tukey elif branch (ramp_mode = 2).
+    Only asserts the RAMPLENGTH command (the second _send_command call) --
+    the RAMPMODE command itself is the same broken literal string
+    regardless of mode, already characterized above for Linear."""
+    patch_config.set('Ramp', 'Option.rect', 'Rectangular - no ramping')
+    patch_config.set('Ramp', 'Option.lin', 'Linear')
+    patch_config.set('Ramp', 'Option.tuk', 'Tukey')
+    mock_send = mocker.patch.object(connected_instance, '_send_command')
+
+    connected_instance._set_ramping('Tukey', 5)
+
+    assert mock_send.call_count == 2
+    second_call_command = mock_send.call_args_list[1].args[0]
+    assert second_call_command == 'RAMPLENGTH=5000.0\r\n'
+
+
+def test_reset_parameters_sets_local_mode_and_resets_ramping(mocker, connected_instance):
+    mock_send = mocker.patch.object(connected_instance, '_send_command')
+    mock_reset_ramping = mocker.patch.object(connected_instance, '_reset_ramping')
+
+    connected_instance._reset_parameters()
+
+    mock_send.assert_called_once_with('LOCAL=1\r\n')
+    mock_reset_ramping.assert_called_once()
+
+
+def test_reset_ramping_sends_abort_then_rampmode_zero(mocker, connected_instance):
+    mock_send = mocker.patch.object(connected_instance, '_send_command')
+
+    connected_instance._reset_ramping()
+
+    assert mock_send.call_args_list == [
+        mocker.call('ABORT\r\n', 0.5),
+        mocker.call('RAMPMODE=0\r\n'),
+    ]
+
+
 def test_check_tran_sel_confirm_does_not_exit(mocker, connected_instance):
     mocker.patch('fus_driving_systems.sonic_concepts.sonic_concepts_ds.tkinter.Tk')
     mock_box = mocker.patch(
@@ -281,3 +319,33 @@ def test_execute_sequence_sends_then_executes_when_not_yet_sent(mocker, connecte
 
     mock_send_sequence.assert_called_once()
     connected_instance.gen.write.assert_called_once_with(b'START\r')
+
+
+def test_execute_sequence_reconnects_when_not_connected(mocker):
+    """execute_sequence() has its own reconnect-and-retry branch, separate
+    from send_sequence()'s (test_send_sequence_reconnects_when_not_connected
+    above) -- not connected here means connect() + send_sequence() +
+    execute_sequence() all get retried."""
+    from fus_driving_systems.sonic_concepts.sonic_concepts_ds import SonicConcepts
+    instance = SonicConcepts()
+    instance.connected = False
+    instance.gen = mocker.Mock()
+    instance.gen.readline.return_value = b'OK\n'
+
+    def fake_connect(connect_info):
+        instance.connected = True
+    mock_connect = mocker.patch.object(instance, 'connect', side_effect=fake_connect)
+    mock_send_sequence = mocker.patch.object(instance, 'send_sequence')
+
+    def fake_send_sequence(seq):
+        instance.sequence_sent = True
+    mock_send_sequence.side_effect = fake_send_sequence
+
+    fake_sequence = mocker.Mock()
+    fake_sequence.driving_sys.connect_info = 'COM7'
+
+    instance.execute_sequence(fake_sequence)
+
+    mock_connect.assert_called_once_with('COM7')
+    mock_send_sequence.assert_called_once_with(fake_sequence)
+    instance.gen.write.assert_called_once_with(b'START\r')

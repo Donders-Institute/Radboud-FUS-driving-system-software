@@ -25,7 +25,7 @@ SOFTWARE.
 
 **Attribution Notice**:
 If you use this kit in your research or project, please refer to the 'How to Cite' section in the
-README.md file of https://github.com/Donders-Institute/Radboud-FUS-measurement-kit.
+README.md file of https://github.com/Donders-Institute/Radboud-FUS-driving-system-software.
 """
 
 from fus_driving_systems import utils
