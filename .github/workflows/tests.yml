@@ -27,3 +27,11 @@ jobs:
       - name: Run tests (hardware-dependent tests excluded)
         working-directory: fus_ds_package
         run: pytest -m "not hardware"
+
+      - name: Upload coverage HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-html-report
+          path: fus_ds_package/htmlcov/
+          retention-days: 30
