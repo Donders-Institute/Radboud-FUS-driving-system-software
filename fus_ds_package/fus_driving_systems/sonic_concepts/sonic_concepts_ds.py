@@ -144,7 +144,7 @@ class SonicConcepts(ds.ControlDrivingSystem):
                     sys.exit(message)
             else:
                 logger.warning('The sequence has to be sent first using send_sequence() before ' +
-                              'the driving system can execute a sequence.')
+                               'the driving system can execute a sequence.')
                 logger.warning('Sending sequence...')
 
                 self.send_sequence(sequence)
@@ -371,8 +371,8 @@ class SonicConcepts(ds.ControlDrivingSystem):
 
     def check_tran_sel(self):
         """
-        Displays a warning dialog to encourage the user to check the correct transducer selection on
-        the Sonic Concepts ultrasound driving system.
+        Displays a warning dialog to encourage the user to check the correct transducer
+        selection on the Sonic Concepts ultrasound driving system.
         """
 
         default_message = 'Ensure the correct TRANSDUCER is selected on the driving system.'

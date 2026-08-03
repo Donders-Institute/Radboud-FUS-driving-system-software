@@ -126,7 +126,7 @@ class IGT(ds.ControlDrivingSystem):
                                                                pulse_train_delay)
 
         wait_time_ms = float(get_config_value(logger, config, 'Equipment.Manufacturer.IGT',
-                                              'Wait time before reponsive [ms]', 100))
+                                              'Wait time before responsive [ms]', 100))
         self.sent_seqs[seq_num]['total_sequence_duration_ms'] = (total_sequence_duration_ms +
                                                                  wait_time_ms)
 
@@ -178,7 +178,8 @@ class IGT(ds.ControlDrivingSystem):
 
         try:
             # Update the name of your configuration file
-            igt_config_path = str(importlib.resources.files('fus_driving_systems').joinpath(connect_info))
+            igt_config_path = str(
+                importlib.resources.files('fus_driving_systems').joinpath(connect_info))
             logger.debug(f'igt_config_path: {igt_config_path} found....')
             if igt_config_path != '':
                 self.fus.loadConfig(igt_config_path)
@@ -230,7 +231,8 @@ class IGT(ds.ControlDrivingSystem):
                     self.disconnect()
                     self.connect(connect_info, log_dir, log_name, attempt=attempt+1)
                 else:
-                    message = f'Maximum amount of {max_attempts} for reconnecting is reached. Exit.'
+                    message = (f'Maximum amount of {max_attempts} for reconnecting is reached. ' +
+                               'Exit.')
                     logger.critical(message)
                     sys.exit(message)
 
@@ -534,7 +536,8 @@ class IGT(ds.ControlDrivingSystem):
             self.send_sequence(seq1, seq2, seq3, seq4, duration_ms)
             self.wait_for_trigger(seq1, seq2, seq3, seq4, duration_ms)
 
-    def execute_sequence(self, seq1, seq2=None, seq3=None, seq4=None, duration_ms=0, debug_info=True):
+    def execute_sequence(self, seq1, seq2=None, seq3=None, seq4=None, duration_ms=0,
+                         debug_info=True):
         """
         Executes the previously sent sequence on the IGT ultrasound driving system.
         """
@@ -656,7 +659,8 @@ class IGT(ds.ControlDrivingSystem):
         pulse = unifus.Pulse(self.n_channels, 1, 1)  # n phases, n frequencies, n amplitudes
 
         # duration in ms, delay in ms
-        pulse.setDuration(sequence.pulse_dur, round(sequence.pulse_rep_int - sequence.pulse_dur, 1))
+        pulse.setDuration(sequence.pulse_dur,
+                          round(sequence.pulse_rep_int - sequence.pulse_dur, 1))
 
         # set same frequency for all channels = 250KHz, in Hz
         oper_freq_hz = int(sequence.oper_freq * 1e3)
@@ -671,7 +675,8 @@ class IGT(ds.ControlDrivingSystem):
             sys.exit(message)
 
         # set same phase offset for all channels (angle in [0,360] degrees)
-        if sequence.dephasing_degree is not None and len(sequence.dephasing_degree) == sequence.transducer.elements:
+        if (sequence.dephasing_degree is not None
+                and len(sequence.dephasing_degree) == sequence.transducer.elements):
             logger.info('Phases are overridden by phases set at dephasing_degree: ' +
                         f'{sequence.dephasing_degree}')
             phases = sequence.dephasing_degree
@@ -719,8 +724,8 @@ class IGT(ds.ControlDrivingSystem):
             steer_info (str): Path to the steer information.
             natural_foc (float): The natural focus value [mm] used to calculate target focus.
             dephasing_degree (list(float)): The degree used to dephase n elements in one cycle.
-            None = no dephasing. If the list is equal to the number of elements, the phases based on
-            the focus are overridden.
+            None = no dephasing. If the list is equal to the number of elements, the phases
+            based on the focus are overridden.
 
         Returns:
             list: List of phases.

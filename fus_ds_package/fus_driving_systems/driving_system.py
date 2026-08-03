@@ -84,18 +84,20 @@ class DrivingSystem:
 
         self.serial = serial
         section = 'Equipment.Driving system.' + serial
-        self.name = get_config_value(logger, config, section, 'Name', 'Unknown driving system name')
+        self.name = get_config_value(logger, config, section, 'Name',
+                                     'Unknown driving system name')
         self.manufact = get_config_value(logger, config, section, 'Manufacturer',
                                          'Unknown driving system manufacturer')
-        self.available_ch = int(get_config_value(logger, config, section, 'Available channels',
-                                                 0))
-        self.connect_info = get_config_value(logger, config, section, 'Connection info', None, True)
+        self.available_ch = int(get_config_value(logger, config, section,
+                                                 'Available channels', 0))
+        self.connect_info = get_config_value(logger, config, section, 'Connection info',
+                                             None, True)
         self.tran_comp = get_config_value(logger, config, section, 'Transducer compatibility',
                                           '').split('\n')
         self.power_options = get_config_value(logger, config, section, 'Power options',
                                               '').split('\n')
-        self.require_conv_eq = get_config_value(logger, config, section,
-                                                'Requires conversion equations?', 'False') == 'True'
+        self.require_conv_eq = get_config_value(
+            logger, config, section, 'Requires conversion equations?', 'False') == 'True'
         self.is_active = get_config_value(logger, config, section, 'Active?', 'True') == 'True'
 
     def __str__(self):
@@ -128,8 +130,8 @@ class DrivingSystem:
         Creates and returns a new instance of the DrivingSystem class with the same attribute
         values.
 
-        The new instance is a deep copy of the current instance, ensuring that changes to the cloned
-        object do not affect the original object.
+        The new instance is a deep copy of the current instance, ensuring that changes to the
+        cloned object do not affect the original object.
 
         Returns:
             CharacSequence: A new instance of the DrivingSystem class with copied attribute values.

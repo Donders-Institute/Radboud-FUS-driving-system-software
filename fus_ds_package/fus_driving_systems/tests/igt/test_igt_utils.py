@@ -10,8 +10,6 @@ are used directly rather than faked, since they're just plain values.
 """
 from types import SimpleNamespace
 
-import pytest
-
 from fus_driving_systems.igt import unifus
 from fus_driving_systems.igt.utils import ExecListener
 

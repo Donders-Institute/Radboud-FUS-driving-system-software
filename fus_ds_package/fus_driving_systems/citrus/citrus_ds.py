@@ -37,16 +37,14 @@ import time
 # Own packages
 from fus_driving_systems import control_driving_system as ds
 
-from fus_driving_systems.utils import get_config_value
-
 # Access the logger
 from fus_driving_systems.config.logging_config import logger
-from fus_driving_systems.config.config import config_info as config
 
 
 class CITRUS(ds.ControlDrivingSystem):
     """
-    Class for an CITRUS ultrasound driving system, inheriting from the abstract class DrivingSystem.
+    Class for an CITRUS ultrasound driving system, inheriting from the abstract class
+    DrivingSystem.
 
     Attributes:
         connected (bool): Indicates whether the system is connected.
@@ -112,4 +110,3 @@ class CITRUS(ds.ControlDrivingSystem):
             self.serBITSI.close()
 
         self.connected = False
-

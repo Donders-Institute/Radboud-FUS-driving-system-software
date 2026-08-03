@@ -64,7 +64,8 @@ def test_returns_default_and_warns_when_config_is_incomplete(config, expected_me
     (_config_missing_section(), f"Config section '{SECTION}' not found"),
     (_config_missing_key(), f"Config key '{KEY}' not found in section '{SECTION}'"),
 ])
-def test_sys_exits_when_config_is_incomplete_and_is_sys_exit_true(config, expected_message_fragment):
+def test_sys_exits_when_config_is_incomplete_and_is_sys_exit_true(config,
+                                                                  expected_message_fragment):
     logger = Mock()
     with pytest.raises(SystemExit) as exc_info:
         get_config_value(logger, config, SECTION, KEY, DEFAULT, isSysExit=True)
@@ -88,7 +89,7 @@ def test_get_config_file():
 
 
 def _make_log_record(msg="hello", args=(), func="my_function", lineno=42,
-                      pathname="some_module.py", level=logging.INFO):
+                     pathname="some_module.py", level=logging.INFO):
     return logging.LogRecord(
         name="fus_driving_systems.tests", level=level, pathname=pathname,
         lineno=lineno, msg=msg, args=args, exc_info=None, func=func)

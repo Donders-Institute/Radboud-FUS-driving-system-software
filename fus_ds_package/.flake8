@@ -1,0 +1,3 @@
+[flake8]
+max-line-length = 99
+exclude = fus_driving_systems/tests/visualize_igt_conversion_equations.py

@@ -105,7 +105,8 @@ def get_config_value(logger, config, section, key, default, isSysExit=False):
 
     # Function to log the warning message with additional context (caller function details)
     def log_warning(message):
-        # Get the stack and retrieve information about the caller (the function that called get_config_value)
+        # Get the stack and retrieve information about the caller (the function that called
+        # get_config_value)
         stack = inspect.stack()
         caller_frame = stack[2]  # The function that called get_config_value is two levels up
         file_name = caller_frame.filename  # File name of the caller
@@ -127,7 +128,7 @@ def get_config_value(logger, config, section, key, default, isSysExit=False):
         message = "Config not found"
         if isSysExit:
             sys.exit(message)
-        
+
         log_warning(message)
         return default
 

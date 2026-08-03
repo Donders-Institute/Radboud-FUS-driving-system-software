@@ -38,7 +38,7 @@ def _configure_logging(patch_config, logger_name, file_level='DEBUG',
 
 
 def test_initialize_logger_creates_log_dir_if_missing(patch_config, tmp_path,
-                                                       test_logger_name):
+                                                      test_logger_name):
     log_dir = tmp_path / "nested" / "log_dir"
     assert not log_dir.exists()
 
@@ -49,7 +49,7 @@ def test_initialize_logger_creates_log_dir_if_missing(patch_config, tmp_path,
 
 
 def test_initialize_logger_writes_log_messages_to_a_file(patch_config, tmp_path,
-                                                          test_logger_name):
+                                                         test_logger_name):
     _configure_logging(patch_config, test_logger_name)
     logger = logging_config.initialize_logger(str(tmp_path), "testrun")
 
@@ -63,7 +63,7 @@ def test_initialize_logger_writes_log_messages_to_a_file(patch_config, tmp_path,
 
 
 def test_initialize_logger_writes_log_messages_to_the_console(patch_config, tmp_path,
-                                                               test_logger_name, capsys):
+                                                              test_logger_name, capsys):
     _configure_logging(patch_config, test_logger_name)
     logger = logging_config.initialize_logger(str(tmp_path), "testrun")
 

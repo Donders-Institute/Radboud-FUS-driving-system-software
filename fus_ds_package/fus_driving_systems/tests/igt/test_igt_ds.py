@@ -68,7 +68,7 @@ class TestIsSequenceSent:
 class TestRegisterSentSequence:
 
     def test_stores_sequence_details_and_total_duration(self, igt_instance, mocker, patch_config):
-        patch_config.set('Equipment.Manufacturer.IGT', 'Wait time before reponsive [ms]', '50')
+        patch_config.set('Equipment.Manufacturer.IGT', 'Wait time before responsive [ms]', '50')
         mocker.patch('fus_driving_systems.igt.igt_ds.unifus.sequenceDurationMs',
                      return_value=200.0)
 
@@ -107,7 +107,7 @@ class TestConnect:
 
     def test_connect_exits_immediately_when_fus_system_construction_fails(self, mocker, tmp_path):
         mocker.patch("fus_driving_systems.igt.igt_ds.unifus.FUSSystem",
-                    side_effect=RuntimeError("boom"))
+                     side_effect=RuntimeError("boom"))
         instance = IGT(log_dir=str(tmp_path))
 
         with pytest.raises(SystemExit):
@@ -272,7 +272,7 @@ class TestApplyRamping:
         assert ramp_up == list(reversed(ramp_down))  # "ramp up descends" per the source comment
 
     def test_clamps_temporal_resolution_when_step_count_exceeds_max(self, connected_instance,
-                                                                     patch_config):
+                                                                    patch_config):
         patch_config.set('Equipment.Manufacturer.IGT',
                          'Min. temporal ramping resolution [ms]', '0.1')
         patch_config.set('Equipment.Manufacturer.IGT', 'Max. amount of ramping steps', '10')
@@ -398,7 +398,8 @@ class TestSetPhasesIniBranch:
         pulse.setFrequencies([300_000])
 
         phases = connected_instance._set_phases(
-            pulse, focus=75, steer_info='igt/config/imasonic_transducers/transducer_15287_10_300kHz.ini',
+            pulse, focus=75,
+            steer_info='igt/config/imasonic_transducers/transducer_15287_10_300kHz.ini',
             natural_foc=75, dephasing_degree=None)
 
         assert len(phases) == 10
@@ -442,7 +443,8 @@ class TestSetPhasesExcelBranch:
 
 class TestDefineTwoTranSlots:
 
-    def test_combines_phases_frequencies_and_amplitudes_from_both_sequences(self, connected_instance):
+    def test_combines_phases_frequencies_and_amplitudes_from_both_sequences(self,
+                                                                            connected_instance):
         connected_instance.n_channels = 4
         tran1 = SimpleNamespace(elements=2)
         tran2 = SimpleNamespace(elements=2)
@@ -471,9 +473,9 @@ class TestSendSequence:
         mocker.patch.object(connected_instance, 'validate_sequence', return_value=[])
         fake_pulse = mocker.Mock()
         mocker.patch.object(connected_instance, '_define_pulse',
-                           return_value=(fake_pulse, [1.0, 2.0]))
+                            return_value=(fake_pulse, [1.0, 2.0]))
         mocker.patch.object(connected_instance, '_define_pulse_train',
-                           return_value=([fake_pulse, fake_pulse], 5.0))
+                            return_value=([fake_pulse, fake_pulse], 5.0))
         mocker.patch('fus_driving_systems.igt.igt_ds.unifus.sequenceDurationMs',
                      return_value=100.0)
 
@@ -487,7 +489,7 @@ class TestSendSequence:
 
     def test_exits_when_validation_produces_errors(self, mocker, connected_instance):
         mocker.patch.object(connected_instance, 'validate_sequence',
-                           return_value=['something is wrong'])
+                            return_value=['something is wrong'])
         fake_sequence = SimpleNamespace(seq_num=1)
 
         with pytest.raises(SystemExit):
@@ -504,7 +506,7 @@ class TestSendSequence:
         mocker.patch.object(instance, 'validate_sequence', return_value=[])
         mocker.patch.object(instance, '_define_pulse', return_value=(mocker.Mock(), [1.0]))
         mocker.patch.object(instance, '_define_pulse_train',
-                           return_value=([mocker.Mock()], 5.0))
+                            return_value=([mocker.Mock()], 5.0))
         mocker.patch('fus_driving_systems.igt.igt_ds.unifus.sequenceDurationMs',
                      return_value=100.0)
 
@@ -528,7 +530,7 @@ class TestSendSequence:
         mocker.patch.object(connected_instance, 'validate_sequence', return_value=[])
         fake_pulse1, fake_pulse2 = mocker.Mock(), mocker.Mock()
         mocker.patch.object(connected_instance, '_define_two_tran_slots',
-                           side_effect=[(fake_pulse1, [1.0]), (fake_pulse2, [2.0])])
+                            side_effect=[(fake_pulse1, [1.0]), (fake_pulse2, [2.0])])
         mocker.patch('fus_driving_systems.igt.igt_ds.unifus.sequenceDurationMs',
                      return_value=100.0)
 
@@ -558,7 +560,7 @@ class TestSendSequence:
         fake_pulse = mocker.Mock()
         mocker.patch.object(connected_instance, '_define_pulse', return_value=(fake_pulse, [1.0]))
         mocker.patch.object(connected_instance, '_define_pulse_train',
-                           return_value=([fake_pulse], 5.0))
+                            return_value=([fake_pulse], 5.0))
         mock_apply_ramping = mocker.patch.object(connected_instance, '_apply_ramping')
         mocker.patch('fus_driving_systems.igt.igt_ds.unifus.sequenceDurationMs',
                      return_value=100.0)

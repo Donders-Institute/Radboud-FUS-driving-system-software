@@ -123,7 +123,7 @@ class Transducer(object):
             # self.name = config.get ("transducer", "name")
             # self.focalLength = config.getfloat ("transducer", "focalLength") / 1000.0
             size = config.getint("elements", "size")
-        except:
+        except (cfg.Error, ValueError):
             message = "Error: missing 'elements.size' parameter"
             logger.critical(message)
             sys.exit(message)
@@ -159,16 +159,16 @@ class Transducer(object):
 
     def computePhases(self, pulse, point_mm, set_focus_mm, dephasing_degree):
         """
-        Computes the phases necessary to aim at the specified point, and writes them directly in the
-        given pulse.
+        Computes the phases necessary to aim at the specified point, and writes them directly in
+        the given pulse.
             :param pulse: the pulse to modify, its frequencies must be set before, its phases are
             modified (and resized)
-            :param point_mm: a 3-tuple (x,y,z) = cartesian coordinates (in mm) of the target, in the
-            transducer space
+            :param point_mm: a 3-tuple (x,y,z) = cartesian coordinates (in mm) of the target, in
+            the transducer space
             :set_focus_mm (float): The chosen focal depth [mm] without respect to natural focus.
             :dephasing_degree (list(float)): The degree used to dephase n elements in one cycle.
-            None = no dephasing. If the list is equal to the number of elements, the phases based on
-            the focus are overridden.
+            None = no dephasing. If the list is equal to the number of elements, the phases
+            based on the focus are overridden.
         """
 
         freqCount = pulse.frequencyCount()
@@ -207,8 +207,8 @@ class Transducer(object):
             if len(dephasing_degree) > 1:
                 message = (f'Number of dephasing entries ({len(dephasing_degree)}) does not ' +
                            'correspond to number of transducer elements ' +
-                           f'({self.channelCount()}). Only enter one dephasing value or n-values ' +
-                           'equal to the number of transducer elements.')
+                           f'({self.channelCount()}). Only enter one dephasing value or ' +
+                           'n-values equal to the number of transducer elements.')
                 logger.critical(message)
                 sys.exit(message)
 
