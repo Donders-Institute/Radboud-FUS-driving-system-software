@@ -299,6 +299,12 @@ class IGT(ds.ControlDrivingSystem):
                 used equipment (driving system and transducer)
         """
 
+        if seq2 is None and (seq3 is not None or seq4 is not None):
+            message = ('seq3/seq4 can only be used together with seq2 (two-transducer, ' +
+                       'four-sequence mode) -- seq2 is missing.')
+            logger.critical(message)
+            sys.exit(message)
+
         logger.info('Validating sequence...')
 
         seqs = [seq1]
@@ -337,7 +343,10 @@ class IGT(ds.ControlDrivingSystem):
                     phases = [phases, phases2]
 
             if seq3 is not None and seq4 is not None:
-                pulse_train_seq = [pulse, pulse2]
+                # Safe: reaching here with seq3/seq4 set implies seq2 was
+                # also set (guarded at the top of this method), so the
+                # seq3/seq4 branch above always assigned pulse2.
+                pulse_train_seq = [pulse, pulse2]  # pylint: disable=used-before-assignment
                 pulse_train_delay = 0
 
                 total_pulse_rep_int_ms = seq1.pulse_train_dur + seq3.pulse_train_dur

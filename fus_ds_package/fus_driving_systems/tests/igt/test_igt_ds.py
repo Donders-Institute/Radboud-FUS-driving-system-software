@@ -495,6 +495,21 @@ class TestSendSequence:
         with pytest.raises(SystemExit):
             connected_instance.send_sequence(fake_sequence)
 
+    def test_exits_when_seq3_and_seq4_given_without_seq2(self, mocker, connected_instance):
+        """Regression test for a real bug: pulse2 was only ever assigned
+        inside the 'seq2 is given' branch, but the seq3/seq4 pulse-train
+        path below it was reached independently of seq2 -- so calling
+        send_sequence(seq1, seq3=X, seq4=Y) without seq2 raised a raw
+        NameError on 'pulse2' instead of a clean validation error. Fixed by
+        rejecting this parameter combination up front."""
+        mocker.patch.object(connected_instance, 'validate_sequence', return_value=[])
+        seq1 = SimpleNamespace(seq_num=1)
+        seq3 = SimpleNamespace()
+        seq4 = SimpleNamespace()
+
+        with pytest.raises(SystemExit):
+            connected_instance.send_sequence(seq1, seq3=seq3, seq4=seq4)
+
     def test_reconnects_and_retries_when_not_connected(self, mocker, tmp_path):
         instance = IGT(log_dir=str(tmp_path))
         instance.connected = False
