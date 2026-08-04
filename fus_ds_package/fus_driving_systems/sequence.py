@@ -730,7 +730,7 @@ class Sequence():
 
             # Check if enough voltage entries are given
             n_entries = len(volt)
-            if n_entries != self.driving_sys.available_ch and n_entries != 1:
+            if n_entries not in (self.driving_sys.available_ch, 1):
                 message = (f'Number of voltage entries ({n_entries}) does not correspond to ' +
                            f'number of transducer elements ({self.driving_sys.available_ch}). ' +
                            'Only enter one voltage value or n-values equal to the number of ' +
@@ -820,7 +820,7 @@ class Sequence():
 
             # Check if enough amplitude entries are given
             n_entries = len(ampl)
-            if n_entries != self.driving_sys.available_ch and n_entries != 1:
+            if n_entries not in (self.driving_sys.available_ch, 1):
                 message = (f'Number of amplitude entries ({n_entries}) does not correspond to ' +
                            f'number of transducer elements ({self.driving_sys.available_ch}). ' +
                            'Only enter one amplitude value or n-values equal to the number of ' +
@@ -858,7 +858,7 @@ class Sequence():
                                          f'maximum pressure in free water of {self._press:.2f} ' +
                                          f'[MPa] and a voltage of {round_volt} [V].')
                     else:
-                        message = (f'Conversion equations unknown for {self._ds_tran_combo}.')
+                        message = f'Conversion equations unknown for {self._ds_tran_combo}.'
                         logger.debug(message)
 
     def get_focus_options(self):
@@ -1010,7 +1010,7 @@ class Sequence():
         Parameters:
             focus (float): Focal depth [mm] w.r.t. middle of the transducer bowl representing the
             middle of the FWHM.
-            noAmplInput (bool): If amplitude is used as input, conversion of the amplitude due to
+            no_ampl_input (bool): If amplitude is used as input, conversion of the amplitude due to
             the set focus is no needed. Currently used for PCD measurements.
             TODO: combine setting the focus and power.
         """
@@ -1101,7 +1101,7 @@ class Sequence():
                 logger.critical(message)
                 sys.exit(message)
 
-    def set_focus_wrt_mid_bowl(self, focus, noAmplInput=True):
+    def set_focus_wrt_mid_bowl(self, focus, no_ampl_input=True):
         """
         Setter method for the focal depth w.r.t. middle of the transducer bowl representing the
         middle of the FWHM.
@@ -1109,7 +1109,7 @@ class Sequence():
         Parameters:
             focus (float): Focal depth [mm] w.r.t. middle of the transducer bowl representing the
             middle of the FWHM.
-            noAmplInput (bool): If amplitude is used as input, conversion of the amplitude due to
+            no_ampl_input (bool): If amplitude is used as input, conversion of the amplitude due to
             the set focus is no needed. Currently used for PCD measurements.
             TODO: combine setting the focus and power.
         """
@@ -1171,7 +1171,7 @@ class Sequence():
                          f'Focus wrt bowl middle [mm]: {self._focus_wrt_mid_bowl}')
 
         # Check if pressure compensation is available for chosen equipment
-        if noAmplInput and self.driving_sys.require_conv_eq:
+        if no_ampl_input and self.driving_sys.require_conv_eq:
             if self._ds_tran_combo in self._equip_combos:
                 # Update normalized pressure based on new focal depth
                 self._calc_eq_factor()
@@ -1602,7 +1602,7 @@ class Sequence():
         x_min_mpa = self._conv_param['power_curve_pp'].x[0] / 1e6
         x_max_mpa = self._conv_param['power_curve_pp'].x[-1] / 1e6
 
-        if range_status == "above_range" or range_status == "below_range":
+        if range_status in ("above_range", "below_range"):
             message = (f'Equalized pressure of {self._eq_press_mpa} [MPa] is outside of pp ' +
                        f'limits ({x_min_mpa:.2f} - {x_max_mpa:.2f} [MPa]). Change input value.')
             logger.critical(message)
@@ -1658,8 +1658,7 @@ class Sequence():
                               'and recalculate the pressure.'))
                 calc_ampl = 0
 
-            if calc_ampl < 0:
-                calc_ampl = 0
+            calc_ampl = max(calc_ampl, 0)
 
             ampl.append(round(float(calc_ampl), 2))
 
@@ -1796,13 +1795,13 @@ def extract_and_define_pp(json_dir, return_breaks=False):
 
     # Load the JSON file
     json_path = str(importlib.resources.files('fus_driving_systems').joinpath(json_dir))
-    with open(json_path, 'r') as f:
+    with open(json_path, 'r', encoding='utf-8') as f:
         data = json.load(f)
 
     # Extract only the necessary components
     try:
-        xTransform = np.array(data['xTransform'])
-        if xTransform.item() != 'none':
+        x_transform = np.array(data['xTransform'])
+        if x_transform.item() != 'none':
             message = 'A transform of the x value is expected, but not implemented.'
             logger.error(message)
             sys.exit(message)
@@ -1854,10 +1853,9 @@ def safe_evaluate_pp(pp, x_value):
     # Determine if value is outside range
     if x_value < x_min:
         return None, "below_range"
-    elif x_value > x_max:
+    if x_value > x_max:
         return None, "above_range"
-    else:
-        return pp(x_value), "in_range"
+    return pp(x_value), "in_range"
 
 
 def find_x_for_y_in_pp(pp, y_value, x_min=None, x_max=None, tol=1e-6):
@@ -1905,8 +1903,7 @@ def find_x_for_y_in_pp(pp, y_value, x_min=None, x_max=None, tol=1e-6):
         # Verify the result
         if abs(pp(result) - y_value) <= tol:
             return result, True
-        else:
-            return None, False
+        return None, False
 
     except Exception as e:
         logger.error(f"Error finding x value: {e}")

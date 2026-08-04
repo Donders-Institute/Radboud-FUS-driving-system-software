@@ -82,10 +82,10 @@ def initialize_logger(log_dir, filename):
     console_handler = logging.StreamHandler(sys.stdout)
 
     # create formatter and add it to the handlers
-    formatterCompact = logging.Formatter("%(asctime)s - %(levelname)s - %(module)s - " +
-                                         "%(funcName)s line %(lineno)d %(message)s")
-    file_handler.setFormatter(formatterCompact)
-    console_handler.setFormatter(formatterCompact)
+    formatter_compact = logging.Formatter("%(asctime)s - %(levelname)s - %(module)s - " +
+                                          "%(funcName)s line %(lineno)d %(message)s")
+    file_handler.setFormatter(formatter_compact)
+    console_handler.setFormatter(formatter_compact)
 
     # add the handlers to the logger
     file_handler.setLevel(file_log_level)

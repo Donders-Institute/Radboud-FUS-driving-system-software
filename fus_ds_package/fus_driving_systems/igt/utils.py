@@ -48,153 +48,156 @@ class ExecListener(unifus.FUSListener):
         self._connecting = False
         # for ultrasounds
         self._running = False
-        self.pulseResults = []
-        self.execResult = None
+        self.pulse_results = []
+        self.exec_result = None
         # for mechanics
-        self._findingOrigin = False
+        self._finding_origin = False
         self._moving = False
-        self.mechResult = None
+        self.mech_result = None
 
-    def onConnectStart(self):
+    def onConnectStart(self):  # pylint: disable=invalid-name
         self._connecting = True
         logger.debug("Listener: CONNECTING")
 
-    def onConnectResult(self, result):
+    def onConnectResult(self, result):  # pylint: disable=invalid-name
         self._connecting = False
         if result == unifus.ConnectResult.Success:
             logger.debug("Listener: CONNECTED")
         else:
-            logger.error("Listener: CONNECTION FAILED (%s)" % str(result))
+            logger.error(f"Listener: CONNECTION FAILED ({result})")
 
-    def onDisconnect(self, reason):
+    def onDisconnect(self, reason):  # pylint: disable=invalid-name
         self._running = False
-        logger.debug("Listener: DISCONNECTED (%s)" % str(reason))
+        logger.debug(f"Listener: DISCONNECTED ({reason})")
 
-    def onSequenceStart(self, execID, buffer, count, delay, flags):
+    # pylint: disable-next=invalid-name
+    def onSequenceStart(self, exec_id, buffer, count, delay, flags):
         self._running = True
-        self.pulseResults = []
-        logger.debug("Listener: EXEC START (buff: %d, count: %d, delay: %g)" % (buffer, count,
-                                                                                delay))
+        self.pulse_results = []
+        logger.debug(f"Listener: EXEC START (buff: {buffer}, count: {count}, "
+                     f"delay: {delay:g})")
 
-    def onPulseResult(self, result):
-        self.pulseResults.append(result)
-        logger.debug("Listener: PULS RESULT (exec: %d, pulse: %d, duration: %g ms, "
-                     "elapsed: %g ms)" %
-                     (result.execIndex(), result.pulseIndex(), result.duration(),
-                      result.msFromStart()))
+    def onPulseResult(self, result):  # pylint: disable=invalid-name
+        self.pulse_results.append(result)
+        logger.debug(f"Listener: PULS RESULT (exec: {result.execIndex()}, "
+                     f"pulse: {result.pulseIndex()}, duration: {result.duration():g} ms, "
+                     f"elapsed: {result.msFromStart():g} ms)")
         measures = result.sharedMeasurements()
         if measures is not None:
-            logger.debug("          Available: %d measures for %d board(s), %d measures for "
-                         "%d channel(s)" %
-                         (measures.boardMeasureCount(), measures.boardCount(),
-                          measures.channelMeasureCount(), measures.channelCount()))
+            logger.debug(f"          Available: {measures.boardMeasureCount()} measures for "
+                         f"{measures.boardCount()} board(s), "
+                         f"{measures.channelMeasureCount()} measures for "
+                         f"{measures.channelCount()} channel(s)")
             for channel in range(measures.channelCount()):
                 # Note: it is advised to call measures.physicalChannelMeasureAvailable(measure) to
                 # check before calling .channelPhysicalValue (channel, measure).
                 if measures.channelMeasureCount() == 5:
-                    logger.debug("    ch[%d] V=%#4.3g V, I=%#4.3g A, PhaseV/I=%#4.3g°, "
-                                 "PhaseV/Vref=%#5.4g°, Freq=%7d Hz, Pow=%#g W" %
-                                 (channel, measures.channelPhysicalValue(channel, 0),
-                                  measures.channelPhysicalValue(channel, 1),
-                                  measures.channelPhysicalValue(channel, 2),
-                                  measures.channelPhysicalValue(channel, 3),
-                                  measures.channelRawValue(channel, 4), measures.power(channel)))
+                    logger.debug(
+                        f"    ch[{channel}] "
+                        f"V={measures.channelPhysicalValue(channel, 0):#4.3g} V, "
+                        f"I={measures.channelPhysicalValue(channel, 1):#4.3g} A, "
+                        f"PhaseV/I={measures.channelPhysicalValue(channel, 2):#4.3g}°, "
+                        f"PhaseV/Vref={measures.channelPhysicalValue(channel, 3):#5.4g}°, "
+                        f"Freq={measures.channelRawValue(channel, 4):7d} Hz, "
+                        f"Pow={measures.power(channel):#g} W")
                 else:
-                    logger.debug("    ch[%d] Vfwd=%#4.3g V, Vrev=%#4.3g V, PhaseV/Vref=%#5.4g°, "
-                                 "Freq=%7d Hz, Pow=%#g W" %
-                                 (channel, measures.channelPhysicalValue(channel, 0),
-                                  measures.channelPhysicalValue(channel, 1),
-                                  measures.channelPhysicalValue(channel, 2),
-                                  measures.channelRawValue(channel, 3), measures.power(channel)))
+                    logger.debug(
+                        f"    ch[{channel}] "
+                        f"Vfwd={measures.channelPhysicalValue(channel, 0):#4.3g} V, "
+                        f"Vrev={measures.channelPhysicalValue(channel, 1):#4.3g} V, "
+                        f"PhaseV/Vref={measures.channelPhysicalValue(channel, 2):#5.4g}°, "
+                        f"Freq={measures.channelRawValue(channel, 3):7d} Hz, "
+                        f"Pow={measures.power(channel):#g} W")
 
-    def onSequenceResult(self, execID, execIndex, pulseIndex, errorCode):
+    # pylint: disable-next=invalid-name
+    def onSequenceResult(self, exec_id, exec_index, pulse_index, error_code):
         self._running = False
-        if errorCode == 0:
-            logger.debug("Listener: EXEC RESULT SUCCESS (exec: %d)" % (execIndex))
+        if error_code == 0:
+            logger.debug(f"Listener: EXEC RESULT SUCCESS (exec: {exec_index})")
         else:
-            logger.error("Listener: EXEC RESULT ERROR (code: %d, on exec: %d, pulse: %d)" %
-                         (errorCode, execIndex, pulseIndex))
+            logger.error(f"Listener: EXEC RESULT ERROR (code: {error_code}, "
+                         f"on exec: {exec_index}, pulse: {pulse_index})")
 
-    def onMechOriginStart(self):
-        self._findingOrigin = True
+    def onMechOriginStart(self):  # pylint: disable=invalid-name
+        self._finding_origin = True
         logger.debug("Listener: START  finding mech origins")
 
-    def onMechOriginResult(self, result, msg):
-        self._findingOrigin = False
-        logger.debug("Listener: RESULT finding mech origins: %s (%s)" % (result.name, msg))
+    def onMechOriginResult(self, result, msg):  # pylint: disable=invalid-name
+        self._finding_origin = False
+        logger.debug(f"Listener: RESULT finding mech origins: {result.name} ({msg})")
 
-    def onMechStart(self, execID, count):
+    def onMechStart(self, exec_id, count):  # pylint: disable=invalid-name
         self._moving = True
-        self.mechResult = None
-        logger.debug("Listener: START  motion (id: %d, count: %d)" % (execID, count))
+        self.mech_result = None
+        logger.debug(f"Listener: START  motion (id: {exec_id}, count: {count})")
 
-    def onMechResult(self, execID, result, errorCode):
+    def onMechResult(self, exec_id, result, error_code):  # pylint: disable=invalid-name
         self._moving = False
-        self.mechResult = result
-        if errorCode == 0:
-            logger.debug("Listener: RESULT motion success (id: %d)" % (execID))
+        self.mech_result = result
+        if error_code == 0:
+            logger.debug(f"Listener: RESULT motion success (id: {exec_id})")
         else:
-            logger.error("Listener: RESULT motion error (id: %d, code: %d, result: %s)" %
-                         (execID, errorCode, str(result)))
+            logger.error(f"Listener: RESULT motion error (id: {exec_id}, "
+                         f"code: {error_code}, result: {result})")
 
-    def waitConnection(self, timeout=5.0):
-        maxWait = time.time() + timeout
+    def wait_connection(self, timeout=5.0):
+        max_wait = time.time() + timeout
         while True:
             time.sleep(0.2)
             if not self._connecting:
                 return True
-            if time.time() > maxWait:
+            if time.time() > max_wait:
                 return False
 
-    def waitSequence(self, timeout=5.0):
+    def wait_sequence(self, timeout=5.0):
         """
             Wait until the current ultrasound sequence is finished, or specified timeout in
             seconds.
         """
-        maxWait = time.time() + timeout
+        max_wait = time.time() + timeout
         # Start with a sleep to make sure the start event has been received
         # and _running has been set to true.
         while True:
             time.sleep(0.002)
             if not self._running:
                 return
-            if time.time() > maxWait:
+            if time.time() > max_wait:
                 return False
 
-    def waitOrigins(self, timeout=20.0):
+    def wait_origins(self, timeout=20.0):
         """
             Wait until the mechanical origins are found, or specified timeout in seconds.
         """
-        maxWait = time.time() + timeout
+        max_wait = time.time() + timeout
         # Start with a sleep to make sure the start event has been received
         # and _moving has been set to true.
         while True:
             time.sleep(0.2)
-            if not self._findingOrigin:
+            if not self._finding_origin:
                 return
-            if time.time() > maxWait:
+            if time.time() > max_wait:
                 return False
 
-    def waitMotion(self, timeout=30.0):
+    def wait_motion(self, timeout=30.0):
         """Wait until the current motion is finished, or specified timeout in seconds."""
-        maxWait = time.time() + timeout
+        max_wait = time.time() + timeout
         # Start with a sleep to make sure the start event has been received
         # and _moving has been set to true.
         while True:
             time.sleep(0.2)
             if not self._moving:
                 return
-            if time.time() > maxWait:
+            if time.time() > max_wait:
                 return False
 
-    def printExecResult(self):
+    def print_exec_result(self):
         msg = "Execution result: "
-        if self.execResult is None:
+        if self.exec_result is None:
             msg += "Nothing received"
-        elif self.execResult.isError():
+        elif self.exec_result.isError():
             msg += "ERROR\n"
-            msg += "  code: %d / %s\n" % (self.execResult.status(), self.execResult.statusName())
-            msg += "  message: " + self.execResult.errorMessage()
+            msg += f"  code: {self.exec_result.status()} / {self.exec_result.statusName()}\n"
+            msg += "  message: " + self.exec_result.errorMessage()
         else:
             msg += "SUCCESS"
         logger.debug(msg)

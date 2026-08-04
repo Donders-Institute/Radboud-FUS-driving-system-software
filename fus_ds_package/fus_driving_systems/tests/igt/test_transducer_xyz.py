@@ -1,23 +1,23 @@
 # -*- coding: utf-8 -*-
 """
-Tests for fus_driving_systems.igt.transducerXYZ.Transducer.
+Tests for fus_driving_systems.igt.transducer_xyz.Transducer.
 
-computePhases is pure trig/geometry -- it only calls pulse.frequencyCount()
+compute_phases is pure trig/geometry -- it only calls pulse.frequencyCount()
 and pulse.frequency(i), so a small duck-typed fake pulse is used instead of
 a real unifus.Pulse, keeping these tests independent of the native
 extension entirely.
 
-loadFromString/_loadConfig parse an in-memory .ini-style string -- no disk
+load_from_string/_load_config parse an in-memory .ini-style string -- no disk
 I/O needed. load() itself does real file I/O via open() and is covered by
 one light test using tmp_path.
 """
 import pytest
 
-from fus_driving_systems.igt import transducerXYZ
+from fus_driving_systems.igt import transducer_xyz
 
 
 class _FakePulse:
-    """Duck-typed stand-in for unifus.Pulse: computePhases only reads
+    """Duck-typed stand-in for unifus.Pulse: compute_phases only reads
     frequencyCount()/frequency(i), never touches phases/amplitudes."""
 
     def __init__(self, frequencies):
@@ -32,8 +32,8 @@ class _FakePulse:
 
 def _transducer_with_elements(elements_m):
     """Builds a Transducer with elements set directly (bypassing
-    load/loadFromString), which is all computePhases needs."""
-    trans = transducerXYZ.Transducer()
+    load/load_from_string), which is all compute_phases needs."""
+    trans = transducer_xyz.Transducer()
     trans.elements = elements_m
     return trans
 
@@ -54,13 +54,13 @@ class TestComputePhases:
         ])
         pulse = _FakePulse([1_500_000])
 
-        phases = trans.computePhases(pulse, (0, 0, 0), set_focus_mm=50,
-                                     dephasing_degree=None)
+        phases = trans.compute_phases(pulse, (0, 0, 0), set_focus_mm=50,
+                                      dephasing_degree=None)
 
         assert phases == pytest.approx([0.0, 90.0, 180.0, 270.0])
 
     def test_computes_phase_per_element_frequency_when_multiple_frequencies(self):
-        # freqCount > 1 requires freqCount == channelCount(); each element
+        # freq_count > 1 requires freq_count == channel_count(); each element
         # then uses its own frequency (and therefore its own wavelength).
         trans = _transducer_with_elements([
             (0.0, 0.0, 0.00025),
@@ -70,8 +70,8 @@ class TestComputePhases:
         # element 1: 750 kHz -> wavelen 2mm -> 0.5mm = quarter wave -> 90 deg
         pulse = _FakePulse([1_500_000, 750_000])
 
-        phases = trans.computePhases(pulse, (0, 0, 0), set_focus_mm=50,
-                                     dephasing_degree=None)
+        phases = trans.compute_phases(pulse, (0, 0, 0), set_focus_mm=50,
+                                      dephasing_degree=None)
 
         assert phases == pytest.approx([90.0, 90.0])
 
@@ -88,8 +88,8 @@ class TestComputePhases:
         # dephasing step of 90 degrees, nth_elem = round(360/90) = 4, so
         # element i gets + (90 * i), then the cycle resets (it never does,
         # since there are exactly 4 elements here).
-        phases = trans.computePhases(pulse, (0, 0, 0), set_focus_mm=50,
-                                     dephasing_degree=[90.0])
+        phases = trans.compute_phases(pulse, (0, 0, 0), set_focus_mm=50,
+                                      dephasing_degree=[90.0])
 
         assert phases == pytest.approx([0.0, 180.0, 360.0, 540.0])
 
@@ -98,35 +98,35 @@ class TestComputePhases:
         pulse = _FakePulse([])  # frequencyCount() == 0
 
         with pytest.raises(SystemExit):
-            trans.computePhases(pulse, (0, 0, 0), set_focus_mm=50, dephasing_degree=None)
+            trans.compute_phases(pulse, (0, 0, 0), set_focus_mm=50, dephasing_degree=None)
 
     def test_exits_when_first_frequency_is_zero(self):
         trans = _transducer_with_elements([(0.0, 0.0, 0.0)])
         pulse = _FakePulse([0])
 
         with pytest.raises(SystemExit):
-            trans.computePhases(pulse, (0, 0, 0), set_focus_mm=50, dephasing_degree=None)
+            trans.compute_phases(pulse, (0, 0, 0), set_focus_mm=50, dephasing_degree=None)
 
     def test_exits_when_frequency_count_mismatches_element_count(self):
         trans = _transducer_with_elements([(0.0, 0.0, 0.0), (0.0, 0.0, 0.00025)])
         pulse = _FakePulse([1_500_000, 750_000, 500_000])  # 3 freqs, 2 elements
 
         with pytest.raises(SystemExit):
-            trans.computePhases(pulse, (0, 0, 0), set_focus_mm=50, dephasing_degree=None)
+            trans.compute_phases(pulse, (0, 0, 0), set_focus_mm=50, dephasing_degree=None)
 
     def test_exits_when_dephasing_degree_has_more_than_one_entry_that_does_not_match(self):
         trans = _transducer_with_elements([(0.0, 0.0, 0.0), (0.0, 0.0, 0.00025)])
         pulse = _FakePulse([1_500_000])
 
         with pytest.raises(SystemExit):
-            trans.computePhases(pulse, (0, 0, 0), set_focus_mm=50,
-                                dephasing_degree=[10.0, 20.0])
+            trans.compute_phases(pulse, (0, 0, 0), set_focus_mm=50,
+                                 dephasing_degree=[10.0, 20.0])
 
 
 class TestLoadFromString:
 
     def test_parses_elements_section_into_meter_coordinates(self):
-        trans = transducerXYZ.Transducer()
+        trans = transducer_xyz.Transducer()
         definition = (
             "[elements]\n"
             "size = 2\n"
@@ -134,31 +134,31 @@ class TestLoadFromString:
             "2 = 5|5|20\n"
         )
 
-        result = trans.loadFromString(definition)
+        result = trans.load_from_string(definition)
 
         assert result is True
-        assert trans.channelCount() == 2
+        assert trans.channel_count() == 2
         assert trans.elements == pytest.approx([
             (0.0, 0.0, 0.01),
             (0.005, 0.005, 0.02),
         ])
 
     def test_exits_when_size_key_is_missing(self):
-        trans = transducerXYZ.Transducer()
+        trans = transducer_xyz.Transducer()
         definition = "[elements]\nnotsize = 2\n"
 
         with pytest.raises(SystemExit):
-            trans.loadFromString(definition)
+            trans.load_from_string(definition)
 
     def test_exits_when_size_is_zero(self):
-        trans = transducerXYZ.Transducer()
+        trans = transducer_xyz.Transducer()
         definition = "[elements]\nsize = 0\n"
 
         with pytest.raises(SystemExit):
-            trans.loadFromString(definition)
+            trans.load_from_string(definition)
 
     def test_exits_when_an_element_entry_is_malformed(self):
-        trans = transducerXYZ.Transducer()
+        trans = transducer_xyz.Transducer()
         definition = (
             "[elements]\n"
             "size = 1\n"
@@ -166,28 +166,28 @@ class TestLoadFromString:
         )
 
         with pytest.raises(SystemExit):
-            trans.loadFromString(definition)
+            trans.load_from_string(definition)
 
     def test_exits_on_empty_string_via_missing_section_not_empty_content_check(self):
         """
-        FINDING: loadFromString's own 'empty content' guard
+        FINDING: load_from_string's own 'empty content' guard
         (`if config.readfp(stringio) == []:`) can never fire --
         ConfigParser.readfp()/read_file() always returns None, never a
         list, so that comparison is always False regardless of input.
         An empty string therefore does NOT hit the 'Error: empty content'
-        message; it falls through to _loadConfig(), where
+        message; it falls through to _load_config(), where
         config.getint('elements', 'size') raises NoSectionError (no
-        [elements] section at all), caught by _loadConfig's bare `except:`
+        [elements] section at all), caught by _load_config's bare `except:`
         and reported as "Error: missing 'elements.size' parameter" instead
         -- the same path as test_exits_when_size_key_is_missing above.
         Still a SystemExit either way, just via a different, slightly
         misleading message than the one the code appears to intend for
         this case.
         """
-        trans = transducerXYZ.Transducer()
+        trans = transducer_xyz.Transducer()
 
         with pytest.raises(SystemExit):
-            trans.loadFromString("")
+            trans.load_from_string("")
 
 
 class TestLoad:
@@ -195,7 +195,7 @@ class TestLoad:
     def test_load_reads_file_and_parses_elements(self, tmp_path):
         """Light test for the real-file-I/O path of load() -- the parsing
         itself is already covered in depth by TestLoadFromString."""
-        trans = transducerXYZ.Transducer()
+        trans = transducer_xyz.Transducer()
         def_file = tmp_path / "transducer.ini"
         def_file.write_text(
             "checksum=DEADBEEF\n"
@@ -211,7 +211,7 @@ class TestLoad:
         assert trans.elements == pytest.approx([(0.001, 0.002, 0.003)])
 
     def test_load_exits_when_file_does_not_exist(self, tmp_path):
-        trans = transducerXYZ.Transducer()
+        trans = transducer_xyz.Transducer()
         missing = tmp_path / "does_not_exist.ini"
 
         with pytest.raises(SystemExit):

@@ -46,7 +46,7 @@ import pandas as pd
 from fus_driving_systems import control_driving_system as ds
 
 from fus_driving_systems.igt.utils import ExecListener
-from fus_driving_systems.igt import transducerXYZ
+from fus_driving_systems.igt import transducer_xyz
 from fus_driving_systems.igt import unifus
 from fus_driving_systems.utils import get_config_value
 
@@ -87,7 +87,7 @@ class IGT(ds.ControlDrivingSystem):
 
         fault_handler_path = os.path.join(log_dir, filename)
 
-        with open(fault_handler_path, "w") as f:
+        with open(fault_handler_path, "w", encoding='utf-8') as f:
             faulthandler.enable(file=f)
 
         self.sent_seqs = {}
@@ -103,7 +103,7 @@ class IGT(ds.ControlDrivingSystem):
             bool: True if a sequence has been sent, False otherwise.
         """
 
-        return seq_num in self.sent_seqs.keys()
+        return seq_num in self.sent_seqs
 
     def register_sent_sequence(self, seq_num, seq, n_pulse_train_rep, pulse_train_delay,
                                phases=None):
@@ -200,8 +200,8 @@ class IGT(ds.ControlDrivingSystem):
             logger.debug('After listener....')
 
             self.fus.connect()
-            self.listener.waitConnection()
-            logger.debug('After waitConnection()....')
+            self.listener.wait_connection()
+            logger.debug('After wait_connection()....')
         except Exception as e:
             logger.error(f"Error during connection or listener registration: {e}")
 
@@ -595,8 +595,8 @@ class IGT(ds.ControlDrivingSystem):
                                              sent_seq_info.get('pulse_train_delay'), exec_flags)
 
                     self.gen.startSequence()
-                    self.listener.waitSequence(sent_seq_info.get('total_sequence_duration_ms') /
-                                               1000.0)
+                    self.listener.wait_sequence(sent_seq_info.get('total_sequence_duration_ms') /
+                                                1000.0)
 
                 except Exception as why:
                     message = f"Exception: {why}"
@@ -736,7 +736,7 @@ class IGT(ds.ControlDrivingSystem):
                                         'fus_driving_systems')
         if steer_info.endswith('.ini'):
 
-            trans = transducerXYZ.Transducer()
+            trans = transducer_xyz.Transducer()
             ini_path = str(importlib.resources.files(package_name).joinpath(steer_info))
             if not trans.load(ini_path):
                 message = f'Error: can not load the transducer definition from {ini_path}'
@@ -748,8 +748,8 @@ class IGT(ds.ControlDrivingSystem):
             aim_wrt_natural_focus = natural_foc - focus
 
             # Aim n mm away from the natural focal spot, on main axis (Z)
-            phases = trans.computePhases(pulse, (0, 0, aim_wrt_natural_focus), focus,
-                                         dephasing_degree)
+            phases = trans.compute_phases(pulse, (0, 0, aim_wrt_natural_focus), focus,
+                                          dephasing_degree)
 
         else:
             # Import excel file containing phases per focal depth
@@ -789,9 +789,9 @@ class IGT(ds.ControlDrivingSystem):
                     # determine n elements to dephase in one cycle
                     nth_elem = round(360/dephasing_degree)
                     dephasing_elem = 0
-                    for i in range(len(phases)):
+                    for i, phase in enumerate(phases):
                         # Add chosen degrees to dephase signal
-                        phases[i] = phases[i] + dephasing_degree*dephasing_elem
+                        phases[i] = phase + dephasing_degree*dephasing_elem
 
                         dephasing_elem = dephasing_elem + 1
                         if dephasing_elem == nth_elem:

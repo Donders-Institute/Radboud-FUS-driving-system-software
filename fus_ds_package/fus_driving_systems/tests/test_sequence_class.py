@@ -834,7 +834,7 @@ def test_focus_wrt_exit_plane_setter_exits_when_combo_unknown_but_required():
 # of each other (same validation, same find_x_for_y_in_pp usage, same
 # fallback and range-check logic) -- the only difference is that
 # set_focus_wrt_mid_bowl additionally gates its final recalculation block on
-# the noAmplInput parameter, tested separately below via a mocker spy.
+# the no_ampl_input parameter, tested separately below via a mocker spy.
 
 def test_focus_wrt_mid_bowl_setter_without_conversion_uses_exit_plane_offset():
     seq = _bare_sequence()
@@ -898,16 +898,16 @@ def test_focus_wrt_mid_bowl_setter_falls_back_when_x_not_found():
 def test_focus_wrt_mid_bowl_setter_exits_when_combo_unknown_but_required():
     """
     Mirrors set_focus_wrt_mid_bowl's equivalent test below. This property
-    setter has no noAmplInput escape hatch, so with require_conv_eq=True
+    setter has no no_ampl_input escape hatch, so with require_conv_eq=True
     and an unknown combo it always exits -- unlike set_focus_wrt_mid_bowl,
-    which can skip that exit via noAmplInput=False.
+    which can skip that exit via no_ampl_input=False.
 
     Note: a repo-wide grep (including every standalone example script)
     shows this setter -- and set_focus_wrt_mid_bowl() -- have ZERO active
     call sites anywhere; every real script sets focus_wrt_exit_plane
     instead, and only reads focus_wrt_mid_bowl (the getter, used by
     igt_ds.py's _set_phases). Added for symmetry/coverage, not because a
-    live usage was found needing it -- see the plan's noAmplInput finding
+    live usage was found needing it -- see the plan's no_ampl_input finding
     for whether this whole direct-bowl-middle setter API is still needed.
     """
     seq = _bare_sequence()
@@ -936,7 +936,7 @@ def test_set_focus_wrt_mid_bowl_no_ampl_input_true_triggers_recalculation(mocker
     mocker.patch.object(seq, '_calc_ampl')
     mocker.patch.object(seq, '_calc_volt')
 
-    seq.set_focus_wrt_mid_bowl(20, noAmplInput=True)
+    seq.set_focus_wrt_mid_bowl(20, no_ampl_input=True)
 
     spy_eq_factor.assert_called_once()
 
@@ -956,18 +956,18 @@ def test_set_focus_wrt_mid_bowl_no_ampl_input_false_skips_recalculation(mocker):
     mocker.patch.object(seq, '_calc_ampl')
     mocker.patch.object(seq, '_calc_volt')
 
-    seq.set_focus_wrt_mid_bowl(20, noAmplInput=False)
+    seq.set_focus_wrt_mid_bowl(20, no_ampl_input=False)
 
     spy_eq_factor.assert_not_called()
 
 
 def test_set_focus_wrt_mid_bowl_exits_when_combo_unknown_and_no_ampl_input_true():
     """
-    With noAmplInput=True (the default) and require_conv_eq=True but the
+    With no_ampl_input=True (the default) and require_conv_eq=True but the
     combo unknown, this method hits the SAME combo-unknown condition
     twice: first inside the is_validated block (only warns + falls back to
     focus - exit_plane_dist, does not exit), then again in the
-    noAmplInput-gated recalculation block at the end (which does exit).
+    no_ampl_input-gated recalculation block at the end (which does exit).
     Net effect: a SystemExit, after the fallback focus value was already
     computed.
     """
@@ -978,11 +978,11 @@ def test_set_focus_wrt_mid_bowl_exits_when_combo_unknown_and_no_ampl_input_true(
     seq._equip_combos = []  # combo unknown
 
     with pytest.raises(SystemExit):
-        seq.set_focus_wrt_mid_bowl(20, noAmplInput=True)
+        seq.set_focus_wrt_mid_bowl(20, no_ampl_input=True)
 
 
 def test_set_focus_wrt_mid_bowl_does_not_exit_when_combo_unknown_and_no_ampl_input_false():
-    """noAmplInput=False short-circuits 'if noAmplInput and require_conv_eq:'
+    """no_ampl_input=False short-circuits 'if no_ampl_input and require_conv_eq:'
     entirely, so the combo-unknown sys.exit at the end never runs here --
     only the mid-function warning+fallback does."""
     seq = _bare_sequence()
@@ -991,7 +991,7 @@ def test_set_focus_wrt_mid_bowl_does_not_exit_when_combo_unknown_and_no_ampl_inp
     seq._ds_tran_combo = 'combo1'
     seq._equip_combos = []  # combo unknown
 
-    seq.set_focus_wrt_mid_bowl(20, noAmplInput=False)  # must not raise
+    seq.set_focus_wrt_mid_bowl(20, no_ampl_input=False)  # must not raise
 
     assert seq.focus_wrt_exit_plane == 15  # fallback: focus - exit_plane_dist
 

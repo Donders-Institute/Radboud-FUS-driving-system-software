@@ -32,7 +32,7 @@ _LOGGER_CONSUMER_MODULES = [
     "fus_driving_systems.citrus.citrus_ds",
     "fus_driving_systems.sonic_concepts.sonic_concepts_ds",
     "fus_driving_systems.igt.igt_ds",
-    "fus_driving_systems.igt.transducerXYZ",
+    "fus_driving_systems.igt.transducer_xyz",
     "fus_driving_systems.igt.utils",
 ]
 

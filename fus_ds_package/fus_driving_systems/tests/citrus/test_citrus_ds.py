@@ -5,7 +5,7 @@ Tests for fus_driving_systems.citrus.citrus_ds.CITRUS.
 connect() instantiates serial.Serial() inline with no injection seam, so
 connect() tests go through the mock_serial fixture (patches the class).
 execute_sequence()/disconnect() don't need connect() at all -- they just
-read/write whatever object sits in self.serBITSI, so those tests assign a
+read/write whatever object sits in self.ser_bitsi, so those tests assign a
 plain mocker.Mock() directly, which is simpler than patching the constructor.
 """
 import pytest
@@ -30,18 +30,18 @@ def test_connect_configures_and_opens_serial_port(mock_serial):
 
 def test_execute_sequence_writes_expected_trigger_byte(mocker):
     citrus = CITRUS()
-    citrus.serBITSI = mocker.Mock()
+    citrus.ser_bitsi = mocker.Mock()
     mocker.patch("fus_driving_systems.citrus.citrus_ds.time.sleep")
 
     citrus.execute_sequence(mocker.Mock())
 
-    citrus.serBITSI.write.assert_called_once_with(b'\x20')
-    citrus.serBITSI.flush.assert_called_once()
+    citrus.ser_bitsi.write.assert_called_once_with(b'\x20')
+    citrus.ser_bitsi.flush.assert_called_once()
 
 
 def test_execute_sequence_sleeps_after_triggering(mocker):
     citrus = CITRUS()
-    citrus.serBITSI = mocker.Mock()
+    citrus.ser_bitsi = mocker.Mock()
     mock_sleep = mocker.patch("fus_driving_systems.citrus.citrus_ds.time.sleep")
 
     citrus.execute_sequence(mocker.Mock())
@@ -57,19 +57,19 @@ def test_send_sequence_does_not_raise():
 
 def test_disconnect_closes_serial_port_and_marks_disconnected(mocker):
     citrus = CITRUS()
-    citrus.serBITSI = mocker.Mock()
+    citrus.ser_bitsi = mocker.Mock()
 
     citrus.disconnect()
 
-    citrus.serBITSI.close.assert_called_once()
+    citrus.ser_bitsi.close.assert_called_once()
     assert citrus.connected is False
 
 
 def test_disconnect_before_connect_raises_attribute_error():
     """
-    Characterizes CURRENT behavior: CITRUS never sets self.serBITSI in
+    Characterizes CURRENT behavior: CITRUS never sets self.ser_bitsi in
     __init__ (it's only ever assigned inside connect()), and disconnect()'s
-    'if self.serBITSI is not None' guard assumes the attribute already
+    'if self.ser_bitsi is not None' guard assumes the attribute already
     exists. Calling disconnect() on a freshly constructed CITRUS that was
     never connected raises AttributeError rather than a friendly no-op --
     documented here, not fixed.

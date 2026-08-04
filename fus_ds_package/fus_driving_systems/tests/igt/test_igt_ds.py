@@ -356,8 +356,8 @@ class TestDefinePulse:
 
     def test_computes_phases_via_real_transducer_ini_definition(self, connected_instance):
         """End-to-end (no mocking): _set_phases resolves the bundled real
-        .ini transducer file via importlib.resources, transducerXYZ.Transducer
-        loads and parses it from disk, and computePhases runs real trig on
+        .ini transducer file via importlib.resources, transducer_xyz.Transducer
+        loads and parses it from disk, and compute_phases runs real trig on
         the resulting elements. Exercises the whole non-dephasing-override
         chain at once."""
         connected_instance.n_channels = 10
@@ -590,7 +590,7 @@ class TestExecuteSequence:
 
         connected_instance.gen.prepareSequence.assert_called_once_with(1, 2, 5.0, mocker.ANY)
         connected_instance.gen.startSequence.assert_called_once()
-        connected_instance.listener.waitSequence.assert_called_once_with(0.5)
+        connected_instance.listener.wait_sequence.assert_called_once_with(0.5)
 
     def test_sends_sequence_first_when_not_yet_sent(self, mocker, connected_instance):
         mock_send = mocker.patch.object(connected_instance, 'send_sequence')

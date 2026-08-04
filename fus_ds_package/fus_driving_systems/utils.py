@@ -86,7 +86,7 @@ class CustomFormatter(logging.Formatter):
         return f"{log_info} - {formatted_record}"
 
 
-def get_config_value(logger, config, section, key, default, isSysExit=False):
+def get_config_value(logger, config, section, key, default, is_sys_exit=False):
     """
     Retrieve a configuration value from a given section and key.
 
@@ -126,7 +126,7 @@ def get_config_value(logger, config, section, key, default, isSysExit=False):
     # Check if the config is None
     if config is None:
         message = "Config not found"
-        if isSysExit:
+        if is_sys_exit:
             sys.exit(message)
 
         log_warning(message)
@@ -135,7 +135,7 @@ def get_config_value(logger, config, section, key, default, isSysExit=False):
     # Check if the section exists in the config
     if section not in config:
         message = f"Config section '{section}' not found"
-        if isSysExit:
+        if is_sys_exit:
             sys.exit(message)
 
         log_warning(message)
@@ -144,7 +144,7 @@ def get_config_value(logger, config, section, key, default, isSysExit=False):
     # Check if the key exists in the section
     if key not in config[section]:
         message = f"Config key '{key}' not found in section '{section}'"
-        if isSysExit:
+        if is_sys_exit:
             sys.exit(message)
 
         log_warning(message)
