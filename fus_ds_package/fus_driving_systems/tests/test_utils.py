@@ -68,7 +68,7 @@ def test_sys_exits_when_config_is_incomplete_and_is_sys_exit_true(config,
                                                                   expected_message_fragment):
     logger = Mock()
     with pytest.raises(SystemExit) as exc_info:
-        get_config_value(logger, config, SECTION, KEY, DEFAULT, isSysExit=True)
+        get_config_value(logger, config, SECTION, KEY, DEFAULT, is_sys_exit=True)
     assert expected_message_fragment in str(exc_info.value)
     logger.warning.assert_not_called()
 

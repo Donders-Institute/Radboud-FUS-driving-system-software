@@ -29,8 +29,9 @@ README.md file of https://github.com/Donders-Institute/Radboud-FUS-driving-syste
 """
 
 # Basis packages
-import serial
 import time
+
+import serial
 
 # Miscellaneous packages
 
@@ -61,14 +62,14 @@ class CITRUS(ds.ControlDrivingSystem):
         logger.info('Connecting with BITSI...')
 
         # set up BITSI connection
-        self.serBITSI = serial.Serial()
-        self.serBITSI.baudrate = 115200
-        self.serBITSI.port = connect_info
-        self.serBITSI.bytesize = 8
-        self.serBITSI.parity = 'N'
-        self.serBITSI.stopbits = 1
-        self.serBITSI.timeout = 1
-        self.serBITSI.open()
+        self.ser_bitsi = serial.Serial()
+        self.ser_bitsi.baudrate = 115200
+        self.ser_bitsi.port = connect_info
+        self.ser_bitsi.bytesize = 8
+        self.ser_bitsi.parity = 'N'
+        self.ser_bitsi.stopbits = 1
+        self.ser_bitsi.timeout = 1
+        self.ser_bitsi.open()
 
         self.connected = True
 
@@ -95,8 +96,8 @@ class CITRUS(ds.ControlDrivingSystem):
         binary = '00100000'  # 32
         decimal_number = int(binary, 2)
         byte_value = bytes([decimal_number])
-        self.serBITSI.write(byte_value)
-        self.serBITSI.flush()
+        self.ser_bitsi.write(byte_value)
+        self.ser_bitsi.flush()
         time.sleep(0.7)
 
     def disconnect(self):
@@ -106,7 +107,7 @@ class CITRUS(ds.ControlDrivingSystem):
 
         logger.info('Disconnecting...')
 
-        if self.serBITSI is not None:
-            self.serBITSI.close()
+        if self.ser_bitsi is not None:
+            self.ser_bitsi.close()
 
         self.connected = False

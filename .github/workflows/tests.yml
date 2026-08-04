@@ -6,6 +6,9 @@ name: Tests
 
 jobs:
   lint:
+    # flake8 is pure syntax/style checking and needs no real imports
+    # resolved, so it can run cheaply on ubuntu-latest without installing
+    # the project's dependencies.
     runs-on: ubuntu-latest
 
     steps:
@@ -24,10 +27,33 @@ jobs:
         working-directory: fus_ds_package
         run: flake8
 
+  security:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install pip-audit
+        run: pip install pip-audit
+
+      - name: Audit dependencies for known vulnerabilities
+        run: pip-audit -r requirements-ci.txt
+
   test:
     # Windows-only: the package only officially supports Windows (see README),
     # and the igt subpackage depends on a compiled native extension
-    # (unifus.pyd) built for Windows.
+    # (unifus.pyd) built for Windows. pylint also runs here rather than in
+    # the ubuntu lint job: it resolves every import for its analysis
+    # (unlike flake8), and unifus.pyd -- along with the other third-party
+    # dependencies -- can only be installed/imported on this runner. Running
+    # pylint without them installed floods the score with import-error
+    # findings that have nothing to do with real code quality.
     runs-on: windows-latest
 
     steps:
@@ -42,6 +68,17 @@ jobs:
 
       - name: Install test dependencies
         run: pip install -r requirements-ci.txt
+
+      - name: Install pylint
+        run: pip install pylint
+
+      - name: Run pylint
+        working-directory: fus_ds_package
+        run: pylint fus_driving_systems --fail-under=9.5
+
+      - name: Check duplicated code stays under 3%
+        working-directory: fus_ds_package
+        run: python check_duplication.py
 
       - name: Run tests (hardware-dependent tests excluded)
         working-directory: fus_ds_package

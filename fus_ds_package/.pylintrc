@@ -1,0 +1,34 @@
+[MAIN]
+# unifus is a compiled native extension (.pyd); pylint cannot introspect its
+# members via static analysis, so every unifus.X access is otherwise flagged
+# as c-extension-no-member.
+extension-pkg-allow-list=fus_driving_systems.igt.unifus
+
+[MESSAGES CONTROL]
+disable=
+    # The codebase deliberately uses f-strings in log calls throughout;
+    # switching to %-style lazy formatting is not planned.
+    logging-not-lazy,
+    logging-fstring-interpolation,
+    # Complexity is inherent to the current design of Sequence and the
+    # driving-system classes. Deferred to the tracked "split sequence.py"
+    # structural refactor rather than suppressed line-by-line.
+    too-many-arguments,
+    too-many-positional-arguments,
+    too-many-locals,
+    too-many-branches,
+    too-many-statements,
+    too-many-instance-attributes,
+    too-many-public-methods,
+    too-many-lines,
+    too-many-boolean-expressions,
+
+# Note on naming: igt/utils.py's ExecListener subclasses the native
+# unifus.FUSListener and must override its callback methods (onConnectStart,
+# onPulseResult, etc.) using their exact camelCase names -- the C extension
+# calls back into these by name, so renaming them to snake_case would
+# silently break the callback mechanism. This is a functional requirement,
+# not a style choice. Rather than a codebase-wide good-names-rgxs exemption
+# (which would also apply to unrelated code), each of the 10 affected
+# methods carries its own inline
+# "# pylint: disable=invalid-name"/"# pylint: disable-next=invalid-name".

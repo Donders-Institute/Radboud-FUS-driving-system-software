@@ -29,7 +29,7 @@ README.md file of https://github.com/Donders-Institute/Radboud-FUS-driving-syste
 """
 
 # -------------------------------------------------------------------------------
-# Name:        transducerXYZ
+# Name:        transducer_xyz
 # Purpose:
 #
 # Author:      Frederic Salabartan
@@ -39,13 +39,14 @@ README.md file of https://github.com/Donders-Institute/Radboud-FUS-driving-syste
 
 # -------------------------------------------------------------------------------
 
+import sys
+import math
+
 # Access the logger
 from fus_driving_systems.config.config import config_info as config
 from fus_driving_systems.utils import get_config_value
 from fus_driving_systems.config.logging_config import logger
 
-import sys
-import math
 try:  # for Python 2/3 compatibility
     from StringIO import StringIO
 except ImportError:
@@ -62,7 +63,7 @@ SOUND_SPEED_WATER = float(get_config_value(logger, config, 'General',
 TWO_PI = 2.0 * math.pi      # 2 pi, rad
 
 
-class Transducer(object):
+class Transducer:
     """
     A representation of the device used to shoot.
     It must be initialized from a definition file that contains basically the positions
@@ -83,11 +84,11 @@ class Transducer(object):
         # that raises a ConfigParser.MissingSectionHeaderError
         # if config.read (filename) == []:
         #    return False
-        # return self._loadConfig (config)
+        # return self._load_config (config)
         text = ""
         outside = True
         try:
-            with open(filename, "r") as f:
+            with open(filename, "r", encoding='utf-8') as f:
                 for line in f:
                     if line.strip() == "":
                         continue
@@ -97,7 +98,7 @@ class Transducer(object):
                             outside = False
                         continue
                     text += line
-            return self.loadFromString(text)
+            return self.load_from_string(text)
         except IOError as e:
             message = f'Error: {e}'
             logger.critical(message)
@@ -105,7 +106,7 @@ class Transducer(object):
 
             return False
 
-    def loadFromString(self, definition):
+    def load_from_string(self, definition):
         config = cfg.ConfigParser()
         stringio = StringIO(definition)
         if config.readfp(stringio) == []:
@@ -114,9 +115,9 @@ class Transducer(object):
             sys.exit(message)
 
             return False
-        return self._loadConfig(config)
+        return self._load_config(config)
 
-    def _loadConfig(self, config):
+    def _load_config(self, config):
         size = 0
         # self.name = ""
         try:
@@ -139,7 +140,7 @@ class Transducer(object):
         self.elements = []
         for i in range(1, 1+size):
             try:
-                elem = config.get("elements", "%d" % i).strip()
+                elem = config.get("elements", f"{i}").strip()
                 coords = elem.split("|")
                 # read coordinates in mm (convert them in m)
                 item = (float(coords[0])/1000.0, float(coords[1])/1000.0, float(coords[2])/1000.0)
@@ -153,11 +154,11 @@ class Transducer(object):
 
         return True
 
-    def channelCount(self):
+    def channel_count(self):
         """Returns the number of channels / elements."""
         return len(self.elements)
 
-    def computePhases(self, pulse, point_mm, set_focus_mm, dephasing_degree):
+    def compute_phases(self, pulse, point_mm, set_focus_mm, dephasing_degree):
         """
         Computes the phases necessary to aim at the specified point, and writes them directly in
         the given pulse.
@@ -171,32 +172,32 @@ class Transducer(object):
             based on the focus are overridden.
         """
 
-        freqCount = pulse.frequencyCount()
-        if freqCount == 0 or pulse.frequency(0) == 0:
+        freq_count = pulse.frequencyCount()
+        if freq_count == 0 or pulse.frequency(0) == 0:
             message = ("Error: the frequencies must be defined in the pulse before calling" +
-                       "computePhases().")
+                       "compute_phases().")
             logger.critical(message)
             sys.exit(message)
 
             return False
-        if freqCount == 1:
+        if freq_count == 1:
             wavelen = SOUND_SPEED_WATER / pulse.frequency(0)
-        elif freqCount != self.channelCount():
-            message = (f"Error: bad number of frequencies ({freqCount} in pulse, " +
-                       f"{self.channelCount()} elements in transducer)")
+        elif freq_count != self.channel_count():
+            message = (f"Error: bad number of frequencies ({freq_count} in pulse, " +
+                       f"{self.channel_count()} elements in transducer)")
             logger.critical(message)
             sys.exit(message)
 
             return False
 
-        phases = [0.0] * self.channelCount()
+        phases = [0.0] * self.channel_count()
         x = point_mm[0] / 1000.0
         y = point_mm[1] / 1000.0
         z = point_mm[2] / 1000.0
 
-        for i in range(self.channelCount()):
+        for i in range(self.channel_count()):
             elem = self.elements[i]
-            if freqCount > 1:
+            if freq_count > 1:
                 wavelen = SOUND_SPEED_WATER / pulse.frequency(i)
             dist = math.sqrt(math.pow(elem[0]-x, 2) + math.pow(elem[1]-y, 2) +
                              math.pow(elem[2]-z, 2))
@@ -207,7 +208,7 @@ class Transducer(object):
             if len(dephasing_degree) > 1:
                 message = (f'Number of dephasing entries ({len(dephasing_degree)}) does not ' +
                            'correspond to number of transducer elements ' +
-                           f'({self.channelCount()}). Only enter one dephasing value or ' +
+                           f'({self.channel_count()}). Only enter one dephasing value or ' +
                            'n-values equal to the number of transducer elements.')
                 logger.critical(message)
                 sys.exit(message)
@@ -217,9 +218,9 @@ class Transducer(object):
             # determine n elements to dephase in one cycle
             nth_elem = round(360/dephasing_degree)
             dephasing_elem = 0
-            for i in range(len(phases)):
+            for i, phase in enumerate(phases):
                 # Add chosen degrees to dephase signal
-                phases[i] = phases[i] + dephasing_degree*dephasing_elem
+                phases[i] = phase + dephasing_degree*dephasing_elem
 
                 dephasing_elem = dephasing_elem + 1
                 if dephasing_elem == nth_elem:

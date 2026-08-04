@@ -90,12 +90,12 @@ class TestSequenceCallbacks:
 
     def test_on_sequence_start_sets_running_and_resets_pulse_results(self):
         listener = ExecListener()
-        listener.pulseResults = ["stale"]
+        listener.pulse_results = ["stale"]
 
-        listener.onSequenceStart(execID=1, buffer=0, count=3, delay=0.0, flags=0)
+        listener.onSequenceStart(exec_id=1, buffer=0, count=3, delay=0.0, flags=0)
 
         assert listener._running is True
-        assert listener.pulseResults == []
+        assert listener.pulse_results == []
 
     def test_on_pulse_result_appends_result_without_measurements(self):
         listener = ExecListener()
@@ -103,7 +103,7 @@ class TestSequenceCallbacks:
 
         listener.onPulseResult(result)
 
-        assert listener.pulseResults == [result]
+        assert listener.pulse_results == [result]
 
     def test_on_pulse_result_appends_result_with_measurements(self):
         listener = ExecListener()
@@ -112,7 +112,7 @@ class TestSequenceCallbacks:
 
         listener.onPulseResult(result)
 
-        assert listener.pulseResults == [result]
+        assert listener.pulse_results == [result]
 
     def test_on_pulse_result_appends_result_with_non_five_channel_measurements(self):
         listener = ExecListener()
@@ -121,13 +121,13 @@ class TestSequenceCallbacks:
 
         listener.onPulseResult(result)
 
-        assert listener.pulseResults == [result]
+        assert listener.pulse_results == [result]
 
     def test_on_sequence_result_clears_running_flag_on_success(self):
         listener = ExecListener()
         listener._running = True
 
-        listener.onSequenceResult(execID=1, execIndex=0, pulseIndex=0, errorCode=0)
+        listener.onSequenceResult(exec_id=1, exec_index=0, pulse_index=0, error_code=0)
 
         assert listener._running is False
 
@@ -135,7 +135,7 @@ class TestSequenceCallbacks:
         listener = ExecListener()
         listener._running = True
 
-        listener.onSequenceResult(execID=1, execIndex=0, pulseIndex=1, errorCode=7)
+        listener.onSequenceResult(exec_id=1, exec_index=0, pulse_index=1, error_code=7)
 
         assert listener._running is False
 
@@ -147,45 +147,45 @@ class TestMechanicCallbacks:
 
         listener.onMechOriginStart()
 
-        assert listener._findingOrigin is True
+        assert listener._finding_origin is True
 
     def test_on_mech_origin_result_clears_finding_origin_flag(self):
         listener = ExecListener()
-        listener._findingOrigin = True
+        listener._finding_origin = True
         result = SimpleNamespace(name="Found")
 
         listener.onMechOriginResult(result, "all good")
 
-        assert listener._findingOrigin is False
+        assert listener._finding_origin is False
 
     def test_on_mech_start_sets_moving_flag_and_resets_result(self):
         listener = ExecListener()
-        listener.mechResult = "stale"
+        listener.mech_result = "stale"
 
-        listener.onMechStart(execID=1, count=2)
+        listener.onMechStart(exec_id=1, count=2)
 
         assert listener._moving is True
-        assert listener.mechResult is None
+        assert listener.mech_result is None
 
     def test_on_mech_result_clears_moving_flag_and_stores_result(self):
         listener = ExecListener()
         listener._moving = True
         result = SimpleNamespace(name="Done")
 
-        listener.onMechResult(execID=1, result=result, errorCode=0)
+        listener.onMechResult(exec_id=1, result=result, error_code=0)
 
         assert listener._moving is False
-        assert listener.mechResult is result
+        assert listener.mech_result is result
 
     def test_on_mech_result_clears_moving_flag_on_error(self):
         listener = ExecListener()
         listener._moving = True
         result = SimpleNamespace(name="Failed")
 
-        listener.onMechResult(execID=1, result=result, errorCode=3)
+        listener.onMechResult(exec_id=1, result=result, error_code=3)
 
         assert listener._moving is False
-        assert listener.mechResult is result
+        assert listener.mech_result is result
 
 
 class TestWaitMethods:
@@ -197,72 +197,72 @@ class TestWaitMethods:
         listener = ExecListener()
         assert listener._connecting is False
 
-        assert listener.waitConnection(timeout=5.0) is True
+        assert listener.wait_connection(timeout=5.0) is True
 
     def test_wait_connection_returns_false_on_timeout(self):
         listener = ExecListener()
         listener._connecting = True  # never resolves
 
-        assert listener.waitConnection(timeout=0.05) is False
+        assert listener.wait_connection(timeout=0.05) is False
 
     def test_wait_sequence_returns_none_immediately_when_not_running(self):
         listener = ExecListener()
         assert listener._running is False
 
-        assert listener.waitSequence(timeout=5.0) is None
+        assert listener.wait_sequence(timeout=5.0) is None
 
     def test_wait_sequence_returns_false_on_timeout(self):
         listener = ExecListener()
         listener._running = True  # never resolves
 
-        assert listener.waitSequence(timeout=0.01) is False
+        assert listener.wait_sequence(timeout=0.01) is False
 
     def test_wait_origins_returns_none_immediately_when_not_finding_origin(self):
         listener = ExecListener()
-        assert listener._findingOrigin is False
+        assert listener._finding_origin is False
 
-        assert listener.waitOrigins(timeout=5.0) is None
+        assert listener.wait_origins(timeout=5.0) is None
 
     def test_wait_origins_returns_false_on_timeout(self):
         listener = ExecListener()
-        listener._findingOrigin = True  # never resolves
+        listener._finding_origin = True  # never resolves
 
-        assert listener.waitOrigins(timeout=0.05) is False
+        assert listener.wait_origins(timeout=0.05) is False
 
     def test_wait_motion_returns_none_immediately_when_not_moving(self):
         listener = ExecListener()
         assert listener._moving is False
 
-        assert listener.waitMotion(timeout=5.0) is None
+        assert listener.wait_motion(timeout=5.0) is None
 
     def test_wait_motion_returns_false_on_timeout(self):
         listener = ExecListener()
         listener._moving = True  # never resolves
 
-        assert listener.waitMotion(timeout=0.05) is False
+        assert listener.wait_motion(timeout=0.05) is False
 
 
 class TestPrintExecResult:
 
     def test_print_exec_result_handles_none(self):
         listener = ExecListener()
-        assert listener.execResult is None
+        assert listener.exec_result is None
 
-        listener.printExecResult()  # must not raise
+        listener.print_exec_result()  # must not raise
 
     def test_print_exec_result_handles_success(self):
         listener = ExecListener()
-        listener.execResult = SimpleNamespace(isError=lambda: False)
+        listener.exec_result = SimpleNamespace(isError=lambda: False)
 
-        listener.printExecResult()  # must not raise
+        listener.print_exec_result()  # must not raise
 
     def test_print_exec_result_handles_error(self):
         listener = ExecListener()
-        listener.execResult = SimpleNamespace(
+        listener.exec_result = SimpleNamespace(
             isError=lambda: True,
             status=lambda: 5,
             statusName=lambda: "SomeError",
             errorMessage=lambda: "boom",
         )
 
-        listener.printExecResult()  # must not raise
+        listener.print_exec_result()  # must not raise

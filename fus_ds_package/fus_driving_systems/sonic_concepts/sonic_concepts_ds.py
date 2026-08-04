@@ -32,11 +32,10 @@ README.md file of https://github.com/Donders-Institute/Radboud-FUS-driving-syste
 import re
 import sys
 import time
+import tkinter
 
 # Miscellaneous packages
 from CTkMessagebox import CTkMessagebox
-
-import tkinter
 
 import serial
 
