@@ -143,16 +143,14 @@ def test_set_ramping_unknown_mode_exits(mocker, connected_instance, patch_config
         connected_instance._set_ramping('Something else', 10)
 
 
-def test_set_ramping_linear_sends_malformed_rampmode_command(mocker, connected_instance,
-                                                             patch_config):
+def test_set_ramping_linear_sends_rampmode_1(mocker, connected_instance, patch_config):
     """
-    Characterizes a real bug found while writing this test: the RAMPMODE
-    command is built as 'RAMPMODE={ramp_mode}\\r\\n' -- a plain string, missing
-    the f-string prefix that RAMPLENGTH's command has one line below it.
-    The literal, un-interpolated text '{ramp_mode}' is sent to the driving
-    system instead of the actual mode number (1 for linear, 2 for Tukey),
-    regardless of which ramp mode was requested. This documents the
-    current, broken wire format -- it is not asserting this is correct.
+    Regression test for a real bug found while writing this test: the
+    RAMPMODE command used to be built as 'RAMPMODE={ramp_mode}\\r\\n' -- a
+    plain string, missing the f-string prefix that RAMPLENGTH's command has
+    one line below it. The literal, un-interpolated text '{ramp_mode}' was
+    sent to the driving system instead of the actual mode number, regardless
+    of which ramp mode was requested. Fixed by adding the missing f-prefix.
     """
     patch_config.set('Ramp', 'Option.rect', 'Rectangular - no ramping')
     patch_config.set('Ramp', 'Option.lin', 'Linear')
@@ -162,14 +160,43 @@ def test_set_ramping_linear_sends_malformed_rampmode_command(mocker, connected_i
     connected_instance._set_ramping('Linear', 5)
 
     first_call_command = mock_send.call_args_list[0].args[0]
-    assert first_call_command == 'RAMPMODE={ramp_mode}\r\n'
+    assert first_call_command == 'RAMPMODE=1\r\n'
+
+
+def test_set_ramping_linear_sends_ramplength_command(mocker, connected_instance, patch_config):
+    """Symmetric to test_set_ramping_tukey_sends_ramplength_command below --
+    Linear's RAMPLENGTH command was previously never independently
+    asserted anywhere."""
+    patch_config.set('Ramp', 'Option.rect', 'Rectangular - no ramping')
+    patch_config.set('Ramp', 'Option.lin', 'Linear')
+    patch_config.set('Ramp', 'Option.tuk', 'Tukey')
+    mock_send = mocker.patch.object(connected_instance, '_send_command')
+
+    connected_instance._set_ramping('Linear', 5)
+
+    assert mock_send.call_count == 2
+    second_call_command = mock_send.call_args_list[1].args[0]
+    assert second_call_command == 'RAMPLENGTH=5000.0\r\n'
+
+
+def test_set_ramping_tukey_sends_rampmode_2(mocker, connected_instance, patch_config):
+    """Symmetric to the linear case above: Tukey must send mode 2."""
+    patch_config.set('Ramp', 'Option.rect', 'Rectangular - no ramping')
+    patch_config.set('Ramp', 'Option.lin', 'Linear')
+    patch_config.set('Ramp', 'Option.tuk', 'Tukey')
+    mock_send = mocker.patch.object(connected_instance, '_send_command')
+
+    connected_instance._set_ramping('Tukey', 5)
+
+    first_call_command = mock_send.call_args_list[0].args[0]
+    assert first_call_command == 'RAMPMODE=2\r\n'
 
 
 def test_set_ramping_tukey_sends_ramplength_command(mocker, connected_instance, patch_config):
     """Covers the previously-untested Tukey elif branch (ramp_mode = 2).
     Only asserts the RAMPLENGTH command (the second _send_command call) --
-    the RAMPMODE command itself is the same broken literal string
-    regardless of mode, already characterized above for Linear."""
+    the RAMPMODE command itself is asserted separately by
+    test_set_ramping_tukey_sends_rampmode_2."""
     patch_config.set('Ramp', 'Option.rect', 'Rectangular - no ramping')
     patch_config.set('Ramp', 'Option.lin', 'Linear')
     patch_config.set('Ramp', 'Option.tuk', 'Tukey')

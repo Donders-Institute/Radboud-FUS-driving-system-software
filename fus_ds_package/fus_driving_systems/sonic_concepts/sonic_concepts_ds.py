@@ -362,7 +362,7 @@ class SonicConcepts(ds.ControlDrivingSystem):
                 logger.critical(message)
                 sys.exit(message)
 
-            command = 'RAMPMODE={ramp_mode}\r\n'
+            command = f'RAMPMODE={ramp_mode}\r\n'
             self._send_command(command)
 
             command = f'RAMPLENGTH={ramp_length}\r\n'
