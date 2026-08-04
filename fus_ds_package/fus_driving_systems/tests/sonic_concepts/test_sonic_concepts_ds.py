@@ -273,6 +273,8 @@ def test_send_sequence_calls_setters_in_order_and_marks_sent(mocker, connected_i
     fake_sequence.pulse_dur = 1
     fake_sequence.pulse_rep_int = 2
     fake_sequence.pulse_train_dur = 10
+    fake_sequence.pulse_train_rep_int = 10
+    fake_sequence.pulse_train_rep_dur = 10
     fake_sequence.pulse_ramp_shape = 'Linear'
     fake_sequence.pulse_ramp_dur = 1
 
@@ -289,6 +291,23 @@ def test_send_sequence_calls_setters_in_order_and_marks_sent(mocker, connected_i
         mocker.call._set_ramping('Linear', 1),
         mocker.call._send_command('TRIGGERMODE=1\r\n'),
     ]
+
+
+def test_send_sequence_exits_when_validation_produces_errors(mocker, connected_instance):
+    """Regression test: send_sequence previously never called
+    validate_sequence at all, so a malformed sequence would silently be
+    accepted instead of failing loudly like IGT already does."""
+    mocker.patch.object(connected_instance, '_reset_parameters')
+
+    fake_sequence = mocker.Mock()
+    fake_sequence.pulse_dur = 1
+    fake_sequence.pulse_rep_int = 2
+    fake_sequence.pulse_train_dur = 11  # not a whole multiple of pulse_rep_int
+    fake_sequence.pulse_train_rep_int = 10
+    fake_sequence.pulse_train_rep_dur = 10
+
+    with pytest.raises(SystemExit):
+        connected_instance.send_sequence(fake_sequence)
 
 
 def test_send_sequence_reconnects_when_not_connected(mocker):
@@ -309,6 +328,11 @@ def test_send_sequence_reconnects_when_not_connected(mocker):
     fake_sequence = mocker.Mock()
     fake_sequence.driving_sys.connect_info = 'COM7'
     fake_sequence.wait_for_trigger = False
+    fake_sequence.pulse_dur = 1
+    fake_sequence.pulse_rep_int = 2
+    fake_sequence.pulse_train_dur = 10
+    fake_sequence.pulse_train_rep_int = 10
+    fake_sequence.pulse_train_rep_dur = 10
 
     instance.send_sequence(fake_sequence)
 

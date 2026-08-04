@@ -92,6 +92,14 @@ class SonicConcepts(ds.ControlDrivingSystem):
                 used equipment (driving system and transducer)
         """
 
+        logger.info('Validating sequence...')
+
+        error_messages = self.validate_sequence(sequence)
+        if error_messages:
+            for error in error_messages:
+                logger.critical(error)
+            sys.exit('(Multiple) error(s) found when validating sequence, see log file.')
+
         logger.info('Sending sequence...')
 
         logger.debug('Sequence with the following parameters is send to the driving system: \n'

@@ -8,7 +8,23 @@ execute_sequence()/disconnect() don't need connect() at all -- they just
 read/write whatever object sits in self.ser_bitsi, so those tests assign a
 plain mocker.Mock() directly, which is simpler than patching the constructor.
 """
+from types import SimpleNamespace
+
+import pytest
+
 from fus_driving_systems.citrus.citrus_ds import CITRUS
+
+
+def _valid_sequence(**overrides):
+    values = dict(
+        pulse_dur=1,
+        pulse_rep_int=2,
+        pulse_train_dur=10,
+        pulse_train_rep_int=10,
+        pulse_train_rep_dur=10,
+    )
+    values.update(overrides)
+    return SimpleNamespace(**values)
 
 
 def test_connect_configures_and_opens_serial_port(mock_serial):
@@ -48,9 +64,21 @@ def test_execute_sequence_sleeps_after_triggering(mocker):
 
 
 def test_send_sequence_does_not_raise():
-    """send_sequence is currently a stub (just logs) -- smoke test only."""
+    """send_sequence's own hardware-facing logic is currently a stub (just
+    logs), but it now validates the sequence first (see
+    test_send_sequence_exits_when_validation_produces_errors below)."""
     citrus = CITRUS()
-    citrus.send_sequence(None)  # must not raise
+    citrus.send_sequence(_valid_sequence())  # must not raise
+
+
+def test_send_sequence_exits_when_validation_produces_errors():
+    """Regression test: send_sequence previously never called
+    validate_sequence at all, so a malformed sequence would silently be
+    accepted instead of failing loudly like IGT/SonicConcepts already do."""
+    citrus = CITRUS()
+
+    with pytest.raises(SystemExit):
+        citrus.send_sequence(_valid_sequence(pulse_train_dur=11))
 
 
 def test_disconnect_closes_serial_port_and_marks_disconnected(mocker):

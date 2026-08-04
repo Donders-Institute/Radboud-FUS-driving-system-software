@@ -29,6 +29,7 @@ README.md file of https://github.com/Donders-Institute/Radboud-FUS-driving-syste
 """
 
 # Basis packages
+import sys
 import time
 
 import serial
@@ -91,6 +92,14 @@ class CITRUS(ds.ControlDrivingSystem):
                 the ultrasound protocol (focus, pulse duration, pulse rep. interval and etcetera)
                 used equipment (driving system and transducer)
         """
+
+        logger.info('Validating sequence...')
+
+        error_messages = self.validate_sequence(seq)
+        if error_messages:
+            for error in error_messages:
+                logger.critical(error)
+            sys.exit('(Multiple) error(s) found when validating sequence, see log file.')
 
         logger.info('Sending sequence...')
 
