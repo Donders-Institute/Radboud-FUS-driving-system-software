@@ -547,9 +547,7 @@ config['Equipment.Transducer.' + SC_TRANS[0]]['Exit plane - first element dist.'
 
 config['Equipment.Transducer.' + SC_TRANS[0]]['Min. focus'] = str(15.9)  # [mm], wrt exit plane
 config['Equipment.Transducer.' + SC_TRANS[0]]['Max. focus'] = str(46.0)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + SC_TRANS[0]]['Steer information'] = str(os.path.join(
-    CONFIG_FILE_FOLDER_SC_TRAN,
-    'CTX-250-009 - TPO-105-010 - Steer Table.xlsx'))  # should be in the same directory as code
+config['Equipment.Transducer.' + SC_TRANS[0]]['Steer information'] = ''
 config['Equipment.Transducer.' + SC_TRANS[0]]['Active?'] = str(True)
 
 config['Equipment.Transducer.' + SC_TRANS[1]] = {}
@@ -564,9 +562,7 @@ config['Equipment.Transducer.' + SC_TRANS[1]]['Exit plane - first element dist.'
 
 config['Equipment.Transducer.' + SC_TRANS[1]]['Min. focus'] = str(12.6)  # [mm], wrt exit plane
 config['Equipment.Transducer.' + SC_TRANS[1]]['Max. focus'] = str(44.1)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + SC_TRANS[1]]['Steer information'] = str(os.path.join(
-    CONFIG_FILE_FOLDER_SC_TRAN,
-    'CTX-250-014 - TPO-105-010 - Steer Table.xlsx'))  # should be in the same directory as code
+config['Equipment.Transducer.' + SC_TRANS[1]]['Steer information'] = ''
 config['Equipment.Transducer.' + SC_TRANS[1]]['Active?'] = str(True)
 
 
@@ -582,9 +578,7 @@ config['Equipment.Transducer.' + SC_TRANS[2]]['Exit plane - first element dist.'
 
 config['Equipment.Transducer.' + SC_TRANS[2]]['Min. focus'] = str(33.2)  # [mm], wrt exit plane
 config['Equipment.Transducer.' + SC_TRANS[2]]['Max. focus'] = str(79.4)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + SC_TRANS[2]]['Steer information'] = str(os.path.join(
-    CONFIG_FILE_FOLDER_SC_TRAN,
-    'CTX-500-006 - TPO-105-010 - Steer Table.xlsx'))  # should be in the same directory as code
+config['Equipment.Transducer.' + SC_TRANS[2]]['Steer information'] = ''
 config['Equipment.Transducer.' + SC_TRANS[2]]['Active?'] = str(True)
 
 config['Equipment.Transducer.' + SC_TRANS[3]] = {}
@@ -599,9 +593,7 @@ config['Equipment.Transducer.' + SC_TRANS[3]]['Exit plane - first element dist.'
 
 config['Equipment.Transducer.' + SC_TRANS[3]]['Min. focus'] = str(13.7)  # [mm], wrt exit plane
 config['Equipment.Transducer.' + SC_TRANS[3]]['Max. focus'] = str(61.5)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + SC_TRANS[3]]['Steer information'] = str(os.path.join(
-    CONFIG_FILE_FOLDER_SC_TRAN,
-    'CTX-250-001 - TPO-105-010 - Steer Table.xlsx'))  # should be in the same directory as code
+config['Equipment.Transducer.' + SC_TRANS[3]]['Steer information'] = ''
 config['Equipment.Transducer.' + SC_TRANS[3]]['Active?'] = str(True)
 
 config['Equipment.Transducer.' + SC_TRANS[4]] = {}
@@ -616,9 +608,7 @@ config['Equipment.Transducer.' + SC_TRANS[4]]['Exit plane - first element dist.'
 
 config['Equipment.Transducer.' + SC_TRANS[4]]['Min. focus'] = str(22.2)  # [mm], wrt exit plane
 config['Equipment.Transducer.' + SC_TRANS[4]]['Max. focus'] = str(61.5)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + SC_TRANS[4]]['Steer information'] = str(os.path.join(
-    CONFIG_FILE_FOLDER_SC_TRAN,
-    'CTX-250-026 - TPO-105-010 - Steer Table.xlsx'))  # should be in the same directory as code
+config['Equipment.Transducer.' + SC_TRANS[4]]['Steer information'] = ''
 config['Equipment.Transducer.' + SC_TRANS[4]]['Active?'] = str(True)
 
 config['Equipment.Transducer.' + SC_TRANS[5]] = {}
@@ -633,9 +623,7 @@ config['Equipment.Transducer.' + SC_TRANS[5]]['Exit plane - first element dist.'
 
 config['Equipment.Transducer.' + SC_TRANS[5]]['Min. focus'] = str(31.7)  # [mm], wrt exit plane
 config['Equipment.Transducer.' + SC_TRANS[5]]['Max. focus'] = str(77.0)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + SC_TRANS[5]]['Steer information'] = str(os.path.join(
-    CONFIG_FILE_FOLDER_SC_TRAN,
-    'CTX-500-024 - TPO-105-010 - Steer Table.xlsx'))  # should be in the same directory as code
+config['Equipment.Transducer.' + SC_TRANS[5]]['Steer information'] = ''
 config['Equipment.Transducer.' + SC_TRANS[5]]['Active?'] = str(False)
 
 config['Equipment.Transducer.' + SC_TRANS[6]] = {}
@@ -650,9 +638,7 @@ config['Equipment.Transducer.' + SC_TRANS[6]]['Exit plane - first element dist.'
 
 config['Equipment.Transducer.' + SC_TRANS[6]]['Min. focus'] = str(39.6)  # [mm], wrt exit plane
 config['Equipment.Transducer.' + SC_TRANS[6]]['Max. focus'] = str(79.6)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + SC_TRANS[6]]['Steer information'] = str(os.path.join(
-    CONFIG_FILE_FOLDER_SC_TRAN,
-    'CTX-500-026 - TPO-105-010 - Steer Table.xlsx'))  # should be in the same directory as code
+config['Equipment.Transducer.' + SC_TRANS[6]]['Steer information'] = ''
 config['Equipment.Transducer.' + SC_TRANS[6]]['Active?'] = str(True)
 
 config['Equipment.Transducer.' + SC_TRANS[7]] = {}

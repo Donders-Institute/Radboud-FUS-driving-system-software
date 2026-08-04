@@ -760,7 +760,7 @@ class IGT(ds.ControlDrivingSystem):
             phases = trans.compute_phases(pulse, (0, 0, aim_wrt_natural_focus), focus,
                                           dephasing_degree)
 
-        else:
+        elif steer_info.endswith('.xlsx'):
             # Import excel file containing phases per focal depth
             excel_path = str(importlib.resources.files(package_name).joinpath(steer_info))
 
@@ -787,7 +787,7 @@ class IGT(ds.ControlDrivingSystem):
                     match_row = match_row[0]
 
                 # Retrieve phases dependent of number of channels
-                phases = [match_row.iloc[0].iloc[1:int(self.n_channels)+1]].to_list()
+                phases = match_row.iloc[0].iloc[1:int(self.n_channels)+1].to_list()
 
                 if dephasing_degree is not None:
                     if len(dephasing_degree) > 1:
@@ -814,6 +814,12 @@ class IGT(ds.ControlDrivingSystem):
                            f"{excel_path}")
                 logger.critical(message)
                 sys.exit(message)
+
+        else:
+            message = ("Steer information is expected to be a '.ini' or '.xlsx' file, but got: " +
+                       f"{steer_info}")
+            logger.critical(message)
+            sys.exit(message)
 
         return phases
 

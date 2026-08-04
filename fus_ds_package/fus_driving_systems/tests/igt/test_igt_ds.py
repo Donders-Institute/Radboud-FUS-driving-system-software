@@ -12,6 +12,7 @@ import math
 from types import SimpleNamespace
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from fus_driving_systems.igt import unifus
@@ -407,30 +408,29 @@ class TestSetPhasesIniBranch:
 
 class TestSetPhasesExcelBranch:
 
-    def test_excel_branch_raises_due_to_list_to_list_bug(self, mocker, connected_instance):
+    def test_excel_branch_returns_matching_row_as_phases(self, mocker, connected_instance):
         """
-        Characterizes a real bug found while writing this test: the .xlsx
-        steer-info branch of _set_phases builds
+        Regression test for a real bug: the .xlsx steer-info branch of
+        _set_phases used to build
             phases = [match_row.iloc[0].iloc[1:n+1]].to_list()
-        -- the outer `[...]` makes this a *plain Python list* containing
-        one pandas Series, and then `.to_list()` is called on that outer
-        list. Python lists have no `.to_list()` method (only pandas
-        Series/DataFrames do), so this always raises AttributeError
-        whenever a matching focus row is actually found. The entire .xlsx
-        steer-info code path is therefore broken in the current code --
-        this documents that current (crashing) behavior, it is not
-        asserting this is correct or desired.
+        -- the outer `[...]` made this a *plain Python list* containing one
+        pandas Series, and then `.to_list()` was called on that outer list.
+        Python lists have no `.to_list()` method (only pandas
+        Series/DataFrames do), so this always raised AttributeError
+        whenever a matching focus row was actually found. Fixed by removing
+        the erroneous outer `[...]` so `.to_list()` is called on the Series
+        itself: `phases = match_row.iloc[0].iloc[1:n+1].to_list()`.
         """
-        import pandas as pd
-
         connected_instance.n_channels = 2
         df = pd.DataFrame({'Distance': [50.0], 'ch0': [10.0], 'ch1': [20.0]})
         mocker.patch('fus_driving_systems.igt.igt_ds.pd.read_excel', return_value=df)
         mocker.patch('fus_driving_systems.igt.igt_ds.os.path.exists', return_value=True)
 
-        with pytest.raises(AttributeError, match='to_list'):
-            connected_instance._set_phases(mocker.Mock(), focus=50.0, steer_info='some_table.xlsx',
-                                           natural_foc=75, dephasing_degree=None)
+        phases = connected_instance._set_phases(mocker.Mock(), focus=50.0,
+                                                steer_info='some_table.xlsx',
+                                                natural_foc=75, dephasing_degree=None)
+
+        assert phases == [10.0, 20.0]
 
     def test_excel_branch_exits_when_file_does_not_exist(self, mocker, connected_instance):
         connected_instance.n_channels = 2
@@ -438,6 +438,17 @@ class TestSetPhasesExcelBranch:
 
         with pytest.raises(SystemExit):
             connected_instance._set_phases(mocker.Mock(), focus=50.0, steer_info='missing.xlsx',
+                                           natural_foc=75, dephasing_degree=None)
+
+    def test_exits_when_steer_info_is_neither_ini_nor_xlsx(self, mocker, connected_instance):
+        """DUMMY/CITRUS transducers configure an empty 'Steer information'
+        string (they're never used with an IGT driving system either), so
+        an unrecognized extension should be rejected rather than silently
+        misbehaving."""
+        connected_instance.n_channels = 2
+
+        with pytest.raises(SystemExit):
+            connected_instance._set_phases(mocker.Mock(), focus=50.0, steer_info='',
                                            natural_foc=75, dephasing_degree=None)
 
 
