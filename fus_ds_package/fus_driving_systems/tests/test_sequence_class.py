@@ -670,10 +670,10 @@ def test_volt_setter_exits_when_combo_unknown_but_required():
 
 
 # --- ampl ------------------------------------------------------------------
-# Mirrors volt (engineering_mode guard, scalar-or-list, wrong-length exit),
-# but its handling of an unavailable power option AND of an unknown-but
-# -required combo both diverge from press/volt -- see the two tests below
-# documenting each asymmetry.
+# Mirrors volt (engineering_mode guard, scalar-or-list, wrong-length exit,
+# and now also the unavailable-power-option exit). Its handling of an
+# unknown-but-required combo is intentionally different from press/volt --
+# see the test below documenting why.
 
 def test_ampl_setter_raises_when_engineering_mode_disabled():
     seq = _bare_sequence()
@@ -725,34 +725,27 @@ def test_ampl_setter_exits_on_wrong_length_list():
         seq.ampl = [10, 20]  # neither 1 entry nor 4 (available_ch) entries
 
 
-def test_ampl_setter_silently_noops_when_power_option_unavailable():
-    """FINDING: unlike press's and volt's setters, which both have an
-    explicit `else: sys.exit(...)` when the power option isn't in
-    driving_sys.power_options (sequence.py lines ~682-687 and ~770-775),
-    ampl's setter (~line 806) has NO else-branch at all for that same
-    'if power_option in self.driving_sys.power_options:' check. If the
-    option is unavailable, the setter just falls off the end having already
-    reset self._ampl to 0 at the top -- it neither sets the requested value
-    nor raises/logs an error. This looks like a missing-else bug relative
-    to its two structurally-identical siblings; characterized here rather
-    than fixed, since this task is test-only."""
+def test_ampl_setter_exits_when_power_option_unavailable():
+    """SOLVED: ampl's setter now mirrors press/volt with an explicit
+    `else: sys.exit(...)` when the power option isn't in
+    driving_sys.power_options, instead of silently leaving self._ampl at
+    the reset value of 0 with no error."""
     seq = _bare_sequence()
     seq._engineering_mode = True
     seq._driving_sys = SimpleNamespace(power_options=['Some other option'], available_ch=1)
 
-    seq.ampl = 50  # must not raise, unlike press/volt in the same situation
-
-    assert seq._ampl == 0  # reset value from the top of the setter, never actually set to 50
+    with pytest.raises(SystemExit):
+        seq.ampl = 50
 
 
 def test_ampl_setter_does_not_exit_when_combo_unknown_but_required():
-    """FINDING: press's and volt's setters both sys.exit when
-    require_conv_eq is True but the combo is unknown ('Conversion
-    equations unknown but required for ...', a logger.critical + sys.exit).
-    ampl's setter (sequence.py ~line 849-851) hits the same situation but
-    only logger.debug()s a highly similar message ('Conversion equations
-    unknown for ...') and returns normally -- no exit. Another asymmetry
-    among the three otherwise-parallel setters, characterized here."""
+    """CONFIRMED INTENDED (not a bug): press's and volt's setters both
+    sys.exit when require_conv_eq is True but the combo is unknown, because
+    without the conversion equations they cannot derive the amplitude to
+    send to the hardware. ampl's setter is different on purpose: it already
+    has the value to send (it *is* the amplitude), so the missing
+    conversion only means the derived press/volt values can't be logged --
+    not a fatal error. It logs a debug message and keeps the set value."""
     seq = _bare_sequence()
     seq._engineering_mode = True
     seq._driving_sys = SimpleNamespace(

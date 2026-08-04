@@ -860,6 +860,12 @@ class Sequence():
                     else:
                         message = f'Conversion equations unknown for {self._ds_tran_combo}.'
                         logger.debug(message)
+        else:
+            message = ('Amplitude parameter is not available for ' +
+                       'chosen driving system. Use one of the following options instead: ' +
+                       f'{self.driving_sys.power_options}.')
+            logger.critical(message)
+            sys.exit(message)
 
     def get_focus_options(self):
         """
