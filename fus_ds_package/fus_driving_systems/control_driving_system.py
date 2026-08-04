@@ -127,21 +127,28 @@ class ControlDrivingSystem(ABC):
 
         error_messages = []
 
-        n_pulses = sequence.pulse_train_dur/sequence.pulse_rep_int
-        if not n_pulses.is_integer():
-            error_messages.append("Number of pulses within the pulse train is not a whole " +
-                                  "number: " +
-                                  f"Pulse Train Duration of {sequence.pulse_train_dur} [ms] " +
-                                  f"divided by Pulse Rep. Interval of {sequence.pulse_rep_int} " +
-                                  f"[ms] is {n_pulses:.2f}.")
+        if sequence.pulse_rep_int == 0:
+            error_messages.append("Pulse Repetition Interval [ms] is not allowed to be 0.")
+        else:
+            n_pulses = sequence.pulse_train_dur/sequence.pulse_rep_int
+            if not n_pulses.is_integer():
+                error_messages.append("Number of pulses within the pulse train is not a whole " +
+                                      "number: " +
+                                      f"Pulse Train Duration of {sequence.pulse_train_dur} " +
+                                      "[ms] divided by Pulse Rep. Interval of " +
+                                      f"{sequence.pulse_rep_int} [ms] is {n_pulses:.2f}.")
 
-        n_pulse_trains = sequence.pulse_train_rep_dur/sequence.pulse_train_rep_int
-        if not n_pulse_trains.is_integer():
-            error_messages.append("Number of pulse trains within the pulse train repetition is " +
-                                  "not a whole number: Pulse Train Repetition Duration of " +
-                                  f"{sequence.pulse_train_rep_dur} [ms] divided by Pulse " +
-                                  "Train Repetition Interval of " +
-                                  f"{sequence.pulse_train_rep_int} [ms] is {n_pulse_trains:.2f}.")
+        if sequence.pulse_train_rep_int == 0:
+            error_messages.append("Pulse Train Repetition Interval [ms] is not allowed to be 0.")
+        else:
+            n_pulse_trains = sequence.pulse_train_rep_dur/sequence.pulse_train_rep_int
+            if not n_pulse_trains.is_integer():
+                error_messages.append(
+                    "Number of pulse trains within the pulse train repetition is " +
+                    "not a whole number: Pulse Train Repetition Duration of " +
+                    f"{sequence.pulse_train_rep_dur} [ms] divided by Pulse " +
+                    "Train Repetition Interval of " +
+                    f"{sequence.pulse_train_rep_int} [ms] is {n_pulse_trains:.2f}.")
 
         if sequence.pulse_dur > sequence.pulse_rep_int:
             error_messages.append("Pulse Duration is not allowed to be higher than the Pulse " +
