@@ -607,6 +607,56 @@ class TestExecuteSequence:
         connected_instance.gen.startSequence.assert_called_once()
         connected_instance.listener.wait_sequence.assert_called_once_with(0.5)
 
+    def test_debug_info_true_sets_measure_channels_flag_for_long_pulse(self, connected_instance):
+        """debug_info=True (the default) computes extra exec_flags based on
+        pulse_dur, mirroring TestWaitForTrigger's identical coverage of
+        this same logic. execute_sequence has no trigger_option flag
+        addition, so no extra flag needs to be added to `expected` here."""
+        connected_instance.sent_seqs = {1: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
+                                            'total_sequence_duration_ms': 500.0}}
+        fake_sequence = SimpleNamespace(seq_num=1, pulse_dur=5.0, pulse_ramp_dur=0,
+                                        pulse_ramp_shape='Rectangular - no ramping')
+
+        connected_instance.execute_sequence(fake_sequence, debug_info=True)
+
+        exec_flags = connected_instance.gen.prepareSequence.call_args.args[3]
+        expected = (unifus.ExecFlag.DisableMonitoringChannelCombiner |
+                    unifus.ExecFlag.DisableMonitoringChannelCurrentOut |
+                    unifus.ExecFlag.MeasureChannels)
+        assert int(exec_flags) == int(expected)
+
+    def test_debug_info_true_sets_measure_boards_flag_for_medium_pulse(self, connected_instance):
+        """Same as above, one threshold down: pulse_dur between the
+        MeasureBoards (0.035 ms) and MeasureChannels (4.570 ms) defaults."""
+        connected_instance.sent_seqs = {1: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
+                                            'total_sequence_duration_ms': 500.0}}
+        fake_sequence = SimpleNamespace(seq_num=1, pulse_dur=1.0, pulse_ramp_dur=0,
+                                        pulse_ramp_shape='Rectangular - no ramping')
+
+        connected_instance.execute_sequence(fake_sequence, debug_info=True)
+
+        exec_flags = connected_instance.gen.prepareSequence.call_args.args[3]
+        expected = (unifus.ExecFlag.DisableMonitoringChannelCombiner |
+                    unifus.ExecFlag.DisableMonitoringChannelCurrentOut |
+                    unifus.ExecFlag.MeasureBoards)
+        assert int(exec_flags) == int(expected)
+
+    def test_debug_info_true_sets_measure_timings_flag_for_short_pulse(self, connected_instance):
+        """Same as above, lowest threshold: pulse_dur between the
+        MeasureTimings (0.001 ms) and MeasureBoards (0.035 ms) defaults."""
+        connected_instance.sent_seqs = {1: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
+                                            'total_sequence_duration_ms': 500.0}}
+        fake_sequence = SimpleNamespace(seq_num=1, pulse_dur=0.01, pulse_ramp_dur=0,
+                                        pulse_ramp_shape='Rectangular - no ramping')
+
+        connected_instance.execute_sequence(fake_sequence, debug_info=True)
+
+        exec_flags = connected_instance.gen.prepareSequence.call_args.args[3]
+        expected = (unifus.ExecFlag.DisableMonitoringChannelCombiner |
+                    unifus.ExecFlag.DisableMonitoringChannelCurrentOut |
+                    unifus.ExecFlag.MeasureTimings)
+        assert int(exec_flags) == int(expected)
+
     def test_sends_sequence_first_when_not_yet_sent(self, mocker, connected_instance):
         mock_send = mocker.patch.object(connected_instance, 'send_sequence')
 
@@ -616,8 +666,7 @@ class TestExecuteSequence:
                 'total_sequence_duration_ms': 10.0}
         mock_send.side_effect = fake_send
 
-        fake_sequence = SimpleNamespace(seq_num=99, pulse_dur=0.5, pulse_ramp_dur=0,
-                                        pulse_ramp_shape='Rectangular - no ramping')
+        fake_sequence = SimpleNamespace(seq_num=99)
 
         connected_instance.execute_sequence(fake_sequence, debug_info=False)
 
@@ -626,7 +675,14 @@ class TestExecuteSequence:
 
     def test_reconnects_sends_and_executes_when_not_connected(self, mocker, tmp_path):
         """Mirrors TestSendSequence's reconnect test -- execute_sequence
-        has the identical 'not connected -> connect(), then retry' shape."""
+        has the identical 'not connected -> connect(), then retry' shape.
+
+        Regression test: the retry call used to not forward debug_info, so
+        it always reconnected-and-retried with the True default. fake_sequence
+        deliberately has no pulse_dur/pulse_ramp_dur/pulse_ramp_shape: if
+        debug_info ever silently reverts to True again, this test fails with
+        an AttributeError instead of passing (see TestWaitForTrigger's
+        identical regression test for how this bug was originally found)."""
         instance = IGT(log_dir=str(tmp_path))
         instance.connected = False
 
@@ -642,8 +698,7 @@ class TestExecuteSequence:
         mock_send = mocker.patch.object(instance, 'send_sequence', side_effect=fake_send_sequence)
 
         fake_sequence = SimpleNamespace(
-            seq_num=1, driving_sys=SimpleNamespace(connect_info='igt/config/gen_test.json'),
-            pulse_dur=0.5, pulse_ramp_dur=0, pulse_ramp_shape='Rectangular - no ramping')
+            seq_num=1, driving_sys=SimpleNamespace(connect_info='igt/config/gen_test.json'))
 
         instance.execute_sequence(fake_sequence, debug_info=False)
 
@@ -686,6 +741,71 @@ class TestWaitForTrigger:
         connected_instance.gen.prepareSequence.assert_called_once_with(1, 3, 0, mocker.ANY)
         connected_instance.gen.startSequence.assert_called_once()
 
+    def test_debug_info_true_sets_measure_channels_flag_for_long_pulse(self, connected_instance,
+                                                                       patch_config):
+        """debug_info=True (the default) computes extra exec_flags based on
+        pulse_dur -- a separate code path from the reconnect-retry
+        forwarding logic above, so it needs its own direct coverage.
+        pulse_dur above the MeasureChannels threshold (default 4.570 ms)
+        sets that flag. Note: MeasureChannels/MeasureBoards/MeasureTimings
+        are not independent bits (3/2/1), so the resulting flags are
+        compared for exact equality rather than checked with '&'."""
+        patch_config.set('Trigger', 'Option.seq', 'TriggerSequence')
+        patch_config.set('Trigger', 'Option.ptr', 'TriggerOnePulseTrainRepetition')
+        connected_instance.sent_seqs = {1: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0}}
+        fake_sequence = SimpleNamespace(seq_num=1, pulse_dur=5.0, pulse_ramp_dur=0,
+                                        pulse_ramp_shape='Rectangular - no ramping',
+                                        trigger_option='TriggerSequence', n_triggers=3)
+
+        connected_instance.wait_for_trigger(fake_sequence, debug_info=True)
+
+        exec_flags = connected_instance.gen.prepareSequence.call_args.args[3]
+        expected = (unifus.ExecFlag.DisableMonitoringChannelCombiner |
+                    unifus.ExecFlag.DisableMonitoringChannelCurrentOut |
+                    unifus.ExecFlag.TriggerOneSequence |
+                    unifus.ExecFlag.MeasureChannels)
+        assert int(exec_flags) == int(expected)
+
+    def test_debug_info_true_sets_measure_boards_flag_for_medium_pulse(self, connected_instance,
+                                                                       patch_config):
+        """Same as above, one threshold down: pulse_dur between the
+        MeasureBoards (0.035 ms) and MeasureChannels (4.570 ms) defaults."""
+        patch_config.set('Trigger', 'Option.seq', 'TriggerSequence')
+        patch_config.set('Trigger', 'Option.ptr', 'TriggerOnePulseTrainRepetition')
+        connected_instance.sent_seqs = {1: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0}}
+        fake_sequence = SimpleNamespace(seq_num=1, pulse_dur=1.0, pulse_ramp_dur=0,
+                                        pulse_ramp_shape='Rectangular - no ramping',
+                                        trigger_option='TriggerSequence', n_triggers=3)
+
+        connected_instance.wait_for_trigger(fake_sequence, debug_info=True)
+
+        exec_flags = connected_instance.gen.prepareSequence.call_args.args[3]
+        expected = (unifus.ExecFlag.DisableMonitoringChannelCombiner |
+                    unifus.ExecFlag.DisableMonitoringChannelCurrentOut |
+                    unifus.ExecFlag.TriggerOneSequence |
+                    unifus.ExecFlag.MeasureBoards)
+        assert int(exec_flags) == int(expected)
+
+    def test_debug_info_true_sets_measure_timings_flag_for_short_pulse(self, connected_instance,
+                                                                       patch_config):
+        """Same as above, lowest threshold: pulse_dur between the
+        MeasureTimings (0.001 ms) and MeasureBoards (0.035 ms) defaults."""
+        patch_config.set('Trigger', 'Option.seq', 'TriggerSequence')
+        patch_config.set('Trigger', 'Option.ptr', 'TriggerOnePulseTrainRepetition')
+        connected_instance.sent_seqs = {1: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0}}
+        fake_sequence = SimpleNamespace(seq_num=1, pulse_dur=0.01, pulse_ramp_dur=0,
+                                        pulse_ramp_shape='Rectangular - no ramping',
+                                        trigger_option='TriggerSequence', n_triggers=3)
+
+        connected_instance.wait_for_trigger(fake_sequence, debug_info=True)
+
+        exec_flags = connected_instance.gen.prepareSequence.call_args.args[3]
+        expected = (unifus.ExecFlag.DisableMonitoringChannelCombiner |
+                    unifus.ExecFlag.DisableMonitoringChannelCurrentOut |
+                    unifus.ExecFlag.TriggerOneSequence |
+                    unifus.ExecFlag.MeasureTimings)
+        assert int(exec_flags) == int(expected)
+
     def test_ptr_trigger_prepares_with_stored_repetition_and_delay(self, mocker,
                                                                    connected_instance,
                                                                    patch_config):
@@ -720,9 +840,7 @@ class TestWaitForTrigger:
             connected_instance.sent_seqs[42] = {'n_pulse_train_rep': 1, 'pulse_train_delay': 0.0}
         mock_send.side_effect = fake_send
 
-        fake_sequence = SimpleNamespace(seq_num=42, pulse_ramp_dur=0,
-                                        pulse_ramp_shape='Rectangular - no ramping',
-                                        trigger_option='None', n_triggers=0)
+        fake_sequence = SimpleNamespace(seq_num=42, trigger_option='None', n_triggers=0)
 
         with pytest.raises(SystemExit):
             # trigger_option 'None' does not match the real config's
@@ -738,17 +856,20 @@ class TestWaitForTrigger:
         Mirrors execute_sequence's reconnect test -- wait_for_trigger has
         the identical 'not connected -> connect(), then retry' shape.
 
-        FINDING: the retry call in this branch is
+        Regression test: the retry call in this branch used to be
         `self.wait_for_trigger(seq1, seq2, seq3, seq4, duration_ms)` --
-        debug_info is NOT forwarded, so the retry always uses debug_info's
+        debug_info was NOT forwarded, so the retry always used debug_info's
         default (True) regardless of what the original caller passed. This
         was discovered because passing debug_info=False here (as every
         other test in this class does, with a minimal fake_sequence) still
         required a full `pulse_dur` attribute below -- the retry's
-        debug_info=True path reads it even though the caller asked for
-        debug_info=False. Same bug shape exists in execute_sequence's
-        identical reconnect branch. Not fixed here, just why this
-        fake_sequence needs more attributes than its sibling tests.
+        debug_info=True path read it even though the caller asked for
+        debug_info=False. Fixed by forwarding debug_info on the retry call.
+        fake_sequence deliberately has no pulse_dur/pulse_ramp_dur/
+        pulse_ramp_shape: if debug_info ever silently reverts to True again,
+        this test fails with an AttributeError instead of passing, same as
+        how the bug was originally found. Same bug shape existed in
+        execute_sequence's identical reconnect branch, fixed there too.
         """
         patch_config.set('Trigger', 'Option.seq', 'TriggerSequence')
         patch_config.set('Trigger', 'Option.ptr', 'TriggerOnePulseTrainRepetition')
@@ -767,7 +888,6 @@ class TestWaitForTrigger:
 
         fake_sequence = SimpleNamespace(
             seq_num=1, driving_sys=SimpleNamespace(connect_info='igt/config/gen_test.json'),
-            pulse_dur=0.5, pulse_ramp_dur=0, pulse_ramp_shape='Rectangular - no ramping',
             trigger_option='TriggerSequence', n_triggers=3)
 
         instance.wait_for_trigger(fake_sequence, debug_info=False)

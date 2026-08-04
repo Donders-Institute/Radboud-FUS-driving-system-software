@@ -535,7 +535,7 @@ class IGT(ds.ControlDrivingSystem):
                 logger.warning('Sending sequence...')
 
                 self.send_sequence(seq1, seq2, seq3, seq4, duration_ms)
-                self.wait_for_trigger(seq1, seq2, seq3, seq4, duration_ms)
+                self.wait_for_trigger(seq1, seq2, seq3, seq4, duration_ms, debug_info)
         else:
             logger.warning("No connection with driving system.")
             logger.warning("Reconnecting with driving system...")
@@ -543,7 +543,7 @@ class IGT(ds.ControlDrivingSystem):
             # if no connection can be made, program stops preventing infinite loop
             self.connect(seq1.driving_sys.connect_info)
             self.send_sequence(seq1, seq2, seq3, seq4, duration_ms)
-            self.wait_for_trigger(seq1, seq2, seq3, seq4, duration_ms)
+            self.wait_for_trigger(seq1, seq2, seq3, seq4, duration_ms, debug_info)
 
     def execute_sequence(self, seq1, seq2=None, seq3=None, seq4=None, duration_ms=0,
                          debug_info=True):
@@ -617,7 +617,7 @@ class IGT(ds.ControlDrivingSystem):
                 logger.warning('Sending sequence...')
 
                 self.send_sequence(seq1, seq2, seq3, seq4, duration_ms)
-                self.execute_sequence(seq1, seq2, seq3, seq4, duration_ms)
+                self.execute_sequence(seq1, seq2, seq3, seq4, duration_ms, debug_info)
 
         else:
             logger.warning("No connection with driving system.")
@@ -626,7 +626,7 @@ class IGT(ds.ControlDrivingSystem):
             # if no connection can be made, program stops preventing infinite loop
             self.connect(seq1.driving_sys.connect_info)
             self.send_sequence(seq1, seq2, seq3, seq4, duration_ms)
-            self.execute_sequence(seq1, seq2, seq3, seq4, duration_ms)
+            self.execute_sequence(seq1, seq2, seq3, seq4, duration_ms, debug_info)
 
     def disconnect(self):
         """
