@@ -8,8 +8,6 @@ execute_sequence()/disconnect() don't need connect() at all -- they just
 read/write whatever object sits in self.ser_bitsi, so those tests assign a
 plain mocker.Mock() directly, which is simpler than patching the constructor.
 """
-import pytest
-
 from fus_driving_systems.citrus.citrus_ds import CITRUS
 
 
@@ -65,15 +63,17 @@ def test_disconnect_closes_serial_port_and_marks_disconnected(mocker):
     assert citrus.connected is False
 
 
-def test_disconnect_before_connect_raises_attribute_error():
+def test_disconnect_before_connect_is_a_no_op():
     """
-    Characterizes CURRENT behavior: CITRUS never sets self.ser_bitsi in
-    __init__ (it's only ever assigned inside connect()), and disconnect()'s
-    'if self.ser_bitsi is not None' guard assumes the attribute already
-    exists. Calling disconnect() on a freshly constructed CITRUS that was
-    never connected raises AttributeError rather than a friendly no-op --
-    documented here, not fixed.
+    Regression test for a real bug: CITRUS used to never set self.ser_bitsi
+    in __init__ (it was only ever assigned inside connect()), so
+    disconnect()'s 'if self.ser_bitsi is not None' guard assumed the
+    attribute already existed. Calling disconnect() on a freshly constructed
+    CITRUS that was never connected raised AttributeError instead of a
+    friendly no-op. Fixed by initializing self.ser_bitsi = None in __init__.
     """
     citrus = CITRUS()
-    with pytest.raises(AttributeError):
-        citrus.disconnect()
+
+    citrus.disconnect()
+
+    assert citrus.connected is False

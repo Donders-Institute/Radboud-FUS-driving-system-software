@@ -49,7 +49,16 @@ class CITRUS(ds.ControlDrivingSystem):
 
     Attributes:
         connected (bool): Indicates whether the system is connected.
+        ser_bitsi: Serial connection object for the BITSI interface.
     """
+
+    def __init__(self):
+        """
+        Initializes the CITRUS object.
+        """
+
+        super().__init__()
+        self.ser_bitsi = None
 
     def connect(self, connect_info):
         """
