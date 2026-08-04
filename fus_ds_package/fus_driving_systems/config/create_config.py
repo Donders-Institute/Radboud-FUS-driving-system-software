@@ -118,7 +118,6 @@ config['Focus']['Default.maximum'] = str(1000)  # [mm]
 RAMP_RECT = 'Rectangular - no ramping'
 RAMP_LIN = 'Linear'
 RAMP_TUK = 'Tukey'
-RAMP_SHOTA = 'Shota'
 
 config['Ramp'] = {}
 config['Ramp']['Options'] = '\n'.join([RAMP_RECT, RAMP_LIN, RAMP_TUK])
@@ -126,7 +125,6 @@ config['Ramp']['Default option'] = RAMP_RECT
 config['Ramp']['Option.rect'] = RAMP_RECT
 config['Ramp']['Option.lin'] = RAMP_LIN
 config['Ramp']['Option.tuk'] = RAMP_TUK
-config['Ramp']['Option.shota'] = RAMP_SHOTA
 
 # Timing parameters
 config['Timing'] = {}

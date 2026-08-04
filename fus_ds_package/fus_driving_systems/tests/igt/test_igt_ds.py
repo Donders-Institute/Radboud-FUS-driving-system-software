@@ -214,7 +214,6 @@ class TestGetRampingAmplitude:
     def test_linear_ramp_is_evenly_spaced_from_zero_to_one(self, igt_instance, patch_config):
         patch_config.set('Ramp', 'Option.lin', 'Linear')
         patch_config.set('Ramp', 'Option.tuk', 'Tukey')
-        patch_config.set('Ramp', 'Option.shota', 'Shota')
         sequence = SimpleNamespace(pulse_ramp_shape='Linear', pulse_ramp_dur=10.0)
 
         ampl_ramp = igt_instance._get_ramping_amplitude(sequence, pulse_ramp_temp_res=2.0)
@@ -224,7 +223,6 @@ class TestGetRampingAmplitude:
     def test_tukey_ramp_starts_at_zero_and_ends_at_one(self, igt_instance, patch_config):
         patch_config.set('Ramp', 'Option.lin', 'Linear')
         patch_config.set('Ramp', 'Option.tuk', 'Tukey')
-        patch_config.set('Ramp', 'Option.shota', 'Shota')
         sequence = SimpleNamespace(pulse_ramp_shape='Tukey', pulse_ramp_dur=10.0)
 
         ampl_ramp = igt_instance._get_ramping_amplitude(sequence, pulse_ramp_temp_res=2.0)
@@ -233,18 +231,6 @@ class TestGetRampingAmplitude:
         assert ampl_ramp[0] == pytest.approx(0.0, abs=1e-9)
         assert ampl_ramp[-1] == pytest.approx(1.0, abs=1e-9)
         assert np.all(np.diff(ampl_ramp) >= -1e-9)  # monotonically non-decreasing
-
-    def test_shota_ramp_has_expected_length_and_starts_at_half(self, igt_instance, patch_config):
-        patch_config.set('Ramp', 'Option.lin', 'Linear')
-        patch_config.set('Ramp', 'Option.tuk', 'Tukey')
-        patch_config.set('Ramp', 'Option.shota', 'Shota')
-        sequence = SimpleNamespace(pulse_ramp_shape='Shota', pulse_ramp_dur=10.0)
-
-        ampl_ramp = igt_instance._get_ramping_amplitude(sequence, pulse_ramp_temp_res=2.0)
-
-        assert len(ampl_ramp) == 5
-        # x[0] = 0 -> 0.5 * (1 + sin(-pi/2)) = 0.5 * (1 - 1) = 0
-        assert ampl_ramp[0] == pytest.approx(0.0, abs=1e-9)
 
 
 class TestApplyRamping:
@@ -259,7 +245,6 @@ class TestApplyRamping:
         patch_config.set('Equipment.Manufacturer.IGT', 'Max. amount of ramping steps', '1023')
         patch_config.set('Ramp', 'Option.lin', 'Linear')
         patch_config.set('Ramp', 'Option.tuk', 'Tukey')
-        patch_config.set('Ramp', 'Option.shota', 'Shota')
         sequence = SimpleNamespace(pulse_ramp_shape='Linear', pulse_ramp_dur=10.0)
 
         connected_instance._apply_ramping(sequence)
@@ -279,7 +264,6 @@ class TestApplyRamping:
         patch_config.set('Equipment.Manufacturer.IGT', 'Max. amount of ramping steps', '10')
         patch_config.set('Ramp', 'Option.lin', 'Linear')
         patch_config.set('Ramp', 'Option.tuk', 'Tukey')
-        patch_config.set('Ramp', 'Option.shota', 'Shota')
         # ramp_n_steps = pulse_ramp_dur / min_res = 10 / 0.1 = 100 > max_steps (10)
         # -> min_ramp_temp_res gets recomputed as pulse_ramp_dur / max_steps = 1.0
         sequence = SimpleNamespace(pulse_ramp_shape='Linear', pulse_ramp_dur=10.0)

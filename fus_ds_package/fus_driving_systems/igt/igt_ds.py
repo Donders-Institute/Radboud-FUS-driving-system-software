@@ -875,7 +875,6 @@ class IGT(ds.ControlDrivingSystem):
 
         lin_ramp = get_config_value(logger, config, 'Ramp', 'Option.lin', 'Linear')
         tuk_ramp = get_config_value(logger, config, 'Ramp', 'Option.tuk', 'Tukey')
-        shota_ramp = get_config_value(logger, config, 'Ramp', 'Option.shota', 'Shota')
         if sequence.pulse_ramp_shape == lin_ramp:  # Linear ramping
             # amount of points where ramping is applied
             n_points = math.floor(sequence.pulse_ramp_dur/pulse_ramp_temp_res)
@@ -889,15 +888,5 @@ class IGT(ds.ControlDrivingSystem):
             ampl_ramp = np.zeros(n_points)
             for i in range(n_points):
                 ampl_ramp[i] = 0.5 * (1 + math.cos((2*math.pi/alpha) * (x[i] - alpha/2)))
-
-        elif sequence.pulse_ramp_shape == shota_ramp:
-            # amount of points where ramping is applied
-            n_points = math.floor(sequence.pulse_ramp_dur/pulse_ramp_temp_res)
-            pulse_ramp_dur_s = sequence.pulse_ramp_dur / 1000
-            f = 1 / (2 * pulse_ramp_dur_s)   # [Hz]
-            x = np.linspace(0, pulse_ramp_dur_s, n_points)
-            ampl_ramp = np.zeros(n_points)
-            for i in range(n_points):
-                ampl_ramp[i] = 0.5 * (1 + math.sin(2*math.pi*f*x[i] - math.pi/2))
 
         return ampl_ramp
