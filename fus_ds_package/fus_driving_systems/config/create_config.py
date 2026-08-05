@@ -57,6 +57,7 @@ config['Logging']['Timestamp format'] = '%Y-%m-%d_%H-%M-%S'
 config['Logging']['Log level console'] = 'INFO'
 config['Logging']['Log level file'] = 'DEBUG'
 config['Logging']['Initial part of log filename'] = 'log_'
+config['Logging']['Max log file size [MB]'] = str(10)
 
 # Trigger options
 TRIG_NONE = 'None'

@@ -35,11 +35,14 @@ import sys
 # Miscellaneous packages
 from datetime import datetime
 import logging
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
+import zipfile
 
 # Own packages
 from fus_driving_systems.config.config import config_info as config
 from fus_driving_systems.utils import get_config_value
+
 
 # A real logging.getLogger(...) singleton from the moment this module is imported (rather than
 # None until initialize_logger() runs), so any module that reads it before
@@ -64,6 +67,56 @@ def get_logger():
     """
 
     return logger
+
+
+class ZipRotatingFileHandler(RotatingFileHandler):
+    """
+    A size-based rotating file handler that zips each rotated log file instead of using
+    RotatingFileHandler's default numbered '.1', '.2', ... suffixes (GitHub issue #75). Used
+    only by initialize_logger() below.
+
+    doRollover() zips the base log file to '<base filename>.<rollover timestamp>_<rollover
+    count>.zip' (the rollover timestamp and counter avoid collisions across several rollovers
+    within the same second), then reopens the base path as a fresh, empty file -- so it's kept
+    forever, never renumbered or deleted. The record that triggered the rollover ends up in
+    that fresh file: RotatingFileHandler.emit() (not overridden here) calls doRollover() before
+    actually writing.
+
+    __init__ restores self.mode to what was requested: RotatingFileHandler.__init__ silently
+    forces mode to 'a' whenever maxBytes > 0 (so a restarted long-running service keeps
+    appending instead of losing history), which doesn't apply here since doRollover() already
+    preserves old content via zip before each fresh start.
+    """
+
+    def __init__(self, filename, mode='w', maxBytes=0, backupCount=0, encoding=None,
+                 delay=False, errors=None):
+        super().__init__(filename, mode=mode, maxBytes=maxBytes, backupCount=backupCount,
+                         encoding=encoding, delay=delay, errors=errors)
+        # RotatingFileHandler.__init__ silently forces mode to 'a' whenever maxBytes > 0 (so a
+        # restarted process appends to an existing file instead of truncating it) -- but
+        # doRollover() below always reads and zips the full current content before reopening,
+        # so each post-rollover file must start fresh and empty, not appended to.
+        self.mode = mode
+        self._rollover_count = 0
+
+    def doRollover(self):
+        if self.stream:
+            self.stream.close()
+            self.stream = None
+
+        timestamp_format = get_config_value(None, config, 'Logging', 'Timestamp format',
+                                            '%Y-%m-%d_%H-%M-%S')
+        timestamp = datetime.now().strftime(timestamp_format)
+        self._rollover_count += 1
+        # The rollover counter guarantees a unique filename even if Timestamp format's
+        # resolution (e.g. whole seconds) can't tell two rollovers apart -- a real risk here,
+        # since a small configured max size can trigger several rollovers within one second.
+        rotated_path = f'{self.baseFilename}.{timestamp}_{self._rollover_count}.zip'
+        with zipfile.ZipFile(rotated_path, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            zip_file.write(self.baseFilename, arcname=os.path.basename(self.baseFilename))
+
+        if not self.delay:
+            self.stream = self._open()
 
 
 def initialize_logger(log_dir, filename):
@@ -97,8 +150,11 @@ def initialize_logger(log_dir, filename):
     # create file handler
     initial_part_log_filename = get_config_value(None, config, 'Logging',
                                                  'Initial part of log filename', 'log_')
-    file_handler = logging.FileHandler(os.path.join(log_dir, initial_part_log_filename +
-                                                    f'{timestamp}_' + filename + '.txt'), mode='w')
+    max_log_file_size_mb = float(get_config_value(None, config, 'Logging',
+                                                  'Max log file size [MB]', 10))
+    file_handler = ZipRotatingFileHandler(
+        os.path.join(log_dir, initial_part_log_filename + f'{timestamp}_' + filename + '.txt'),
+        mode='w', maxBytes=int(max_log_file_size_mb * 1024 * 1024), backupCount=0)
 
     # create console handler
     console_handler = logging.StreamHandler(sys.stdout)
