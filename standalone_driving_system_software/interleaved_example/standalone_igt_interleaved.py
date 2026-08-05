@@ -94,6 +94,32 @@ try:
     # or even better wait for trigger
     igt_driving_sys.wait_for_trigger(seq1, seq2, seq3, seq4, total_duration_ms)
 
+    # wait_for_trigger() above only arms the sequence to fire on the external trigger and
+    # returns immediately -- it does NOT wait for, or check, the actual execution result. The
+    # driving system only reports success/failure once the triggered execution is actually
+    # finished, which can happen at an unpredictable moment later (whenever your external
+    # trigger fires).
+    #
+    # Call wait_for_trigger_result() once you expect the trigger to have fired (or with a
+    # generous timeout covering your full protocol) to block until completion and exit if the
+    # driving system reports the execution failed. total_duration_ms above is reused here since
+    # it already describes how long this triggered protocol is expected to take.
+    #
+    # Note: an execution error is always logged immediately when it happens (regardless of when
+    # you call this), but your code will only actively react to it (via sys.exit()) once
+    # wait_for_trigger_result() is called -- calling it late means reacting late, even though
+    # the failure itself was already recorded at the real time it occurred.
+    #
+    # If you have other work to do while waiting for the external trigger (e.g. waiting on
+    # other equipment), use the non-blocking has_execution_error() instead, in your own polling
+    # loop, for real-time reaction instead of only finding out at the end:
+    #
+    # while <your own condition, e.g. still waiting on the scanner>:
+    #     if igt_driving_sys.has_execution_error() is not None:
+    #         ...  # react immediately (log, stop other equipment, sys.exit(), ...)
+    #     <do other work / short sleep>
+    igt_driving_sys.wait_for_trigger_result(timeout_s=total_duration_ms / 1000.0)
+
 finally:
     # When the sequence is executed using execute_sequence(), the system will be disconnected
     # automatically. In the case your code is stopped abruptly, the driving system will be

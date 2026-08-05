@@ -130,6 +130,7 @@ class TestSequenceCallbacks:
         listener.onSequenceResult(exec_id=1, exec_index=0, pulse_index=0, error_code=0)
 
         assert listener._running is False
+        assert listener.exec_error_code is None
 
     def test_on_sequence_result_clears_running_flag_on_error(self):
         listener = ExecListener()
@@ -138,6 +139,28 @@ class TestSequenceCallbacks:
         listener.onSequenceResult(exec_id=1, exec_index=0, pulse_index=1, error_code=7)
 
         assert listener._running is False
+
+    def test_on_sequence_result_stores_error_code_on_error(self):
+        """GitHub issue #112: onSequenceResult() used to only log the error, with nothing
+        callers could check afterwards -- igt_ds.py's execute_sequence() now reads this
+        attribute (on the calling thread, after wait_sequence() returns) and sys.exit()s,
+        since unifus.FUSListener's own docstring says exceptions raised inside its callbacks
+        are not propagated to Python (so sys.exit() cannot live in the callback itself)."""
+        listener = ExecListener()
+
+        listener.onSequenceResult(exec_id=1, exec_index=0, pulse_index=0, error_code=2863311530)
+
+        assert listener.exec_error_code == 2863311530
+
+    def test_on_sequence_result_resets_error_code_on_a_later_success(self):
+        """The listener object is reused across executions -- a stale error_code from a
+        previous failed execution must not leak into a later successful one."""
+        listener = ExecListener()
+        listener.exec_error_code = 2863311530
+
+        listener.onSequenceResult(exec_id=2, exec_index=0, pulse_index=0, error_code=0)
+
+        assert listener.exec_error_code is None
 
 
 class TestMechanicCallbacks:

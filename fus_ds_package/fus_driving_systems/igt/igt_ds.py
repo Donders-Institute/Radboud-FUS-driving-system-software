@@ -550,6 +550,48 @@ class IGT(ds.ControlDrivingSystem):
             self.send_sequence(seq1, seq2, seq3, seq4, duration_ms)
             self.wait_for_trigger(seq1, seq2, seq3, seq4, duration_ms, debug_info)
 
+    def wait_for_trigger_result(self, timeout_s=5.0):
+        """
+        Waits (blocking) for a previously armed triggered sequence to finish, and exits if the
+        driving system reports its execution failed.
+
+        wait_for_trigger() only arms the sequence to fire on the external trigger and returns
+        immediately -- it does not wait for or observe the actual execution result (see GitHub
+        issue #112). Call this once the external trigger is expected to have fired (or with a
+        generous timeout) to check that the driving system actually reported success.
+
+        Parameters:
+            timeout_s (float): How long to wait for the triggered execution to finish, in
+            seconds.
+        """
+
+        self.listener.wait_sequence(timeout_s)
+
+        if self.listener.exec_error_code is not None:
+            message = ('Sequence execution failed on the driving system (error ' +
+                       f'code: {self.listener.exec_error_code}). No ultrasound was ' +
+                       'emitted.')
+            get_logger().critical(message)
+            sys.exit(message)
+
+    def has_execution_error(self):
+        """
+        Non-blocking check for whether the previously armed/started execution has failed.
+
+        Unlike wait_for_trigger_result(), this returns immediately with whatever the listener
+        currently knows instead of blocking -- call it repeatedly (e.g. in your own polling
+        loop) while waiting for an external trigger to fire, for real-time reaction to a
+        failure instead of only finding out once you call wait_for_trigger_result(). This does
+        not exit on error itself: it is a getter, so the caller decides what to do (log, stop
+        other equipment, exit, ...).
+
+        Returns:
+            int or None: The driving system's error code if the last (or in-progress)
+            execution failed, None if it succeeded or hasn't finished yet.
+        """
+
+        return self.listener.exec_error_code
+
     def execute_sequence(self, seq1, seq2=None, seq3=None, seq4=None, duration_ms=0,
                          debug_info=True):
         """
@@ -612,6 +654,13 @@ class IGT(ds.ControlDrivingSystem):
                     self.gen.startSequence()
                     self.listener.wait_sequence(sent_seq_info.get('total_sequence_duration_ms') /
                                                 1000.0)
+
+                    if self.listener.exec_error_code is not None:
+                        message = ('Sequence execution failed on the driving system (error ' +
+                                   f'code: {self.listener.exec_error_code}). Potentially no ' +
+                                   'ultrasound emitted.')
+                        get_logger().critical(message)
+                        sys.exit(message)
 
                 except Exception as why:
                     message = f"Exception: {why}"

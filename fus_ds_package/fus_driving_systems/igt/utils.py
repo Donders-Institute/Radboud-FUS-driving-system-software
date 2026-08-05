@@ -50,6 +50,11 @@ class ExecListener(unifus.FUSListener):
         self._running = False
         self.pulse_results = []
         self.exec_result = None
+        # Set by onSequenceResult() when a sequence execution fails; unifus.FUSListener's
+        # callbacks cannot propagate exceptions to Python (see its docstring), so this is read
+        # back and acted on (sys.exit()) by the caller on the main thread, after wait_sequence()
+        # returns, rather than raised here.
+        self.exec_error_code = None
         # for mechanics
         self._finding_origin = False
         self._moving = False
@@ -113,8 +118,10 @@ class ExecListener(unifus.FUSListener):
     def onSequenceResult(self, exec_id, exec_index, pulse_index, error_code):
         self._running = False
         if error_code == 0:
+            self.exec_error_code = None
             get_logger().debug(f"Listener: EXEC RESULT SUCCESS (exec: {exec_index})")
         else:
+            self.exec_error_code = error_code
             get_logger().error(f"Listener: EXEC RESULT ERROR (code: {error_code}, "
                                f"on exec: {exec_index}, pulse: {pulse_index})")
 

@@ -685,6 +685,7 @@ class TestExecuteSequence:
             instance.connected = True
             instance.gen = mocker.Mock()
             instance.listener = mocker.Mock()
+            instance.listener.exec_error_code = None
         mock_connect = mocker.patch.object(instance, 'connect', side_effect=fake_connect)
 
         def fake_send_sequence(*args, **kwargs):
@@ -713,6 +714,38 @@ class TestExecuteSequence:
 
         with pytest.raises(SystemExit):
             connected_instance.execute_sequence(fake_sequence, debug_info=False)
+
+    def test_exits_when_listener_reports_sequence_execution_error(self, connected_instance):
+        """GitHub issue #112: unifus.FUSListener's onSequenceResult callback used to only log
+        the error (see igt/utils.py's ExecListener) -- execute_sequence() itself never noticed,
+        so the program silently continued as if ultrasound had actually been emitted.
+
+        unifus.FUSListener's own docstring states exceptions raised inside its callbacks are
+        not propagated to Python, so sys.exit() cannot live inside onSequenceResult itself --
+        it has to be raised here, in execute_sequence(), after wait_sequence() returns on the
+        calling thread. ExecListener.onSequenceResult() stores the failure on
+        self.exec_error_code (a plain attribute set, unaffected by that restriction); this
+        checks that execute_sequence() then acts on it."""
+        connected_instance.sent_seqs = {1: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
+                                            'total_sequence_duration_ms': 500.0}}
+        connected_instance.listener.exec_error_code = 2863311530
+        fake_sequence = SimpleNamespace(seq_num=1, pulse_dur=0.5, pulse_ramp_dur=0,
+                                        pulse_ramp_shape='Rectangular - no ramping')
+
+        with pytest.raises(SystemExit):
+            connected_instance.execute_sequence(fake_sequence, debug_info=False)
+
+    def test_does_not_exit_when_listener_reports_no_error(self, connected_instance):
+        """Mirrors the test above: a successful execution (exec_error_code left at None by
+        ExecListener.onSequenceResult()) must not raise."""
+        connected_instance.sent_seqs = {1: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
+                                            'total_sequence_duration_ms': 500.0}}
+        fake_sequence = SimpleNamespace(seq_num=1, pulse_dur=0.5, pulse_ramp_dur=0,
+                                        pulse_ramp_shape='Rectangular - no ramping')
+
+        connected_instance.execute_sequence(fake_sequence, debug_info=False)  # must not raise
+
+        connected_instance.listener.wait_sequence.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -875,6 +908,7 @@ class TestWaitForTrigger:
             instance.connected = True
             instance.gen = mocker.Mock()
             instance.listener = mocker.Mock()
+            instance.listener.exec_error_code = None
         mock_connect = mocker.patch.object(instance, 'connect', side_effect=fake_connect)
 
         def fake_send_sequence(*args, **kwargs):
@@ -905,6 +939,59 @@ class TestWaitForTrigger:
 
         with pytest.raises(SystemExit):
             connected_instance.wait_for_trigger(fake_sequence, debug_info=False)
+
+
+# ---------------------------------------------------------------------------
+# wait_for_trigger_result
+# ---------------------------------------------------------------------------
+
+class TestWaitForTriggerResult:
+    """GitHub issue #112: unlike execute_sequence(), wait_for_trigger() only arms the sequence
+    to fire on the external trigger and returns immediately -- it never waits for or observes
+    the actual (eventual, externally-triggered) execution result. wait_for_trigger_result() is
+    the method a caller invokes separately, once the external trigger is expected to have
+    fired, to block until completion and check the listener's exec_error_code."""
+
+    def test_exits_when_listener_reports_sequence_execution_error(self, connected_instance):
+        connected_instance.listener.exec_error_code = 2863311530
+
+        with pytest.raises(SystemExit):
+            connected_instance.wait_for_trigger_result()
+
+        connected_instance.listener.wait_sequence.assert_called_once_with(5.0)
+
+    def test_does_not_exit_when_listener_reports_no_error(self, connected_instance):
+        connected_instance.wait_for_trigger_result(timeout_s=10.0)  # must not raise
+
+        connected_instance.listener.wait_sequence.assert_called_once_with(10.0)
+
+
+# ---------------------------------------------------------------------------
+# has_execution_error
+# ---------------------------------------------------------------------------
+
+class TestHasExecutionError:
+    """Non-blocking counterpart to wait_for_trigger_result(): a plain getter over
+    self.listener.exec_error_code, meant to be polled repeatedly by the caller's own code for
+    real-time reaction while waiting for an external trigger, instead of only finding out once
+    a blocking wait_for_trigger_result() call is made."""
+
+    def test_returns_error_code_when_listener_reports_an_error(self, connected_instance):
+        connected_instance.listener.exec_error_code = 2863311530
+
+        assert connected_instance.has_execution_error() == 2863311530
+
+    def test_returns_none_when_listener_reports_no_error(self, connected_instance):
+        assert connected_instance.has_execution_error() is None
+
+    def test_does_not_block_or_exit(self, connected_instance):
+        """Unlike wait_for_trigger_result(), this must never call wait_sequence() or raise --
+        it is a pure, immediate getter."""
+        connected_instance.listener.exec_error_code = 2863311530
+
+        connected_instance.has_execution_error()  # must not raise
+
+        connected_instance.listener.wait_sequence.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
