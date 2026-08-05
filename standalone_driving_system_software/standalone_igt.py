@@ -31,12 +31,9 @@ README.md file of https://github.com/Donders-Institute/Radboud-FUS-driving-syste
 # IGT example
 # Note: you can click on each parameter to get more information
 
-
 ##############################################################################
 # initialize logging.
 ##############################################################################
-
-from fus_driving_systems.config.config import config_info as config
 
 from fus_driving_systems.config.logging_config import initialize_logger
 
@@ -51,20 +48,16 @@ logger = initialize_logger(log_dir, filename)
 # sync_logger(logger)  # logger needs to be created with logging.getLogger()
 
 ##############################################################################
-# import the 'fus_driving_systems - sequence' into your code
-##############################################################################
-
-import sys
-
-from fus_driving_systems import driving_system, transducer
-from fus_driving_systems import sequence
-from fus_driving_systems.utils import get_config_value
-
-##############################################################################
 # create a sequence for an IGT driving system
 # a sequence can be created in advance and a new sequence can be defined
 # later on in the code
 ##############################################################################
+
+import sys
+
+from fus_driving_systems import driving_system, sequence, transducer
+from fus_driving_systems.config.config import config_info as config
+from fus_driving_systems.utils import get_config_value
 
 seq1 = sequence.Sequence()
 
@@ -129,7 +122,7 @@ if use_two_transducers:
     seq2.focus_wrt_exit_plane = 80  # [mm], focal depth w.r.t. the exit plane and FWHM middle
     # seq2.focus_wrt_mid_bowl = 69.1  # [mm], focal depth w.r.t. the radiating surface and FWHM middle
 
-    # Degree used to dephase every nth elemen based on chosen degree. None = no dephasing
+    # Degree used to dephase every nth element based on chosen degree. None = no dephasing
     # One value (>0) is the degree of dephasing, for example [90] with 4 elements: 1 elem: 0
     # dephasing. 2 elem: 90 dephasing, 3 elem: 180 dephasing, 4 elem: 270 dephasing.
     # When the amount of values match the amount of elements, it will override the calculated phases
@@ -203,7 +196,7 @@ else:
 # sequence by implementing 'execute_sequence()' into your code or by using the external trigger.
 
 ##############################################################################
-# import the 'fus_driving_systems - ds' into your code
+# connect with the driving system
 ##############################################################################
 
 from fus_driving_systems.igt import igt_ds

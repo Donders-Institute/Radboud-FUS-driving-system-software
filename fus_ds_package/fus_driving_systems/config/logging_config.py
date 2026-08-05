@@ -41,7 +41,29 @@ from pathlib import Path
 from fus_driving_systems.config.config import config_info as config
 from fus_driving_systems.utils import get_config_value
 
-logger = None
+# A real logging.getLogger(...) singleton from the moment this module is imported (rather than
+# None until initialize_logger() runs), so any module that reads it before
+# initialize_logger()/sync_logger() ever runs still gets a valid, usable logger object instead
+# of crashing on a None attribute access.
+logger = logging.getLogger(
+    get_config_value(None, config, 'Logging', 'Logger name', 'driving_system'))
+
+
+def get_logger():
+    """
+    Returns the currently active shared logger.
+
+    Modules that need to log should call this at each log call site (e.g.
+    'get_logger().info(...)') instead of doing 'from ...logging_config import logger' once at
+    their own import time: initialize_logger()/sync_logger() can (re)point 'logger' at a
+    different or reconfigured object later on, and a function call always reads the current
+    value, so callers never end up holding a stale reference from before that happened.
+
+    Returns:
+        logging.Logger: The currently active shared logger.
+    """
+
+    return logger
 
 
 def initialize_logger(log_dir, filename):
@@ -100,5 +122,20 @@ def initialize_logger(log_dir, filename):
 
 
 def sync_logger(new_logger):
-    global logger
-    logger = new_logger
+    """
+    Points our shared logger at an externally provided (e.g. host application's) logger's
+    handlers, level and propagation setting.
+
+    Mutates the existing logger object in place instead of rebinding this module's 'logger'
+    name to a different object: every consumer module calls get_logger() at each log call site
+    rather than caching a reference, so it always reads whatever this mutates -- a plain rebind
+    here would still work for them, but would not reach any (unlikely) caller that cached
+    logging_config.logger itself instead of calling get_logger().
+
+    Parameters:
+        new_logger (logging.Logger): The externally provided logger to mirror.
+    """
+
+    logger.handlers = list(new_logger.handlers)
+    logger.setLevel(new_logger.level)
+    logger.propagate = new_logger.propagate

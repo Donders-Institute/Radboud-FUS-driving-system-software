@@ -60,30 +60,28 @@ def test_read_additional_config_merges_into_shared_config_info(isolated_config_i
     assert isolated_config_info["UnitTestSection"]["another_key"] == "another_value"
 
 
-def test_sync_config_replaces_module_reference_but_does_not_propagate_to_earlier_consumers():
+def test_sync_config_merges_in_place_and_propagates_to_earlier_consumers(isolated_config_info):
     """
-    Characterizes CURRENT (broken/unused) behavior: sync_config() rebinds
-    config.py's own 'config_info' name to a new object, but every module
-    that already did 'from ...config import config_info as config' at its
-    own import time (driving_system.py, transducer.py, sequence.py, the
-    hardware subpackages) keeps pointing at the OLD object -- the rebind
-    never reaches them. sync_config() is confirmed unused anywhere in the
-    codebase; this test documents why it wouldn't work if something started
-    calling it, rather than asserting it's correct.
-    """
+    SOLVED: sync_config() is the public integration point used by the SonoRover One host
+    application, which already has its own config loaded and wants ours to pick up its
+    overrides. It used to rebind config.py's own 'config_info' name to a new object, which
+    every module that already did 'from ...config import config_info as config' at its own
+    import time (driving_system.py, transducer.py, sequence.py, the hardware subpackages)
+    would never see -- the rebind didn't reach them. Now it merges the incoming config into the
+    existing config_info object in place (config_info.update(...), same as
+    read_additional_config()), so already-bound consumers see the update regardless of import
+    order, and existing sections/keys not present in the incoming config are preserved."""
     import configparser
 
     from fus_driving_systems import driving_system
 
-    original_config_info = config_module.config_info
     new_config = configparser.ConfigParser()
     new_config["Marker"] = {"present": "yes"}
 
-    try:
-        config_module.sync_config(new_config)
+    config_module.sync_config(new_config)
 
-        assert config_module.config_info is new_config
-        assert driving_system.config is original_config_info
-        assert driving_system.config is not new_config
-    finally:
-        config_module.sync_config(original_config_info)
+    assert config_module.config_info is isolated_config_info
+    assert driving_system.config is isolated_config_info
+    assert driving_system.config["Marker"]["present"] == "yes"
+    # Existing sections not present in new_config must survive the merge.
+    assert "Ramp" in driving_system.config

@@ -40,7 +40,7 @@ import serial
 from fus_driving_systems import control_driving_system as ds
 
 # Access the logger
-from fus_driving_systems.config.logging_config import logger
+from fus_driving_systems.config.logging_config import get_logger
 
 
 class CITRUS(ds.ControlDrivingSystem):
@@ -69,7 +69,7 @@ class CITRUS(ds.ControlDrivingSystem):
             connect_info (str): Path with CITRUS driving system-specific configuration file.
         """
 
-        logger.info('Connecting with BITSI...')
+        get_logger().info('Connecting with BITSI...')
 
         # set up BITSI connection
         self.ser_bitsi = serial.Serial()
@@ -93,22 +93,22 @@ class CITRUS(ds.ControlDrivingSystem):
                 used equipment (driving system and transducer)
         """
 
-        logger.info('Validating sequence...')
+        get_logger().info('Validating sequence...')
 
         error_messages = self.validate_sequence(seq)
         if error_messages:
             for error in error_messages:
-                logger.critical(error)
+                get_logger().critical(error)
             sys.exit('(Multiple) error(s) found when validating sequence, see log file.')
 
-        logger.info('Sending sequence...')
+        get_logger().info('Sending sequence...')
 
     def execute_sequence(self, seq):
         """
         Executes the previously sent sequence on the CITRUS ultrasound driving system.
         """
 
-        logger.info('Executing sequence...')
+        get_logger().info('Executing sequence...')
 
         # Stimulation onset (send starting trigger to execute sequence)
         binary = '00100000'  # 32
@@ -123,7 +123,7 @@ class CITRUS(ds.ControlDrivingSystem):
         Disconnects from the CITRUS ultrasound driving system.
         """
 
-        logger.info('Disconnecting...')
+        get_logger().info('Disconnecting...')
 
         if self.ser_bitsi is not None:
             self.ser_bitsi.close()

@@ -61,8 +61,24 @@ def read_additional_config(file_path):
 
 
 def sync_config(new_config):
-    global config_info
-    config_info = new_config
+    """
+    Merges an externally provided (e.g. host application's) config into our shared config_info,
+    in place.
+
+    Mutates the existing ConfigParser object in place instead of rebinding this module's
+    'config_info' name to a different object: every module that already did
+    'from fus_driving_systems.config.config import config_info as config' at its own import
+    time holds a reference to that same object, so an in-place merge reaches them regardless of
+    import order -- a plain rebind here would not (they would keep pointing at the old object).
+    Uses the same ConfigParser.update() merge already used by read_additional_config() (a
+    section present in new_config replaces that whole section here; sections absent from
+    new_config are left untouched).
+
+    Parameters:
+        new_config (configparser.ConfigParser): The externally provided config to merge in.
+    """
+
+    config_info.update(new_config)
 
 
 # Automatically read the main configuration file when the module is imported

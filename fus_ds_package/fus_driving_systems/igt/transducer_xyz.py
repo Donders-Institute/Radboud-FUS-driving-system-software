@@ -45,7 +45,7 @@ import math
 # Access the logger
 from fus_driving_systems.config.config import config_info as config
 from fus_driving_systems.utils import get_config_value
-from fus_driving_systems.config.logging_config import logger
+from fus_driving_systems.config.logging_config import get_logger
 
 try:  # for Python 2/3 compatibility
     from StringIO import StringIO
@@ -57,7 +57,7 @@ except ImportError:
     import configparser as cfg
 
 
-SOUND_SPEED_WATER = float(get_config_value(logger, config, 'General',
+SOUND_SPEED_WATER = float(get_config_value(get_logger(), config, 'General',
                                            'Speed of sound water [m/s]',
                                            1500.0))  # sound speed in water, m.s-1
 TWO_PI = 2.0 * math.pi      # 2 pi, rad
@@ -101,7 +101,7 @@ class Transducer:
             return self.load_from_string(text)
         except IOError as e:
             message = f'Error: {e}'
-            logger.critical(message)
+            get_logger().critical(message)
             sys.exit(message)
 
             return False
@@ -111,7 +111,7 @@ class Transducer:
         stringio = StringIO(definition)
         if config.readfp(stringio) == []:
             message = 'Error: empty content'
-            logger.critical(message)
+            get_logger().critical(message)
             sys.exit(message)
 
             return False
@@ -126,13 +126,13 @@ class Transducer:
             size = config.getint("elements", "size")
         except (cfg.Error, ValueError):
             message = "Error: missing 'elements.size' parameter"
-            logger.critical(message)
+            get_logger().critical(message)
             sys.exit(message)
 
             return False
         if size == 0:
             message = "Error: size is 0"
-            logger.critical(message)
+            get_logger().critical(message)
             sys.exit(message)
 
             return False
@@ -147,7 +147,7 @@ class Transducer:
                 self.elements.append(item)
             except Exception as ex:
                 message = f"Error: {ex}"
-                logger.critical(message)
+                get_logger().critical(message)
                 sys.exit(message)
 
                 return False
@@ -176,7 +176,7 @@ class Transducer:
         if freq_count == 0 or pulse.frequency(0) == 0:
             message = ("Error: the frequencies must be defined in the pulse before calling" +
                        "compute_phases().")
-            logger.critical(message)
+            get_logger().critical(message)
             sys.exit(message)
 
             return False
@@ -185,7 +185,7 @@ class Transducer:
         elif freq_count != self.channel_count():
             message = (f"Error: bad number of frequencies ({freq_count} in pulse, " +
                        f"{self.channel_count()} elements in transducer)")
-            logger.critical(message)
+            get_logger().critical(message)
             sys.exit(message)
 
             return False
@@ -210,7 +210,7 @@ class Transducer:
                            'correspond to number of transducer elements ' +
                            f'({self.channel_count()}). Only enter one dephasing value or ' +
                            'n-values equal to the number of transducer elements.')
-                logger.critical(message)
+                get_logger().critical(message)
                 sys.exit(message)
 
             dephasing_degree = dephasing_degree[0]
@@ -228,7 +228,8 @@ class Transducer:
 
         phases_str = ', '.join([format(x, '.2f') for x in phases])
         natural_foc = set_focus_mm + point_mm[2]
-        logger.debug(f'Computed phases for focus wrt mid bowl of {set_focus_mm} and aim w.r.t. ' +
-                     f'natural focus of {natural_foc}: {phases_str}')
+        get_logger().debug(
+            f'Computed phases for focus wrt mid bowl of {set_focus_mm} and aim w.r.t. ' +
+            f'natural focus of {natural_foc}: {phases_str}')
 
         return phases

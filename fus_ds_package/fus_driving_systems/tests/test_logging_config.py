@@ -105,28 +105,64 @@ def test_initialize_logger_does_not_accumulate_handlers_on_repeated_calls(
     assert sum(type(h) is logging.StreamHandler for h in logger.handlers) == 1
 
 
-def test_sync_logger_replaces_module_reference_but_does_not_propagate_to_earlier_consumers():
+def test_sync_logger_mutates_in_place_instead_of_rebinding():
     """
-    Mirrors test_config.py's equivalent test for sync_config(): sync_logger()
-    rebinds logging_config.py's own 'logger' name, but a module that already
-    did 'from ...logging_config import logger' at its own import time (e.g.
-    driving_system.py) keeps pointing at whatever it bound before -- this is
-    exactly why conftest.py's initialize_package_logger fixture patches each
-    consumer module's 'logger' attribute directly instead of relying on
-    sync_logger().
-    """
-    from fus_driving_systems import driving_system
+    SOLVED: sync_logger() is the public integration point used by the SonoRover One host
+    application, which already has its own configured logger and wants our internal logging
+    routed through it. It used to rebind logging_config.py's own 'logger' name to a different
+    object, which any module that had already done 'from ...logging_config import logger' at
+    its own import time would never see -- it kept pointing at whatever it bound before. Now
+    sync_logger() copies the host logger's handlers/level/propagate onto the existing logger
+    object in place instead.
 
+    Every consumer module (sequence.py, driving_system.py, transducer.py, the driving-system
+    subclasses, igt/utils.py, igt/transducer_xyz.py) was itself refactored to call
+    get_logger() at each log call site instead of importing 'logger' as a name, which
+    structurally removes the stale-binding risk for those modules regardless of what
+    sync_logger()/initialize_logger() do -- get_logger() always returns whatever
+    logging_config.logger currently is. This test covers logging_config.sync_logger()'s own
+    contract directly: it must mutate, not rebind."""
     original_logger = logging_config.logger
-    original_consumer_logger = driving_system.logger
+    original_handlers = original_logger.handlers
+    original_level = original_logger.level
+    original_propagate = original_logger.propagate
     stand_in_logger = logging.getLogger("unittest.sync_logger_marker")
+    marker_handler = logging.NullHandler()
+    stand_in_logger.addHandler(marker_handler)
+    stand_in_logger.setLevel(logging.DEBUG)
+    stand_in_logger.propagate = False
 
     try:
         logging_config.sync_logger(stand_in_logger)
 
-        assert logging_config.logger is stand_in_logger
-        assert driving_system.logger is original_consumer_logger
-        assert driving_system.logger is not stand_in_logger
+        assert logging_config.logger is original_logger  # same object, not rebound
+        assert logging_config.logger.handlers == [marker_handler]
+        assert logging_config.logger.level == logging.DEBUG
+        assert logging_config.logger.propagate is False
     finally:
-        logging_config.sync_logger(original_logger)
-        driving_system.logger = original_consumer_logger
+        original_logger.handlers = original_handlers
+        original_logger.setLevel(original_level)
+        original_logger.propagate = original_propagate
+
+
+def test_get_logger_reflects_sync_logger_from_a_consumer_module():
+    """
+    Demonstrates the structural fix end-to-end: driving_system.py (a consumer module) calls
+    get_logger() at each log call site rather than caching 'logger' at its own import time, so
+    it automatically reflects whatever sync_logger() most recently configured -- no matter when
+    driving_system was imported relative to that call."""
+    from fus_driving_systems import driving_system
+
+    original_logger = logging_config.logger
+    original_handlers = original_logger.handlers
+    stand_in_logger = logging.getLogger("unittest.get_logger_marker")
+    marker_handler = logging.NullHandler()
+    stand_in_logger.addHandler(marker_handler)
+
+    try:
+        logging_config.sync_logger(stand_in_logger)
+
+        assert driving_system.get_logger() is original_logger
+        assert driving_system.get_logger().handlers == [marker_handler]
+    finally:
+        original_logger.handlers = original_handlers

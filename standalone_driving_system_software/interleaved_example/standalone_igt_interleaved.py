@@ -35,7 +35,6 @@ README.md file of https://github.com/Donders-Institute/Radboud-FUS-driving-syste
 # initialize logging.
 ##############################################################################
 
-
 from fus_driving_systems.config.logging_config import initialize_logger
 
 log_dir = "C:\\Temp"
@@ -51,12 +50,15 @@ logger = initialize_logger(log_dir, filename)
 ##############################################################################
 # first sequence collection
 ##############################################################################
+
 from sequences import sequence_1_10_ch
 
 seq1, seq2 = sequence_1_10_ch.create_sequence_collection(logger)
+
 ##############################################################################
 # second sequence collection
 ##############################################################################
+
 from sequences import sequence_17_26_ch
 
 seq3, seq4 = sequence_17_26_ch.create_sequence_collection(logger)
@@ -74,10 +76,6 @@ total_duration_ms = 80000  # [ms]
 # when you want to change your sequence in the middle of your experimental code, create a new
 # sequence as above and send the new sequence: 'send_sequence()'. When appropriate, execute your
 # sequence by implementing 'execute_sequence()' into your code or by using the external trigger.
-
-##############################################################################
-# import the 'fus_driving_systems - ds' into your code
-##############################################################################
 
 from fus_driving_systems.igt import igt_ds
 

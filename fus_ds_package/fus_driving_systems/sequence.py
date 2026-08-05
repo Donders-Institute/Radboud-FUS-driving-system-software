@@ -44,7 +44,7 @@ from fus_driving_systems import driving_system as ds
 from fus_driving_systems import transducer as tran
 
 from fus_driving_systems.config.config import config_info as config
-from fus_driving_systems.config.logging_config import logger
+from fus_driving_systems.config.logging_config import get_logger
 from fus_driving_systems.utils import get_config_value
 
 
@@ -118,61 +118,61 @@ class Sequence():
         self._seq_num = 0
 
         # Equipment parameters
-        self._equip_combos = get_config_value(logger, config, 'Equipment', 'Combinations',
+        self._equip_combos = get_config_value(get_logger(), config, 'Equipment', 'Combinations',
                                               '').split('\n')
 
         self._driving_sys = ds.DrivingSystem()
         back_up_default_ds = ds.get_ds_serials()[0]
-        def_ds_serial = get_config_value(logger, config, 'Equipment',
+        def_ds_serial = get_config_value(get_logger(), config, 'Equipment',
                                          'Default driving system serial', back_up_default_ds)
         self.driving_sys = def_ds_serial
 
-        self._wait_for_trigger = get_config_value(logger, config, 'Trigger',
+        self._wait_for_trigger = get_config_value(get_logger(), config, 'Trigger',
                                                   'Default wait_for_trigger', 'False') == 'True'
 
-        back_up_trigger_option = get_config_value(logger, config, 'Trigger', 'Options',
+        back_up_trigger_option = get_config_value(get_logger(), config, 'Trigger', 'Options',
                                                   '').split('\n')[0]
 
-        self._trigger_option = get_config_value(logger, config, 'Trigger', 'Default option',
+        self._trigger_option = get_config_value(get_logger(), config, 'Trigger', 'Default option',
                                                 back_up_trigger_option)
 
-        self._n_triggers = int(get_config_value(logger, config, 'Trigger', 'Default n_triggers',
-                                                0))
+        self._n_triggers = int(get_config_value(
+            get_logger(), config, 'Trigger', 'Default n_triggers', 0))
 
         # set a temporary focus wrt mid bowl and operating frequency to set a default transducer
         self._chosen_power = None
 
-        self._global_power = float(get_config_value(logger, config, 'Power', 'Default.glob_pow',
-                                                    0))  # SC: global power [W]
-        self._press = float(get_config_value(logger, config, 'Power', 'Default.press',
+        self._global_power = float(get_config_value(
+            get_logger(), config, 'Power', 'Default.glob_pow', 0))  # SC: global power [W]
+        self._press = float(get_config_value(get_logger(), config, 'Power', 'Default.press',
                                              0))  # IGT: maximum pressure in free water [MPa]
-        self._volt = float(get_config_value(logger, config, 'Power', 'Default.volt',
+        self._volt = float(get_config_value(get_logger(), config, 'Power', 'Default.volt',
                                             0))  # IGT: voltage [V]
-        self._ampl = float(get_config_value(logger, config, 'Power', 'Default.ampl',
+        self._ampl = float(get_config_value(get_logger(), config, 'Power', 'Default.ampl',
                                             0))  # IGT: amplitude [%]
 
-        self._eq_factor = float(get_config_value(logger, config, 'Power', 'Default.eq_factor',
-                                                 0))  # IGT: normalized pressure
+        self._eq_factor = float(get_config_value(
+            get_logger(), config, 'Power', 'Default.eq_factor', 0))  # IGT: normalized pressure
 
         # IGT: input pressure in free water [MPa]
-        self._input_press_mpa = float(get_config_value(logger, config, 'Power',
+        self._input_press_mpa = float(get_config_value(get_logger(), config, 'Power',
                                                        'Default.input_press', 0))
         # IGT: equalized pressure in free water [MPa]
-        self._eq_press_mpa = float(get_config_value(logger, config, 'Power',
+        self._eq_press_mpa = float(get_config_value(get_logger(), config, 'Power',
                                                     'Default.eq_press', 0))
-        self._calculated_ampl = float(get_config_value(logger, config, 'Power',
+        self._calculated_ampl = float(get_config_value(get_logger(), config, 'Power',
                                                        'Default.calc_ampl',
                                                        0))  # IGT: calculated amplitude [%]
 
-        self._focus_wrt_mid_bowl = float(get_config_value(logger, config, 'Focus', 'Default.bowl',
-                                                          50))  # [mm]
+        self._focus_wrt_mid_bowl = float(get_config_value(
+            get_logger(), config, 'Focus', 'Default.bowl', 50))  # [mm]
 
         # Degree used to dephase every nth elemen based on chosen degree. (None = no dephasing).
         self._dephasing_degree = None
 
         self._transducer = tran.Transducer()
         back_up_default_tran = tran.get_tran_serials()[0]
-        def_tran_serial = get_config_value(logger, config, 'Equipment',
+        def_tran_serial = get_config_value(get_logger(), config, 'Equipment',
                                            'Default transducer serial',
                                            back_up_default_tran)
         self.transducer = def_tran_serial
@@ -180,7 +180,7 @@ class Sequence():
         self._oper_freq = self.transducer.fund_freq  # [kHz]
 
         back_up_focus_option = self.get_focus_options()[0]
-        self._chosen_focus = get_config_value(logger, config, 'Focus', 'Default option',
+        self._chosen_focus = get_config_value(get_logger(), config, 'Focus', 'Default option',
                                               back_up_focus_option)
 
         self._focus_wrt_exit_plane = self._focus_wrt_mid_bowl - self._transducer.exit_plane_dist
@@ -193,36 +193,36 @@ class Sequence():
             "volt_curve_pp": None,
             }
 
-        combo_sign = get_config_value(logger, config, 'Equipment', 'Combination sign', '~')
+        combo_sign = get_config_value(get_logger(), config, 'Equipment', 'Combination sign', '~')
         self._ds_tran_combo = combo_sign.join([self._driving_sys.serial, self._transducer.serial])
         if self.driving_sys.require_conv_eq:
             if self._ds_tran_combo in self._equip_combos:
                 self._update_conv_param()
 
-        back_up_ramp_shape = get_config_value(logger, config, 'Ramp', 'Options',
+        back_up_ramp_shape = get_config_value(get_logger(), config, 'Ramp', 'Options',
                                               '').split('\n')[0]
         # Timing parameters
         self._timing_param = {
             # # Pulse
-            'pulse_dur': float(get_config_value(logger, config, 'Timing', 'Pulse_dur_ms',
+            'pulse_dur': float(get_config_value(get_logger(), config, 'Timing', 'Pulse_dur_ms',
                                                 0.25)),  # [ms]
-            'pulse_rep_int': float(get_config_value(logger, config, 'Timing', 'Pulse_rep_int_ms',
-                                                    20)),  # [ms]
+            'pulse_rep_int': float(get_config_value(
+                get_logger(), config, 'Timing', 'Pulse_rep_int_ms', 20)),  # [ms]
 
             # Rectangular - no ramping, Linear, Tukey
-            'pulse_ramp_shape': get_config_value(logger, config, 'Ramp', 'Default option',
+            'pulse_ramp_shape': get_config_value(get_logger(), config, 'Ramp', 'Default option',
                                                  back_up_ramp_shape),
-            'pulse_ramp_dur': float(get_config_value(logger, config, 'Timing', 'Pulse_ramp_dur_ms',
-                                                     0)),  # [ms]
+            'pulse_ramp_dur': float(get_config_value(
+                get_logger(), config, 'Timing', 'Pulse_ramp_dur_ms', 0)),  # [ms]
 
             # # Pulse train
-            'pulse_train_dur': float(get_config_value(logger, config, 'Timing',
+            'pulse_train_dur': float(get_config_value(get_logger(), config, 'Timing',
                                                       'Pulse_train_dur_ms', 20)),  # [ms]
-            'pulse_train_rep_int': float(get_config_value(logger, config, 'Timing',
+            'pulse_train_rep_int': float(get_config_value(get_logger(), config, 'Timing',
                                                           'Pulse_train_rep_int_ms', 20)),  # [ms]
 
             # Pulse train repetition
-            'pulse_train_rep_dur': float(get_config_value(logger, config, 'Timing',
+            'pulse_train_rep_dur': float(get_config_value(get_logger(), config, 'Timing',
                                                           'Pulse_train_rep_dur', 20)),  # [ms]
 
             }
@@ -246,12 +246,12 @@ class Sequence():
         info += str(self._transducer)
 
         info += "Chosen power option: "
-        opt_glob_pow = get_config_value(logger, config, 'Power', 'Option.glob_pow',
+        opt_glob_pow = get_config_value(get_logger(), config, 'Power', 'Option.glob_pow',
                                         'Global power [mW]')
-        opt_ampl = get_config_value(logger, config, 'Power', 'Option.ampl', 'Amplitude [%]')
-        opt_press = get_config_value(logger, config, 'Power', 'Option.press',
+        opt_ampl = get_config_value(get_logger(), config, 'Power', 'Option.ampl', 'Amplitude [%]')
+        opt_press = get_config_value(get_logger(), config, 'Power', 'Option.press',
                                      'Max. pressure in free water [MPa]')
-        opt_volt = get_config_value(logger, config, 'Power', 'Option.volt', 'Voltage [V]')
+        opt_volt = get_config_value(get_logger(), config, 'Power', 'Option.volt', 'Voltage [V]')
 
         if self.chosen_power == opt_glob_pow:
             info += f"Global power [W]: {self._global_power} \n "
@@ -379,7 +379,8 @@ class Sequence():
         # Check if transducer is initialized
         if hasattr(self, '_transducer'):
             # Update equipment combo
-            combo_sign = get_config_value(logger, config, 'Equipment', 'Combination sign', '~')
+            combo_sign = get_config_value(
+                get_logger(), config, 'Equipment', 'Combination sign', '~')
             self._ds_tran_combo = combo_sign.join([self._driving_sys.serial,
                                                    self._transducer.serial])
             if self.driving_sys.require_conv_eq:
@@ -419,7 +420,7 @@ class Sequence():
             List[str]: Available trigger options.
         """
 
-        return get_config_value(logger, config, 'Trigger', 'Options', '').split('\n')
+        return get_config_value(get_logger(), config, 'Trigger', 'Options', '').split('\n')
 
     @property
     def trigger_option(self):
@@ -442,7 +443,7 @@ class Sequence():
 
         if trigger_option not in self.get_trigger_options():
             message = f'{trigger_option} is not an available option.'
-            logger.critical(message)
+            get_logger().critical(message)
             sys.exit(message)
         else:
             self._trigger_option = trigger_option
@@ -506,7 +507,8 @@ class Sequence():
         # Check if driving system is initialized
         if hasattr(self, '_driving_sys'):
             # Update equipment combo
-            combo_sign = get_config_value(logger, config, 'Equipment', 'Combination sign', '~')
+            combo_sign = get_config_value(
+                get_logger(), config, 'Equipment', 'Combination sign', '~')
             self._ds_tran_combo = combo_sign.join([self._driving_sys.serial,
                                                    self._transducer.serial])
             if self.driving_sys.require_conv_eq:
@@ -555,7 +557,7 @@ class Sequence():
             List[str]: Available power options.
         """
 
-        return get_config_value(logger, config, 'Power', 'Options', '').split('\n')
+        return get_config_value(get_logger(), config, 'Power', 'Options', '').split('\n')
 
     @property
     def chosen_power(self):
@@ -579,7 +581,7 @@ class Sequence():
 
         if chosen_power not in self.get_power_options():
             message = f'{chosen_power} is not an available option.'
-            logger.critical(message)
+            get_logger().critical(message)
             sys.exit(message)
         else:
             self._chosen_power = chosen_power
@@ -608,7 +610,7 @@ class Sequence():
         self._ampl = 0
         self._global_power = 0
 
-        power_option = get_config_value(logger, config, 'Power', 'Option.glob_pow',
+        power_option = get_config_value(get_logger(), config, 'Power', 'Option.glob_pow',
                                         'Global power [mW]')
 
         if power_option in self.driving_sys.power_options:
@@ -621,7 +623,7 @@ class Sequence():
             message = ('Global power parameter is not available for ' +
                        'chosen driving system. Use one of the following options instead: ' +
                        f'{self.driving_sys.power_options}.')
-            logger.critical(message)
+            get_logger().critical(message)
             sys.exit(message)
 
     @property
@@ -648,7 +650,7 @@ class Sequence():
         self._global_power = 0
         self._press = 0
 
-        power_option = get_config_value(logger, config, 'Power', 'Option.press',
+        power_option = get_config_value(get_logger(), config, 'Power', 'Option.press',
                                         'Max. pressure in free water [MPa]')
 
         if power_option in self.driving_sys.power_options:
@@ -656,14 +658,14 @@ class Sequence():
                                           True, True, False, False)
             if is_validated:
 
-                max_press = float(get_config_value(logger, config, 'Power',
+                max_press = float(get_config_value(get_logger(), config, 'Power',
                                                    'Maximum pressure allowed in free water [MPa]',
                                                    1.4))
                 if press > max_press:
                     message = (f'The set maximum pressure in free water of {press} [MPa] is ' +
                                f'crossing the allowed limit of {max_press} [MPa]. Please change' +
                                ' your value.')
-                    logger.critical(message)
+                    get_logger().critical(message)
                     sys.exit(message)
 
                 self._press = press
@@ -678,20 +680,20 @@ class Sequence():
                         # Calculate voltage for logging
                         self._calc_volt()
 
-                        logger.debug('New maximum pressure in free water value of ' +
-                                     f'{self._press:.2f} [MPa] results in a voltage of ' +
-                                     f'{self._volt[0]:.2f} [V] and an amplitude of ' +
-                                     f'{self._ampl[0]:.2f} [%].')
+                        get_logger().debug('New maximum pressure in free water value of ' +
+                                           f'{self._press:.2f} [MPa] results in a voltage of ' +
+                                           f'{self._volt[0]:.2f} [V] and an amplitude of ' +
+                                           f'{self._ampl[0]:.2f} [%].')
                     else:
                         message = ('Conversion equations unknown but required for ' +
                                    f'{self._ds_tran_combo}.')
-                        logger.critical(message)
+                        get_logger().critical(message)
                         sys.exit(message)
         else:
             message = ('Pressure parameter is not available for ' +
                        'chosen driving system. Use one of the following options instead: ' +
                        f'{self.driving_sys.power_options}.')
-            logger.critical(message)
+            get_logger().critical(message)
             sys.exit(message)
 
     @property
@@ -722,7 +724,8 @@ class Sequence():
         self._global_power = 0
         self._volt = 0
 
-        power_option = get_config_value(logger, config, 'Power', 'Option.volt', 'Voltage [V]')
+        power_option = get_config_value(
+            get_logger(), config, 'Power', 'Option.volt', 'Voltage [V]')
 
         if power_option in self.driving_sys.power_options:
             if not isinstance(volt, list):
@@ -735,7 +738,7 @@ class Sequence():
                            f'number of transducer elements ({self.driving_sys.available_ch}). ' +
                            'Only enter one voltage value or n-values equal to the number of ' +
                            'transducer elements.')
-                logger.critical(message)
+                get_logger().critical(message)
                 sys.exit(message)
 
             is_validated = validate_value(volt, 'Voltage [V] (volt)', True, True, False, False,
@@ -762,25 +765,28 @@ class Sequence():
                             # Calculate maximum pressure in free water for logging purposes
                             self._calc_press()
 
-                            logger.debug(f'New voltage value of {round_volt} [V] results in a ' +
-                                         f'maximum pressure in free water of {self._press:.2f} ' +
-                                         f' [MPa] and an amplitude of {round_ampl} [%].')
+                            get_logger().debug(
+                                f'New voltage value of {round_volt} [V] results in a ' +
+                                f'maximum pressure in free water of {self._press:.2f} ' +
+                                f' [MPa] and an amplitude of {round_ampl} [%].')
                         else:
-                            logger.debug('Pressure cannot be calculated when multiple voltages ' +
-                                         'are given.')
-                            logger.debug(f'New voltage value of {round_volt} [V] results in an ' +
-                                         f'amplitude of {round_ampl} [%].')
+                            get_logger().debug(
+                                'Pressure cannot be calculated when multiple voltages ' +
+                                'are given.')
+                            get_logger().debug(
+                                f'New voltage value of {round_volt} [V] results in an ' +
+                                f'amplitude of {round_ampl} [%].')
                     else:
                         message = ('Conversion equations unknown but required for ' +
                                    f'{self._ds_tran_combo}.')
-                        logger.critical(message)
+                        get_logger().critical(message)
                         sys.exit(message)
 
         else:
             message = ('Voltage parameter is not available for ' +
                        'chosen driving system. Use one of the following options instead: ' +
                        f'{self.driving_sys.power_options}.')
-            logger.critical(message)
+            get_logger().critical(message)
             sys.exit(message)
 
     @property
@@ -813,7 +819,8 @@ class Sequence():
         self._global_power = 0
         self._ampl = 0
 
-        power_option = get_config_value(logger, config, 'Power', 'Option.ampl', 'Amplitude [%]')
+        power_option = get_config_value(get_logger(), config, 'Power',
+                                        'Option.ampl', 'Amplitude [%]')
         if power_option in self.driving_sys.power_options:
             if not isinstance(ampl, list):
                 ampl = [ampl]
@@ -825,7 +832,7 @@ class Sequence():
                            f'number of transducer elements ({self.driving_sys.available_ch}). ' +
                            'Only enter one amplitude value or n-values equal to the number of ' +
                            'transducer elements.')
-                logger.critical(message)
+                get_logger().critical(message)
                 sys.exit(message)
 
             is_validated = validate_value(ampl, 'Amplitude [%] (ampl)',
@@ -846,25 +853,28 @@ class Sequence():
 
                         if n_entries > 1:
                             # Equipment is not part a combination, so only set amplitude
-                            logger.debug(f'New amplitude value of {round_ampl} [%] results in a ' +
-                                         f'voltage of {round_volt} [V].')
-                            logger.debug('Amplitude array is given. Pressure cannot ' +
-                                         'be calculated for logging purposes.')
+                            get_logger().debug(
+                                f'New amplitude value of {round_ampl} [%] results in a ' +
+                                f'voltage of {round_volt} [V].')
+                            get_logger().debug(
+                                'Amplitude array is given. Pressure cannot ' +
+                                'be calculated for logging purposes.')
                         else:
                             # Convert amplitude to pressure for logging
                             self._calc_press()
 
-                            logger.debug(f'New amplitude value of {round_ampl} [%] results in a ' +
-                                         f'maximum pressure in free water of {self._press:.2f} ' +
-                                         f'[MPa] and a voltage of {round_volt} [V].')
+                            get_logger().debug(
+                                f'New amplitude value of {round_ampl} [%] results in a ' +
+                                f'maximum pressure in free water of {self._press:.2f} ' +
+                                f'[MPa] and a voltage of {round_volt} [V].')
                     else:
                         message = f'Conversion equations unknown for {self._ds_tran_combo}.'
-                        logger.debug(message)
+                        get_logger().debug(message)
         else:
             message = ('Amplitude parameter is not available for ' +
                        'chosen driving system. Use one of the following options instead: ' +
                        f'{self.driving_sys.power_options}.')
-            logger.critical(message)
+            get_logger().critical(message)
             sys.exit(message)
 
     def get_focus_options(self):
@@ -875,7 +885,7 @@ class Sequence():
             List[str]: Available focus options.
         """
 
-        return get_config_value(logger, config, 'Focus', 'Options', '').split('\n')
+        return get_config_value(get_logger(), config, 'Focus', 'Options', '').split('\n')
 
     @property
     def chosen_focus(self):
@@ -899,7 +909,7 @@ class Sequence():
 
         if chosen_focus not in self.get_focus_options():
             message = f'{chosen_focus} is not an available option.'
-            logger.critical(message)
+            get_logger().critical(message)
             sys.exit(message)
         else:
             self._chosen_focus = chosen_focus
@@ -939,7 +949,7 @@ class Sequence():
                            f'focus range of {self._transducer.min_foc} and ' +
                            f'{self._transducer.max_foc} [mm] of transducer ' +
                            f'{self._transducer.name}.')
-                logger.critical(message)
+                get_logger().critical(message)
                 sys.exit(message)
 
             if self.driving_sys.require_conv_eq:
@@ -949,19 +959,19 @@ class Sequence():
                     message = ('Compensation equations are not available. Focus wrt' +
                                ' mid bowl will be calculated based on exit plane distance of ' +
                                f'{self._transducer.exit_plane_dist} [mm].')
-                    logger.warning(message)
+                    get_logger().warning(message)
 
                     self._focus_wrt_mid_bowl = focus + self._transducer.exit_plane_dist
 
             else:
                 self._focus_wrt_mid_bowl = focus + self._transducer.exit_plane_dist
 
-            self._chosen_focus = get_config_value(logger, config, 'Focus', 'Option.exit',
+            self._chosen_focus = get_config_value(get_logger(), config, 'Focus', 'Option.exit',
                                                   'Focus wrt exit plane [mm]')
             self._focus_wrt_exit_plane = focus
 
-            logger.debug(f'Focus wrt exit plane [mm]: {self._focus_wrt_exit_plane} \n ' +
-                         f'Focus wrt bowl middle [mm]: {self._focus_wrt_mid_bowl}')
+            get_logger().debug(f'Focus wrt exit plane [mm]: {self._focus_wrt_exit_plane} \n ' +
+                               f'Focus wrt bowl middle [mm]: {self._focus_wrt_mid_bowl}')
 
         # Check if pressure compensation is available for chosen equipment
         if self.driving_sys.require_conv_eq:
@@ -982,16 +992,17 @@ class Sequence():
                     round_ampl = f'{self._ampl[0]:.2f}'
                     round_volt = f'{self._volt[0]:.2f}'
 
-                logger.debug("New focus wrt exit plane of " +
-                             f"{self._focus_wrt_exit_plane:.2f} [mm] " +
-                             f" results in an equalization factor of {self._eq_factor:.2f} " +
-                             "recalcultating the maximum pressure in free water as " +
-                             f"{self._press:.2f} [MPa], the voltage as {round_volt} [V], " +
-                             f"and the amplitude as {round_ampl} [%].")
+                get_logger().debug(
+                    "New focus wrt exit plane of " +
+                    f"{self._focus_wrt_exit_plane:.2f} [mm] " +
+                    f" results in an equalization factor of {self._eq_factor:.2f} " +
+                    "recalcultating the maximum pressure in free water as " +
+                    f"{self._press:.2f} [MPa], the voltage as {round_volt} [V], " +
+                    f"and the amplitude as {round_ampl} [%].")
             else:
                 message = ('Conversion equations unknown but required for ' +
                            f'{self._ds_tran_combo}.')
-                logger.critical(message)
+                get_logger().critical(message)
                 sys.exit(message)
 
     @property
@@ -1032,17 +1043,20 @@ class Sequence():
                         self._conv_param['focus_curve_pp'], target_y_value)
 
                     if status:
-                        logger.debug(f"Found x value: {self._focus_wrt_exit_plane} for y = " +
-                                     f"{target_y_value}")
+                        get_logger().debug(
+                            f"Found x value: {self._focus_wrt_exit_plane} for y = " +
+                            f"{target_y_value}")
 
                         # Verify
                         calc_y = self._conv_param['focus_curve_pp'](self._focus_wrt_exit_plane)
-                        logger.debug(f"Verification: pp({self._focus_wrt_exit_plane}) = {calc_y}")
+                        get_logger().debug(
+                            f"Verification: pp({self._focus_wrt_exit_plane}) = {calc_y}")
                     else:
-                        logger.warning(f"Could not find an x value for y = {target_y_value}. " +
-                                       'Focus wrt exit plane will be calculated based on ' +
-                                       'exit plane distance of ' +
-                                       f'{self._transducer.exit_plane_dist} [mm].')
+                        get_logger().warning(
+                            f"Could not find an x value for y = {target_y_value}. " +
+                            'Focus wrt exit plane will be calculated based on ' +
+                            'exit plane distance of ' +
+                            f'{self._transducer.exit_plane_dist} [mm].')
 
                         self._focus_wrt_exit_plane = focus - self._transducer.exit_plane_dist
 
@@ -1050,7 +1064,7 @@ class Sequence():
                     message = ('Compensation equations are not available or applicable. ' +
                                'Focus wrt exit plane will be calculated based on exit plane ' +
                                f'distance of {self._transducer.exit_plane_dist} [mm].')
-                    logger.warning(message)
+                    get_logger().warning(message)
 
                     self._focus_wrt_exit_plane = focus - self._transducer.exit_plane_dist
 
@@ -1066,16 +1080,16 @@ class Sequence():
                            f'focus range of {self._transducer.min_foc} and ' +
                            f'{self._transducer.max_foc} [mm] of transducer ' +
                            f'{self._transducer.name}.')
-                logger.critical(message)
+                get_logger().critical(message)
                 sys.exit(message)
 
-            self._chosen_focus = get_config_value(logger, config, 'Focus', 'Option.bowl',
+            self._chosen_focus = get_config_value(get_logger(), config, 'Focus', 'Option.bowl',
                                                   'Focus wrt mid bowl [mm]')
 
             self._focus_wrt_mid_bowl = focus
 
-            logger.debug(f'Focus wrt exit plane [mm]: {self._focus_wrt_exit_plane} \n ' +
-                         f'Focus wrt bowl middle [mm]: {self._focus_wrt_mid_bowl}')
+            get_logger().debug(f'Focus wrt exit plane [mm]: {self._focus_wrt_exit_plane} \n ' +
+                               f'Focus wrt bowl middle [mm]: {self._focus_wrt_mid_bowl}')
 
         # Check if pressure compensation is available for chosen equipment
         if self.driving_sys.require_conv_eq:
@@ -1096,15 +1110,16 @@ class Sequence():
                     round_ampl = f'{self._ampl[0]:.2f}'
                     round_volt = f'{self._volt[0]:.2f}'
 
-                logger.debug(f"New focus wrt mid bowl of {self._focus_wrt_mid_bowl:.2f} [mm] " +
-                             f"results in an equalization factor of {self._eq_factor:.2f} " +
-                             "recalcultating the maximum pressure in free water as " +
-                             f"{self._press:.2f} [MPa], the voltage as {round_volt} [V], " +
-                             f"and the amplitude as {round_ampl} [%].")
+                get_logger().debug(
+                    f"New focus wrt mid bowl of {self._focus_wrt_mid_bowl:.2f} [mm] " +
+                    f"results in an equalization factor of {self._eq_factor:.2f} " +
+                    "recalcultating the maximum pressure in free water as " +
+                    f"{self._press:.2f} [MPa], the voltage as {round_volt} [V], " +
+                    f"and the amplitude as {round_ampl} [%].")
             else:
                 message = ('Conversion equations unknown but required for ' +
                            f'{self._ds_tran_combo}.')
-                logger.critical(message)
+                get_logger().critical(message)
                 sys.exit(message)
 
     def set_focus_wrt_mid_bowl(self, focus, no_ampl_input=True):
@@ -1131,17 +1146,20 @@ class Sequence():
                         self._conv_param['focus_curve_pp'], target_y_value)
 
                     if status:
-                        logger.debug(f"Found x value: {self._focus_wrt_exit_plane} for y = " +
-                                     f"{target_y_value}")
+                        get_logger().debug(
+                            f"Found x value: {self._focus_wrt_exit_plane} for y = " +
+                            f"{target_y_value}")
 
                         # Verify
                         calc_y = self._conv_param['focus_curve_pp'](self._focus_wrt_exit_plane)
-                        logger.debug(f"Verification: pp({self._focus_wrt_exit_plane}) = {calc_y}")
+                        get_logger().debug(
+                            f"Verification: pp({self._focus_wrt_exit_plane}) = {calc_y}")
                     else:
-                        logger.warning(f"Could not find an x value for y = {target_y_value}. " +
-                                       'Focus wrt exit plane will be calculated based on ' +
-                                       'exit plane distance of ' +
-                                       f'{self._transducer.exit_plane_dist} [mm].')
+                        get_logger().warning(
+                            f"Could not find an x value for y = {target_y_value}. " +
+                            'Focus wrt exit plane will be calculated based on ' +
+                            'exit plane distance of ' +
+                            f'{self._transducer.exit_plane_dist} [mm].')
 
                         self._focus_wrt_exit_plane = focus - self._transducer.exit_plane_dist
 
@@ -1149,7 +1167,7 @@ class Sequence():
                     message = ('Compensation equations are not available or applicable. ' +
                                'Focus wrt exit plane will be calculated based on exit plane ' +
                                f'distance of {self._transducer.exit_plane_dist} [mm].')
-                    logger.warning(message)
+                    get_logger().warning(message)
 
                     self._focus_wrt_exit_plane = focus - self._transducer.exit_plane_dist
 
@@ -1165,16 +1183,16 @@ class Sequence():
                            f'focus range of {self._transducer.min_foc} and ' +
                            f'{self._transducer.max_foc} [mm] of transducer ' +
                            f'{self._transducer.name}.')
-                logger.critical(message)
+                get_logger().critical(message)
                 sys.exit(message)
 
-            self._chosen_focus = get_config_value(logger, config, 'Focus', 'Option.bowl',
+            self._chosen_focus = get_config_value(get_logger(), config, 'Focus', 'Option.bowl',
                                                   'Focus wrt mid bowl [mm]')
 
             self._focus_wrt_mid_bowl = focus
 
-            logger.debug(f'Focus wrt exit plane [mm]: {self._focus_wrt_exit_plane} \n ' +
-                         f'Focus wrt bowl middle [mm]: {self._focus_wrt_mid_bowl}')
+            get_logger().debug(f'Focus wrt exit plane [mm]: {self._focus_wrt_exit_plane} \n ' +
+                               f'Focus wrt bowl middle [mm]: {self._focus_wrt_mid_bowl}')
 
         # Check if pressure compensation is available for chosen equipment
         if no_ampl_input and self.driving_sys.require_conv_eq:
@@ -1195,15 +1213,16 @@ class Sequence():
                     round_ampl = f'{self._ampl[0]:.2f}'
                     round_volt = f'{self._volt[0]:.2f}'
 
-                logger.debug(f"New focus wrt exit plane of {self._focus_wrt_mid_bowl:.2f} [mm] " +
-                             f"results in an equalization factor of {self._eq_factor:.2f} " +
-                             "recalcultating the maximum pressure in free water as " +
-                             f"{self._press:.2f} [MPa], the voltage as {round_volt} [V], " +
-                             f"and the amplitude as {round_ampl} [%].")
+                get_logger().debug(
+                    f"New focus wrt exit plane of {self._focus_wrt_mid_bowl:.2f} [mm] " +
+                    f"results in an equalization factor of {self._eq_factor:.2f} " +
+                    "recalcultating the maximum pressure in free water as " +
+                    f"{self._press:.2f} [MPa], the voltage as {round_volt} [V], " +
+                    f"and the amplitude as {round_ampl} [%].")
             else:
                 message = ('Conversion equations unknown but required for ' +
                            f'{self._ds_tran_combo}.')
-                logger.critical(message)
+                get_logger().critical(message)
                 sys.exit(message)
 
     @property
@@ -1354,7 +1373,7 @@ class Sequence():
             List[str]: Available ramp shapes.
         """
 
-        return get_config_value(logger, config, 'Ramp', 'Options', '').split('\n')
+        return get_config_value(get_logger(), config, 'Ramp', 'Options', '').split('\n')
 
     @property
     def pulse_ramp_shape(self):
@@ -1378,7 +1397,7 @@ class Sequence():
 
         if pulse_ramp_shape not in self.get_ramp_shapes():
             message = f'{pulse_ramp_shape} is not an available option.'
-            logger.critical(message)
+            get_logger().critical(message)
             sys.exit(message)
 
         else:
@@ -1498,8 +1517,9 @@ class Sequence():
             # convert pulse train repetition duration in seconds to milliseconds
             self._timing_param['pulse_train_rep_dur'] = pulse_train_rep_dur * 1e3
 
-            if self._trigger_option == get_config_value(logger, config, 'Trigger', 'option.ptr',
-                                                        'TriggerOnePulseTrainRepetition'):
+            if self._trigger_option == get_config_value(
+                    get_logger(), config, 'Trigger', 'option.ptr',
+                    'TriggerOnePulseTrainRepetition'):
                 self._n_triggers = 1
 
     def _update_conv_param(self):
@@ -1510,16 +1530,16 @@ class Sequence():
 
         section_name = 'Equipment.Combination.' + self._ds_tran_combo
 
-        self.eq_curve_file = get_config_value(logger, config, section_name,
+        self.eq_curve_file = get_config_value(get_logger(), config, section_name,
                                               'EqualizationCurveFit json file', None, True)
 
-        self.focus_curve_file = get_config_value(logger, config, section_name,
+        self.focus_curve_file = get_config_value(get_logger(), config, section_name,
                                                  'FocusCurveFit json file', None, True)
 
-        self.power_curve_file = get_config_value(logger, config, section_name,
+        self.power_curve_file = get_config_value(get_logger(), config, section_name,
                                                  'PowerCurveFit json file', None, True)
 
-        self.volt_curve_file = get_config_value(logger, config, section_name,
+        self.volt_curve_file = get_config_value(get_logger(), config, section_name,
                                                 'VoltageCurveFit json file', None, True)
 
         eq_pp, eq_breaks = extract_and_define_pp(self.eq_curve_file, return_breaks=True)
@@ -1548,9 +1568,9 @@ class Sequence():
             round_ampl = f'{self._ampl[0]:.2f}'
             round_volt = f'{self._volt[0]:.2f}'
 
-        logger.debug('New equipment pressure compensation coefficients result in a maximum' +
-                     f' pressure in free water of {self._press:.2f} [MPa], a voltage of ' +
-                     f'{round_volt} [V] and an amplitude of {round_ampl} [%].')
+        get_logger().debug('New equipment pressure compensation coefficients result in a maximum' +
+                           f' pressure in free water of {self._press:.2f} [MPa], a voltage of ' +
+                           f'{round_volt} [V] and an amplitude of {round_ampl} [%].')
 
     def _calc_eq_factor(self):
         """
@@ -1563,7 +1583,7 @@ class Sequence():
             message = (f'{e} \n Focus wrt exit plane of {self._focus_wrt_exit_plane} mm is not ' +
                        f'within the limits of {self.transducer.min_foc} and ' +
                        f'{self.transducer.max_foc} [mm].')
-            logger.critical(message)
+            get_logger().critical(message)
             sys.exit(message)
 
     def _calc_volt(self):
@@ -1576,15 +1596,15 @@ class Sequence():
             volt_value, status = find_x_for_y_in_pp(self._conv_param['volt_curve_pp'], ampl)
 
             if status:
-                logger.debug(f"Found x value: {volt_value} for y = {ampl}")
+                get_logger().debug(f"Found x value: {volt_value} for y = {ampl}")
 
                 # Verify
                 calc_y = self._conv_param['volt_curve_pp'](volt_value)
-                logger.debug(f"Verification: pp({volt_value}) = {calc_y}")
+                get_logger().debug(f"Verification: pp({volt_value}) = {calc_y}")
 
             else:
                 volt_value = 0
-                logger.error(f"Could not find a voltage value for amplitude = {ampl}")
+                get_logger().error(f"Could not find a voltage value for amplitude = {ampl}")
 
             volt.append(volt_value)
 
@@ -1611,7 +1631,7 @@ class Sequence():
         if range_status in ("above_range", "below_range"):
             message = (f'Equalized pressure of {self._eq_press_mpa} [MPa] is outside of pp ' +
                        f'limits ({x_min_mpa:.2f} - {x_max_mpa:.2f} [MPa]). Change input value.')
-            logger.critical(message)
+            get_logger().critical(message)
             sys.exit(message)
 
         elif range_status == "in_range":
@@ -1625,11 +1645,12 @@ class Sequence():
                            f'{self._volt[0]:.2f} [V] will result in an amplitude of 100% at ' +
                            f'focus wrt exit plane of {self._focus_wrt_exit_plane} [mm]. Change ' +
                            'input value.')
-                logger.critical(message)
+                get_logger().critical(message)
                 sys.exit(message)
             elif calc_ampl < 0:
-                logger.debug(f'Calculated amplitude of {calc_ampl:.2f} is below 0%, so cut off ' +
-                             'the amplitude at 0%.')
+                get_logger().debug(
+                    f'Calculated amplitude of {calc_ampl:.2f} is below 0%, so cut off ' +
+                    'the amplitude at 0%.')
                 self._ampl = [0]
                 self._calc_press()
                 self._calc_volt()
@@ -1657,11 +1678,12 @@ class Sequence():
                            f'focus wrt exit plane of {self._focus_wrt_exit_plane} [mm]. Change ' +
                            'input value.')
 
-                logger.critical(message)
+                get_logger().critical(message)
                 sys.exit(message)
             elif range_status == "below_range":
-                logger.debug(('Calculated amplitude below 0%, so cut off the amplitude at 0% ' +
-                              'and recalculate the pressure.'))
+                get_logger().debug((
+                    'Calculated amplitude below 0%, so cut off the amplitude at 0% ' +
+                    'and recalculate the pressure.'))
                 calc_ampl = 0
 
             calc_ampl = max(calc_ampl, 0)
@@ -1680,27 +1702,27 @@ class Sequence():
                                                            target_y_value)
 
         if status:
-            logger.debug(f"Found x value: {press_pa_with_eq_fact} for y = {target_y_value}")
+            get_logger().debug(f"Found x value: {press_pa_with_eq_fact} for y = {target_y_value}")
 
             # Verify
             calc_y = self._conv_param['power_curve_pp'](press_pa_with_eq_fact)
-            logger.debug(f"Verification: pp({press_pa_with_eq_fact}) = {calc_y}")
+            get_logger().debug(f"Verification: pp({press_pa_with_eq_fact}) = {calc_y}")
 
             press_mpa = (press_pa_with_eq_fact / self._eq_factor) * 1e-6
             max_press = float(get_config_value(
-                logger, config, 'Power',
+                get_logger(), config, 'Power',
                 'Maximum pressure allowed in free water [MPa]', 1.4))
             if press_mpa > max_press:
                 message = (f'The set maximum pressure in free water of {press_mpa} [MPa] is ' +
                            f'crossing the allowed limit of {max_press} [MPa]. Please change' +
                            ' your value.')
-                logger.critical(message)
+                get_logger().critical(message)
                 sys.exit(message)
 
             self._press = press_mpa  # convert to MPa
         else:
             self._press = None
-            logger.error(f"Could not find a pressure value for amplitude = {target_y_value}")
+            get_logger().error(f"Could not find a pressure value for amplitude = {target_y_value}")
 
 
 def validate_value(value, input_param, check_num, check_pos, check_nonzero, check_bool,
@@ -1739,7 +1761,7 @@ def validate_value(value, input_param, check_num, check_pos, check_nonzero, chec
 
     if val_messages:
         for message in val_messages:
-            logger.critical(message)
+            get_logger().critical(message)
         sys.exit('Validation of input parameters failed.')
 
     return True
@@ -1809,16 +1831,16 @@ def extract_and_define_pp(json_dir, return_breaks=False):
         x_transform = np.array(data['xTransform'])
         if x_transform.item() != 'none':
             message = 'A transform of the x value is expected, but not implemented.'
-            logger.error(message)
+            get_logger().error(message)
             sys.exit(message)
     except KeyError:
-        logger.debug('xTransform is not part of the file structure.')
+        get_logger().debug('xTransform is not part of the file structure.')
     except TypeError:
-        logger.warning('Data structure does not support this type of access.')
+        get_logger().warning('Data structure does not support this type of access.')
     except ValueError as ve:
-        logger.warning(f'Error converting xTransform to numpy array: {ve}')
+        get_logger().warning(f'Error converting xTransform to numpy array: {ve}')
     except Exception as e:
-        logger.warning(f'Unknown error checking for xTransform: {str(e)}')
+        get_logger().warning(f'Unknown error checking for xTransform: {str(e)}')
 
     breaks = np.array(data['FitParams']['breaks'])
     coefs_data = data['FitParams']['coefs']
@@ -1828,8 +1850,8 @@ def extract_and_define_pp(json_dir, return_breaks=False):
     # Calculate number of pieces from breaks
     pieces = len(breaks) - 1
 
-    logger.debug(f"Extracted order: {order}")
-    logger.debug(f"Number of pieces: {pieces}")
+    get_logger().debug(f"Extracted order: {order}")
+    get_logger().debug(f"Number of pieces: {pieces}")
 
     # Convert coefficients to the format expected by PPoly
     # SciPy expects shape (k, m) where k is order and m is pieces
@@ -1912,5 +1934,5 @@ def find_x_for_y_in_pp(pp, y_value, x_min=None, x_max=None, tol=1e-6):
         return None, False
 
     except Exception as e:
-        logger.error(f"Error finding x value: {e}")
+        get_logger().error(f"Error finding x value: {e}")
         return None, False

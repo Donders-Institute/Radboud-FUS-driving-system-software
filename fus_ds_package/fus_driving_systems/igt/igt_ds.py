@@ -51,7 +51,7 @@ from fus_driving_systems.igt import unifus
 from fus_driving_systems.utils import get_config_value
 
 # Access the logger
-from fus_driving_systems.config.logging_config import logger
+from fus_driving_systems.config.logging_config import get_logger
 from fus_driving_systems.config.config import config_info as config
 
 
@@ -76,13 +76,13 @@ class IGT(ds.ControlDrivingSystem):
         super().__init__()
 
         if log_dir is None:
-            log_dir = get_config_value(logger, config, 'Logging', 'Temporary logging path',
+            log_dir = get_config_value(get_logger(), config, 'Logging', 'Temporary logging path',
                                        'C:\\Temp')
 
         if not os.path.exists(log_dir):
             os.makedirs(log_dir)
 
-        filename = get_config_value(logger, config, 'Logging', 'Filename faulthandler',
+        filename = get_config_value(get_logger(), config, 'Logging', 'Filename faulthandler',
                                     'faulthandler_output.log')
 
         fault_handler_path = os.path.join(log_dir, filename)
@@ -125,12 +125,12 @@ class IGT(ds.ControlDrivingSystem):
         total_sequence_duration_ms = unifus.sequenceDurationMs(seq, n_pulse_train_rep,
                                                                pulse_train_delay)
 
-        wait_time_ms = float(get_config_value(logger, config, 'Equipment.Manufacturer.IGT',
+        wait_time_ms = float(get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
                                               'Wait time before responsive [ms]', 100))
         self.sent_seqs[seq_num]['total_sequence_duration_ms'] = (total_sequence_duration_ms +
                                                                  wait_time_ms)
 
-        logger.debug(f"Stored sequence {seq_num}: {self.sent_seqs[seq_num]}")
+        get_logger().debug(f"Stored sequence {seq_num}: {self.sent_seqs[seq_num]}")
 
     def connect(self, connect_info, log_dir=None, log_name=None, attempt=0):
         """
@@ -140,105 +140,105 @@ class IGT(ds.ControlDrivingSystem):
             connect_info (str): Path with IGT driving system-specific configuration file.
         """
 
-        logger.info('Connecting...')
+        get_logger().info('Connecting...')
 
         if log_dir is None:
-            log_dir = get_config_value(logger, config, 'Logging', 'Temporary logging path',
+            log_dir = get_config_value(get_logger(), config, 'Logging', 'Temporary logging path',
                                        'C:\\Temp')
 
         if log_name is None:
-            log_name = get_config_value(logger, config, 'Equipment.Manufacturer.IGT',
+            log_name = get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
                                         'Default log filename prefix', 'standalone_igt')
 
         # When no connection, it is assumed that all sent sequences aren't available (anymore)
         self.sent_seqs = {}
-        max_attempts = int(get_config_value(logger, config, 'General',
+        max_attempts = int(get_config_value(get_logger(), config, 'General',
                                             'Maximum reconnection attempts', 5))
 
         try:
             # Establish connection with driving system
-            logger.debug('Before unifus.FUSSystem....')
+            get_logger().debug('Before unifus.FUSSystem....')
             self.fus = unifus.FUSSystem()
-            logger.debug('After unifus.FUSSystem....')
+            get_logger().debug('After unifus.FUSSystem....')
         except Exception as e:
             message = f'Error initializing FUSSystem: {e}'
-            logger.critical(message)
+            get_logger().critical(message)
             sys.exit(message)
 
         try:
-            suffix = get_config_value(logger, config, 'Equipment.Manufacturer.IGT',
+            suffix = get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
                                       'Default log filename suffix', '_igt_ds_log')
             unifus.setLogPath(log_dir, log_name + suffix)
             unifus.setLogLevel(unifus.LogLevel.Debug)
 
-            logger.debug('After setting logging....')
+            get_logger().debug('After setting logging....')
         except Exception as e:
             message = f"Error setting up logging: {e}"
-            logger.error(message)
+            get_logger().error(message)
 
         try:
             # Update the name of your configuration file
             igt_config_path = str(
                 importlib.resources.files('fus_driving_systems').joinpath(connect_info))
-            logger.debug(f'igt_config_path: {igt_config_path} found....')
+            get_logger().debug(f'igt_config_path: {igt_config_path} found....')
             if igt_config_path != '':
                 self.fus.loadConfig(igt_config_path)
-                logger.debug('After loadConfig....')
+                get_logger().debug('After loadConfig....')
             else:
                 message = f"Configuration file {igt_config_path} doesn't exist."
-                logger.critical(message)
+                get_logger().critical(message)
                 sys.exit(message)
         except Exception as e:
             message = f"Error loading configuration: {e}"
-            logger.critical(message)
+            get_logger().critical(message)
             sys.exit(message)
 
         try:
             # Create and register an event listener
             self.listener = ExecListener()
             self.fus.registerListener(self.listener)
-            logger.debug('After listener....')
+            get_logger().debug('After listener....')
 
             self.fus.connect()
             self.listener.wait_connection()
-            logger.debug('After wait_connection()....')
+            get_logger().debug('After wait_connection()....')
         except Exception as e:
-            logger.error(f"Error during connection or listener registration: {e}")
+            get_logger().error(f"Error during connection or listener registration: {e}")
 
             if attempt < max_attempts:
-                logger.warning('Try to disconnect and reconnect...')
+                get_logger().warning('Try to disconnect and reconnect...')
                 self.disconnect()
                 self.connect(connect_info, log_dir, log_name, attempt=attempt+1)
             else:
                 message = f'Maximum amount of {max_attempts} for reconnecting is reached. Exit.'
-                logger.critical(message)
+                get_logger().critical(message)
                 sys.exit(message)
 
         try:
             if self.fus.isConnected():
                 self.connected = True
-                logger.debug('Driving system is connected.')
+                get_logger().debug('Driving system is connected.')
 
                 self.gen = self.fus.gen()
                 self.n_channels = self.gen.getParam(unifus.GenParam.ChannelCount)
-                logger.debug("Generator: %s channels", self.n_channels)
+                get_logger().debug("Generator: %s channels", self.n_channels)
             else:
                 self.connected = False
-                logger.warning("Error: connection failed.")
+                get_logger().warning("Error: connection failed.")
 
                 if attempt < max_attempts:
-                    logger.warning('Try to disconnect and reconnect...')
+                    get_logger().warning('Try to disconnect and reconnect...')
                     self.disconnect()
                     self.connect(connect_info, log_dir, log_name, attempt=attempt+1)
                 else:
                     message = (f'Maximum amount of {max_attempts} for reconnecting is reached. ' +
                                'Exit.')
-                    logger.critical(message)
+                    get_logger().critical(message)
                     sys.exit(message)
 
         except Exception as e:
             message = f"Error after connection check: {e}"
-            logger.critical(message)
+            get_logger().critical(message)
             sys.exit(message)
 
     def validate_sequence(self, sequence):
@@ -256,22 +256,23 @@ class IGT(ds.ControlDrivingSystem):
 
         error_messages = super().validate_sequence(sequence)
 
-        min_pulse_dur = float(get_config_value(logger, config, 'Equipment.Manufacturer.IGT',
+        min_pulse_dur = float(get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
                                                'Min. pulse duration [ms]', 0.001))
         if sequence.pulse_dur < min_pulse_dur:  # [ms]:
             error_messages.append('Pulse duration is not allowed to be smaller than 1 us.')
 
-        min_pulse_rep_int = float(get_config_value(logger, config, 'Equipment.Manufacturer.IGT',
-                                                   'Min. pulse rep. interval [ms]', 0.170))
+        min_pulse_rep_int = float(get_config_value(
+            get_logger(), config, 'Equipment.Manufacturer.IGT',
+            'Min. pulse rep. interval [ms]', 0.170))
         if sequence.pulse_rep_int < min_pulse_rep_int:  # [ms]
             error_messages.append('Pulse repetition interval is not allowed to be smaller than' +
                                   ' 170 us.')
 
         min_time_between_ramps = float(
-            get_config_value(logger, config, 'Equipment.Manufacturer.IGT',
+            get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
                              'Min. time in between ramping up and down [ms]', 0.070))
 
-        rect_ramp = get_config_value(logger, config, 'Ramp', 'Option.rect',
+        rect_ramp = get_config_value(get_logger(), config, 'Ramp', 'Option.rect',
                                      'Rectangular - no ramping')
         if sequence.pulse_ramp_dur > 0 and (sequence.pulse_ramp_shape != rect_ramp):
             if sequence.pulse_ramp_dur > sequence.pulse_dur/2 - min_time_between_ramps/2:
@@ -281,7 +282,7 @@ class IGT(ds.ControlDrivingSystem):
             error_messages.append("Intensity parameter may be set incorrectly. Amplitude is None.")
 
         n_pulses = sequence.pulse_train_dur/sequence.pulse_rep_int
-        max_n_pulses = int(get_config_value(logger, config, 'Equipment.Manufacturer.IGT',
+        max_n_pulses = int(get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
                                             'Max. pulses in pulse train', 64))
         if n_pulses > max_n_pulses:
             error_messages.append("The maximum amount of pulses within a pulse train is " +
@@ -302,10 +303,10 @@ class IGT(ds.ControlDrivingSystem):
         if seq2 is None and (seq3 is not None or seq4 is not None):
             message = ('seq3/seq4 can only be used together with seq2 (two-transducer, ' +
                        'four-sequence mode) -- seq2 is missing.')
-            logger.critical(message)
+            get_logger().critical(message)
             sys.exit(message)
 
-        logger.info('Validating sequence...')
+        get_logger().info('Validating sequence...')
 
         seqs = [seq1]
         if seq2 is not None:
@@ -315,25 +316,27 @@ class IGT(ds.ControlDrivingSystem):
                 seqs = [seq1, seq2, seq3, seq4]
 
         for seq in seqs:
-            logger.debug('Sequence with the following parameters is validated before sending: \n '
-                         + '%s', seq)
+            get_logger().debug(
+                'Sequence with the following parameters is validated before sending: \n ' +
+                '%s', seq)
 
             error_messages = self.validate_sequence(seq)
 
             if error_messages:
                 for error in error_messages:
-                    logger.critical(error)
+                    get_logger().critical(error)
                 sys.exit('(Multiple) error(s) found when validating sequence, see log file.')
 
-        logger.info('Sending sequence...')
+        get_logger().info('Sending sequence...')
         if self.is_connected():
 
             # define pulse
             if seq2 is None:
                 pulse, phases = self._define_pulse(seq1)
             else:
-                logger.debug('Two sequences are sent indicating two transducers are connected.')
-                logger.debug('Timing parameters will be based on first sequence.')
+                get_logger().debug(
+                    'Two sequences are sent indicating two transducers are connected.')
+                get_logger().debug('Timing parameters will be based on first sequence.')
                 pulse, phases = self._define_two_tran_slots(seq1, seq2)
 
                 if seq3 is not None and seq4 is not None:
@@ -361,7 +364,7 @@ class IGT(ds.ControlDrivingSystem):
                 n_pulse_train_rep = math.floor(seq1.pulse_train_rep_dur / seq1.pulse_train_rep_int)
 
             # Apply ramping
-            rect_ramp = get_config_value(logger, config, 'Ramp', 'Option.rect',
+            rect_ramp = get_config_value(get_logger(), config, 'Ramp', 'Option.rect',
                                          'Rectangular - no ramping')
             if seq1.pulse_ramp_shape != rect_ramp:
                 self._apply_ramping(seq1)
@@ -386,8 +389,8 @@ class IGT(ds.ControlDrivingSystem):
                                         pulse_train_delay, phases)
 
         else:
-            logger.warning("No connection with driving system.")
-            logger.warning("Reconnecting with driving system...")
+            get_logger().warning("No connection with driving system.")
+            get_logger().warning("Reconnecting with driving system...")
 
             # if no connection can be made, program stops preventing infinite loop
             self.connect(seq1.driving_sys.connect_info)
@@ -427,8 +430,8 @@ class IGT(ds.ControlDrivingSystem):
             pulse.setFrequencies(tran_freq)
             if seq.dephasing_degree is not None and (len(seq.dephasing_degree) ==
                                                      seq.transducer.elements):
-                logger.info('Phases are overridden by phases set at dephasing_degree: ' +
-                            f'{seq.dephasing_degree}')
+                get_logger().info('Phases are overridden by phases set at dephasing_degree: ' +
+                                  f'{seq.dephasing_degree}')
                 phases = phases + seq.dephasing_degree
             else:
                 computed_phases = self._set_phases(pulse, seq.focus_wrt_mid_bowl,
@@ -467,24 +470,25 @@ class IGT(ds.ControlDrivingSystem):
 
                     if debug_info:
                         ramp_transient_t = 0
-                        rect_ramp = get_config_value(logger, config, 'Ramp', 'Option.rect',
+                        rect_ramp = get_config_value(get_logger(), config, 'Ramp', 'Option.rect',
                                                      'Rectangular - no ramping')
                         if seq1.pulse_ramp_dur > 0 and (seq1.pulse_ramp_shape != rect_ramp):
                             ramp_transient_t = float(
-                                get_config_value(logger, config, 'Equipment.Manufacturer.IGT',
-                                                 'Min. time in between ramping up and down [ms]',
-                                                 0.070))  # [ms]
+                                get_config_value(
+                                    get_logger(), config, 'Equipment.Manufacturer.IGT',
+                                    'Min. time in between ramping up and down [ms]',
+                                    0.070))  # [ms]
 
                         measure_ch_level = float(
-                            get_config_value(logger, config, 'Equipment.Manufacturer.IGT',
+                            get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
                                              'Pulse dur. flag level MeasureChannels [ms]', 4.570))
 
                         measure_boards_level = float(
-                            get_config_value(logger, config, 'Equipment.Manufacturer.IGT',
+                            get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
                                              'Pulse dur. flag level MeasureBoards [ms]', 0.035))
 
                         measure_time_level = float(
-                            get_config_value(logger, config, 'Equipment.Manufacturer.IGT',
+                            get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
                                              'Pulse dur. flag level MeasureTimings [ms]', 0.001))
                         if seq1.pulse_dur > measure_ch_level + ramp_transient_t:  # [ms]
                             exec_flags |= unifus.ExecFlag.MeasureChannels
@@ -500,9 +504,9 @@ class IGT(ds.ControlDrivingSystem):
                     pulse_train_delay = sent_seq_info.get('pulse_train_delay')
 
                     # Determining trigger flag
-                    seq_trigger = get_config_value(logger, config, 'Trigger', 'Option.seq',
+                    seq_trigger = get_config_value(get_logger(), config, 'Trigger', 'Option.seq',
                                                    'TriggerSequence')
-                    ptr_trigger = get_config_value(logger, config, 'Trigger', 'Option.ptr',
+                    ptr_trigger = get_config_value(get_logger(), config, 'Trigger', 'Option.ptr',
                                                    'TriggerOnePulseTrainRepetition')
                     if seq1.trigger_option == seq_trigger:
                         exec_flags |= unifus.ExecFlag.TriggerOneSequence
@@ -515,10 +519,10 @@ class IGT(ds.ControlDrivingSystem):
                     else:
                         message = (f'Trigger option {seq1.trigger_option} is not identical to ' +
                                    f'implemented trigger options: {seq1.get_trigger_options()}.')
-                        logger.critical(message)
+                        get_logger().critical(message)
                         sys.exit(message)
 
-                    logger.info(f"Waiting for a total of {seq1.n_triggers} trigger(s)...")
+                    get_logger().info(f"Waiting for a total of {seq1.n_triggers} trigger(s)...")
 
                     self.gen.prepareSequence(seq1.seq_num, n_pulse_train_rep, pulse_train_delay,
                                              exec_flags)
@@ -527,18 +531,19 @@ class IGT(ds.ControlDrivingSystem):
 
                 except Exception as why:
                     message = f"Exception: {why}"
-                    logger.critical(message)
+                    get_logger().critical(message)
                     sys.exit(message)
             else:
-                logger.warning('The sequence has to be sent first using send_sequence() before ' +
-                               'the driving system can wait for a trigger.')
-                logger.warning('Sending sequence...')
+                get_logger().warning(
+                    'The sequence has to be sent first using send_sequence() before ' +
+                    'the driving system can wait for a trigger.')
+                get_logger().warning('Sending sequence...')
 
                 self.send_sequence(seq1, seq2, seq3, seq4, duration_ms)
                 self.wait_for_trigger(seq1, seq2, seq3, seq4, duration_ms, debug_info)
         else:
-            logger.warning("No connection with driving system.")
-            logger.warning("Reconnecting with driving system...")
+            get_logger().warning("No connection with driving system.")
+            get_logger().warning("Reconnecting with driving system...")
 
             # if no connection can be made, program stops preventing infinite loop
             self.connect(seq1.driving_sys.connect_info)
@@ -551,13 +556,13 @@ class IGT(ds.ControlDrivingSystem):
         Executes the previously sent sequence on the IGT ultrasound driving system.
         """
 
-        max_press = get_config_value(logger, config, 'Power',
+        max_press = get_config_value(get_logger(), config, 'Power',
                                      'Maximum pressure allowed in free water [MPa]',
                                      'Not found')
 
-        logger.debug(f'Maximum allowed pressure is: {max_press} MPa')
+        get_logger().debug(f'Maximum allowed pressure is: {max_press} MPa')
 
-        logger.info('Executing sequence...')
+        get_logger().info('Executing sequence...')
 
         if self.is_connected():
             if self.is_sequence_sent(seq1.seq_num):
@@ -571,24 +576,25 @@ class IGT(ds.ControlDrivingSystem):
 
                     if debug_info:
                         ramp_transient_t = 0
-                        rect_ramp = get_config_value(logger, config, 'Ramp', 'Option.rect',
+                        rect_ramp = get_config_value(get_logger(), config, 'Ramp', 'Option.rect',
                                                      'Rectangular - no ramping')
                         if seq1.pulse_ramp_dur > 0 and seq1.pulse_ramp_shape != rect_ramp:
                             ramp_transient_t = float(
-                                get_config_value(logger, config, 'Equipment.Manufacturer.IGT',
-                                                 'Min. time in between ramping up and down [ms]',
-                                                 0.070))  # [ms]
+                                get_config_value(
+                                    get_logger(), config, 'Equipment.Manufacturer.IGT',
+                                    'Min. time in between ramping up and down [ms]',
+                                    0.070))  # [ms]
 
                         measure_ch_level = float(
-                            get_config_value(logger, config, 'Equipment.Manufacturer.IGT',
+                            get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
                                              'Pulse dur. flag level MeasureChannels [ms]', 4.570))
 
                         measure_boards_level = float(
-                            get_config_value(logger, config, 'Equipment.Manufacturer.IGT',
+                            get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
                                              'Pulse dur. flag level MeasureBoards [ms]', 0.035))
 
                         measure_time_level = float(
-                            get_config_value(logger, config, 'Equipment.Manufacturer.IGT',
+                            get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
                                              'Pulse dur. flag level MeasureTimings [ms]', 0.001))
                         if seq1.pulse_dur > measure_ch_level + ramp_transient_t:  # [ms]
                             exec_flags |= unifus.ExecFlag.MeasureChannels
@@ -609,19 +615,20 @@ class IGT(ds.ControlDrivingSystem):
 
                 except Exception as why:
                     message = f"Exception: {why}"
-                    logger.critical(message)
+                    get_logger().critical(message)
                     sys.exit(message)
             else:
-                logger.warning('The sequence has to be sent first using send_sequence() before ' +
-                               'the driving system can execute a sequence.')
-                logger.warning('Sending sequence...')
+                get_logger().warning(
+                    'The sequence has to be sent first using send_sequence() before ' +
+                    'the driving system can execute a sequence.')
+                get_logger().warning('Sending sequence...')
 
                 self.send_sequence(seq1, seq2, seq3, seq4, duration_ms)
                 self.execute_sequence(seq1, seq2, seq3, seq4, duration_ms, debug_info)
 
         else:
-            logger.warning("No connection with driving system.")
-            logger.warning("Reconnecting with driving system...")
+            get_logger().warning("No connection with driving system.")
+            get_logger().warning("Reconnecting with driving system...")
 
             # if no connection can be made, program stops preventing infinite loop
             self.connect(seq1.driving_sys.connect_info)
@@ -633,7 +640,7 @@ class IGT(ds.ControlDrivingSystem):
         Disconnects from the IGT ultrasound driving system.
         """
 
-        logger.info('Disconnecting...')
+        get_logger().info('Disconnecting...')
 
         if self.gen is not None:
             # disabling any old modulation
@@ -649,9 +656,9 @@ class IGT(ds.ControlDrivingSystem):
 
             if not self.fus.isConnected():
                 self.connected = False
-                logger.info("Disconnected.")
+                get_logger().info("Disconnected.")
             else:
-                logger.error("Failed to disconnect")
+                get_logger().error("Failed to disconnect")
                 self.connected = True
 
     def _define_pulse(self, sequence):
@@ -680,14 +687,14 @@ class IGT(ds.ControlDrivingSystem):
             pulse.setAmplitudes(sequence.ampl)
         else:
             message = "Power parameter may be set incorrectly. Amplitude is None."
-            logger.critical(message)
+            get_logger().critical(message)
             sys.exit(message)
 
         # set same phase offset for all channels (angle in [0,360] degrees)
         if (sequence.dephasing_degree is not None
                 and len(sequence.dephasing_degree) == sequence.transducer.elements):
-            logger.info('Phases are overridden by phases set at dephasing_degree: ' +
-                        f'{sequence.dephasing_degree}')
+            get_logger().info('Phases are overridden by phases set at dephasing_degree: ' +
+                              f'{sequence.dephasing_degree}')
             phases = sequence.dephasing_degree
         else:
             phases = self._set_phases(pulse, sequence.focus_wrt_mid_bowl,
@@ -741,7 +748,7 @@ class IGT(ds.ControlDrivingSystem):
         """
 
         # transducer has been chosen where phases are calculated based on phase law
-        package_name = get_config_value(logger, config, 'General', 'Package name',
+        package_name = get_config_value(get_logger(), config, 'General', 'Package name',
                                         'fus_driving_systems')
         if steer_info.endswith('.ini'):
 
@@ -749,7 +756,7 @@ class IGT(ds.ControlDrivingSystem):
             ini_path = str(importlib.resources.files(package_name).joinpath(steer_info))
             if not trans.load(ini_path):
                 message = f'Error: can not load the transducer definition from {ini_path}'
-                logger.critical(message)
+                get_logger().critical(message)
                 sys.exit(message)
 
             # Calculate target focus with respect to natural focus: + is before natural focus,
@@ -764,7 +771,7 @@ class IGT(ds.ControlDrivingSystem):
             # Import excel file containing phases per focal depth
             excel_path = str(importlib.resources.files(package_name).joinpath(steer_info))
 
-            logger.debug('Extract phase information from %s', excel_path)
+            get_logger().debug('Extract phase information from %s', excel_path)
 
             if os.path.exists(excel_path):
                 data = pd.read_excel(excel_path, engine='openpyxl')
@@ -776,13 +783,13 @@ class IGT(ds.ControlDrivingSystem):
                 if match_row.empty:
                     message = (f'No focus in transducer phases file {excel_path}' +
                                f' corresponds with {focus}')
-                    logger.critical(message)
+                    get_logger().critical(message)
                     sys.exit(message)
 
                 elif len(match_row) > 1:
                     message = (f'Duplicate foci {focus} found in transducer phases file ' +
                                f'{excel_path}. First found entry will be used.')
-                    logger.error(message)
+                    get_logger().error(message)
 
                     match_row = match_row[0]
 
@@ -791,8 +798,9 @@ class IGT(ds.ControlDrivingSystem):
 
                 if dephasing_degree is not None:
                     if len(dephasing_degree) > 1:
-                        logger.warning('Too few or too many entries given at dephasing_degree.' +
-                                       ' Only the first one is now used for dephasing purposes.')
+                        get_logger().warning(
+                            'Too few or too many entries given at dephasing_degree.' +
+                            ' Only the first one is now used for dephasing purposes.')
 
                     dephasing_degree = dephasing_degree[0]
                     # determine n elements to dephase in one cycle
@@ -807,18 +815,18 @@ class IGT(ds.ControlDrivingSystem):
                             dephasing_elem = 0
 
                 phases_str = ', '.join([format(x, '.2f') for x in phases])
-                logger.debug(f'Computed phases for set focus of {focus}: {phases_str}')
+                get_logger().debug(f'Computed phases for set focus of {focus}: {phases_str}')
 
             else:
                 message = ("Pipeline is cancelled. The following direction cannot be found: " +
                            f"{excel_path}")
-                logger.critical(message)
+                get_logger().critical(message)
                 sys.exit(message)
 
         else:
             message = ("Steer information is expected to be a '.ini' or '.xlsx' file, but got: " +
                        f"{steer_info}")
-            logger.critical(message)
+            get_logger().critical(message)
             sys.exit(message)
 
         return phases
@@ -832,10 +840,11 @@ class IGT(ds.ControlDrivingSystem):
         """
 
         # Use best temporal resolution for pulse ramping [ms]
-        min_ramp_temp_res = float(get_config_value(logger, config, 'Equipment.Manufacturer.IGT',
-                                                   'Min. temporal ramping resolution [ms]',
-                                                   0.005))  # [ms]
-        max_ramp_steps = float(get_config_value(logger, config, 'Equipment.Manufacturer.IGT',
+        min_ramp_temp_res = float(get_config_value(
+            get_logger(), config, 'Equipment.Manufacturer.IGT',
+            'Min. temporal ramping resolution [ms]',
+            0.005))  # [ms]
+        max_ramp_steps = float(get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
                                                 'Max. amount of ramping steps', 1023))
 
         ramp_n_steps = int(sequence.pulse_ramp_dur/min_ramp_temp_res)
@@ -873,8 +882,8 @@ class IGT(ds.ControlDrivingSystem):
             tuple: A tuple containing the amplitude ramping and step duration.
         """
 
-        lin_ramp = get_config_value(logger, config, 'Ramp', 'Option.lin', 'Linear')
-        tuk_ramp = get_config_value(logger, config, 'Ramp', 'Option.tuk', 'Tukey')
+        lin_ramp = get_config_value(get_logger(), config, 'Ramp', 'Option.lin', 'Linear')
+        tuk_ramp = get_config_value(get_logger(), config, 'Ramp', 'Option.tuk', 'Tukey')
         if sequence.pulse_ramp_shape == lin_ramp:  # Linear ramping
             # amount of points where ramping is applied
             n_points = math.floor(sequence.pulse_ramp_dur/pulse_ramp_temp_res)

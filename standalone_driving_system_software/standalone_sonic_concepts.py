@@ -48,19 +48,12 @@ logger = initialize_logger(log_dir, filename)
 # sync_logger(logger)  # logger needs to be created with logging.getLogger()
 
 ##############################################################################
-# import the 'fus_driving_systems - sequence' into your code
-##############################################################################
-
-import sys
-
-from fus_driving_systems import driving_system, transducer
-from fus_driving_systems import sequence
-
-##############################################################################
 # create a sequence for a SC driving system
 # a sequence can be created in advance and a new sequence can be defined
 # later on in the code
 ##############################################################################
+
+from fus_driving_systems import driving_system, sequence, transducer
 
 seq = sequence.Sequence()
 
@@ -122,9 +115,8 @@ logger.info(f'The following sequence is used: {seq}')
 # keeps on firing ultrasound sequences.
 
 ##############################################################################
-# import the 'fus_driving_systems - ds' into your code
+# connect with the driving system
 ##############################################################################
-
 
 from fus_driving_systems.sonic_concepts import sonic_concepts_ds
 

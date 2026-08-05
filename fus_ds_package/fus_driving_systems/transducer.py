@@ -36,7 +36,7 @@ import copy
 
 # Own packages
 from fus_driving_systems.config.config import config_info as config
-from fus_driving_systems.config.logging_config import logger
+from fus_driving_systems.config.logging_config import get_logger
 from fus_driving_systems.utils import get_config_value
 
 
@@ -70,9 +70,9 @@ class Transducer:
         self.fund_freq = 0  # [kHz]
         self.natural_foc = 0  # [mm]
         self.exit_plane_dist = 0  # [mm]
-        self.min_foc = float(get_config_value(logger, config, 'Focus',
+        self.min_foc = float(get_config_value(get_logger(), config, 'Focus',
                                               'Default.minimum', 0))  # [mm]
-        self.max_foc = float(get_config_value(logger, config, 'Focus',
+        self.max_foc = float(get_config_value(get_logger(), config, 'Focus',
                                               'Default.maximum', 1000))  # [mm]
         self.steer_info = None
         self.is_active = True
@@ -88,31 +88,37 @@ class Transducer:
         try:
             self.serial = serial
             section = 'Equipment.Transducer.' + serial
-            self.name = get_config_value(logger, config, section, 'Name',
+            self.name = get_config_value(get_logger(), config, section, 'Name',
                                          'Unknown transducer name')
-            self.manufact = get_config_value(logger, config, section, 'Manufacturer',
+            self.manufact = get_config_value(get_logger(), config, section, 'Manufacturer',
                                              'Unknown transducer manufacturer')
-            self.elements = int(get_config_value(logger, config, section, 'Elements', 0, True))
-            self.fund_freq = int(get_config_value(logger, config, section, 'Fund. freq.', 0, True))
-            self.natural_foc = float(get_config_value(logger, config, section, 'Natural focus', 0))
-            self.exit_plane_dist = float(get_config_value(logger, config, section,
+            self.elements = int(get_config_value(
+                get_logger(), config, section, 'Elements', 0, True))
+            self.fund_freq = int(get_config_value(
+                get_logger(), config, section, 'Fund. freq.', 0, True))
+            self.natural_foc = float(get_config_value(
+                get_logger(), config, section, 'Natural focus', 0))
+            self.exit_plane_dist = float(get_config_value(get_logger(), config, section,
                                                           'Exit plane - first element dist.', 0))
-            default_min = float(get_config_value(logger, config, 'Focus', 'Default.minimum', 0))
-            self.min_foc = float(get_config_value(logger, config, section, 'Min. focus',
+            default_min = float(get_config_value(
+                get_logger(), config, 'Focus', 'Default.minimum', 0))
+            self.min_foc = float(get_config_value(get_logger(), config, section, 'Min. focus',
                                                   default_min))
 
-            default_max = float(get_config_value(logger, config, 'Focus', 'Default.maximum', 1000))
+            default_max = float(get_config_value(
+                get_logger(), config, 'Focus', 'Default.maximum', 1000))
 
-            self.max_foc = float(get_config_value(logger, config, section, 'Max. focus',
+            self.max_foc = float(get_config_value(get_logger(), config, section, 'Max. focus',
                                                   default_max))
 
-            self.steer_info = get_config_value(logger, config, section, 'Steer information',
+            self.steer_info = get_config_value(get_logger(), config, section, 'Steer information',
                                                None, True)
-            self.is_active = get_config_value(logger, config, section, 'Active?', 'True') == 'True'
+            self.is_active = get_config_value(
+                get_logger(), config, section, 'Active?', 'True') == 'True'
 
         except KeyError:
             message = f'No transducer with serial number {serial} found in configuration file.'
-            logger.critical(message)
+            get_logger().critical(message)
             sys.exit(message)
 
     def __str__(self):
@@ -163,19 +169,19 @@ def get_tran_serials():
         List[str]: Serial numbers for available transducers.
     """
 
-    serial_trans = get_config_value(logger, config, 'Equipment', 'Transducers', '',
+    serial_trans = get_config_value(get_logger(), config, 'Equipment', 'Transducers', '',
                                     True).split('\n')
 
     active_serials = []
     for serial in serial_trans:
         # only extract active tranducers
         section = 'Equipment.Transducer.' + serial
-        if get_config_value(logger, config, section, 'Active?', 'True') == 'True':
+        if get_config_value(get_logger(), config, section, 'Active?', 'True') == 'True':
             active_serials.append(serial)
 
     if len(active_serials) < 1:
         message = 'No active tranducers found in configuration file.'
-        logger.critical(message)
+        get_logger().critical(message)
         sys.exit(message)
 
     return active_serials
@@ -193,19 +199,19 @@ def get_tran_names():
     for serial in get_tran_serials():
         try:
             section = 'Equipment.Transducer.' + serial
-            tran_name = get_config_value(logger, config, section, 'Name',
+            tran_name = get_config_value(get_logger(), config, section, 'Name',
                                          'Unknown transducer name')
         except KeyError:
             message = (f'No transducer with serial number {serial} found in' +
                        ' configuration file.')
-            logger.critical(message)
+            get_logger().critical(message)
             sys.exit(message)
 
         names.append(tran_name)
 
     if len(names) < 1:
         message = 'No transducers found in configuration file.'
-        logger.critical(message)
+        get_logger().critical(message)
         sys.exit(message)
 
     return names
@@ -227,14 +233,14 @@ def get_tran_list():
         except KeyError:
             message = (f'No transducer with serial number {serial} found in' +
                        ' configuration file.')
-            logger.critical(message)
+            get_logger().critical(message)
             sys.exit(message)
 
         tran_list.append(tran)
 
     if len(tran_list) < 1:
         message = 'No transducers found in configuration file.'
-        logger.critical(message)
+        get_logger().critical(message)
         sys.exit(message)
 
     return tran_list
