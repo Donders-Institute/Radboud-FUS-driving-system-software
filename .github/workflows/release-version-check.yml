@@ -1,0 +1,43 @@
+name: Release version check
+
+# Runs whenever a vX.Y.Z tag is pushed -- this covers both `git push --tags` and creating a
+# GitHub Release with a new tag name (GitHub pushes that tag under the hood). It does NOT bump
+# anything itself: use bump-my-version to do that (see the [tool.bumpversion] section in
+# fus_ds_package/pyproject.toml) *before* pushing the tag / creating the release. This is only
+# a safety net that fails loudly if the tag and the version recorded in setup.py/README.md
+# ever drift apart.
+"on":
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  check-version:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify tag matches setup.py and README.md versions
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          SETUP_VERSION=$(grep -oP "version='\K[^']+" fus_ds_package/setup.py)
+          README_VERSION=$(grep -oP '\(version \K[0-9]+\.[0-9]+\.[0-9]+(?=\))' README.md)
+
+          echo "Tag:      $GITHUB_REF_NAME (version $TAG_VERSION)"
+          echo "setup.py: $SETUP_VERSION"
+          echo "README:   $README_VERSION"
+
+          status=0
+
+          if [ "$TAG_VERSION" != "$SETUP_VERSION" ]; then
+            echo "::error file=fus_ds_package/setup.py::Tag $GITHUB_REF_NAME does not match setup.py's version ($SETUP_VERSION)"
+            status=1
+          fi
+
+          if [ "$TAG_VERSION" != "$README_VERSION" ]; then
+            echo "::error file=README.md::Tag $GITHUB_REF_NAME does not match README.md's cited version ($README_VERSION)"
+            status=1
+          fi
+
+          exit $status

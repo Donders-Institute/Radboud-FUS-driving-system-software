@@ -12,3 +12,23 @@ addopts = """
 --cov-report=html
 --cov-fail-under=80
 """
+
+# Release versioning. Run from fus_ds_package/ when cutting a release:
+#   pip install bump-my-version   (one-time)
+#   bump-my-version bump patch    (or: minor / major)
+# This updates setup.py and the root README.md's citation line, commits, and creates a
+# matching vX.Y.Z git tag -- push both (git push && git push --tags), then create the GitHub
+# Release from that already-pushed tag so its version is always correct and consistent.
+[tool.bumpversion]
+current_version = "2.2.3"
+commit = true
+tag = true
+tag_name = "v{new_version}"
+message = "Bump version: {current_version} -> {new_version}"
+allow_dirty = false
+
+[[tool.bumpversion.files]]
+filename = "setup.py"
+
+[[tool.bumpversion.files]]
+filename = "../README.md"
