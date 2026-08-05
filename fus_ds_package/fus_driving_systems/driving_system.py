@@ -78,12 +78,24 @@ class DrivingSystem:
         """
         Sets the driving system based on the provided serial number.
 
+        Called by Sequence.driving_sys's setter and get_ds_list() -- both can be given a
+        serial that isn't actually in the configuration file (e.g. a typo). That is checked
+        explicitly below, rather than relying on incidentally hitting one of the individual
+        is_sys_exit=True fields further down and having to track down why that one field
+        failed.
+
         Parameters:
             serial (str): Serial number of the driving system.
         """
 
-        self.serial = serial
         section = 'Equipment.Driving system.' + serial
+        if section not in config:
+            message = (f'No driving system with serial number {serial} found in ' +
+                       'configuration file.')
+            get_logger().critical(message)
+            sys.exit(message)
+
+        self.serial = serial
         self.name = get_config_value(get_logger(), config, section, 'Name',
                                      'Unknown driving system name')
         self.manufact = get_config_value(get_logger(), config, section, 'Manufacturer',
@@ -184,11 +196,6 @@ def get_ds_names():
                                    'Name', 'Unknown driving system name')
         names.append(ds_name)
 
-    if len(names) < 1:
-        message = 'No driving systems found in configuration file.'
-        get_logger().critical(message)
-        sys.exit(message)
-
     return names
 
 
@@ -202,21 +209,9 @@ def get_ds_list():
 
     ds_list = []
     for serial in get_ds_serials():
-        try:
-            ds = DrivingSystem()
-            ds.set_ds_info(serial)
-        except KeyError:
-            message = (f'No driving system with serial number {serial} found in' +
-                       ' configuration file.')
-            get_logger().critical(message)
-            sys.exit(message)
-
+        ds = DrivingSystem()
+        ds.set_ds_info(serial)
         ds_list.append(ds)
-
-    if len(ds_list) < 1:
-        message = 'No driving systems found in configuration file.'
-        get_logger().critical(message)
-        sys.exit(message)
 
     return ds_list
 

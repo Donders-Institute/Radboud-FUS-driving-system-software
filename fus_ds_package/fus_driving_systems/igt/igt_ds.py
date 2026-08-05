@@ -181,13 +181,8 @@ class IGT(ds.ControlDrivingSystem):
             igt_config_path = str(
                 importlib.resources.files('fus_driving_systems').joinpath(connect_info))
             get_logger().debug(f'igt_config_path: {igt_config_path} found....')
-            if igt_config_path != '':
-                self.fus.loadConfig(igt_config_path)
-                get_logger().debug('After loadConfig....')
-            else:
-                message = f"Configuration file {igt_config_path} doesn't exist."
-                get_logger().critical(message)
-                sys.exit(message)
+            self.fus.loadConfig(igt_config_path)
+            get_logger().debug('After loadConfig....')
         except Exception as e:
             message = f"Error loading configuration: {e}"
             get_logger().critical(message)

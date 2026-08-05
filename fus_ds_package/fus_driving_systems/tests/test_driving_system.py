@@ -109,6 +109,18 @@ def test_set_ds_info_populates_fields_from_config(patch_config):
     assert ds.is_active is True
 
 
+def test_set_ds_info_exits_with_clear_message_for_unknown_serial(patch_config):
+    """GitHub issue #133: a serial with no matching config section used to fall through to
+    individual fields (e.g. 'Connection info', which has is_sys_exit=True) before exiting,
+    surfacing a confusing "Config key 'Connection info' not found" message that didn't point
+    at the actual problem. Now checked explicitly upfront with a clear message."""
+    ds = driving_system.DrivingSystem()
+
+    with pytest.raises(SystemExit, match='No driving system with serial number '
+                                         'UNKNOWN_SERIAL found in configuration file.'):
+        ds.set_ds_info('UNKNOWN_SERIAL')
+
+
 def test_get_ds_serials_returns_only_active_serials(patch_config):
     patch_config.set('Equipment', 'Driving systems',
                      'UNITTEST_ACTIVE\nUNITTEST_INACTIVE')

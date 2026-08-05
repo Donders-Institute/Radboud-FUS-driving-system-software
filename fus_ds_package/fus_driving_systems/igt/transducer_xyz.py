@@ -107,14 +107,14 @@ class Transducer:
             return False
 
     def load_from_string(self, definition):
-        config = cfg.ConfigParser()
-        stringio = StringIO(definition)
-        if config.readfp(stringio) == []:
+        if not definition.strip():
             message = 'Error: empty content'
             get_logger().critical(message)
             sys.exit(message)
 
-            return False
+        config = cfg.ConfigParser()
+        stringio = StringIO(definition)
+        config.read_file(stringio)
         return self._load_config(config)
 
     def _load_config(self, config):

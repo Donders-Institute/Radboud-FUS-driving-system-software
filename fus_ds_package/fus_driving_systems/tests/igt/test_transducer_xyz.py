@@ -168,26 +168,32 @@ class TestLoadFromString:
         with pytest.raises(SystemExit):
             trans.load_from_string(definition)
 
-    def test_exits_on_empty_string_via_missing_section_not_empty_content_check(self):
+    def test_exits_with_empty_content_message_on_empty_string(self):
         """
-        FINDING: load_from_string's own 'empty content' guard
-        (`if config.readfp(stringio) == []:`) can never fire --
+        SOLVED: load_from_string's 'empty content' guard used to compare
+        `config.readfp(stringio) == []`, which can never be True --
         ConfigParser.readfp()/read_file() always returns None, never a
-        list, so that comparison is always False regardless of input.
-        An empty string therefore does NOT hit the 'Error: empty content'
-        message; it falls through to _load_config(), where
-        config.getint('elements', 'size') raises NoSectionError (no
-        [elements] section at all), caught by _load_config's bare `except:`
-        and reported as "Error: missing 'elements.size' parameter" instead
-        -- the same path as test_exits_when_size_key_is_missing above.
-        Still a SystemExit either way, just via a different, slightly
-        misleading message than the one the code appears to intend for
-        this case.
+        list. An empty string therefore never hit the intended 'Error:
+        empty content' message; it fell through to _load_config(), where
+        config.getint('elements', 'size') raised NoSectionError (no
+        [elements] section at all), reported as "Error: missing
+        'elements.size' parameter" instead -- the same (misleading) path
+        as test_exits_when_size_key_is_missing above. Now checked directly
+        on the input string before parsing, so empty content is caught
+        with its own, correct message.
         """
         trans = transducer_xyz.Transducer()
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(SystemExit, match='Error: empty content'):
             trans.load_from_string("")
+
+    def test_exits_with_empty_content_message_on_whitespace_only_string(self):
+        """Whitespace-only input is just as 'empty' in intent as "" -- both must hit the same
+        guard rather than one falling through to _load_config()'s less specific error."""
+        trans = transducer_xyz.Transducer()
+
+        with pytest.raises(SystemExit, match='Error: empty content'):
+            trans.load_from_string("   \n  \n")
 
 
 class TestLoad:
