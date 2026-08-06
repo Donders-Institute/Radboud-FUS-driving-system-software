@@ -11,6 +11,7 @@ File discovery (which transducers/curve types exist) lives in
 discovery.py so it can be shared with test modules that need to build
 parametrize lists at collection time.
 """
+import faulthandler
 from types import SimpleNamespace
 
 import pytest
@@ -41,6 +42,28 @@ def initialize_package_logger():
     test_logger.setLevel(logging.DEBUG)
 
     logging_config.sync_logger(test_logger)
+
+
+@pytest.fixture(autouse=True)
+def _reset_session_log_dir():
+    """logging_config.initialize_logger() sets a module-level _session_log_dir (see
+    get_session_log_dir()) so the faulthandler/native IGT log files land in the same
+    timestamped folder as the main FDS log, and enable_crash_detection() sets a module-level
+    _faulthandler_file (see is_crash_detection_enabled()) so it only ever runs once per
+    process. Reset both after every test, regardless of outcome, so one test calling
+    initialize_logger()/sync_logger()/enable_crash_detection() can't leak that state into
+    unrelated tests elsewhere in the suite that don't expect it -- these globals would
+    otherwise persist for the rest of the pytest process."""
+    yield
+
+    from fus_driving_systems.config import logging_config
+
+    logging_config._session_log_dir = None
+
+    if logging_config._faulthandler_file is not None:
+        faulthandler.disable()
+        logging_config._faulthandler_file.close()
+        logging_config._faulthandler_file = None
 
 
 @pytest.fixture

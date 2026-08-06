@@ -41,6 +41,7 @@ config = configparser.ConfigParser(interpolation=None)
 config['General'] = {}
 
 config['General']['Configuration file folder'] = CONFIG_FOLDER
+config['General']['Delay before reconnecting [s]'] = str(2)
 config['General']['Maximum reconnection attempts'] = str(5)
 config['General']['Package name'] = 'fus_driving_systems'
 config['General']['Speed of sound water [m/s]'] = str(1500)
@@ -52,6 +53,8 @@ config['Logging'] = {}
 config['Logging']['Logger name'] = 'driving_system'
 config['Logging']['Temporary logging path'] = 'C:\\Temp'
 config['Logging']['Filename faulthandler'] = 'faulthandler_output.log'
+config['Logging']['Filename session pointer'] = '.last_session_log_dir'
+config['Logging']['Filename kernel death counter'] = 'kernel_death_count.txt'
 
 config['Logging']['Timestamp format'] = '%Y-%m-%d_%H-%M-%S'
 config['Logging']['Log level console'] = 'INFO'

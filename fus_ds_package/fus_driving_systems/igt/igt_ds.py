@@ -34,7 +34,6 @@ import sys
 import time
 
 # Miscellaneous packages
-import faulthandler
 import math
 
 import importlib.resources
@@ -51,7 +50,9 @@ from fus_driving_systems.igt import unifus
 from fus_driving_systems.utils import get_config_value
 
 # Access the logger
-from fus_driving_systems.config.logging_config import get_logger
+from fus_driving_systems.config.logging_config import (enable_crash_detection, get_logger,
+                                                       get_session_log_dir,
+                                                       is_crash_detection_enabled)
 from fus_driving_systems.config.config import config_info as config
 
 
@@ -79,16 +80,16 @@ class IGT(ds.ControlDrivingSystem):
             log_dir = get_config_value(get_logger(), config, 'Logging', 'Temporary logging path',
                                        'C:\\Temp')
 
-        if not os.path.exists(log_dir):
-            os.makedirs(log_dir)
-
-        filename = get_config_value(get_logger(), config, 'Logging', 'Filename faulthandler',
-                                    'faulthandler_output.log')
-
-        fault_handler_path = os.path.join(log_dir, filename)
-
-        with open(fault_handler_path, "w", encoding='utf-8') as f:
-            faulthandler.enable(file=f)
+        # Crash detection (GitHub issue #126) is normally enabled once, centrally, by whichever
+        # of initialize_logger()/sync_logger() a script/host application calls to set up
+        # logging -- both are called before any driving-system object is constructed, in every
+        # documented usage (including SonoRover One, which uses sync_logger()). This is a
+        # safety net for the rare case neither has run yet: falls back to enabling it here,
+        # using this instance's own log_dir. is_crash_detection_enabled() keeps this a no-op
+        # otherwise -- see enable_crash_detection()'s own docstring for why calling it more
+        # than once in a process is safe.
+        if not is_crash_detection_enabled():
+            enable_crash_detection(log_dir, log_dir)
 
         self.sent_seqs = {}
         self.fus = None
@@ -136,15 +137,71 @@ class IGT(ds.ControlDrivingSystem):
         """
         Connects to the IGT ultrasound driving system.
 
+        Does nothing (beyond logging) if already connected, rather than tearing down and
+        recreating the native unifus.FUSSystem() and re-registering a listener on an already
+        live connection -- a plausible source of instability (GitHub issue #126).
+
+        On the first attempt, also forces a disconnect on a throwaway FUSSystem() before
+        actually connecting, in case a previous (possibly crashed) session left the native
+        driver holding a connection this fresh process has no handle to -- an experimental
+        mitigation, see the inline comment below (GitHub issue #126). A short delay (config
+        'General'/'Delay before reconnecting [s]') follows every disconnect-then-reconnect
+        below, giving the driver a moment to settle instead of immediately hammering it with
+        another connection attempt -- also #126: an unrelated cause under the driver/OS layer
+        remains the leading hypothesis, but repeatedly retrying without any pause is, on its
+        own, a plausible way for our own code to make an already-fragile driver worse.
+
         Parameters:
             connect_info (str): Path with IGT driving system-specific configuration file.
+
+        Returns:
+            bool: True once connected (whether newly connected or already connected).
+            Unrecoverable errors still exit the program (see GitHub issue #61 -- returning
+            False instead is a separate, later change).
         """
 
+        if self.connected:
+            get_logger().info('Already connected, skipping reconnection.')
+            return True
+
         get_logger().info('Connecting...')
+
+        reconnect_delay_s = float(get_config_value(get_logger(), config, 'General',
+                                                   'Delay before reconnecting [s]', 2))
+
+        if attempt == 0:
+            # Experimental mitigation for the non-deterministic kernel-death crashes
+            # reported in GitHub issue #126. self.connected (checked above) and
+            # self.fus.isConnected() (checked further below) both only reflect state
+            # tracked by *this* process/instance -- a fresh process (e.g. a new Spyder
+            # console the next morning) always starts with neither, so neither check can
+            # ever reveal whether a previous, possibly crashed session left the native
+            # driver holding a connection open. Forcing a disconnect on a throwaway
+            # FUSSystem() here gives the driver a chance to release that stale state
+            # before the real attempt below. Unverified whether this actually reduces
+            # kernel deaths -- logged explicitly so frequency can be compared over time.
+            try:
+                get_logger().debug('Forcing a disconnect on a fresh FUSSystem before ' +
+                                   'connecting, in case a previous session left a stale ' +
+                                   'connection (#126).')
+                stale_fus = unifus.FUSSystem()
+                stale_fus.clearListeners()
+                stale_fus.disconnect()
+                time.sleep(reconnect_delay_s)
+            except Exception as e:
+                get_logger().debug('Pre-connect defensive disconnect raised (expected if ' +
+                                   f'there was nothing to clean up): {e}')
 
         if log_dir is None:
             log_dir = get_config_value(get_logger(), config, 'Logging', 'Temporary logging path',
                                        'C:\\Temp')
+
+        # See the matching comment in __init__: prefer the shared, timestamped session folder
+        # (if initialize_logger() set one up) for the native IGT log too, so it ends up
+        # alongside the FDS log and the faulthandler log instead of loose in log_dir.
+        session_log_dir = get_session_log_dir()
+        if session_log_dir is not None:
+            log_dir = session_log_dir
 
         if log_name is None:
             log_name = get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
@@ -203,11 +260,12 @@ class IGT(ds.ControlDrivingSystem):
             if attempt < max_attempts:
                 get_logger().warning('Try to disconnect and reconnect...')
                 self.disconnect()
-                self.connect(connect_info, log_dir, log_name, attempt=attempt+1)
-            else:
-                message = f'Maximum amount of {max_attempts} for reconnecting is reached. Exit.'
-                get_logger().critical(message)
-                sys.exit(message)
+                time.sleep(reconnect_delay_s)
+                return self.connect(connect_info, log_dir, log_name, attempt=attempt+1)
+
+            message = f'Maximum amount of {max_attempts} for reconnecting is reached. Exit.'
+            get_logger().critical(message)
+            sys.exit(message)
 
         try:
             if self.fus.isConnected():
@@ -217,19 +275,21 @@ class IGT(ds.ControlDrivingSystem):
                 self.gen = self.fus.gen()
                 self.n_channels = self.gen.getParam(unifus.GenParam.ChannelCount)
                 get_logger().debug("Generator: %s channels", self.n_channels)
-            else:
-                self.connected = False
-                get_logger().warning("Error: connection failed.")
+                return True
 
-                if attempt < max_attempts:
-                    get_logger().warning('Try to disconnect and reconnect...')
-                    self.disconnect()
-                    self.connect(connect_info, log_dir, log_name, attempt=attempt+1)
-                else:
-                    message = (f'Maximum amount of {max_attempts} for reconnecting is reached. ' +
-                               'Exit.')
-                    get_logger().critical(message)
-                    sys.exit(message)
+            self.connected = False
+            get_logger().warning("Error: connection failed.")
+
+            if attempt < max_attempts:
+                get_logger().warning('Try to disconnect and reconnect...')
+                self.disconnect()
+                time.sleep(reconnect_delay_s)
+                return self.connect(connect_info, log_dir, log_name, attempt=attempt+1)
+
+            message = (f'Maximum amount of {max_attempts} for reconnecting is reached. ' +
+                       'Exit.')
+            get_logger().critical(message)
+            sys.exit(message)
 
         except Exception as e:
             message = f"Error after connection check: {e}"

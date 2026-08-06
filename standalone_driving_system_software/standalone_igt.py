@@ -41,11 +41,45 @@ log_dir = "C://Temp"
 filename = "standalone_igt"
 logger = initialize_logger(log_dir, filename)
 
+# This creates a timestamped session folder inside log_dir (e.g. "2026-08-05_18-00-00_
+# FDS_logs") for this FDS log, and also enables crash detection (faulthandler) for the whole
+# session -- both land in that same folder. igt_ds.IGT()/connect() below automatically
+# discover and reuse it for the native IGT log too, so every log file from one session ends up
+# together -- convenient for sharing a whole session at once (e.g. with IGT for a bug report,
+# GitHub issue #126).
+
 # When this code is embedded in other code with logging, ignore above commands and sync the logger
 # in the following way:
 
 # from fus_driving_systems.config.logging_config import sync_logger
 # sync_logger(logger)  # logger needs to be created with logging.getLogger()
+
+##############################################################################
+# connect with the driving system
+##############################################################################
+
+# Connecting doesn't require a sequence to exist yet. In practice, you typically connect once
+# when your experiment starts, then build/adapt sequences iteratively as it progresses -- so
+# look up the driving system's connection info directly via DrivingSystem, rather than through
+# a Sequence.
+
+from fus_driving_systems import driving_system
+from fus_driving_systems.igt import igt_ds
+
+# to check available driving systems: print(driving_system.get_ds_serials())
+# choose one driving system from that list as input
+ds_info = driving_system.DrivingSystem()
+ds_info.set_ds_info('IGT-32-ch_comb_2x10-ch')
+
+igt_driving_sys = igt_ds.IGT(log_dir)
+
+# connect() is a no-op (besides logging) if already connected, so calling it again later in
+# your experiment (e.g. before sending a new sequence) won't tear down and recreate the
+# connection unnecessarily.
+igt_driving_sys.connect(ds_info.connect_info, log_dir, filename)
+
+# you can check if the system is still connected by using the following:
+# print(igt_driving_sys.is_connected())
 
 ##############################################################################
 # create a sequence for an IGT driving system
@@ -55,7 +89,7 @@ logger = initialize_logger(log_dir, filename)
 
 import sys
 
-from fus_driving_systems import driving_system, sequence, transducer
+from fus_driving_systems import sequence, transducer
 from fus_driving_systems.config.config import config_info as config
 from fus_driving_systems.utils import get_config_value
 
@@ -66,10 +100,8 @@ seq1 = sequence.Sequence()
 # using one sequence definition.
 seq1.seq_num = 0
 
-# equipment
-# to check available driving systems: print(driving_system.get_ds_serials())
-# choose one driving system from that list as input
-seq1.driving_sys = 'IGT-32-ch_comb_2x10-ch'
+# equipment: same driving system already used to connect() above
+seq1.driving_sys = ds_info.serial
 use_two_transducers = True  # is true if you are using two transducers simulateneously or interleaved
 
 # to check available transducers: print(transducer.get_tran_serials())
@@ -184,31 +216,19 @@ else:
 # to get a summary of your entered sequence: print(seq1)
 
 ##############################################################################
-# connect with driving system and execute sequence
+# send and execute the sequence
 ##############################################################################
 
-# creating an IGT driving system instance, connecting to it and sending your first sequence can be
-# done when initializing your experiment. When appropriate, execute your sequence by implementing
-# 'execute_sequence()' into your code or by using the external trigger.
+# sending your first sequence, and executing it when appropriate, can be done when initializing
+# your experiment. When appropriate, execute your sequence by implementing 'execute_sequence()'
+# into your code or by using the external trigger.
 
 # when you want to change your sequence in the middle of your experimental code, create a new
-# sequence as above and send the new sequence: 'send_sequence()'. When appropriate, execute your
-# sequence by implementing 'execute_sequence()' into your code or by using the external trigger.
-
-##############################################################################
-# connect with the driving system
-##############################################################################
-
-from fus_driving_systems.igt import igt_ds
-
-igt_driving_sys = igt_ds.IGT(log_dir)
+# sequence as above (the driving system is already connected, see above) and send the new
+# sequence: 'send_sequence()'. When appropriate, execute your sequence by implementing
+# 'execute_sequence()' into your code or by using the external trigger.
 
 try:
-    igt_driving_sys.connect(seq1.driving_sys.connect_info, log_dir, filename)
-
-    # you can check if the system is still connected by using the following:
-    # print(igt_ds.is_connected())
-
     igt_driving_sys.send_sequence(seq1, seq2)
 
     # If wait_for_trigger is true, only the sequence is sent and will be executed by the external
@@ -240,6 +260,14 @@ try:
         #     if igt_driving_sys.has_execution_error() is not None:
         #         ...  # react immediately (log, stop other equipment, sys.exit(), ...)
         #     <do other work / short sleep>
+        #
+        # Note: has_execution_error() only tells you whether an error has occurred so far --
+        # not whether the sequence has finished. Your own loop condition (e.g. "still waiting
+        # on the scanner") isn't necessarily tied to the sequence's actual completion, so
+        # disconnecting right after such a loop can cut off a still-running sequence. If you
+        # use this pattern instead of wait_for_trigger_result(), make sure you have your own
+        # way of confirming the sequence actually finished (e.g. also call
+        # wait_for_trigger_result() once you expect it to have) before disconnecting.
         igt_driving_sys.wait_for_trigger_result(timeout_s=5.0)
 
     # If wait_for_trigger is false, the sequence is sent and can be executed directly using the
@@ -248,9 +276,14 @@ try:
         igt_driving_sys.execute_sequence(seq1, seq2)
 
 finally:
-    # When the sequence is executed using execute_sequence(), the system will be disconnected
-    # automatically. In the case your code is stopped abruptly, the driving system will be
-    # disconnected. Otherwise, there is a change that it keeps on firing ultrasound sequences.
-    # When using the external trigger, disconnect the driving system yourself.
-    if not seq1.wait_for_trigger:
-        igt_driving_sys.disconnect()
+    # By the time we reach here, the sequence has actually finished executing either way:
+    # execute_sequence() only returns once it's done, and wait_for_trigger_result() above
+    # blocks until the triggered execution completes (or its timeout expires). So it's always
+    # safe to disconnect here -- if your code stops abruptly before this point instead (like
+    # a kernel death/crash), make sure to disconnect the driving system yourself, otherwise it
+    # may keep firing ultrasound sequences.
+    #
+    # If you replaced wait_for_trigger_result() above with your own has_execution_error()
+    # polling loop, this is only safe once you've confirmed the sequence actually finished --
+    # see the note above.
+    igt_driving_sys.disconnect()

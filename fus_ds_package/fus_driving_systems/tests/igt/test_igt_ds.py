@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from fus_driving_systems.config import logging_config
 from fus_driving_systems.igt import unifus
 from fus_driving_systems.igt.igt_ds import IGT
 
@@ -25,15 +26,38 @@ from fus_driving_systems.igt.igt_ds import IGT
 
 class TestInit:
 
-    def test_init_creates_faulthandler_log_and_default_attributes(self, tmp_path):
+    def test_init_sets_default_attributes(self, tmp_path):
         instance = IGT(log_dir=str(tmp_path))
 
-        assert (tmp_path / "faulthandler_output.log").exists()
         assert instance.sent_seqs == {}
         assert instance.fus is None
         assert instance.listener is None
         assert instance.n_channels == 0
         assert instance.connected is False
+
+    def test_init_enables_crash_detection_when_not_already_enabled(self, tmp_path):
+        """GitHub issue #126: crash detection is normally enabled centrally by whichever of
+        initialize_logger()/sync_logger() a script/host application calls to set up logging
+        (see logging_config.py) -- this is IGT's own safety net for the case neither has run
+        yet, so constructing IGT() directly still gets *some* protection."""
+        assert logging_config.is_crash_detection_enabled() is False
+
+        IGT(log_dir=str(tmp_path))
+
+        assert logging_config.is_crash_detection_enabled() is True
+        assert (tmp_path / "faulthandler_output.log").exists()
+
+    def test_init_skips_its_own_crash_detection_setup_when_already_enabled(self, mocker,
+                                                                           tmp_path):
+        """If initialize_logger()/sync_logger() already enabled crash detection (the normal
+        case in every documented usage), IGT() must not redundantly call
+        enable_crash_detection() again with its own log_dir."""
+        logging_config.enable_crash_detection(str(tmp_path), str(tmp_path / "already_active"))
+        enable_mock = mocker.patch("fus_driving_systems.igt.igt_ds.enable_crash_detection")
+
+        IGT(log_dir=str(tmp_path / "unused"))
+
+        enable_mock.assert_not_called()
 
     def test_init_creates_missing_log_dir(self, tmp_path):
         log_dir = tmp_path / "nested" / "log_dir"
@@ -42,7 +66,6 @@ class TestInit:
         IGT(log_dir=str(log_dir))
 
         assert log_dir.exists()
-        assert (log_dir / "faulthandler_output.log").exists()
 
 
 # ---------------------------------------------------------------------------
@@ -90,6 +113,34 @@ class TestRegisterSentSequence:
 
 class TestConnect:
 
+    @pytest.fixture(autouse=True)
+    def _no_real_sleep(self, mocker):
+        """connect() now sleeps briefly after every disconnect-then-reconnect (including the
+        attempt==0 defensive disconnect, GitHub issue #126) -- patched away so this test class
+        doesn't actually pause for real seconds."""
+        mocker.patch("fus_driving_systems.igt.igt_ds.time.sleep")
+
+    def test_connect_uses_session_log_dir_for_native_igt_log_when_available(
+            self, mocker, mock_fus_system, tmp_path):
+        """See the matching test in TestInit -- connect() prefers the shared, timestamped
+        session folder (get_session_log_dir()) for the native IGT log too, when one is active,
+        instead of whatever log_dir happens to be passed to connect() itself."""
+        session_dir = tmp_path / "2026-08-05_18-00-00_testrun"
+        session_dir.mkdir()
+        mocker.patch("fus_driving_systems.igt.igt_ds.get_session_log_dir",
+                     return_value=str(session_dir))
+        set_log_path_mock = mocker.patch("fus_driving_systems.igt.igt_ds.unifus.setLogPath")
+        mock_fus_system.isConnected.return_value = True
+        fake_gen = mocker.Mock()
+        fake_gen.getParam.return_value = 8
+        mock_fus_system.gen.return_value = fake_gen
+        instance = IGT(log_dir=str(tmp_path))
+
+        instance.connect('igt/config/gen_test.json', log_dir=str(tmp_path / "unused"))
+
+        set_log_path_mock.assert_called_once()
+        assert set_log_path_mock.call_args[0][0] == str(session_dir)
+
     def test_connect_success_sets_connected_and_channel_count(self, mocker, mock_fus_system,
                                                               tmp_path):
         mock_fus_system.isConnected.return_value = True
@@ -98,13 +149,91 @@ class TestConnect:
         mock_fus_system.gen.return_value = fake_gen
 
         instance = IGT(log_dir=str(tmp_path))
-        instance.connect('igt/config/gen_test.json', log_dir=str(tmp_path))
+        result = instance.connect('igt/config/gen_test.json', log_dir=str(tmp_path))
 
+        assert result is True
         assert instance.connected is True
         assert instance.n_channels == 8
         assert instance.gen is fake_gen
         mock_fus_system.loadConfig.assert_called_once()
         mock_fus_system.connect.assert_called_once()
+
+    def test_connect_forces_a_defensive_disconnect_before_the_first_attempt(self, mocker,
+                                                                            mock_fus_system,
+                                                                            tmp_path):
+        """Experimental mitigation for GitHub issue #126: a throwaway FUSSystem() is
+        disconnected before the real connect attempt, in case a previous (possibly crashed)
+        session left the native driver holding a stale connection this fresh process has no
+        handle to. unifus.FUSSystem() is patched to always return mock_fus_system (see
+        conftest.py), so the throwaway instance and the "real" one are indistinguishable here
+        -- what matters is that clearListeners()/disconnect() get called exactly once before
+        the real connect flow proceeds."""
+        mock_fus_system.isConnected.return_value = True
+        fake_gen = mocker.Mock()
+        fake_gen.getParam.return_value = 8
+        mock_fus_system.gen.return_value = fake_gen
+        instance = IGT(log_dir=str(tmp_path))
+
+        result = instance.connect('igt/config/gen_test.json', log_dir=str(tmp_path))
+
+        assert result is True
+        assert mock_fus_system.clearListeners.call_count == 1
+        assert mock_fus_system.disconnect.call_count == 1
+
+    def test_connect_survives_when_the_defensive_disconnect_itself_raises(self, mocker,
+                                                                          mock_fus_system,
+                                                                          tmp_path):
+        """The defensive disconnect is a best-effort experiment, not a requirement -- if it
+        raises (e.g. nothing was there to clean up), connect() must still proceed normally."""
+        mock_fus_system.isConnected.return_value = True
+        mock_fus_system.disconnect.side_effect = RuntimeError("nothing to disconnect")
+        fake_gen = mocker.Mock()
+        fake_gen.getParam.return_value = 8
+        mock_fus_system.gen.return_value = fake_gen
+        instance = IGT(log_dir=str(tmp_path))
+
+        result = instance.connect('igt/config/gen_test.json', log_dir=str(tmp_path))
+
+        assert result is True
+
+    def test_connect_sleeps_after_the_defensive_disconnect_using_configured_delay(
+            self, mocker, mock_fus_system, tmp_path, patch_config):
+        """GitHub issue #126: repeatedly hammering the driver without any pause is, on its
+        own, a plausible way to worsen an already-fragile connection -- a configurable delay
+        follows every disconnect-then-reconnect, starting with the attempt==0 defensive one.
+
+        The patched time.sleep is process-wide (the real time module, not a copy scoped to
+        igt_ds.py), so it also picks up ExecListener.wait_connection()'s own unrelated 0.2s
+        poll interval -- assertions below count only the reconnect-delay calls, not the full
+        call list, to avoid coupling this test to that unrelated polling detail."""
+        patch_config.set('General', 'Delay before reconnecting [s]', '3')
+        sleep_mock = mocker.patch("fus_driving_systems.igt.igt_ds.time.sleep")
+        mock_fus_system.isConnected.return_value = True
+        fake_gen = mocker.Mock()
+        fake_gen.getParam.return_value = 8
+        mock_fus_system.gen.return_value = fake_gen
+        instance = IGT(log_dir=str(tmp_path))
+
+        instance.connect('igt/config/gen_test.json', log_dir=str(tmp_path))
+
+        assert sleep_mock.call_args_list.count(mocker.call(3.0)) == 1
+
+    def test_connect_sleeps_between_retries_using_configured_delay(self, mocker, mock_fus_system,
+                                                                   tmp_path, patch_config):
+        """See the docstring above for why this only counts the reconnect-delay calls rather
+        than asserting on the full call list."""
+        patch_config.set('General', 'Maximum reconnection attempts', '1')
+        patch_config.set('General', 'Delay before reconnecting [s]', '5')
+        sleep_mock = mocker.patch("fus_driving_systems.igt.igt_ds.time.sleep")
+        mock_fus_system.isConnected.return_value = False
+        instance = IGT(log_dir=str(tmp_path))
+        mocker.patch.object(instance, 'disconnect')  # not under test here
+
+        with pytest.raises(SystemExit):
+            instance.connect('igt/config/gen_test.json', log_dir=str(tmp_path))
+
+        # once for the attempt==0 defensive disconnect, once for the actual retry
+        assert sleep_mock.call_args_list.count(mocker.call(5.0)) == 2
 
     def test_connect_exits_immediately_when_fus_system_construction_fails(self, mocker, tmp_path):
         mocker.patch("fus_driving_systems.igt.igt_ds.unifus.FUSSystem",
@@ -125,6 +254,39 @@ class TestConnect:
             instance.connect('igt/config/gen_test.json', log_dir=str(tmp_path))
 
         assert instance.disconnect.call_count == 1  # exactly one retry attempted
+
+    def test_connect_returns_true_after_a_successful_retry(self, mocker, mock_fus_system,
+                                                           tmp_path, patch_config):
+        """The boolean return value must propagate through a retry, not just the first
+        (failed) attempt -- connect() recurses via 'return self.connect(...)'."""
+        patch_config.set('General', 'Maximum reconnection attempts', '1')
+        mock_fus_system.isConnected.side_effect = [False, True]  # fails once, then succeeds
+        fake_gen = mocker.Mock()
+        fake_gen.getParam.return_value = 8
+        mock_fus_system.gen.return_value = fake_gen
+        instance = IGT(log_dir=str(tmp_path))
+        mocker.patch.object(instance, 'disconnect')  # not under test here
+
+        result = instance.connect('igt/config/gen_test.json', log_dir=str(tmp_path))
+
+        assert result is True
+        assert instance.connected is True
+
+    def test_connect_skips_reconnection_when_already_connected(self, mocker, mock_fus_system,
+                                                               tmp_path):
+        """GitHub issues #103/#126: calling connect() while already connected used to always
+        tear down and recreate the native unifus.FUSSystem() and re-register a listener on an
+        already live connection, a plausible source of instability. It should now be a no-op
+        that just confirms the existing connection."""
+        instance = IGT(log_dir=str(tmp_path))
+        instance.connected = True
+
+        result = instance.connect('igt/config/gen_test.json', log_dir=str(tmp_path))
+
+        assert result is True
+        mock_fus_system.loadConfig.assert_not_called()
+        mock_fus_system.registerListener.assert_not_called()
+        mock_fus_system.connect.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

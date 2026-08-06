@@ -11,7 +11,10 @@ handlers on -- or interfere with -- each other or with any other logger,
 and the test_logger_name fixture below always tears those handlers down
 afterwards regardless of test outcome.
 """
+from datetime import datetime
+import faulthandler
 import logging
+from pathlib import Path
 import zipfile
 
 import pytest
@@ -59,6 +62,8 @@ def test_initialize_logger_creates_log_dir_if_missing(patch_config, tmp_path,
 
 def test_initialize_logger_writes_log_messages_to_a_file(patch_config, tmp_path,
                                                          test_logger_name):
+    """The log file lives inside the timestamped session folder (get_session_log_dir()), not
+    directly in log_dir -- see test_initialize_logger_creates_a_timestamped_session_folder."""
     _configure_logging(patch_config, test_logger_name)
     logger = logging_config.initialize_logger(str(tmp_path), "testrun")
 
@@ -66,9 +71,123 @@ def test_initialize_logger_writes_log_messages_to_a_file(patch_config, tmp_path,
     for handler in logger.handlers:
         handler.flush()
 
-    log_files = list(tmp_path.glob("*.txt"))
+    session_log_dir = Path(logging_config.get_session_log_dir())
+    log_files = list(session_log_dir.glob("*.txt"))
     assert len(log_files) == 1
     assert "hello from the test suite" in log_files[0].read_text()
+
+
+def test_initialize_logger_creates_a_timestamped_session_folder(patch_config, tmp_path,
+                                                                test_logger_name):
+    """GitHub issue #126 follow-up: the FDS log, the faulthandler log and IGT's native log
+    should all end up in one shared, timestamped folder so a whole session can be found/shared
+    as a single unit -- get_session_log_dir() is how IGT.connect() discovers it."""
+    _configure_logging(patch_config, test_logger_name)
+    patch_config.set('Logging', 'Timestamp format', '%Y-%m-%d')
+
+    logging_config.initialize_logger(str(tmp_path), "testrun")
+
+    session_log_dir = logging_config.get_session_log_dir()
+    assert session_log_dir is not None
+    assert Path(session_log_dir).is_dir()
+    assert Path(session_log_dir).parent == tmp_path
+    today = datetime.now().strftime('%Y-%m-%d')
+    assert Path(session_log_dir).name == f'{today}_FDS_logs'
+
+
+# ---------------------------------------------------------------------------
+# enable_crash_detection() / is_crash_detection_enabled() (GitHub issue #126)
+# ---------------------------------------------------------------------------
+
+def test_is_crash_detection_enabled_reflects_enable_crash_detection(tmp_path):
+    assert logging_config.is_crash_detection_enabled() is False
+
+    logging_config.enable_crash_detection(str(tmp_path), str(tmp_path))
+
+    assert logging_config.is_crash_detection_enabled() is True
+    assert faulthandler.is_enabled()
+
+
+def test_enable_crash_detection_is_a_no_op_when_already_enabled(tmp_path):
+    """Calling this more than once in a process (e.g. initialize_logger() followed by IGT's
+    own fallback call) must not retarget faulthandler or re-run the crash check."""
+    logging_config.enable_crash_detection(str(tmp_path), str(tmp_path / "first"))
+    first_file = logging_config._faulthandler_file
+
+    logging_config.enable_crash_detection(str(tmp_path), str(tmp_path / "second"))
+
+    assert logging_config._faulthandler_file is first_file
+    assert not (tmp_path / "second").exists()
+
+
+def test_enable_crash_detection_finds_no_crash_on_a_fresh_log_dir(tmp_path):
+    """No pointer file yet (first-ever call for this log_dir) -- nothing to check, no counter
+    file created."""
+    logging_config.enable_crash_detection(str(tmp_path), str(tmp_path / "session_1"))
+
+    assert not (tmp_path / "kernel_death_count.txt").exists()
+
+
+def test_enable_crash_detection_detects_archives_and_counts_a_previous_session_crash(
+        tmp_path, caplog):
+    """The core GitHub issue #126 mechanism, simulating two separate process runs: session 1
+    enables crash detection (recording a pointer to its own target folder), then crashes
+    (simulated by writing content directly into its faulthandler log, and resetting the
+    module-level state the way a fresh process would start). Session 2's call must find that
+    evidence via the pointer -- not by looking in its own, brand new target folder, which was
+    the real bug this replaced -- archive it, and count it."""
+    caplog.set_level(logging.WARNING)
+    log_dir = tmp_path / "logs"
+    session_1_dir = log_dir / "session_1"
+    session_2_dir = log_dir / "session_2"
+
+    logging_config.enable_crash_detection(str(log_dir), str(session_1_dir))
+    crash_content = "Fatal Python error: Segmentation fault\n\nThread 0x1234:\n..."
+    (session_1_dir / "faulthandler_output.log").write_text(crash_content, encoding='utf-8')
+    logging_config._faulthandler_file = None  # simulate a fresh process (session 1 crashed)
+
+    logging_config.enable_crash_detection(str(log_dir), str(session_2_dir))
+
+    assert (log_dir / "kernel_death_count.txt").read_text(encoding='utf-8') == "1"
+    archived = list(session_1_dir.glob("*.crash"))
+    assert len(archived) == 1
+    assert archived[0].read_text(encoding='utf-8') == crash_content
+    # session 2's own faulthandler file is fresh/empty, not overwritten with session 1's crash
+    assert (session_2_dir / "faulthandler_output.log").read_text(encoding='utf-8') == ""
+    warnings = [r.message for r in caplog.records if r.levelno == logging.WARNING]
+    assert any('kernel death' in m and '#126' in m for m in warnings)
+
+
+def test_enable_crash_detection_counter_increments_across_more_than_one_crash(tmp_path):
+    log_dir = tmp_path / "logs"
+
+    logging_config.enable_crash_detection(str(log_dir), str(log_dir / "session_1"))
+    (log_dir / "session_1" / "faulthandler_output.log").write_text("crash 1", encoding='utf-8')
+    logging_config._faulthandler_file = None
+
+    logging_config.enable_crash_detection(str(log_dir), str(log_dir / "session_2"))
+    (log_dir / "session_2" / "faulthandler_output.log").write_text("crash 2", encoding='utf-8')
+    logging_config._faulthandler_file = None
+
+    logging_config.enable_crash_detection(str(log_dir), str(log_dir / "session_3"))
+
+    assert (log_dir / "kernel_death_count.txt").read_text(encoding='utf-8') == "2"
+
+
+def test_crash_check_failure_does_not_prevent_enabling_faulthandler(tmp_path):
+    """The crash check is a best-effort diagnostic, not a requirement -- a corrupted
+    kernel_death_count.txt must not block faulthandler from being enabled."""
+    log_dir = tmp_path / "logs"
+    session_1_dir = log_dir / "session_1"
+    logging_config.enable_crash_detection(str(log_dir), str(session_1_dir))
+    (session_1_dir / "faulthandler_output.log").write_text("crash", encoding='utf-8')
+    log_dir.mkdir(parents=True, exist_ok=True)
+    (log_dir / "kernel_death_count.txt").write_text("not-a-number", encoding='utf-8')
+    logging_config._faulthandler_file = None
+
+    logging_config.enable_crash_detection(str(log_dir), str(log_dir / "session_2"))
+
+    assert logging_config.is_crash_detection_enabled() is True
 
 
 def test_initialize_logger_writes_log_messages_to_the_console(patch_config, tmp_path,
@@ -132,8 +251,9 @@ def test_initialize_logger_rotates_and_zips_when_max_size_is_exceeded(patch_conf
     for handler in logger.handlers:
         handler.flush()
 
-    txt_files = list(tmp_path.glob("*.txt"))
-    zip_files = list(tmp_path.glob("*.zip"))
+    session_log_dir = Path(logging_config.get_session_log_dir())
+    txt_files = list(session_log_dir.glob("*.txt"))
+    zip_files = list(session_log_dir.glob("*.zip"))
 
     assert len(txt_files) == 1  # the fresh file that kept logging after the last rollover
     assert len(zip_files) > 1  # several rollovers, each its own (uniquely named) .zip file
@@ -180,24 +300,24 @@ def test_zip_rotating_file_handler_rollover_produces_a_valid_zip_file(tmp_path):
         handler.close()
 
 
-def test_sync_logger_mutates_in_place_instead_of_rebinding():
+def test_sync_logger_mutates_in_place_instead_of_rebinding(tmp_path):
     """
     SOLVED: sync_logger() is the public integration point used by the SonoRover One host
     application, which already has its own configured logger and wants our internal logging
-    routed through it. It used to rebind logging_config.py's own 'logger' name to a different
-    object, which any module that had already done 'from ...logging_config import logger' at
-    its own import time would never see -- it kept pointing at whatever it bound before. Now
-    sync_logger() copies the host logger's handlers/level/propagate onto the existing logger
-    object in place instead.
+    routed through it. It used to rebind logging_config.py's own logger to a different object,
+    which any module that had already cached that object at its own import time would never
+    see -- it kept pointing at whatever it bound before. Now sync_logger() copies the host
+    logger's handlers/level/propagate onto the existing logger object in place instead.
 
     Every consumer module (sequence.py, driving_system.py, transducer.py, the driving-system
     subclasses, igt/utils.py, igt/transducer_xyz.py) was itself refactored to call
-    get_logger() at each log call site instead of importing 'logger' as a name, which
+    get_logger() at each log call site instead of caching the logger object, which
     structurally removes the stale-binding risk for those modules regardless of what
-    sync_logger()/initialize_logger() do -- get_logger() always returns whatever
-    logging_config.logger currently is. This test covers logging_config.sync_logger()'s own
-    contract directly: it must mutate, not rebind."""
-    original_logger = logging_config.logger
+    sync_logger()/initialize_logger() do -- get_logger() always returns whatever the shared
+    logger currently is. This test covers logging_config.sync_logger()'s own contract
+    directly: it must mutate, not rebind. log_dir=tmp_path keeps sync_logger()'s crash-detection
+    side effect (GitHub issue #126) off the real filesystem's default location."""
+    original_logger = logging_config._logger
     original_handlers = original_logger.handlers
     original_level = original_logger.level
     original_propagate = original_logger.propagate
@@ -208,34 +328,34 @@ def test_sync_logger_mutates_in_place_instead_of_rebinding():
     stand_in_logger.propagate = False
 
     try:
-        logging_config.sync_logger(stand_in_logger)
+        logging_config.sync_logger(stand_in_logger, log_dir=str(tmp_path))
 
-        assert logging_config.logger is original_logger  # same object, not rebound
-        assert logging_config.logger.handlers == [marker_handler]
-        assert logging_config.logger.level == logging.DEBUG
-        assert logging_config.logger.propagate is False
+        assert logging_config._logger is original_logger  # same object, not rebound
+        assert logging_config._logger.handlers == [marker_handler]
+        assert logging_config._logger.level == logging.DEBUG
+        assert logging_config._logger.propagate is False
     finally:
         original_logger.handlers = original_handlers
         original_logger.setLevel(original_level)
         original_logger.propagate = original_propagate
 
 
-def test_get_logger_reflects_sync_logger_from_a_consumer_module():
+def test_get_logger_reflects_sync_logger_from_a_consumer_module(tmp_path):
     """
     Demonstrates the structural fix end-to-end: driving_system.py (a consumer module) calls
-    get_logger() at each log call site rather than caching 'logger' at its own import time, so
-    it automatically reflects whatever sync_logger() most recently configured -- no matter when
-    driving_system was imported relative to that call."""
+    get_logger() at each log call site rather than caching the logger at its own import time,
+    so it automatically reflects whatever sync_logger() most recently configured -- no matter
+    when driving_system was imported relative to that call."""
     from fus_driving_systems import driving_system
 
-    original_logger = logging_config.logger
+    original_logger = logging_config._logger
     original_handlers = original_logger.handlers
     stand_in_logger = logging.getLogger("unittest.get_logger_marker")
     marker_handler = logging.NullHandler()
     stand_in_logger.addHandler(marker_handler)
 
     try:
-        logging_config.sync_logger(stand_in_logger)
+        logging_config.sync_logger(stand_in_logger, log_dir=str(tmp_path))
 
         assert driving_system.get_logger() is original_logger
         assert driving_system.get_logger().handlers == [marker_handler]

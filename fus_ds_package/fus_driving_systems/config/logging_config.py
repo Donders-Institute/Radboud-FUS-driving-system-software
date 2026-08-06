@@ -34,6 +34,7 @@ import sys
 
 # Miscellaneous packages
 from datetime import datetime
+import faulthandler
 import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -47,9 +48,25 @@ from fus_driving_systems.utils import get_config_value
 # A real logging.getLogger(...) singleton from the moment this module is imported (rather than
 # None until initialize_logger() runs), so any module that reads it before
 # initialize_logger()/sync_logger() ever runs still gets a valid, usable logger object instead
-# of crashing on a None attribute access.
-logger = logging.getLogger(
+# of crashing on a None attribute access. Private (leading underscore): every consumer, inside
+# and outside this module, must go through get_logger() instead, since initialize_logger()
+# rebinds this name to a different object later on -- a cached reference would go stale.
+_logger = logging.getLogger(
     get_config_value(None, config, 'Logging', 'Logger name', 'driving_system'))
+
+# The timestamped subfolder initialize_logger() creates for the main FDS log file, exposed via
+# get_session_log_dir() below so other log files created later in the same session (e.g. the
+# faulthandler log and IGT.connect()'s native IGT log, see enable_crash_detection() below) land
+# in that same folder instead of each ending up loose alongside log_dir -- otherwise files from
+# one session couldn't be recognized/shared together as a single unit (e.g. with IGT for a bug
+# report, GitHub issue #126).
+_session_log_dir = None  # pylint: disable=invalid-name
+
+# The open file faulthandler is currently targeting, kept here (not e.g. an instance attribute
+# on IGT) since faulthandler itself is a single, process-wide facility -- there is only ever
+# one target, no matter how many driving-system objects get constructed. Also doubles as the
+# is_crash_detection_enabled() flag: None until enable_crash_detection() has run once.
+_faulthandler_file = None  # pylint: disable=invalid-name
 
 
 def get_logger():
@@ -57,16 +74,168 @@ def get_logger():
     Returns the currently active shared logger.
 
     Modules that need to log should call this at each log call site (e.g.
-    'get_logger().info(...)') instead of doing 'from ...logging_config import logger' once at
-    their own import time: initialize_logger()/sync_logger() can (re)point 'logger' at a
-    different or reconfigured object later on, and a function call always reads the current
-    value, so callers never end up holding a stale reference from before that happened.
+    'get_logger().info(...)') instead of caching the return value at their own import time:
+    initialize_logger()/sync_logger() can (re)point the shared logger at a different or
+    reconfigured object later on, and a function call always reads the current value, so
+    callers never end up holding a stale reference from before that happened.
 
     Returns:
         logging.Logger: The currently active shared logger.
     """
 
-    return logger
+    return _logger
+
+
+def get_session_log_dir():
+    """
+    Returns the timestamped session folder created by the most recent initialize_logger()
+    call, or None if initialize_logger() hasn't run yet in this process.
+
+    Returns:
+        str or None: Absolute path to the shared session log folder (see the module-level
+        comment above _session_log_dir), or None if unavailable.
+    """
+
+    return _session_log_dir
+
+
+def is_crash_detection_enabled():
+    """
+    Returns whether enable_crash_detection() has already run once in this process.
+
+    Returns:
+        bool: True if faulthandler has already been enabled via enable_crash_detection().
+    """
+
+    return _faulthandler_file is not None
+
+
+def enable_crash_detection(log_dir, target_dir):
+    """
+    Enables faulthandler and checks for evidence that a previous process crashed unexpectedly
+    (GitHub issue #126) -- the whole-package hook for this: called by both initialize_logger()
+    and sync_logger(), the two entry points host code uses to set up logging, so every driving
+    system benefits regardless of which one a script/host application (e.g. SonoRover One,
+    which uses sync_logger()) happens to call. A no-op if already enabled this process (see
+    is_crash_detection_enabled()) -- calling this more than once (e.g. IGT.__init__'s own
+    fallback call, see there) never re-triggers the crash check or retargets faulthandler.
+
+    faulthandler only writes to its target file when a fatal signal (e.g. a native segfault)
+    actually occurs -- a session that exits normally leaves the file empty/untouched. Each
+    session gets its own, uniquely timestamped target_dir (see get_session_log_dir()), so a
+    previous session's evidence can't be found by just checking "the same path as this
+    session" -- a persistent, cross-process pointer file at log_dir's stable root (unlike
+    target_dir, this doesn't change between sessions) records which target_dir the previous
+    session actually used.
+
+    Parameters:
+        log_dir (str): Stable root log directory -- where the cross-session pointer file and
+            kernel-death counter live. Must stay the same across sessions for crash detection
+            to find the previous session's evidence.
+        target_dir (str): Where THIS session's faulthandler log should be written (typically
+            the current session's timestamped subfolder, or log_dir itself if none exists).
+    """
+
+    global _faulthandler_file
+
+    if _faulthandler_file is not None:
+        return
+
+    Path(log_dir).mkdir(parents=True, exist_ok=True)
+    Path(target_dir).mkdir(parents=True, exist_ok=True)
+
+    filename = get_config_value(None, config, 'Logging', 'Filename faulthandler',
+                                'faulthandler_output.log')
+    pointer_filename = get_config_value(None, config, 'Logging', 'Filename session pointer',
+                                        '.last_session_log_dir')
+    pointer_path = os.path.join(log_dir, pointer_filename)
+
+    try:
+        _check_previous_session_crash(log_dir, pointer_path, filename)
+    except Exception as e:
+        get_logger().debug(f'Could not check for a previous-session crash: {e}')
+
+    with open(pointer_path, 'w', encoding='utf-8') as f:
+        f.write(target_dir)
+
+    # BUGFIX: faulthandler writes (via a C-level signal handler) at whatever point in the
+    # future a fatal signal occurs -- its target file must stay open for that entire time. A
+    # 'with' block here would close the file (and its underlying OS file descriptor) as soon
+    # as this line finished, silently disabling every future write: faulthandler.is_enabled()
+    # would keep reporting True afterwards, but a probe write to the closed descriptor raises
+    # ValueError -- confirmed with a standalone repro before writing this. Kept open via the
+    # module-level _faulthandler_file instead, deliberately never closed (process exit is what
+    # eventually releases it).
+    fault_handler_path = os.path.join(target_dir, filename)
+    _faulthandler_file = open(  # pylint: disable=consider-using-with
+        fault_handler_path, "w", encoding='utf-8')
+    faulthandler.enable(file=_faulthandler_file)
+
+
+def _check_previous_session_crash(log_dir, pointer_path, filename):
+    """
+    Detects and counts likely kernel-death crashes (GitHub issue #126) left behind by a
+    previous session/process.
+
+    A non-empty faulthandler log found at the location the pointer file records is evidence
+    that session crashed before it ever got the chance to shut down cleanly -- checking
+    "target_dir" (this session's own, brand new folder) instead would never find anything,
+    since it's unique to this session; that was a real, since-fixed bug. Copied (not deleted,
+    and not moved -- see below) alongside a persistent counter, so the crash frequency can be
+    tracked over time and the archived output attached to a bug report for IGT.
+
+    Parameters:
+        log_dir (str): Stable root log directory -- where the kernel-death counter lives.
+        pointer_path (str): Path to the pointer file recording the previous session's own
+            target_dir, written by the previous enable_crash_detection() call.
+        filename (str): Configured faulthandler log filename (basename only).
+    """
+
+    if not os.path.exists(pointer_path):
+        return
+
+    with open(pointer_path, encoding='utf-8') as f:
+        previous_target_dir = f.read().strip()
+
+    previous_fault_handler_path = os.path.join(previous_target_dir, filename)
+    if not os.path.exists(previous_fault_handler_path):
+        return
+
+    with open(previous_fault_handler_path, encoding='utf-8') as f:
+        previous_content = f.read()
+
+    if not previous_content.strip():
+        return
+
+    count_filename = get_config_value(None, config, 'Logging', 'Filename kernel death counter',
+                                      'kernel_death_count.txt')
+    count_path = os.path.join(log_dir, count_filename)
+    count = 0
+    if os.path.exists(count_path):
+        with open(count_path, encoding='utf-8') as f:
+            count = int(f.read().strip())
+    count += 1
+
+    timestamp_format = get_config_value(None, config, 'Logging', 'Timestamp format',
+                                        '%Y-%m-%d_%H-%M-%S')
+    timestamp = datetime.now().strftime(timestamp_format)
+    # count is included so two crashes within the same second (timestamp_format's precision)
+    # don't overwrite each other's archived output. Copied via a fresh write rather than
+    # os.replace()/os.rename(): previous_fault_handler_path may still have an open handle (this
+    # process's own faulthandler file, kept open deliberately -- see enable_crash_detection --
+    # if it happens to be the same session, or a previous process's), and Windows refuses to
+    # rename a file that has any open handle, even though reopening/truncating it is fine.
+    archived_path = f'{previous_fault_handler_path}.{timestamp}_{count}.crash'
+    with open(archived_path, 'w', encoding='utf-8') as f:
+        f.write(previous_content)
+
+    with open(count_path, 'w', encoding='utf-8') as f:
+        f.write(str(count))
+
+    get_logger().warning(
+        'Previous session appears to have crashed unexpectedly (possible kernel death, ' +
+        'see GitHub issue #126) -- its faulthandler output was archived to ' +
+        f'{archived_path}. This is occurrence number {count}.')
 
 
 class ZipRotatingFileHandler(RotatingFileHandler):
@@ -120,17 +289,14 @@ class ZipRotatingFileHandler(RotatingFileHandler):
 
 
 def initialize_logger(log_dir, filename):
-    global logger
-
-    # create directory if it doesn't exist
-    Path(log_dir).mkdir(parents=True, exist_ok=True)
+    global _logger, _session_log_dir
 
     # reset logging
     logger_name = get_config_value(None, config, 'Logging', 'Logger name', 'driving_system')
-    logger = logging.getLogger(logger_name)
-    handlers = logger.handlers[:]
+    _logger = logging.getLogger(logger_name)
+    handlers = _logger.handlers[:]
     for handler in handlers:
-        logger.removeHandler(handler)
+        _logger.removeHandler(handler)
         handler.close()
 
     file_log_level = getattr(logging, get_config_value(None, config, 'Logging', 'Log level file',
@@ -139,7 +305,7 @@ def initialize_logger(log_dir, filename):
                                                           'Log level console', 'INFO').upper())
 
     # create logger
-    logger = logging.getLogger(logger_name)
+    _logger = logging.getLogger(logger_name)
 
     # Get current date and time for logging
     date_time = datetime.now()
@@ -147,13 +313,24 @@ def initialize_logger(log_dir, filename):
                                         '%Y-%m-%d_%H-%M-%S')
     timestamp = date_time.strftime(timestamp_format)
 
+    # All log files for this session -- this FDS log, plus the faulthandler log and
+    # IGT.connect()'s native IGT log (see get_session_log_dir()) -- live together in one
+    # timestamped subfolder of log_dir, so the whole session can be found/shared as a single
+    # unit (e.g. with IGT for a bug report, GitHub issue #126) instead of being scattered flat
+    # inside log_dir alongside files from other sessions. mkdir(parents=True) also creates
+    # log_dir itself if it didn't already exist.
+    _session_log_dir = os.path.join(log_dir, f'{timestamp}_FDS_logs')
+    Path(_session_log_dir).mkdir(parents=True, exist_ok=True)
+
+    enable_crash_detection(log_dir, _session_log_dir)
+
     # create file handler
     initial_part_log_filename = get_config_value(None, config, 'Logging',
                                                  'Initial part of log filename', 'log_')
     max_log_file_size_mb = float(get_config_value(None, config, 'Logging',
                                                   'Max log file size [MB]', 10))
     file_handler = ZipRotatingFileHandler(
-        os.path.join(log_dir, initial_part_log_filename + f'{timestamp}_' + filename + '.txt'),
+        os.path.join(_session_log_dir, initial_part_log_filename + filename + '.txt'),
         mode='w', maxBytes=int(max_log_file_size_mb * 1024 * 1024), backupCount=0)
 
     # create console handler
@@ -169,29 +346,42 @@ def initialize_logger(log_dir, filename):
     file_handler.setLevel(file_log_level)
     console_handler.setLevel(console_log_level)
 
-    logger.setLevel(min(file_log_level, console_log_level))
+    _logger.setLevel(min(file_log_level, console_log_level))
 
-    logger.addHandler(console_handler)
-    logger.addHandler(file_handler)
+    _logger.addHandler(console_handler)
+    _logger.addHandler(file_handler)
 
-    return logger
+    return _logger
 
 
-def sync_logger(new_logger):
+def sync_logger(new_logger, log_dir=None):
     """
     Points our shared logger at an externally provided (e.g. host application's) logger's
     handlers, level and propagation setting.
 
-    Mutates the existing logger object in place instead of rebinding this module's 'logger'
-    name to a different object: every consumer module calls get_logger() at each log call site
-    rather than caching a reference, so it always reads whatever this mutates -- a plain rebind
-    here would still work for them, but would not reach any (unlikely) caller that cached
-    logging_config.logger itself instead of calling get_logger().
+    Mutates the existing logger object in place instead of rebinding this module's shared
+    logger to a different object: every consumer module calls get_logger() at each log call
+    site rather than caching a reference, so it always reads whatever this mutates -- a plain
+    rebind here would still work for them, but would not reach any (unlikely) caller that
+    cached the logger object itself instead of calling get_logger().
+
+    Also enables crash detection (GitHub issue #126) if it hasn't already been enabled this
+    process -- the other of the two whole-package hooks (see enable_crash_detection()),
+    covering host applications (e.g. SonoRover One) that use sync_logger() instead of
+    initialize_logger() to set up logging.
 
     Parameters:
         new_logger (logging.Logger): The externally provided logger to mirror.
+        log_dir (str, optional): Where the faulthandler log and its persistent, cross-session
+            bookkeeping should live if crash detection hasn't already been enabled by
+            initialize_logger(). Defaults to config 'Logging'/'Temporary logging path'.
     """
 
-    logger.handlers = list(new_logger.handlers)
-    logger.setLevel(new_logger.level)
-    logger.propagate = new_logger.propagate
+    _logger.handlers = list(new_logger.handlers)
+    _logger.setLevel(new_logger.level)
+    _logger.propagate = new_logger.propagate
+
+    if log_dir is None:
+        log_dir = get_config_value(None, config, 'Logging', 'Temporary logging path', 'C:\\Temp')
+
+    enable_crash_detection(log_dir, log_dir)
