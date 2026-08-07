@@ -260,17 +260,17 @@ def test_calc_volt_finds_x_for_each_amplitude():
     assert seq._volt == pytest.approx([20.0, 80.0])
 
 
-def test_calc_volt_defaults_to_zero_when_amplitude_out_of_range():
-    """Characterizes the fallback: when no x can be found for a given
-    amplitude, _calc_volt does not raise -- it silently records 0 V for
-    that entry."""
+def test_calc_volt_records_none_when_amplitude_out_of_range():
+    """BUGFIX: when no x can be found for a given amplitude, _calc_volt does not raise -- it
+    records None for that entry, not 0 (0 would look like a genuine, calculated voltage to any
+    later read of self._volt, when really no value could be found at all)."""
     seq = _bare_sequence()
     seq._conv_param = {'volt_curve_pp': _identity_pp(-10.0, 200.0)}
     seq._ampl = [999]  # above the pp's range
 
     seq._calc_volt()
 
-    assert seq._volt == [0]
+    assert seq._volt == [None]
 
 
 # --- _calc_ampl ----------------------------------------------------------
@@ -292,29 +292,41 @@ def test_calc_ampl_rounds_normal_in_range_value():
 
 
 def test_calc_ampl_exits_when_x_value_above_pp_range():
+    """BUGFIX: this branch used to exit without ever touching self._ampl, unlike the >100
+    branch below -- self._ampl is now reset to None upfront in _calc_ampl, so a stale value
+    from an earlier, unrelated calculation can no longer look like a valid, current result if
+    this SystemExit is ever caught further up."""
     seq = _bare_sequence()
     seq._conv_param = {'power_curve_pp': _identity_pp(-10.0, 1000.0)}
     seq._eq_factor = 1.0
+    seq._ampl = ['stale']
     seq._press = 2000e-6  # x_value = 2000, above the pp's max of 1000
 
     with pytest.raises(SystemExit):
         seq._calc_ampl()
 
+    assert seq._ampl is None
+
 
 def test_calc_ampl_exits_when_x_value_below_pp_range():
+    """BUGFIX: see the identical note in test_calc_ampl_exits_when_x_value_above_pp_range."""
     seq = _bare_sequence()
     seq._conv_param = {'power_curve_pp': _identity_pp(-10.0, 1000.0)}
     seq._eq_factor = 1.0
+    seq._ampl = ['stale']
     seq._press = -20e-6  # x_value = -20, below the pp's min of -10
 
     with pytest.raises(SystemExit):
         seq._calc_ampl()
 
+    assert seq._ampl is None
+
 
 def test_calc_ampl_clamps_to_100_and_exits_when_calculated_above_100():
-    """calc_ampl > 100 (but still within the pp's domain) is clamped to
-    100%, _press/_volt are recalculated from that clamped 100%, and only
-    then does the method exit -- it never returns a >100 amplitude."""
+    """calc_ampl > 100 (but still within the pp's domain) is clamped to 100% just long enough
+    to compute the _press/_volt shown in the error message, then the method exits -- BUGFIX:
+    self._ampl is cleared back to None right before exiting, since the request as a whole was
+    rejected and [100] would otherwise look like a valid, current amplitude to any later read."""
     seq = _bare_sequence()
     seq._conv_param = {
         'power_curve_pp': _identity_pp(-10.0, 1000.0),
@@ -327,9 +339,7 @@ def test_calc_ampl_clamps_to_100_and_exits_when_calculated_above_100():
     with pytest.raises(SystemExit):
         seq._calc_ampl()
 
-    assert seq._ampl == [100]
-    assert seq._press == pytest.approx(1e-4)
-    assert seq._volt == pytest.approx([100.0])
+    assert seq._ampl is None
 
 
 def test_calc_ampl_clamps_to_0_without_exiting_when_calculated_below_0():
@@ -379,6 +389,9 @@ def test_calc_ampl_using_volt_clamps_to_0_without_exiting_when_below_range():
 
 
 def test_calc_ampl_using_volt_clamps_to_100_and_exits_when_above_range():
+    """BUGFIX: mirrors test_calc_ampl_clamps_to_100_and_exits_when_calculated_above_100 --
+    self._ampl is cleared back to None right before exiting, not left at the provisional [100]
+    used to compute the error message's press/volt."""
     seq = _bare_sequence()
     seq._conv_param = {
         'volt_curve_pp': _identity_pp(-10.0, 200.0),
@@ -392,7 +405,7 @@ def test_calc_ampl_using_volt_clamps_to_100_and_exits_when_above_range():
     with pytest.raises(SystemExit):
         seq._calc_ampl_using_volt()
 
-    assert seq._ampl == [100]
+    assert seq._ampl is None
 
 
 # --- _calc_press -----------------------------------------------------------
@@ -484,7 +497,11 @@ def test_global_power_setter_sets_value_when_option_available(patch_config):
 
     assert seq._global_power == 5
     assert seq._chosen_power == 'Global power [mW]'
-    assert seq._ampl == 0  # reset at the top of the setter, and never re-set here
+    # reset to None at the top of the setter, and never re-set here -- 0 would look like a
+    # genuine, computed value for a power option that isn't active right now.
+    assert seq._ampl is None
+    assert seq._press is None
+    assert seq._volt is None
 
 
 def test_global_power_setter_exits_when_option_unavailable(patch_config):
@@ -611,6 +628,66 @@ def test_volt_setter_with_known_combo_triggers_conversion():
     assert seq._press == pytest.approx(5e-5)
 
 
+def test_volt_setter_logging_only_press_failure_does_not_raise():
+    """BUGFIX: _calc_press() is called here purely to log a derived pressure value -- the real
+    value being sent to hardware (voltage/amplitude) was already set independently above. If the
+    power curve's domain doesn't cover the resulting amplitude, _calc_press() used to leave
+    self._press = None, which then crashed the very next debug line's f'{self._press:.2f}' with
+    an unrelated-looking TypeError. Must now just degrade the log message instead."""
+    seq = _bare_sequence()
+    seq._engineering_mode = True
+    seq._driving_sys = SimpleNamespace(
+        power_options=['Voltage [V]'], require_conv_eq=True, available_ch=1)
+    seq._ds_tran_combo = 'combo1'
+    seq._equip_combos = ['combo1']
+    seq._conv_param = {
+        'volt_curve_pp': _identity_pp(-10.0, 200.0),
+        # power_curve_pp's domain doesn't cover the resulting amplitude (50) --
+        # find_x_for_y_in_pp() inside _calc_press() won't find a match.
+        'power_curve_pp': _identity_pp(80.0, 1000.0),
+    }
+    seq._eq_factor = 1.0
+
+    seq.volt = 50  # must not raise
+
+    assert seq._volt == [50]
+    assert seq._ampl == pytest.approx([50.0])
+    assert seq._press is None
+
+
+def test_volt_setter_exits_when_derived_press_exceeds_configured_max(patch_config):
+    """CONFIRMED INTENDED (not a bug): mirrors
+    test_ampl_setter_exits_when_derived_press_exceeds_configured_max -- amplitude is what's
+    actually sent to hardware here (voltage is converted to it above), but exceeding the
+    configured safe pressure limit is a deliberate safety checkpoint for the engineer, so
+    _calc_press()'s max-pressure-exceeded sys.exit() is intentionally left free to propagate.
+    BUGFIX: the whole voltage request is rejected in that case, so the just-assigned _volt (and
+    its derived _ampl) are also cleared back to None -- otherwise they'd still look like a
+    valid, current result even though the request as a whole was refused."""
+    patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '1.4')
+    seq = _bare_sequence()
+    seq._engineering_mode = True
+    seq._driving_sys = SimpleNamespace(
+        power_options=['Voltage [V]'], require_conv_eq=True, available_ch=1)
+    seq._ds_tran_combo = 'combo1'
+    seq._equip_combos = ['combo1']
+    seq._conv_param = {
+        # identity pp -> volt=2_000_000 converts straight to ampl=2_000_000
+        'volt_curve_pp': _identity_pp(-10.0, 1e7),
+        # identity pp -> find_x_for_y_in_pp(ampl=2_000_000) finds x = 2_000_000, so
+        # press_mpa = 2_000_000 * 1e-6 / eq_factor(1.0) = 2.0 MPa, above the 1.4 MPa max.
+        'power_curve_pp': _identity_pp(-10.0, 1e7),
+    }
+    seq._eq_factor = 1.0
+
+    with pytest.raises(SystemExit):
+        seq.volt = 2_000_000
+
+    assert seq._press is None
+    assert seq._volt is None
+    assert seq._ampl is None
+
+
 def test_volt_setter_with_multiple_values_skips_press_calculation():
     """When more than one voltage is given, _calc_press() is deliberately not
     called (pressure cannot be derived from a per-element voltage array)."""
@@ -713,6 +790,64 @@ def test_ampl_setter_with_known_combo_triggers_conversion():
     assert seq._ampl == [50]
     assert seq._volt == pytest.approx([50.0])
     assert seq._press == pytest.approx(5e-5)
+
+
+def test_ampl_setter_logging_only_press_failure_does_not_raise():
+    """BUGFIX: same crash as test_volt_setter_logging_only_press_failure_does_not_raise, reached
+    via ampl's setter instead -- the power curve's domain doesn't cover the set amplitude, so
+    find_x_for_y_in_pp() inside _calc_press() can't find a match and leaves self._press = None,
+    which must not crash the debug log line right after."""
+    seq = _bare_sequence()
+    seq._engineering_mode = True
+    seq._driving_sys = SimpleNamespace(
+        power_options=['Amplitude [%]'], require_conv_eq=True, available_ch=1)
+    seq._ds_tran_combo = 'combo1'
+    seq._equip_combos = ['combo1']
+    seq._conv_param = {
+        'volt_curve_pp': _identity_pp(-10.0, 200.0),
+        'power_curve_pp': _identity_pp(80.0, 1000.0),  # domain doesn't cover ampl=50
+    }
+    seq._eq_factor = 1.0
+
+    seq.ampl = 50  # must not raise
+
+    assert seq._ampl == [50]
+    assert seq._volt == pytest.approx([50.0])
+    assert seq._press is None
+
+
+def test_ampl_setter_exits_when_derived_press_exceeds_configured_max(patch_config):
+    """CONFIRMED INTENDED (not a bug): even though amplitude is what's actually sent to
+    hardware here (the derived pressure is otherwise only for the log line), exceeding the
+    configured safe pressure limit is a deliberate safety checkpoint for the engineer, not
+    merely a logging concern -- _calc_press()'s max-pressure-exceeded sys.exit() is
+    intentionally left free to propagate through this setter rather than being caught.
+    BUGFIX: the whole amplitude request is rejected in that case, so the just-assigned _ampl
+    (and its derived _volt) are also cleared back to None -- otherwise they'd still look like a
+    valid, current result even though the request as a whole was refused."""
+    patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '1.4')
+    seq = _bare_sequence()
+    seq._engineering_mode = True
+    seq._driving_sys = SimpleNamespace(
+        power_options=['Amplitude [%]'], require_conv_eq=True, available_ch=1)
+    seq._ds_tran_combo = 'combo1'
+    seq._equip_combos = ['combo1']
+    seq._conv_param = {
+        'volt_curve_pp': _identity_pp(-10.0, 200.0),
+        # identity pp -> find_x_for_y_in_pp(ampl) finds x = ampl = 2_000_000, so
+        # press_mpa = 2_000_000 * 1e-6 / eq_factor(1.0) = 2.0 MPa, above the 1.4 MPa max.
+        'power_curve_pp': _identity_pp(-10.0, 1e7),
+    }
+    seq._eq_factor = 1.0
+
+    with pytest.raises(SystemExit):
+        seq.ampl = 2_000_000
+
+    # Cleared right before the exit, per the "don't leave a stale, valid-looking value behind
+    # a rejected request" principle applied consistently across this whole module.
+    assert seq._press is None
+    assert seq._ampl is None
+    assert seq._volt is None
 
 
 def test_ampl_setter_exits_on_wrong_length_list():
@@ -822,12 +957,7 @@ def test_focus_wrt_exit_plane_setter_exits_when_combo_unknown_but_required():
     assert seq.focus_wrt_mid_bowl == 25  # fallback: focus + exit_plane_dist
 
 
-# --- focus_wrt_mid_bowl / set_focus_wrt_mid_bowl -----------------------------
-# focus_wrt_mid_bowl's setter and set_focus_wrt_mid_bowl() are near-duplicates
-# of each other (same validation, same find_x_for_y_in_pp usage, same
-# fallback and range-check logic) -- the only difference is that
-# set_focus_wrt_mid_bowl additionally gates its final recalculation block on
-# the no_ampl_input parameter, tested separately below via a mocker spy.
+# --- focus_wrt_mid_bowl -------------------------------------------------------
 
 def test_focus_wrt_mid_bowl_setter_without_conversion_uses_exit_plane_offset():
     seq = _bare_sequence()
@@ -889,20 +1019,6 @@ def test_focus_wrt_mid_bowl_setter_falls_back_when_x_not_found():
 
 
 def test_focus_wrt_mid_bowl_setter_exits_when_combo_unknown_but_required():
-    """
-    Mirrors set_focus_wrt_mid_bowl's equivalent test below. This property
-    setter has no no_ampl_input escape hatch, so with require_conv_eq=True
-    and an unknown combo it always exits -- unlike set_focus_wrt_mid_bowl,
-    which can skip that exit via no_ampl_input=False.
-
-    Note: a repo-wide grep (including every standalone example script)
-    shows this setter -- and set_focus_wrt_mid_bowl() -- have ZERO active
-    call sites anywhere; every real script sets focus_wrt_exit_plane
-    instead, and only reads focus_wrt_mid_bowl (the getter, used by
-    igt_ds.py's _set_phases). Added for symmetry/coverage, not because a
-    live usage was found needing it -- see the plan's no_ampl_input finding
-    for whether this whole direct-bowl-middle setter API is still needed.
-    """
     seq = _bare_sequence()
     seq._driving_sys = SimpleNamespace(require_conv_eq=True)
     seq._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
@@ -911,82 +1027,6 @@ def test_focus_wrt_mid_bowl_setter_exits_when_combo_unknown_but_required():
 
     with pytest.raises(SystemExit):
         seq.focus_wrt_mid_bowl = 20
-
-
-def test_set_focus_wrt_mid_bowl_no_ampl_input_true_triggers_recalculation(mocker):
-    seq = _bare_sequence()
-    seq._driving_sys = SimpleNamespace(require_conv_eq=True)
-    seq._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
-    seq._ds_tran_combo = 'combo1'
-    seq._equip_combos = ['combo1']
-    seq._conv_param = {'focus_curve_pp': _identity_pp(0.0, 100.0)}
-    seq._ampl = [50.0]
-    seq._volt = [10.0]
-    seq._press = 0.5
-    seq._eq_factor = 1.0  # _calc_eq_factor is mocked below, so it never gets (re)set otherwise
-
-    spy_eq_factor = mocker.patch.object(seq, '_calc_eq_factor')
-    mocker.patch.object(seq, '_calc_ampl')
-    mocker.patch.object(seq, '_calc_volt')
-
-    seq.set_focus_wrt_mid_bowl(20, no_ampl_input=True)
-
-    spy_eq_factor.assert_called_once()
-
-
-def test_set_focus_wrt_mid_bowl_no_ampl_input_false_skips_recalculation(mocker):
-    seq = _bare_sequence()
-    seq._driving_sys = SimpleNamespace(require_conv_eq=True)
-    seq._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
-    seq._ds_tran_combo = 'combo1'
-    seq._equip_combos = ['combo1']
-    seq._conv_param = {'focus_curve_pp': _identity_pp(0.0, 100.0)}
-    seq._ampl = [50.0]
-    seq._volt = [10.0]
-    seq._press = 0.5
-
-    spy_eq_factor = mocker.patch.object(seq, '_calc_eq_factor')
-    mocker.patch.object(seq, '_calc_ampl')
-    mocker.patch.object(seq, '_calc_volt')
-
-    seq.set_focus_wrt_mid_bowl(20, no_ampl_input=False)
-
-    spy_eq_factor.assert_not_called()
-
-
-def test_set_focus_wrt_mid_bowl_exits_when_combo_unknown_and_no_ampl_input_true():
-    """
-    With no_ampl_input=True (the default) and require_conv_eq=True but the
-    combo unknown, this method hits the SAME combo-unknown condition
-    twice: first inside the is_validated block (only warns + falls back to
-    focus - exit_plane_dist, does not exit), then again in the
-    no_ampl_input-gated recalculation block at the end (which does exit).
-    Net effect: a SystemExit, after the fallback focus value was already
-    computed.
-    """
-    seq = _bare_sequence()
-    seq._driving_sys = SimpleNamespace(require_conv_eq=True)
-    seq._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
-    seq._ds_tran_combo = 'combo1'
-    seq._equip_combos = []  # combo unknown
-
-    with pytest.raises(SystemExit):
-        seq.set_focus_wrt_mid_bowl(20, no_ampl_input=True)
-
-
-def test_set_focus_wrt_mid_bowl_does_not_exit_when_combo_unknown_and_no_ampl_input_false():
-    """no_ampl_input=False short-circuits 'if no_ampl_input and require_conv_eq:'
-    entirely, so the combo-unknown sys.exit at the end never runs here --
-    only the mid-function warning+fallback does."""
-    seq = _bare_sequence()
-    seq._driving_sys = SimpleNamespace(require_conv_eq=True)
-    seq._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
-    seq._ds_tran_combo = 'combo1'
-    seq._equip_combos = []  # combo unknown
-
-    seq.set_focus_wrt_mid_bowl(20, no_ampl_input=False)  # must not raise
-
-    assert seq.focus_wrt_exit_plane == 15  # fallback: focus - exit_plane_dist
 
 
 # --- _update_conv_param -----------------------------------------------------

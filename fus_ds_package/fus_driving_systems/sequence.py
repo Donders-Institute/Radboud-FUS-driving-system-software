@@ -606,9 +606,12 @@ class Sequence():
             global_power (float): The global power [W] for SC.
         """
 
-        # set other parameters determine the intensity to None
-        self._ampl = 0
-        self._global_power = 0
+        # set other parameters that determine the intensity to None -- 0 would look like a
+        # genuine, computed value for a power option that isn't even active right now.
+        self._ampl = None
+        self._press = None
+        self._volt = None
+        self._global_power = None
 
         power_option = get_config_value(get_logger(), config, 'Power', 'Option.glob_pow',
                                         'Global power [mW]')
@@ -646,9 +649,10 @@ class Sequence():
             press (float): The maximum pressure in free water [MPa] for IGT.
         """
 
-        # set other parameters determine the intensity to None
-        self._global_power = 0
-        self._press = 0
+        # set other parameters that determine the intensity to None -- 0 would look like a
+        # genuine, computed value for a power option that isn't even active right now.
+        self._global_power = None
+        self._press = None
 
         power_option = get_config_value(get_logger(), config, 'Power', 'Option.press',
                                         'Max. pressure in free water [MPa]')
@@ -682,8 +686,8 @@ class Sequence():
 
                         get_logger().debug('New maximum pressure in free water value of ' +
                                            f'{self._press:.2f} [MPa] results in a voltage of ' +
-                                           f'{self._volt[0]:.2f} [V] and an amplitude of ' +
-                                           f'{self._ampl[0]:.2f} [%].')
+                                           f'{_format_or_unavailable(self._volt[0])} [V] and ' +
+                                           f'an amplitude of {self._ampl[0]:.2f} [%].')
                     else:
                         message = ('Conversion equations unknown but required for ' +
                                    f'{self._ds_tran_combo}.')
@@ -720,9 +724,10 @@ class Sequence():
             raise RuntimeError(
                 "Voltage mode is disabled. Use maximum pressure in free water instead.")
 
-        # set other parameters determine the intensity to None
-        self._global_power = 0
-        self._volt = 0
+        # set other parameters that determine the intensity to None -- 0 would look like a
+        # genuine, computed value for a power option that isn't even active right now.
+        self._global_power = None
+        self._volt = None
 
         power_option = get_config_value(
             get_logger(), config, 'Power', 'Option.volt', 'Voltage [V]')
@@ -762,12 +767,19 @@ class Sequence():
                             round_volt = f'{self._volt[0]:.2f}'
 
                         if n_entries == 1:
-                            # Calculate maximum pressure in free water for logging purposes
-                            self._calc_press()
+                            # Amplitude is what's actually sent to hardware here (volt is
+                            # converted to it above), so this pressure is only derived for the
+                            # log line below -- EXCEPT its max-pressure-exceeded check (inside
+                            # _calc_press) is a deliberate exception to that: exceeding the
+                            # configured safe limit is a safety decision for the engineer, not
+                            # merely a logging concern, so it's intentionally left free to
+                            # sys.exit() here same as anywhere else.
+                            self._calc_press_for_logging('_volt', '_ampl')
 
                             get_logger().debug(
                                 f'New voltage value of {round_volt} [V] results in a ' +
-                                f'maximum pressure in free water of {self._press:.2f} ' +
+                                'maximum pressure in free water of ' +
+                                f'{_format_or_unavailable(self._press)} ' +
                                 f' [MPa] and an amplitude of {round_ampl} [%].')
                         else:
                             get_logger().debug(
@@ -815,9 +827,10 @@ class Sequence():
             raise RuntimeError(
                 "Amplitude mode is disabled. Use maximum pressure in free water instead.")
 
-        # set other parameters that determine the intensity to None
-        self._global_power = 0
-        self._ampl = 0
+        # set other parameters that determine the intensity to None -- 0 would look like a
+        # genuine, computed value for a power option that isn't even active right now.
+        self._global_power = None
+        self._ampl = None
 
         power_option = get_config_value(get_logger(), config, 'Power',
                                         'Option.ampl', 'Amplitude [%]')
@@ -849,7 +862,11 @@ class Sequence():
                         self._calc_volt()
 
                         round_ampl = f'{self._ampl[0]:.2f}'
-                        round_volt = f'{self._volt[0]:.2f}'
+                        # self._calc_volt() above can leave a None entry (calibration doesn't
+                        # cover this amplitude) -- this call is logging-only either way (ampl
+                        # itself is what's actually sent to hardware), so a missing voltage here
+                        # only degrades the log message, never raises.
+                        round_volt = _format_or_unavailable(self._volt[0])
 
                         if n_entries > 1:
                             # Equipment is not part a combination, so only set amplitude
@@ -860,12 +877,18 @@ class Sequence():
                                 'Amplitude array is given. Pressure cannot ' +
                                 'be calculated for logging purposes.')
                         else:
-                            # Convert amplitude to pressure for logging
-                            self._calc_press()
+                            # Convert amplitude to pressure for logging -- EXCEPT
+                            # _calc_press()'s own max-pressure-exceeded check is a deliberate
+                            # exception to "logging-only": exceeding the configured safe limit
+                            # is a safety decision for the engineer, not merely a logging
+                            # concern, so it's intentionally left free to sys.exit() here same
+                            # as anywhere else.
+                            self._calc_press_for_logging('_ampl', '_volt')
 
                             get_logger().debug(
                                 f'New amplitude value of {round_ampl} [%] results in a ' +
-                                f'maximum pressure in free water of {self._press:.2f} ' +
+                                'maximum pressure in free water of ' +
+                                f'{_format_or_unavailable(self._press)} ' +
                                 f'[MPa] and a voltage of {round_volt} [V].')
                     else:
                         message = f'Conversion equations unknown for {self._ds_tran_combo}.'
@@ -985,20 +1008,25 @@ class Sequence():
                 # Update voltage accordingly
                 self._calc_volt()
 
+                # _calc_volt() is purely informational here (amplitude is the real value being
+                # sent to hardware), so a voltage entry can be None if the calibration doesn't
+                # cover it.
                 if len(self._ampl) > 1:
                     round_ampl = [f'{x:.2f}' for x in self._ampl]
-                    round_volt = [f'{x:.2f}' for x in self._volt]
+                    round_volt = [_format_or_unavailable(x) for x in self._volt]
                 else:
                     round_ampl = f'{self._ampl[0]:.2f}'
-                    round_volt = f'{self._volt[0]:.2f}'
+                    round_volt = _format_or_unavailable(self._volt[0])
 
                 get_logger().debug(
                     "New focus wrt exit plane of " +
                     f"{self._focus_wrt_exit_plane:.2f} [mm] " +
                     f" results in an equalization factor of {self._eq_factor:.2f} " +
                     "recalcultating the maximum pressure in free water as " +
-                    f"{self._press:.2f} [MPa], the voltage as {round_volt} [V], " +
-                    f"and the amplitude as {round_ampl} [%].")
+                    # self._press isn't touched by this method -- it may already be None from
+                    # an earlier logging-only calculation that hit the max-pressure check.
+                    f"{_format_or_unavailable(self._press)} [MPa], the voltage as " +
+                    f"{round_volt} [V], and the amplitude as {round_ampl} [%].")
             else:
                 message = ('Conversion equations unknown but required for ' +
                            f'{self._ds_tran_combo}.')
@@ -1027,9 +1055,6 @@ class Sequence():
         Parameters:
             focus (float): Focal depth [mm] w.r.t. middle of the transducer bowl representing the
             middle of the FWHM.
-            no_ampl_input (bool): If amplitude is used as input, conversion of the amplitude due to
-            the set focus is no needed. Currently used for PCD measurements.
-            TODO: combine setting the focus and power.
         """
 
         is_validated = validate_value(focus, 'Focus wrt mid bowl [mm] (focus_wrt_mid_bowl)',
@@ -1103,122 +1128,24 @@ class Sequence():
                 # Update voltage accordingly
                 self._calc_volt()
 
+                # _calc_volt() is purely informational here (amplitude is the real value being
+                # sent to hardware), so a voltage entry can be None if the calibration doesn't
+                # cover it.
                 if len(self._ampl) > 1:
                     round_ampl = [f'{x:.2f}' for x in self._ampl]
-                    round_volt = [f'{x:.2f}' for x in self._volt]
+                    round_volt = [_format_or_unavailable(x) for x in self._volt]
                 else:
                     round_ampl = f'{self._ampl[0]:.2f}'
-                    round_volt = f'{self._volt[0]:.2f}'
+                    round_volt = _format_or_unavailable(self._volt[0])
 
                 get_logger().debug(
                     f"New focus wrt mid bowl of {self._focus_wrt_mid_bowl:.2f} [mm] " +
                     f"results in an equalization factor of {self._eq_factor:.2f} " +
                     "recalcultating the maximum pressure in free water as " +
-                    f"{self._press:.2f} [MPa], the voltage as {round_volt} [V], " +
-                    f"and the amplitude as {round_ampl} [%].")
-            else:
-                message = ('Conversion equations unknown but required for ' +
-                           f'{self._ds_tran_combo}.')
-                get_logger().critical(message)
-                sys.exit(message)
-
-    def set_focus_wrt_mid_bowl(self, focus, no_ampl_input=True):
-        """
-        Setter method for the focal depth w.r.t. middle of the transducer bowl representing the
-        middle of the FWHM.
-
-        Parameters:
-            focus (float): Focal depth [mm] w.r.t. middle of the transducer bowl representing the
-            middle of the FWHM.
-            no_ampl_input (bool): If amplitude is used as input, conversion of the amplitude due to
-            the set focus is no needed. Currently used for PCD measurements.
-            TODO: combine setting the focus and power.
-        """
-
-        is_validated = validate_value(focus, 'Focus wrt mid bowl [mm] (focus_wrt_mid_bowl)',
-                                      True, True, False, False)
-
-        if is_validated:
-            if self.driving_sys.require_conv_eq:
-                if self._ds_tran_combo in self._equip_combos:
-                    target_y_value = focus
-                    self._focus_wrt_exit_plane, status = find_x_for_y_in_pp(
-                        self._conv_param['focus_curve_pp'], target_y_value)
-
-                    if status:
-                        get_logger().debug(
-                            f"Found x value: {self._focus_wrt_exit_plane} for y = " +
-                            f"{target_y_value}")
-
-                        # Verify
-                        calc_y = self._conv_param['focus_curve_pp'](self._focus_wrt_exit_plane)
-                        get_logger().debug(
-                            f"Verification: pp({self._focus_wrt_exit_plane}) = {calc_y}")
-                    else:
-                        get_logger().warning(
-                            f"Could not find an x value for y = {target_y_value}. " +
-                            'Focus wrt exit plane will be calculated based on ' +
-                            'exit plane distance of ' +
-                            f'{self._transducer.exit_plane_dist} [mm].')
-
-                        self._focus_wrt_exit_plane = focus - self._transducer.exit_plane_dist
-
-                else:
-                    message = ('Compensation equations are not available or applicable. ' +
-                               'Focus wrt exit plane will be calculated based on exit plane ' +
-                               f'distance of {self._transducer.exit_plane_dist} [mm].')
-                    get_logger().warning(message)
-
-                    self._focus_wrt_exit_plane = focus - self._transducer.exit_plane_dist
-
-            else:
-
-                self._focus_wrt_exit_plane = focus - self._transducer.exit_plane_dist
-
-            # Check if focus is within range if compensation equations are not applicable
-            if (self._focus_wrt_exit_plane < self._transducer.min_foc
-                    or self._focus_wrt_exit_plane > self._transducer.max_foc):
-                message = (f'Focus wrt exit plane of {self._focus_wrt_exit_plane} [mm] is not ' +
-                           'within the set ' +
-                           f'focus range of {self._transducer.min_foc} and ' +
-                           f'{self._transducer.max_foc} [mm] of transducer ' +
-                           f'{self._transducer.name}.')
-                get_logger().critical(message)
-                sys.exit(message)
-
-            self._chosen_focus = get_config_value(get_logger(), config, 'Focus', 'Option.bowl',
-                                                  'Focus wrt mid bowl [mm]')
-
-            self._focus_wrt_mid_bowl = focus
-
-            get_logger().debug(f'Focus wrt exit plane [mm]: {self._focus_wrt_exit_plane} \n ' +
-                               f'Focus wrt bowl middle [mm]: {self._focus_wrt_mid_bowl}')
-
-        # Check if pressure compensation is available for chosen equipment
-        if no_ampl_input and self.driving_sys.require_conv_eq:
-            if self._ds_tran_combo in self._equip_combos:
-                # Update normalized pressure based on new focal depth
-                self._calc_eq_factor()
-
-                # Update amplitude accordingly
-                self._calc_ampl()
-
-                # Update voltage accordingly
-                self._calc_volt()
-
-                if len(self._ampl) > 1:
-                    round_ampl = [f'{x:.2f}' for x in self._ampl]
-                    round_volt = [f'{x:.2f}' for x in self._volt]
-                else:
-                    round_ampl = f'{self._ampl[0]:.2f}'
-                    round_volt = f'{self._volt[0]:.2f}'
-
-                get_logger().debug(
-                    f"New focus wrt exit plane of {self._focus_wrt_mid_bowl:.2f} [mm] " +
-                    f"results in an equalization factor of {self._eq_factor:.2f} " +
-                    "recalcultating the maximum pressure in free water as " +
-                    f"{self._press:.2f} [MPa], the voltage as {round_volt} [V], " +
-                    f"and the amplitude as {round_ampl} [%].")
+                    # self._press isn't touched by this method -- it may already be None from
+                    # an earlier logging-only calculation that hit the max-pressure check.
+                    f"{_format_or_unavailable(self._press)} [MPa], the voltage as " +
+                    f"{round_volt} [V], and the amplitude as {round_ampl} [%].")
             else:
                 message = ('Conversion equations unknown but required for ' +
                            f'{self._ds_tran_combo}.')
@@ -1561,16 +1488,21 @@ class Sequence():
 
         self._calc_volt()
 
+        # _calc_volt() (unlike the blocking _calc_ampl() above it) is purely informational --
+        # amplitude is the real value being sent to hardware -- so a voltage entry can be None
+        # here if the calibration doesn't cover it.
         if len(self._ampl) > 1:
             round_ampl = [f'{x:.2f}' for x in self._ampl]
-            round_volt = [f'{x:.2f}' for x in self._volt]
+            round_volt = [_format_or_unavailable(x) for x in self._volt]
         else:
             round_ampl = f'{self._ampl[0]:.2f}'
-            round_volt = f'{self._volt[0]:.2f}'
+            round_volt = _format_or_unavailable(self._volt[0])
 
+        # self._press isn't touched by this method either -- same caveat as round_volt above.
         get_logger().debug('New equipment pressure compensation coefficients result in a maximum' +
-                           f' pressure in free water of {self._press:.2f} [MPa], a voltage of ' +
-                           f'{round_volt} [V] and an amplitude of {round_ampl} [%].')
+                           f' pressure in free water of {_format_or_unavailable(self._press)} ' +
+                           f'[MPa], a voltage of {round_volt} [V] and an amplitude of ' +
+                           f'{round_ampl} [%].')
 
     def _calc_eq_factor(self):
         """
@@ -1591,6 +1523,11 @@ class Sequence():
         Calculate amplitude [%] vs. voltage [V] equation when amplitude is updated.
         """
 
+        # Reset upfront: volt is only assigned once, at the very end, once every entry has been
+        # computed -- if anything raises partway through, this ensures a stale value from a
+        # previous, unrelated calculation is never left looking like a current result.
+        self._volt = None
+
         volt = []
         for ampl in self._ampl:
             volt_value, status = find_x_for_y_in_pp(self._conv_param['volt_curve_pp'], ampl)
@@ -1603,7 +1540,9 @@ class Sequence():
                 get_logger().debug(f"Verification: pp({volt_value}) = {calc_y}")
 
             else:
-                volt_value = 0
+                # None, not 0: 0 would look like a genuine, calculated voltage to any later
+                # read of self._volt, when really no value could be found at all.
+                volt_value = None
                 get_logger().error(f"Could not find a voltage value for amplitude = {ampl}")
 
             volt.append(volt_value)
@@ -1614,6 +1553,11 @@ class Sequence():
         """
         Calculate pressure [Pa] vs. amplitude [%] equation when pressure is updated.
         """
+
+        # Reset upfront: the above_range/below_range branch below exits without ever assigning
+        # self._ampl, so without this it would silently keep whatever stale value was left from
+        # a previous, unrelated calculation if that SystemExit is ever caught further up.
+        self._ampl = None
 
         press_pa = self._press * 1e6  # convert to Pa
 
@@ -1641,11 +1585,15 @@ class Sequence():
                 self._calc_volt()
 
                 message = (f'Calculated amplitude of {calc_ampl:.2f} exceeds 100%. A pressure ' +
-                           f'of {self._press:.2f} [MPa] and/or a voltage of ' +
-                           f'{self._volt[0]:.2f} [V] will result in an amplitude of 100% at ' +
-                           f'focus wrt exit plane of {self._focus_wrt_exit_plane} [mm]. Change ' +
-                           'input value.')
+                           f'of {_format_or_unavailable(self._press)} [MPa] and/or a voltage ' +
+                           f'of {_format_or_unavailable(self._volt[0])} [V] will result in an ' +
+                           'amplitude of 100% at focus wrt exit plane of ' +
+                           f'{self._focus_wrt_exit_plane} [mm]. Change input value.')
                 get_logger().critical(message)
+                # Cleared rather than left at [100]: that value was only ever provisional, to
+                # compute the press/volt shown above -- the request as a whole is being
+                # rejected, so it shouldn't look like a valid, current amplitude afterwards.
+                self._ampl = None
                 sys.exit(message)
             elif calc_ampl < 0:
                 get_logger().debug(
@@ -1663,6 +1611,9 @@ class Sequence():
         Calculate voltage [V] vs. amplitude [%] equation when voltage is updated.
         """
 
+        # See the identical reset + rationale in _calc_volt.
+        self._ampl = None
+
         ampl = []
         for volt in self._volt:
             calc_ampl, range_status = safe_evaluate_pp(self._conv_param['volt_curve_pp'], volt)
@@ -1673,12 +1624,14 @@ class Sequence():
                 self._calc_volt()
 
                 message = ('Calculated amplitude exceeds 100%. A pressure of ' +
-                           f'{self._press:.2f} [MPa] and/or a voltage of ' +
-                           f'{self._volt[0]:.2f} [V] will result in an amplitude of 100% at ' +
-                           f'focus wrt exit plane of {self._focus_wrt_exit_plane} [mm]. Change ' +
-                           'input value.')
+                           f'{_format_or_unavailable(self._press)} [MPa] and/or a voltage of ' +
+                           f'{_format_or_unavailable(self._volt[0])} [V] will result in an ' +
+                           'amplitude of 100% at focus wrt exit plane of ' +
+                           f'{self._focus_wrt_exit_plane} [mm]. Change input value.')
 
                 get_logger().critical(message)
+                # See the identical comment in _calc_ampl's equivalent branch.
+                self._ampl = None
                 sys.exit(message)
             elif range_status == "below_range":
                 get_logger().debug((
@@ -1696,6 +1649,11 @@ class Sequence():
         """
         Calculate pressure [Pa] vs. amplitude [%] equation when amplitude is updated.
         """
+
+        # See the identical reset + rationale in _calc_volt -- every branch below already
+        # assigns self._press explicitly, so this is defensive against an unexpected exception
+        # (e.g. from find_x_for_y_in_pp) rather than a currently reachable gap.
+        self._press = None
 
         target_y_value = self._ampl[0]
         press_pa_with_eq_fact, status = find_x_for_y_in_pp(self._conv_param['power_curve_pp'],
@@ -1717,12 +1675,52 @@ class Sequence():
                            f'crossing the allowed limit of {max_press} [MPa]. Please change' +
                            ' your value.')
                 get_logger().critical(message)
+                # Cleared rather than left at press_mpa: whoever called this only wanted a
+                # logging-only estimate (the real value being sent to hardware is ampl/volt,
+                # set independently by the caller) -- press_mpa itself was rejected as unsafe,
+                # so leaving it in self._press would look like a valid, current value to any
+                # later read.
+                self._press = None
                 sys.exit(message)
 
             self._press = press_mpa  # convert to MPa
         else:
             self._press = None
             get_logger().error(f"Could not find a pressure value for amplitude = {target_y_value}")
+
+    def _calc_press_for_logging(self, *sibling_fields):
+        """
+        Calls _calc_press() purely to produce a log line (the real value being sent to hardware
+        was already determined independently by the caller). If the derived pressure exceeds
+        the configured maximum, _calc_press() exits -- the whole request is being rejected in
+        that case, so `sibling_fields` (e.g. '_volt', '_ampl') are cleared to None too, so they
+        don't look like a valid, current result afterwards, before the exit is re-raised.
+
+        Parameters:
+            sibling_fields (str): Names of self's attributes to clear to None on exit.
+        """
+
+        try:
+            self._calc_press()
+        except SystemExit:
+            for field in sibling_fields:
+                setattr(self, field, None)
+            raise
+
+
+def _format_or_unavailable(value):
+    """
+    Formats a calculated power/focus value for a log line, or a fallback string if it's None
+    (couldn't be calculated -- out of the current calibration's range).
+
+    Parameters:
+        value (float or None): The value to format, e.g. self._press or self._volt[0].
+
+    Returns:
+        str: value formatted to 2 decimal places, or a fallback string if value is None.
+    """
+
+    return f'{value:.2f}' if value is not None else 'unavailable (out of calibrated range)'
 
 
 def validate_value(value, input_param, check_num, check_pos, check_nonzero, check_bool,
