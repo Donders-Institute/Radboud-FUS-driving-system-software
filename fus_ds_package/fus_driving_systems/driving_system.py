@@ -53,6 +53,7 @@ class DrivingSystem:
         config. file (IGT).
         tran_comp (List[str]): List of transducers the driving system is compatible with.
         power_options (List[str]): List of power options compatible with the driving system.
+        focus_options (List[str]): List of focus options compatible with the driving system.
         native_power_params (List[str]): The power parameter(s) this driving system's hardware
             accepts directly, without needing a calibration curve to convert them (e.g.
             amplitude for IGT). Usually a single entry, but a driving system whose hardware
@@ -74,6 +75,7 @@ class DrivingSystem:
         self.connect_info = None
         self.tran_comp = None
         self.power_options = None
+        self.focus_options = None
         self.native_power_params = None
         self.native_focus_params = None
         self.is_active = True
@@ -112,6 +114,8 @@ class DrivingSystem:
             get_logger(), config, section, 'Transducer compatibility', '').split('\n')
         self.power_options = get_config_value(get_logger(), config, section, 'Power options',
                                               '').split('\n')
+        self.focus_options = get_config_value(get_logger(), config, section, 'Focus options',
+                                              '').split('\n')
         self.native_power_params = get_config_value(
             get_logger(), config, section, 'Native power parameters', '', True).split('\n')
         self.native_focus_params = get_config_value(
@@ -139,6 +143,8 @@ class DrivingSystem:
 
         power_options = '\n '.join(self.power_options)
         info += f"Driving system power options: {power_options} \n "
+        focus_options = '\n '.join(self.focus_options)
+        info += f"Driving system focus options: {focus_options} \n "
         native_power_params = '\n '.join(self.native_power_params)
         info += f"Driving system native power parameter(s): {native_power_params} \n "
         native_focus_params = '\n '.join(self.native_focus_params)

@@ -109,6 +109,10 @@ config['Power']['Option.glob_pow'] = POW_GP
 config['Power']['Option.ampl'] = POW_AMPL
 config['Power']['Option.press'] = POW_PRESS
 config['Power']['Option.volt'] = POW_VOLT
+# Which power options require Sequence(engineering_mode=True) to set directly -- an
+# institutional safety policy, not a hardware property, so it's configurable rather than
+# hardcoded: a different institution using this package can list a different set here, or none.
+config['Power']['Engineering-only options'] = '\n'.join([POW_AMPL, POW_VOLT])
 
 config['Power']['Default.glob_pow'] = str(0)
 config['Power']['Default.ampl'] = str(0)
@@ -133,6 +137,8 @@ config['Focus']['Options'] = '\n'.join([FOC_WRT_EXIT, FOC_WRT_BOWL])
 config['Focus']['Default option'] = FOC_WRT_EXIT
 config['Focus']['Option.exit'] = FOC_WRT_EXIT
 config['Focus']['Option.bowl'] = FOC_WRT_BOWL
+# See the identical rationale on config['Power']['Engineering-only options'] above.
+config['Focus']['Engineering-only options'] = FOC_WRT_BOWL
 
 config['Focus']['Default.exit'] = str(40)  # [mm]
 config['Focus']['Default.bowl'] = str(50)  # [mm]
@@ -330,6 +336,7 @@ config['Equipment.Driving system.' + SC_DS[0]]['Connection info'] = 'COM6'
 config['Equipment.Driving system.' + SC_DS[0]]['Power options'] = '\n'.join([POW_GP])
 config['Equipment.Driving system.' + SC_DS[0]]['Native power parameters'] = POW_GP
 config['Equipment.Driving system.' + SC_DS[0]]['Native focus parameters'] = FOC_WRT_EXIT
+config['Equipment.Driving system.' + SC_DS[0]]['Focus options'] = '\n'.join([FOC_WRT_EXIT])
 config['Equipment.Driving system.' + SC_DS[0]]['Transducer compatibility'] = str('\n'.join(
     SC_TRANS + DUMMIES))
 config['Equipment.Driving system.' + SC_DS[0]]['Active?'] = str(True)
@@ -345,6 +352,7 @@ config['Equipment.Driving system.' + SC_DS[1]]['Transducer compatibility'] = str
 config['Equipment.Driving system.' + SC_DS[1]]['Power options'] = '\n'.join([POW_GP])
 config['Equipment.Driving system.' + SC_DS[1]]['Native power parameters'] = POW_GP
 config['Equipment.Driving system.' + SC_DS[1]]['Native focus parameters'] = FOC_WRT_EXIT
+config['Equipment.Driving system.' + SC_DS[1]]['Focus options'] = '\n'.join([FOC_WRT_EXIT])
 config['Equipment.Driving system.' + SC_DS[1]]['Active?'] = str(True)
 
 
@@ -366,6 +374,8 @@ config['Equipment.Driving system.' + IGT_DS[0]]['Power options'] = '\n'.join([PO
                                                                               POW_VOLT])
 config['Equipment.Driving system.' + IGT_DS[0]]['Native power parameters'] = POW_AMPL
 config['Equipment.Driving system.' + IGT_DS[0]]['Native focus parameters'] = FOC_WRT_BOWL
+config['Equipment.Driving system.' + IGT_DS[0]]['Focus options'] = '\n'.join(
+    [FOC_WRT_EXIT, FOC_WRT_BOWL])
 config['Equipment.Driving system.' + IGT_DS[0]]['Active?'] = str(True)
 
 config['Equipment.Driving system.' + IGT_DS[1]] = {}
@@ -381,6 +391,8 @@ config['Equipment.Driving system.' + IGT_DS[1]]['Power options'] = '\n'.join([PO
                                                                               POW_VOLT])
 config['Equipment.Driving system.' + IGT_DS[1]]['Native power parameters'] = POW_AMPL
 config['Equipment.Driving system.' + IGT_DS[1]]['Native focus parameters'] = FOC_WRT_BOWL
+config['Equipment.Driving system.' + IGT_DS[1]]['Focus options'] = '\n'.join(
+    [FOC_WRT_EXIT, FOC_WRT_BOWL])
 config['Equipment.Driving system.' + IGT_DS[1]]['Active?'] = str(True)
 
 config['Equipment.Driving system.' + IGT_DS[2]] = {}
@@ -396,6 +408,8 @@ config['Equipment.Driving system.' + IGT_DS[2]]['Power options'] = '\n'.join([PO
                                                                               POW_VOLT])
 config['Equipment.Driving system.' + IGT_DS[2]]['Native power parameters'] = POW_AMPL
 config['Equipment.Driving system.' + IGT_DS[2]]['Native focus parameters'] = FOC_WRT_BOWL
+config['Equipment.Driving system.' + IGT_DS[2]]['Focus options'] = '\n'.join(
+    [FOC_WRT_EXIT, FOC_WRT_BOWL])
 config['Equipment.Driving system.' + IGT_DS[2]]['Active?'] = str(True)
 
 config['Equipment.Driving system.' + IGT_DS[3]] = {}
@@ -411,6 +425,8 @@ config['Equipment.Driving system.' + IGT_DS[3]]['Power options'] = '\n'.join([PO
                                                                               POW_VOLT])
 config['Equipment.Driving system.' + IGT_DS[3]]['Native power parameters'] = POW_AMPL
 config['Equipment.Driving system.' + IGT_DS[3]]['Native focus parameters'] = FOC_WRT_BOWL
+config['Equipment.Driving system.' + IGT_DS[3]]['Focus options'] = '\n'.join(
+    [FOC_WRT_EXIT, FOC_WRT_BOWL])
 config['Equipment.Driving system.' + IGT_DS[3]]['Active?'] = str(False)
 
 config['Equipment.Driving system.' + IGT_DS[4]] = {}
@@ -426,6 +442,8 @@ config['Equipment.Driving system.' + IGT_DS[4]]['Power options'] = '\n'.join([PO
                                                                               POW_VOLT])
 config['Equipment.Driving system.' + IGT_DS[4]]['Native power parameters'] = POW_AMPL
 config['Equipment.Driving system.' + IGT_DS[4]]['Native focus parameters'] = FOC_WRT_BOWL
+config['Equipment.Driving system.' + IGT_DS[4]]['Focus options'] = '\n'.join(
+    [FOC_WRT_EXIT, FOC_WRT_BOWL])
 config['Equipment.Driving system.' + IGT_DS[4]]['Active?'] = str(False)
 
 config['Equipment.Driving system.' + IGT_DS[5]] = {}
@@ -441,6 +459,8 @@ config['Equipment.Driving system.' + IGT_DS[5]]['Power options'] = '\n'.join([PO
                                                                               POW_VOLT])
 config['Equipment.Driving system.' + IGT_DS[5]]['Native power parameters'] = POW_AMPL
 config['Equipment.Driving system.' + IGT_DS[5]]['Native focus parameters'] = FOC_WRT_BOWL
+config['Equipment.Driving system.' + IGT_DS[5]]['Focus options'] = '\n'.join(
+    [FOC_WRT_EXIT, FOC_WRT_BOWL])
 config['Equipment.Driving system.' + IGT_DS[5]]['Active?'] = str(False)
 
 # # 32 ch. # #
@@ -457,6 +477,8 @@ config['Equipment.Driving system.' + IGT_DS[6]]['Transducer compatibility'] = st
     DUMMIES))
 config['Equipment.Driving system.' + IGT_DS[6]]['Native power parameters'] = POW_AMPL
 config['Equipment.Driving system.' + IGT_DS[6]]['Native focus parameters'] = FOC_WRT_BOWL
+config['Equipment.Driving system.' + IGT_DS[6]]['Focus options'] = '\n'.join(
+    [FOC_WRT_EXIT, FOC_WRT_BOWL])
 config['Equipment.Driving system.' + IGT_DS[6]]['Active?'] = str(True)
 
 config['Equipment.Driving system.' + IGT_DS[7]] = {}
@@ -472,6 +494,8 @@ config['Equipment.Driving system.' + IGT_DS[7]]['Power options'] = '\n'.join([PO
                                                                               POW_VOLT])
 config['Equipment.Driving system.' + IGT_DS[7]]['Native power parameters'] = POW_AMPL
 config['Equipment.Driving system.' + IGT_DS[7]]['Native focus parameters'] = FOC_WRT_BOWL
+config['Equipment.Driving system.' + IGT_DS[7]]['Focus options'] = '\n'.join(
+    [FOC_WRT_EXIT, FOC_WRT_BOWL])
 config['Equipment.Driving system.' + IGT_DS[7]]['Active?'] = str(True)
 
 config['Equipment.Driving system.' + IGT_DS[8]] = {}
@@ -487,6 +511,8 @@ config['Equipment.Driving system.' + IGT_DS[8]]['Power options'] = '\n'.join([PO
                                                                               POW_VOLT])
 config['Equipment.Driving system.' + IGT_DS[8]]['Native power parameters'] = POW_AMPL
 config['Equipment.Driving system.' + IGT_DS[8]]['Native focus parameters'] = FOC_WRT_BOWL
+config['Equipment.Driving system.' + IGT_DS[8]]['Focus options'] = '\n'.join(
+    [FOC_WRT_EXIT, FOC_WRT_BOWL])
 config['Equipment.Driving system.' + IGT_DS[8]]['Active?'] = str(True)
 
 
@@ -504,6 +530,8 @@ config['Equipment.Driving system.' + IGT_DS[9]]['Power options'] = '\n'.join([PO
                                                                               POW_VOLT])
 config['Equipment.Driving system.' + IGT_DS[9]]['Native power parameters'] = POW_AMPL
 config['Equipment.Driving system.' + IGT_DS[9]]['Native focus parameters'] = FOC_WRT_BOWL
+config['Equipment.Driving system.' + IGT_DS[9]]['Focus options'] = '\n'.join(
+    [FOC_WRT_EXIT, FOC_WRT_BOWL])
 config['Equipment.Driving system.' + IGT_DS[9]]['Active?'] = str(False)
 
 config['Equipment.Driving system.' + IGT_DS[10]] = {}
@@ -519,6 +547,8 @@ config['Equipment.Driving system.' + IGT_DS[10]]['Power options'] = '\n'.join([P
                                                                               POW_VOLT])
 config['Equipment.Driving system.' + IGT_DS[10]]['Native power parameters'] = POW_AMPL
 config['Equipment.Driving system.' + IGT_DS[10]]['Native focus parameters'] = FOC_WRT_BOWL
+config['Equipment.Driving system.' + IGT_DS[10]]['Focus options'] = '\n'.join(
+    [FOC_WRT_EXIT, FOC_WRT_BOWL])
 config['Equipment.Driving system.' + IGT_DS[10]]['Active?'] = str(False)
 
 config['Equipment.Driving system.' + IGT_DS[11]] = {}
@@ -534,6 +564,8 @@ config['Equipment.Driving system.' + IGT_DS[11]]['Power options'] = '\n'.join([P
                                                                               POW_VOLT])
 config['Equipment.Driving system.' + IGT_DS[11]]['Native power parameters'] = POW_AMPL
 config['Equipment.Driving system.' + IGT_DS[11]]['Native focus parameters'] = FOC_WRT_BOWL
+config['Equipment.Driving system.' + IGT_DS[11]]['Focus options'] = '\n'.join(
+    [FOC_WRT_EXIT, FOC_WRT_BOWL])
 config['Equipment.Driving system.' + IGT_DS[11]]['Active?'] = str(False)
 
 config['Equipment.Driving system.' + IGT_DS[12]] = {}
@@ -549,6 +581,8 @@ config['Equipment.Driving system.' + IGT_DS[12]]['Power options'] = '\n'.join([P
                                                                               POW_VOLT])
 config['Equipment.Driving system.' + IGT_DS[12]]['Native power parameters'] = POW_AMPL
 config['Equipment.Driving system.' + IGT_DS[12]]['Native focus parameters'] = FOC_WRT_BOWL
+config['Equipment.Driving system.' + IGT_DS[12]]['Focus options'] = '\n'.join(
+    [FOC_WRT_EXIT, FOC_WRT_BOWL])
 config['Equipment.Driving system.' + IGT_DS[12]]['Active?'] = str(False)
 
 #######################################################################################
@@ -565,6 +599,7 @@ config['Equipment.Driving system.' + CITRUS_DS[0]]['Transducer compatibility'] =
 config['Equipment.Driving system.' + CITRUS_DS[0]]['Power options'] = '\n'.join([POW_VOLT])
 config['Equipment.Driving system.' + CITRUS_DS[0]]['Native power parameters'] = POW_VOLT
 config['Equipment.Driving system.' + CITRUS_DS[0]]['Native focus parameters'] = FOC_WRT_EXIT
+config['Equipment.Driving system.' + CITRUS_DS[0]]['Focus options'] = '\n'.join([FOC_WRT_EXIT])
 config['Equipment.Driving system.' + CITRUS_DS[0]]['Active?'] = str(True)
 
 #######################################################################################

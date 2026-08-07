@@ -341,10 +341,8 @@ class Sequence():
                            differentiate and send multiple sequences to the IGT system.
         """
 
-        is_validated = validate_value(seq_num, 'Sequence number (seq_num)',
-                                      True, True, False, False)
-        if is_validated:
-            self._seq_num = seq_num
+        validate_value(seq_num, 'Sequence number (seq_num)', True, True, False, False)
+        self._seq_num = seq_num
 
     @property
     def driving_sys(self):
@@ -398,10 +396,9 @@ class Sequence():
             value (bool): The boolean indicating if the driving system is waiting for a trigger.
         """
 
-        is_validated = validate_value(wait_for_trigger, 'Wait for trigger (wait_for_trigger)',
-                                      False, False, False, True)
-        if is_validated:
-            self._wait_for_trigger = wait_for_trigger
+        validate_value(wait_for_trigger, 'Wait for trigger (wait_for_trigger)',
+                       False, False, False, True)
+        self._wait_for_trigger = wait_for_trigger
 
     def get_trigger_options(self):
         """
@@ -458,16 +455,15 @@ class Sequence():
             value (int): The number of times a trigger will be sent.
         """
 
-        is_validated = validate_value(n_triggers, 'Number of anticipated triggers (n_triggers)',
-                                      True, True, True, False)
-        if is_validated:
-            self._n_triggers = n_triggers
+        validate_value(n_triggers, 'Number of anticipated triggers (n_triggers)',
+                       True, True, True, False)
+        self._n_triggers = n_triggers
 
-            # set temporarily the pulse train repetition parameters equal to
-            # the pulse train duration to prevent default being lower than
-            # pulse train duration
-            self.pulse_train_rep_int = self.pulse_train_dur
-            self.pulse_train_rep_dur = self.pulse_train_dur / 1e3  # convert from ms to s
+        # set temporarily the pulse train repetition parameters equal to
+        # the pulse train duration to prevent default being lower than
+        # pulse train duration
+        self.pulse_train_rep_int = self.pulse_train_dur
+        self.pulse_train_rep_dur = self.pulse_train_dur / 1e3  # convert from ms to s
 
     @property
     def transducer(self):
@@ -531,10 +527,9 @@ class Sequence():
             oper_freq (int): Operating frequency [kHz].
         """
 
-        is_validated = validate_value(oper_freq, 'Operating frequency [kHz] (oper_freq)',
-                                      True, True, True, False)
-        if is_validated:
-            self._oper_freq = int(oper_freq)
+        validate_value(oper_freq, 'Operating frequency [kHz] (oper_freq)',
+                       True, True, True, False)
+        self._oper_freq = int(oper_freq)
 
     def get_power_options(self):
         """
@@ -545,6 +540,28 @@ class Sequence():
         """
 
         return get_config_value(get_logger(), config, 'Power', 'Options', '').split('\n')
+
+    def _requires_engineering_mode(self, section, option):
+        """
+        Determines whether setting the given power/focus option directly requires
+        Sequence(engineering_mode=True).
+
+        Which options are engineering-only is an institutional safety policy, not a hardware
+        property, so it's read from a config key ('Engineering-only options', under the given
+        'Power'/'Focus' section) instead of being hardcoded here -- a different institution
+        using this package can configure a different set, or none at all.
+
+        Parameters:
+            section (str): 'Power' or 'Focus'.
+            option (str): The specific power/focus option being set.
+
+        Returns:
+            bool: True if engineering_mode is required to set this option directly.
+        """
+
+        engineering_only = get_config_value(
+            get_logger(), config, section, 'Engineering-only options', '').split('\n')
+        return option in engineering_only
 
     @property
     def chosen_power(self):
@@ -603,12 +620,14 @@ class Sequence():
         power_option = get_config_value(get_logger(), config, 'Power', 'Option.glob_pow',
                                         'Global power [mW]')
 
+        if self._requires_engineering_mode('Power', power_option) and not self._engineering_mode:
+            raise RuntimeError("Global power mode is disabled. Enable engineering_mode to use it.")
+
         if power_option in self.driving_sys.power_options:
-            is_validated = validate_value(global_power, 'Global power [W] (global_power)',
-                                          True, True, False, False)
-            if is_validated:
-                self._global_power = global_power
-                self._chosen_power = power_option
+            validate_value(global_power, 'Global power [W] (global_power)',
+                           True, True, False, False)
+            self._global_power = global_power
+            self._chosen_power = power_option
         else:
             message = ('Global power parameter is not available for ' +
                        'chosen driving system. Use one of the following options instead: ' +
@@ -644,48 +663,53 @@ class Sequence():
         power_option = get_config_value(get_logger(), config, 'Power', 'Option.press',
                                         'Max. pressure in free water [MPa]')
 
+        if self._requires_engineering_mode('Power', power_option) and not self._engineering_mode:
+            raise RuntimeError(
+                "Maximum pressure in free water mode is disabled. Enable engineering_mode to "
+                "use it.")
+
         if power_option in self.driving_sys.power_options:
-            is_validated = validate_value(press, 'Maximum pressure in free water [MPa] (press)',
-                                          True, True, False, False)
-            if is_validated:
+            # Fail fast: check whether this driving system can accept press at all before
+            # validating anything about the specific value -- amplitude is not press's native
+            # power parameter for every driving system, and converting to it requires an active
+            # calibration, since there's no other way to produce a value this driving system's
+            # hardware actually accepts.
+            if (power_option not in self.driving_sys.native_power_params
+                    and not self._combo_is_active()):
+                message = ('No active calibration available to convert maximum pressure in ' +
+                           f'free water to {self.driving_sys.native_power_params} for ' +
+                           f'{self._ds_tran_combo}.')
+                get_logger().critical(message)
+                sys.exit(message)
 
-                max_press = float(get_config_value(get_logger(), config, 'Power',
-                                                   'Maximum pressure allowed in free water [MPa]',
-                                                   1.4))
-                if press > max_press:
-                    message = (f'The set maximum pressure in free water of {press} [MPa] is ' +
-                               f'crossing the allowed limit of {max_press} [MPa]. Please change' +
-                               ' your value.')
-                    get_logger().critical(message)
-                    sys.exit(message)
+            validate_value(press, 'Maximum pressure in free water [MPa] (press)',
+                           True, True, False, False)
 
-                self._press = press
+            max_press = float(get_config_value(get_logger(), config, 'Power',
+                                               'Maximum pressure allowed in free water [MPa]',
+                                               1.4))
+            if press > max_press:
+                message = (f'The set maximum pressure in free water of {press} [MPa] is ' +
+                           f'crossing the allowed limit of {max_press} [MPa]. Please change' +
+                           ' your value.')
+                get_logger().critical(message)
+                sys.exit(message)
 
-                self._chosen_power = power_option
+            self._press = press
 
-                # Amplitude is not press's native power parameter for every driving system --
-                # converting to it requires an active calibration, since there's no other way
-                # to produce a value this driving system's hardware actually accepts.
-                if (power_option not in self.driving_sys.native_power_params
-                        and not self._combo_is_active()):
-                    message = ('No active calibration available to convert maximum pressure ' +
-                               'in free water to ' +
-                               f'{self.driving_sys.native_power_params} for ' +
-                               f'{self._ds_tran_combo}.')
-                    get_logger().critical(message)
-                    sys.exit(message)
+            self._chosen_power = power_option
 
-                if self._combo_is_active():
-                    # Convert required amplitude
-                    self._calc_ampl()
+            if self._combo_is_active():
+                # Convert required amplitude
+                self._calc_ampl()
 
-                    # Calculate voltage for logging
-                    self._calc_volt()
+                # Calculate voltage for logging
+                self._calc_volt()
 
-                    get_logger().debug('New maximum pressure in free water value of ' +
-                                       f'{self._press:.2f} [MPa] results in a voltage of ' +
-                                       f'{_format_or_unavailable(self._volt[0])} [V] and ' +
-                                       f'an amplitude of {self._ampl[0]:.2f} [%].')
+                get_logger().debug('New maximum pressure in free water value of ' +
+                                   f'{self._press:.2f} [MPa] results in a voltage of ' +
+                                   f'{_format_or_unavailable(self._volt[0])} [V] and ' +
+                                   f'an amplitude of {self._ampl[0]:.2f} [%].')
         else:
             message = ('Pressure parameter is not available for ' +
                        'chosen driving system. Use one of the following options instead: ' +
@@ -713,7 +737,10 @@ class Sequence():
             volt (float): The voltage [V] for IGT.
         """
 
-        if not self._engineering_mode:
+        power_option = get_config_value(
+            get_logger(), config, 'Power', 'Option.volt', 'Voltage [V]')
+
+        if self._requires_engineering_mode('Power', power_option) and not self._engineering_mode:
             raise RuntimeError(
                 "Voltage mode is disabled. Use maximum pressure in free water instead.")
 
@@ -722,10 +749,20 @@ class Sequence():
         self._global_power = None
         self._volt = None
 
-        power_option = get_config_value(
-            get_logger(), config, 'Power', 'Option.volt', 'Voltage [V]')
-
         if power_option in self.driving_sys.power_options:
+            # Fail fast: check whether this driving system can accept volt at all before
+            # validating anything about the specific value -- amplitude is not volt's native
+            # power parameter for every driving system, and converting to it requires an active
+            # calibration, since there's no other way to produce a value this driving system's
+            # hardware actually accepts.
+            if (power_option not in self.driving_sys.native_power_params
+                    and not self._combo_is_active()):
+                message = ('No active calibration available to convert voltage to ' +
+                           f'{self.driving_sys.native_power_params} for ' +
+                           f'{self._ds_tran_combo}.')
+                get_logger().critical(message)
+                sys.exit(message)
+
             if not isinstance(volt, list):
                 volt = [volt]
 
@@ -739,58 +776,46 @@ class Sequence():
                 get_logger().critical(message)
                 sys.exit(message)
 
-            is_validated = validate_value(volt, 'Voltage [V] (volt)', True, True, False, False,
-                                          True)
+            validate_value(volt, 'Voltage [V] (volt)', True, True, False, False, True)
 
-            if is_validated:
-                self._volt = volt
+            self._volt = volt
 
-                self._chosen_power = power_option
+            self._chosen_power = power_option
 
-                # Amplitude is not volt's native power parameter for every driving system --
-                # converting to it requires an active calibration, since there's no other way
-                # to produce a value this driving system's hardware actually accepts.
-                if (power_option not in self.driving_sys.native_power_params
-                        and not self._combo_is_active()):
-                    message = ('No active calibration available to convert voltage to ' +
-                               f'{self.driving_sys.native_power_params} for ' +
-                               f'{self._ds_tran_combo}.')
-                    get_logger().critical(message)
-                    sys.exit(message)
+            if self._combo_is_active():
+                # Convert required to amplitude
+                self._calc_ampl_using_volt()
 
-                if self._combo_is_active():
-                    # Convert required to amplitude
-                    self._calc_ampl_using_volt()
+                if n_entries > 1:
+                    round_ampl = [f'{x:.2f}' for x in self._ampl]
+                    round_volt = [f'{x:.2f}' for x in self._volt]
+                else:
+                    round_ampl = f'{self._ampl[0]:.2f}'
+                    round_volt = f'{self._volt[0]:.2f}'
 
-                    if n_entries > 1:
-                        round_ampl = [f'{x:.2f}' for x in self._ampl]
-                        round_volt = [f'{x:.2f}' for x in self._volt]
-                    else:
-                        round_ampl = f'{self._ampl[0]:.2f}'
-                        round_volt = f'{self._volt[0]:.2f}'
+                if n_entries == 1:
+                    # _calc_ampl_using_volt() above always converts toward amplitude
+                    # specifically, not necessarily this driving system's native power
+                    # parameter in general, so this pressure is only derived for the log
+                    # line below -- EXCEPT its
+                    # max-pressure-exceeded check (inside _calc_press) is a deliberate
+                    # exception to that: exceeding the configured safe limit is a safety
+                    # decision for the engineer, not merely a logging concern, so it's
+                    # intentionally left free to sys.exit() here same as anywhere else.
+                    self._calc_press_for_logging('_volt', '_ampl')
 
-                    if n_entries == 1:
-                        # Amplitude is what's actually sent to hardware here (volt is
-                        # converted to it above), so this pressure is only derived for the
-                        # log line below -- EXCEPT its max-pressure-exceeded check (inside
-                        # _calc_press) is a deliberate exception to that: exceeding the
-                        # configured safe limit is a safety decision for the engineer, not
-                        # merely a logging concern, so it's intentionally left free to
-                        # sys.exit() here same as anywhere else.
-                        self._calc_press_for_logging('_volt', '_ampl')
-
-                        get_logger().debug(
-                            f'New voltage value of {round_volt} [V] results in a ' +
-                            'maximum pressure in free water of ' +
-                            f'{_format_or_unavailable(self._press)} ' +
-                            f' [MPa] and an amplitude of {round_ampl} [%].')
-                    else:
-                        get_logger().debug(
-                            'Pressure cannot be calculated when multiple voltages ' +
-                            'are given.')
-                        get_logger().debug(
-                            f'New voltage value of {round_volt} [V] results in an ' +
-                            f'amplitude of {round_ampl} [%].')
+                    get_logger().debug(
+                        f'New voltage value of {round_volt} [V] results in a ' +
+                        'maximum pressure in free water of ' +
+                        f'{_format_or_unavailable(self._press)} ' +
+                        f' [MPa] and an amplitude of {round_ampl} [%].')
+                else:
+                    get_logger().debug(
+                        'Pressure cannot be calculated when multiple voltages ' +
+                        'are given.')
+                    get_logger().debug(
+                        f'New voltage value of {round_volt} [V] results in an ' +
+                        f'amplitude of {round_ampl} [%].')
 
         else:
             message = ('Voltage parameter is not available for ' +
@@ -821,7 +846,10 @@ class Sequence():
             for all elements.
         """
 
-        if not self._engineering_mode:
+        power_option = get_config_value(get_logger(), config, 'Power',
+                                        'Option.ampl', 'Amplitude [%]')
+
+        if self._requires_engineering_mode('Power', power_option) and not self._engineering_mode:
             raise RuntimeError(
                 "Amplitude mode is disabled. Use maximum pressure in free water instead.")
 
@@ -830,9 +858,20 @@ class Sequence():
         self._global_power = None
         self._ampl = None
 
-        power_option = get_config_value(get_logger(), config, 'Power',
-                                        'Option.ampl', 'Amplitude [%]')
         if power_option in self.driving_sys.power_options:
+            # Fail fast: check whether this driving system can accept ampl at all before
+            # validating anything about the specific value -- voltage is not ampl's native
+            # power parameter for every driving system, and converting to it requires an active
+            # calibration, since there's no other way to produce a value this driving system's
+            # hardware actually accepts.
+            if (power_option not in self.driving_sys.native_power_params
+                    and not self._combo_is_active()):
+                message = ('No active calibration available to convert amplitude to ' +
+                           f'{self.driving_sys.native_power_params} for ' +
+                           f'{self._ds_tran_combo}.')
+                get_logger().critical(message)
+                sys.exit(message)
+
             if not isinstance(ampl, list):
                 ampl = [ampl]
 
@@ -846,58 +885,45 @@ class Sequence():
                 get_logger().critical(message)
                 sys.exit(message)
 
-            is_validated = validate_value(ampl, 'Amplitude [%] (ampl)',
-                                          True, True, False, False, True)
+            validate_value(ampl, 'Amplitude [%] (ampl)', True, True, False, False, True)
 
-            if is_validated:
-                self._ampl = ampl
+            self._ampl = ampl
 
-                self._chosen_power = power_option
+            self._chosen_power = power_option
 
-                # Voltage is not ampl's native power parameter for every driving system --
-                # converting to it requires an active calibration, since there's no other way
-                # to produce a value this driving system's hardware actually accepts.
-                if (power_option not in self.driving_sys.native_power_params
-                        and not self._combo_is_active()):
-                    message = ('No active calibration available to convert amplitude to ' +
-                               f'{self.driving_sys.native_power_params} for ' +
-                               f'{self._ds_tran_combo}.')
-                    get_logger().critical(message)
-                    sys.exit(message)
+            if self._combo_is_active():
+                # Convert amplitude to voltage for logging
+                self._calc_volt()
 
-                if self._combo_is_active():
-                    # Convert amplitude to voltage for logging
-                    self._calc_volt()
+                round_ampl = f'{self._ampl[0]:.2f}'
+                # self._calc_volt() above can leave a None entry (calibration doesn't
+                # cover this amplitude) -- this call is logging-only regardless (nothing
+                # downstream currently sends self._volt to hardware), so a missing voltage
+                # here only degrades the log message, never raises.
+                round_volt = _format_or_unavailable(self._volt[0])
 
-                    round_ampl = f'{self._ampl[0]:.2f}'
-                    # self._calc_volt() above can leave a None entry (calibration doesn't
-                    # cover this amplitude) -- this call is logging-only either way (ampl
-                    # itself is what's actually sent to hardware), so a missing voltage here
-                    # only degrades the log message, never raises.
-                    round_volt = _format_or_unavailable(self._volt[0])
+                if n_entries > 1:
+                    # Equipment is not part a combination, so only set amplitude
+                    get_logger().debug(
+                        f'New amplitude value of {round_ampl} [%] results in a ' +
+                        f'voltage of {round_volt} [V].')
+                    get_logger().debug(
+                        'Amplitude array is given. Pressure cannot ' +
+                        'be calculated for logging purposes.')
+                else:
+                    # Convert amplitude to pressure for logging -- EXCEPT
+                    # _calc_press()'s own max-pressure-exceeded check is a deliberate
+                    # exception to "logging-only": exceeding the configured safe limit
+                    # is a safety decision for the engineer, not merely a logging
+                    # concern, so it's intentionally left free to sys.exit() here same
+                    # as anywhere else.
+                    self._calc_press_for_logging('_ampl', '_volt')
 
-                    if n_entries > 1:
-                        # Equipment is not part a combination, so only set amplitude
-                        get_logger().debug(
-                            f'New amplitude value of {round_ampl} [%] results in a ' +
-                            f'voltage of {round_volt} [V].')
-                        get_logger().debug(
-                            'Amplitude array is given. Pressure cannot ' +
-                            'be calculated for logging purposes.')
-                    else:
-                        # Convert amplitude to pressure for logging -- EXCEPT
-                        # _calc_press()'s own max-pressure-exceeded check is a deliberate
-                        # exception to "logging-only": exceeding the configured safe limit
-                        # is a safety decision for the engineer, not merely a logging
-                        # concern, so it's intentionally left free to sys.exit() here same
-                        # as anywhere else.
-                        self._calc_press_for_logging('_ampl', '_volt')
-
-                        get_logger().debug(
-                            f'New amplitude value of {round_ampl} [%] results in a ' +
-                            'maximum pressure in free water of ' +
-                            f'{_format_or_unavailable(self._press)} ' +
-                            f'[MPa] and a voltage of {round_volt} [V].')
+                    get_logger().debug(
+                        f'New amplitude value of {round_ampl} [%] results in a ' +
+                        'maximum pressure in free water of ' +
+                        f'{_format_or_unavailable(self._press)} ' +
+                        f'[MPa] and a voltage of {round_volt} [V].')
         else:
             message = ('Amplitude parameter is not available for ' +
                        'chosen driving system. Use one of the following options instead: ' +
@@ -966,10 +992,29 @@ class Sequence():
             TODO: combine setting the focus and power.
         """
 
-        is_validated = validate_value(focus, 'Focus wrt exit plane [mm] (focus_wrt_exit_plane)',
-                                      True, True, False, False)
+        focus_option = get_config_value(get_logger(), config, 'Focus', 'Option.exit',
+                                        'Focus wrt exit plane [mm]')
 
-        if is_validated:
+        if self._requires_engineering_mode('Focus', focus_option) and not self._engineering_mode:
+            raise RuntimeError(
+                "Focus wrt exit plane mode is disabled. Enable engineering_mode to use it.")
+
+        if focus_option in self.driving_sys.focus_options:
+            # Fail fast: check whether this driving system can accept focus_wrt_exit_plane
+            # right now, before validating anything about the specific value -- mid bowl is not
+            # exit plane's native focus parameter for every driving system, and converting to it
+            # requires an active calibration, since there's no other way to produce a value
+            # this driving system's hardware actually accepts.
+            if (focus_option not in self.driving_sys.native_focus_params
+                    and not self._combo_is_active()):
+                message = ('No active calibration available to convert focus wrt exit plane ' +
+                           f'to {self.driving_sys.native_focus_params} for ' +
+                           f'{self._ds_tran_combo}.')
+                get_logger().critical(message)
+                sys.exit(message)
+
+            validate_value(focus, 'Focus wrt exit plane [mm] (focus_wrt_exit_plane)',
+                           True, True, False, False)
 
             # Check if focus is within range if compensation equations are not applicable
             if focus < self._transducer.min_foc or focus > self._transducer.max_foc:
@@ -980,69 +1025,63 @@ class Sequence():
                 get_logger().critical(message)
                 sys.exit(message)
 
-            focus_option = get_config_value(get_logger(), config, 'Focus', 'Option.exit',
-                                            'Focus wrt exit plane [mm]')
-
-            # Focus wrt mid bowl is not exit plane's native focus parameter for every driving
-            # system -- converting to it requires an active calibration, since there's no other
-            # way to produce a value this driving system's hardware actually accepts.
-            if (focus_option not in self.driving_sys.native_focus_params
-                    and not self._combo_is_active()):
-                message = ('No active calibration available to convert focus wrt exit plane ' +
-                           f'to {self.driving_sys.native_focus_params} for ' +
-                           f'{self._ds_tran_combo}.')
-                get_logger().critical(message)
-                sys.exit(message)
-
             if self._combo_is_active():
                 self._focus_wrt_mid_bowl = self._conv_param['focus_curve_pp'](focus)
             else:
                 # Native and no curve available -- fall back to the simple, always-valid
-                # geometric offset (only reached when native, since non-native + inactive exits
-                # above).
+                # geometric offset (only reached when native, since non-native + inactive
+                # exits above).
                 self._focus_wrt_mid_bowl = focus + self._transducer.exit_plane_dist
 
             self._chosen_focus = focus_option
             self._focus_wrt_exit_plane = focus
 
-            get_logger().debug(f'Focus wrt exit plane [mm]: {self._focus_wrt_exit_plane} \n ' +
-                               f'Focus wrt bowl middle [mm]: {self._focus_wrt_mid_bowl}')
+            get_logger().debug(
+                f'Focus wrt exit plane [mm]: {self._focus_wrt_exit_plane} \n ' +
+                f'Focus wrt bowl middle [mm]: {self._focus_wrt_mid_bowl}')
 
-        if self._combo_is_active():
-            # Update normalized pressure based on new focal depth -- kept in sync with the
-            # current focus regardless of whether a power parameter has been chosen yet, so
-            # it's already correct whenever power setting happens later.
-            self._calc_eq_factor()
+            if self._combo_is_active():
+                # Update normalized pressure based on new focal depth -- kept in sync with the
+                # current focus regardless of whether a power parameter has been chosen yet, so
+                # it's already correct whenever power setting happens later.
+                self._calc_eq_factor()
 
-            # The rest (deriving ampl/press/volt purely for the log line below) is only
-            # meaningful once a power parameter has actually been chosen -- never blocking,
-            # this is purely informational.
-            if self._chosen_power is not None:
-                # Update amplitude accordingly
-                self._calc_ampl()
+                # The rest (deriving ampl/press/volt purely for the log line below) is only
+                # meaningful once a power parameter has actually been chosen -- never blocking,
+                # this is purely informational.
+                if self._chosen_power is not None:
+                    # Update amplitude accordingly
+                    self._calc_ampl()
 
-                # Update voltage accordingly
-                self._calc_volt()
+                    # Update voltage accordingly
+                    self._calc_volt()
 
-                # _calc_volt() is purely informational here (amplitude is the real value being
-                # sent to hardware), so a voltage entry can be None if the calibration doesn't
-                # cover it.
-                if len(self._ampl) > 1:
-                    round_ampl = [f'{x:.2f}' for x in self._ampl]
-                    round_volt = [_format_or_unavailable(x) for x in self._volt]
-                else:
-                    round_ampl = f'{self._ampl[0]:.2f}'
-                    round_volt = _format_or_unavailable(self._volt[0])
+                    # _calc_volt() is purely informational here (nothing downstream currently
+                    # sends self._volt to hardware), so a voltage entry can be None if the
+                    # calibration doesn't cover it.
+                    if len(self._ampl) > 1:
+                        round_ampl = [f'{x:.2f}' for x in self._ampl]
+                        round_volt = [_format_or_unavailable(x) for x in self._volt]
+                    else:
+                        round_ampl = f'{self._ampl[0]:.2f}'
+                        round_volt = _format_or_unavailable(self._volt[0])
 
-                get_logger().debug(
-                    "New focus wrt exit plane of " +
-                    f"{self._focus_wrt_exit_plane:.2f} [mm] " +
-                    f" results in an equalization factor of {self._eq_factor:.2f} " +
-                    "recalcultating the maximum pressure in free water as " +
-                    # self._press isn't touched by this method -- it may already be None from
-                    # an earlier logging-only calculation that hit the max-pressure check.
-                    f"{_format_or_unavailable(self._press)} [MPa], the voltage as " +
-                    f"{round_volt} [V], and the amplitude as {round_ampl} [%].")
+                    get_logger().debug(
+                        "New focus wrt exit plane of " +
+                        f"{self._focus_wrt_exit_plane:.2f} [mm] " +
+                        f" results in an equalization factor of {self._eq_factor:.2f} " +
+                        "recalcultating the maximum pressure in free water as " +
+                        # self._press isn't touched by this method -- it may already be None
+                        # from an earlier logging-only calculation that hit the max-pressure
+                        # check.
+                        f"{_format_or_unavailable(self._press)} [MPa], the voltage as " +
+                        f"{round_volt} [V], and the amplitude as {round_ampl} [%].")
+        else:
+            message = ('Focus wrt exit plane parameter is not available for ' +
+                       'chosen driving system. Use one of the following options instead: ' +
+                       f'{self.driving_sys.focus_options}.')
+            get_logger().critical(message)
+            sys.exit(message)
 
     @property
     def focus_wrt_mid_bowl(self):
@@ -1068,20 +1107,19 @@ class Sequence():
             middle of the FWHM.
         """
 
-        if not self._engineering_mode:
+        focus_option = get_config_value(get_logger(), config, 'Focus', 'Option.bowl',
+                                        'Focus wrt mid bowl [mm]')
+
+        if self._requires_engineering_mode('Focus', focus_option) and not self._engineering_mode:
             raise RuntimeError(
                 "Focus wrt mid bowl mode is disabled. Use focus wrt exit plane instead.")
 
-        is_validated = validate_value(focus, 'Focus wrt mid bowl [mm] (focus_wrt_mid_bowl)',
-                                      True, True, False, False)
-
-        if is_validated:
-            focus_option = get_config_value(get_logger(), config, 'Focus', 'Option.bowl',
-                                            'Focus wrt mid bowl [mm]')
-
-            # Focus wrt exit plane is not mid bowl's native focus parameter for every driving
-            # system -- converting to it requires an active calibration, since there's no other
-            # way to produce a value this driving system's hardware actually accepts.
+        if focus_option in self.driving_sys.focus_options:
+            # Fail fast: check whether this driving system can accept focus_wrt_mid_bowl right
+            # now, before validating anything about the specific value -- exit plane is not mid
+            # bowl's native focus parameter for every driving system, and converting to it
+            # requires an active calibration, since there's no other way to produce a value
+            # this driving system's hardware actually accepts.
             if (focus_option not in self.driving_sys.native_focus_params
                     and not self._combo_is_active()):
                 message = ('No active calibration available to convert focus wrt mid bowl ' +
@@ -1089,6 +1127,9 @@ class Sequence():
                            f'{self._ds_tran_combo}.')
                 get_logger().critical(message)
                 sys.exit(message)
+
+            validate_value(focus, 'Focus wrt mid bowl [mm] (focus_wrt_mid_bowl)',
+                           True, True, False, False)
 
             if self._combo_is_active():
                 target_y_value = focus
@@ -1114,18 +1155,19 @@ class Sequence():
                     self._focus_wrt_exit_plane = focus - self._transducer.exit_plane_dist
             else:
                 # Native and no curve available -- fall back to the simple, always-valid
-                # geometric offset (only reached when native, since non-native + inactive exits
-                # above).
+                # geometric offset (only reached when native, since non-native + inactive
+                # exits above).
                 self._focus_wrt_exit_plane = focus - self._transducer.exit_plane_dist
 
             # Check if focus is within range if compensation equations are not applicable
             if (self._focus_wrt_exit_plane < self._transducer.min_foc
                     or self._focus_wrt_exit_plane > self._transducer.max_foc):
-                message = (f'Focus wrt exit plane of {self._focus_wrt_exit_plane} [mm] is not ' +
-                           'within the set ' +
-                           f'focus range of {self._transducer.min_foc} and ' +
-                           f'{self._transducer.max_foc} [mm] of transducer ' +
-                           f'{self._transducer.name}.')
+                message = (
+                    f'Focus wrt exit plane of {self._focus_wrt_exit_plane} [mm] is not ' +
+                    'within the set ' +
+                    f'focus range of {self._transducer.min_foc} and ' +
+                    f'{self._transducer.max_foc} [mm] of transducer ' +
+                    f'{self._transducer.name}.')
                 get_logger().critical(message)
                 sys.exit(message)
 
@@ -1133,43 +1175,51 @@ class Sequence():
 
             self._focus_wrt_mid_bowl = focus
 
-            get_logger().debug(f'Focus wrt exit plane [mm]: {self._focus_wrt_exit_plane} \n ' +
-                               f'Focus wrt bowl middle [mm]: {self._focus_wrt_mid_bowl}')
+            get_logger().debug(
+                f'Focus wrt exit plane [mm]: {self._focus_wrt_exit_plane} \n ' +
+                f'Focus wrt bowl middle [mm]: {self._focus_wrt_mid_bowl}')
 
-        if self._combo_is_active():
-            # Update normalized pressure based on new focal depth -- kept in sync with the
-            # current focus regardless of whether a power parameter has been chosen yet, so
-            # it's already correct whenever power setting happens later.
-            self._calc_eq_factor()
+            if self._combo_is_active():
+                # Update normalized pressure based on new focal depth -- kept in sync with the
+                # current focus regardless of whether a power parameter has been chosen yet, so
+                # it's already correct whenever power setting happens later.
+                self._calc_eq_factor()
 
-            # The rest (deriving ampl/press/volt purely for the log line below) is only
-            # meaningful once a power parameter has actually been chosen -- never blocking,
-            # this is purely informational.
-            if self._chosen_power is not None:
-                # Update amplitude accordingly
-                self._calc_ampl()
+                # The rest (deriving ampl/press/volt purely for the log line below) is only
+                # meaningful once a power parameter has actually been chosen -- never blocking,
+                # this is purely informational.
+                if self._chosen_power is not None:
+                    # Update amplitude accordingly
+                    self._calc_ampl()
 
-                # Update voltage accordingly
-                self._calc_volt()
+                    # Update voltage accordingly
+                    self._calc_volt()
 
-                # _calc_volt() is purely informational here (amplitude is the real value being
-                # sent to hardware), so a voltage entry can be None if the calibration doesn't
-                # cover it.
-                if len(self._ampl) > 1:
-                    round_ampl = [f'{x:.2f}' for x in self._ampl]
-                    round_volt = [_format_or_unavailable(x) for x in self._volt]
-                else:
-                    round_ampl = f'{self._ampl[0]:.2f}'
-                    round_volt = _format_or_unavailable(self._volt[0])
+                    # _calc_volt() is purely informational here (nothing downstream currently
+                    # sends self._volt to hardware), so a voltage entry can be None if the
+                    # calibration doesn't cover it.
+                    if len(self._ampl) > 1:
+                        round_ampl = [f'{x:.2f}' for x in self._ampl]
+                        round_volt = [_format_or_unavailable(x) for x in self._volt]
+                    else:
+                        round_ampl = f'{self._ampl[0]:.2f}'
+                        round_volt = _format_or_unavailable(self._volt[0])
 
-                get_logger().debug(
-                    f"New focus wrt mid bowl of {self._focus_wrt_mid_bowl:.2f} [mm] " +
-                    f"results in an equalization factor of {self._eq_factor:.2f} " +
-                    "recalcultating the maximum pressure in free water as " +
-                    # self._press isn't touched by this method -- it may already be None from
-                    # an earlier logging-only calculation that hit the max-pressure check.
-                    f"{_format_or_unavailable(self._press)} [MPa], the voltage as " +
-                    f"{round_volt} [V], and the amplitude as {round_ampl} [%].")
+                    get_logger().debug(
+                        f"New focus wrt mid bowl of {self._focus_wrt_mid_bowl:.2f} [mm] " +
+                        f"results in an equalization factor of {self._eq_factor:.2f} " +
+                        "recalcultating the maximum pressure in free water as " +
+                        # self._press isn't touched by this method -- it may already be None
+                        # from an earlier logging-only calculation that hit the max-pressure
+                        # check.
+                        f"{_format_or_unavailable(self._press)} [MPa], the voltage as " +
+                        f"{round_volt} [V], and the amplitude as {round_ampl} [%].")
+        else:
+            message = ('Focus wrt mid bowl parameter is not available for ' +
+                       'chosen driving system. Use one of the following options instead: ' +
+                       f'{self.driving_sys.focus_options}.')
+            get_logger().critical(message)
+            sys.exit(message)
 
     @property
     def dephasing_degree(self):
@@ -1267,17 +1317,15 @@ class Sequence():
             pulse_dur (float): Pulse duration [ms].
         """
 
-        is_validated = validate_value(pulse_dur, 'Pulse duration [ms] (pulse_dur)',
-                                      True, True, True, False)
-        if is_validated:
-            self._timing_param['pulse_dur'] = pulse_dur
+        validate_value(pulse_dur, 'Pulse duration [ms] (pulse_dur)', True, True, True, False)
+        self._timing_param['pulse_dur'] = pulse_dur
 
-            # Set other timing levels equal to new parameter to prevent higher levels being shorter
-            # than the lower levels when they are not set
-            self.pulse_rep_int = pulse_dur
-            self.pulse_train_dur = pulse_dur
-            self.pulse_train_rep_int = pulse_dur
-            self.pulse_train_rep_dur = pulse_dur / 1e3  # convert from ms to s
+        # Set other timing levels equal to new parameter to prevent higher levels being shorter
+        # than the lower levels when they are not set
+        self.pulse_rep_int = pulse_dur
+        self.pulse_train_dur = pulse_dur
+        self.pulse_train_rep_int = pulse_dur
+        self.pulse_train_rep_dur = pulse_dur / 1e3  # convert from ms to s
 
     @property
     def pulse_rep_int(self):
@@ -1299,17 +1347,15 @@ class Sequence():
             pulse_rep_int (float): Pulse repetition interval [ms].
         """
 
-        is_validated = validate_value(pulse_rep_int,
-                                      'Pulse repetition interval [ms] (pulse_rep_int)',
-                                      True, True, True, False)
-        if is_validated:
-            self._timing_param['pulse_rep_int'] = pulse_rep_int
+        validate_value(pulse_rep_int, 'Pulse repetition interval [ms] (pulse_rep_int)',
+                       True, True, True, False)
+        self._timing_param['pulse_rep_int'] = pulse_rep_int
 
-            # Set other timing levels equal to new parameter to prevent higher levels being shorter
-            # than the lower levels when they are not set
-            self.pulse_train_dur = pulse_rep_int
-            self.pulse_train_rep_int = pulse_rep_int
-            self.pulse_train_rep_dur = pulse_rep_int / 1e3  # convert from ms to s
+        # Set other timing levels equal to new parameter to prevent higher levels being shorter
+        # than the lower levels when they are not set
+        self.pulse_train_dur = pulse_rep_int
+        self.pulse_train_rep_int = pulse_rep_int
+        self.pulse_train_rep_dur = pulse_rep_int / 1e3  # convert from ms to s
 
     def get_ramp_shapes(self):
         """
@@ -1369,11 +1415,9 @@ class Sequence():
             pulse_ramp_dur (float): Pulse ramp duration [ms].
         """
 
-        is_validated = validate_value(pulse_ramp_dur,
-                                      'Pulse ramp duration [ms] (pulse_ramp_dur)',
-                                      True, True, False, False)
-        if is_validated:
-            self._timing_param['pulse_ramp_dur'] = pulse_ramp_dur
+        validate_value(pulse_ramp_dur, 'Pulse ramp duration [ms] (pulse_ramp_dur)',
+                       True, True, False, False)
+        self._timing_param['pulse_ramp_dur'] = pulse_ramp_dur
 
     @property
     def pulse_train_dur(self):
@@ -1395,16 +1439,14 @@ class Sequence():
             pulse_train_dur (float): Pulse train duration [ms].
         """
 
-        is_validated = validate_value(pulse_train_dur,
-                                      'Pulse train duration [ms] (pulse_train_dur)',
-                                      True, True, True, False)
-        if is_validated:
-            self._timing_param['pulse_train_dur'] = pulse_train_dur
+        validate_value(pulse_train_dur, 'Pulse train duration [ms] (pulse_train_dur)',
+                       True, True, True, False)
+        self._timing_param['pulse_train_dur'] = pulse_train_dur
 
-            # Set other timing levels equal to new parameter to prevent higher levels being shorter
-            # than the lower levels when they are not set
-            self.pulse_train_rep_int = pulse_train_dur
-            self.pulse_train_rep_dur = pulse_train_dur / 1e3  # convert from ms to s
+        # Set other timing levels equal to new parameter to prevent higher levels being shorter
+        # than the lower levels when they are not set
+        self.pulse_train_rep_int = pulse_train_dur
+        self.pulse_train_rep_dur = pulse_train_dur / 1e3  # convert from ms to s
 
     @property
     def pulse_train_rep_int(self):
@@ -1426,15 +1468,14 @@ class Sequence():
             pulse_train_rep_int (float): Pulse train repetition interval [ms].
         """
 
-        is_validated = validate_value(pulse_train_rep_int,
-                                      'Pulse train repetition interval [ms] (pulse_train_rep_int)',
-                                      True, True, True, False)
-        if is_validated:
-            self._timing_param['pulse_train_rep_int'] = pulse_train_rep_int
+        validate_value(pulse_train_rep_int,
+                       'Pulse train repetition interval [ms] (pulse_train_rep_int)',
+                       True, True, True, False)
+        self._timing_param['pulse_train_rep_int'] = pulse_train_rep_int
 
-            # Set other timing levels equal to new parameter to prevent higher levels being shorter
-            # than the lower levels when they are not set
-            self.pulse_train_rep_dur = pulse_train_rep_int / 1e3  # convert from ms to s
+        # Set other timing levels equal to new parameter to prevent higher levels being shorter
+        # than the lower levels when they are not set
+        self.pulse_train_rep_dur = pulse_train_rep_int / 1e3  # convert from ms to s
 
     @property
     def pulse_train_rep_dur(self):
@@ -1456,17 +1497,16 @@ class Sequence():
             pulse_train_rep_dur (float): Pulse train repetition duration [s].
         """
 
-        is_validated = validate_value(pulse_train_rep_dur,
-                                      'Pulse train repetiton duration [s] (pulse_train_rep_dur)',
-                                      True, True, True, False)
-        if is_validated:
-            # convert pulse train repetition duration in seconds to milliseconds
-            self._timing_param['pulse_train_rep_dur'] = pulse_train_rep_dur * 1e3
+        validate_value(pulse_train_rep_dur,
+                       'Pulse train repetiton duration [s] (pulse_train_rep_dur)',
+                       True, True, True, False)
+        # convert pulse train repetition duration in seconds to milliseconds
+        self._timing_param['pulse_train_rep_dur'] = pulse_train_rep_dur * 1e3
 
-            if self._trigger_option == get_config_value(
-                    get_logger(), config, 'Trigger', 'option.ptr',
-                    'TriggerOnePulseTrainRepetition'):
-                self._n_triggers = 1
+        if self._trigger_option == get_config_value(
+                get_logger(), config, 'Trigger', 'option.ptr',
+                'TriggerOnePulseTrainRepetition'):
+            self._n_triggers = 1
 
     def _combo_is_active(self):
         """
@@ -1524,8 +1564,8 @@ class Sequence():
         self._calc_volt()
 
         # _calc_volt() (unlike the blocking _calc_ampl() above it) is purely informational --
-        # amplitude is the real value being sent to hardware -- so a voltage entry can be None
-        # here if the calibration doesn't cover it.
+        # nothing downstream currently sends self._volt to hardware -- so a voltage entry can
+        # be None here if the calibration doesn't cover it.
         if len(self._ampl) > 1:
             round_ampl = [f'{x:.2f}' for x in self._ampl]
             round_volt = [_format_or_unavailable(x) for x in self._volt]
@@ -1710,11 +1750,11 @@ class Sequence():
                            f'crossing the allowed limit of {max_press} [MPa]. Please change' +
                            ' your value.')
                 get_logger().critical(message)
-                # Cleared rather than left at press_mpa: whoever called this only wanted a
-                # logging-only estimate (the real value being sent to hardware is ampl/volt,
-                # set independently by the caller) -- press_mpa itself was rejected as unsafe,
-                # so leaving it in self._press would look like a valid, current value to any
-                # later read.
+                # Cleared rather than left at press_mpa: every current caller of _calc_press()
+                # only wants a logging-only estimate (the value actually sent to hardware is
+                # amplitude, computed independently) -- press_mpa itself was rejected as
+                # unsafe, so leaving it in self._press would look like a valid, current value
+                # to any later read.
                 self._press = None
                 sys.exit(message)
 
@@ -1725,7 +1765,7 @@ class Sequence():
 
     def _calc_press_for_logging(self, *sibling_fields):
         """
-        Calls _calc_press() purely to produce a log line (the real value being sent to hardware
+        Calls _calc_press() purely to produce a log line (the value actually sent to hardware
         was already determined independently by the caller). If the derived pressure exceeds
         the configured maximum, _calc_press() exits -- the whole request is being rejected in
         that case, so `sibling_fields` (e.g. '_volt', '_ampl') are cleared to None too, so they

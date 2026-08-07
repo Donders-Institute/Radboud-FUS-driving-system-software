@@ -488,6 +488,33 @@ def test_chosen_focus_setter_exits_for_unavailable_option(patch_config):
 # No _calc_* orchestration here (unlike press/volt/ampl below) -- it just
 # validates the value and records it, or exits if the option isn't available.
 
+def test_global_power_setter_raises_when_configured_as_engineering_only(patch_config):
+    """Which power options are engineering-only is a config-driven institutional policy --
+    global power is available to everyone by default, but an institution can gate it too."""
+    patch_config.set('Power', 'Option.glob_pow', 'Global power [mW]')
+    patch_config.set('Power', 'Engineering-only options', 'Global power [mW]')
+    seq = _bare_sequence()
+    seq._engineering_mode = False
+
+    with pytest.raises(RuntimeError):
+        seq.global_power = 5
+
+
+def test_global_power_setter_succeeds_without_engineering_mode_when_not_configured_as_such(
+        patch_config):
+    """Global power is available by default, and stays available when explicitly cleared
+    from Engineering-only options."""
+    patch_config.set('Power', 'Option.glob_pow', 'Global power [mW]')
+    patch_config.set('Power', 'Engineering-only options', '')
+    seq = _bare_sequence()
+    seq._engineering_mode = False
+    seq._driving_sys = SimpleNamespace(power_options=['Global power [mW]'])
+
+    seq.global_power = 5  # must not raise
+
+    assert seq._global_power == 5
+
+
 def test_global_power_setter_sets_value_when_option_available(patch_config):
     patch_config.set('Power', 'Option.glob_pow', 'Global power [mW]')
     seq = _bare_sequence()
@@ -519,6 +546,35 @@ def test_global_power_setter_exits_when_option_unavailable(patch_config):
 # calibration is active -- recalculates amplitude and voltage (for logging)
 # via the already-tested _calc_* methods. If press is native, this is always
 # settable; if it isn't and no calibration is active, the setter exits.
+
+def test_press_setter_raises_when_configured_as_engineering_only(patch_config):
+    """Which power options are engineering-only is a config-driven institutional policy --
+    press is available to everyone by default, but an institution can choose to gate it too."""
+    patch_config.set('Power', 'Engineering-only options', 'Max. pressure in free water [MPa]')
+    seq = _bare_sequence()
+    seq._engineering_mode = False
+
+    with pytest.raises(RuntimeError):
+        seq.press = 0.5
+
+
+def test_press_setter_succeeds_without_engineering_mode_when_not_configured_as_such(
+        patch_config):
+    """Press is available by default, and stays available when explicitly cleared from
+    Engineering-only options."""
+    patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '10')
+    patch_config.set('Power', 'Engineering-only options', '')
+    seq = _bare_sequence()
+    seq._engineering_mode = False
+    seq._driving_sys = SimpleNamespace(
+        power_options=['Max. pressure in free water [MPa]'],
+        native_power_params=['Max. pressure in free water [MPa]'])
+    seq._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
+
+    seq.press = 0.5  # must not raise
+
+    assert seq._press == 0.5
+
 
 def test_press_setter_without_conversion_sets_value_directly(patch_config):
     """Press is this (hypothetical) driving system's own native power parameter, so no
@@ -585,10 +641,28 @@ def test_press_setter_exits_when_combo_unknown_but_required(patch_config):
 def test_press_setter_exits_when_above_configured_max(patch_config):
     patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '1')
     seq = _bare_sequence()
-    seq._driving_sys = SimpleNamespace(power_options=['Max. pressure in free water [MPa]'])
+    seq._driving_sys = SimpleNamespace(
+        power_options=['Max. pressure in free water [MPa]'],
+        native_power_params=['Max. pressure in free water [MPa]'])
 
     with pytest.raises(SystemExit):
         seq.press = 5
+
+
+def test_press_setter_reports_missing_calibration_before_value_specific_errors(patch_config):
+    """Fail fast: whether this driving system can accept press at all is checked before
+    anything about the specific value (is_validated, the max-pressure limit) -- so a value
+    that's *both* above the configured max *and* unconvertible (non-native, no active combo)
+    surfaces the calibration error, not the (less relevant, in this case) max-pressure one."""
+    patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '1')
+    seq = _bare_sequence()
+    seq._driving_sys = SimpleNamespace(
+        power_options=['Max. pressure in free water [MPa]'],
+        native_power_params=['Amplitude [%]'])
+    seq._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
+
+    with pytest.raises(SystemExit, match='No active calibration available'):
+        seq.press = 5  # also above the configured max of 1 -- must not be the error surfaced
 
 
 # --- volt ----------------------------------------------------------------
@@ -596,12 +670,29 @@ def test_press_setter_exits_when_above_configured_max(patch_config):
 # list, and only calls _calc_press() (in addition to _calc_ampl_using_volt())
 # when exactly one value was given.
 
-def test_volt_setter_raises_when_engineering_mode_disabled():
+def test_volt_setter_raises_when_engineering_mode_disabled(patch_config):
+    patch_config.set('Power', 'Engineering-only options', 'Voltage [V]')
     seq = _bare_sequence()
     seq._engineering_mode = False
 
     with pytest.raises(RuntimeError):
         seq.volt = 50
+
+
+def test_volt_setter_succeeds_without_engineering_mode_when_not_configured_as_such(
+        patch_config):
+    """Which options are engineering-only is a config-driven institutional policy, not
+    hardcoded -- an institution that doesn't list voltage here can set it directly."""
+    patch_config.set('Power', 'Engineering-only options', '')
+    seq = _bare_sequence()
+    seq._engineering_mode = False
+    seq._driving_sys = SimpleNamespace(
+        power_options=['Voltage [V]'], native_power_params=['Voltage [V]'], available_ch=1)
+    seq._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
+
+    seq.volt = 50  # must not raise
+
+    assert seq._volt == [50]
 
 
 def test_volt_setter_without_conversion_sets_value_directly():
@@ -764,12 +855,29 @@ def test_volt_setter_exits_when_combo_unknown_but_required():
 # unknown-but-required combo is intentionally different from press/volt --
 # see the test below documenting why.
 
-def test_ampl_setter_raises_when_engineering_mode_disabled():
+def test_ampl_setter_raises_when_engineering_mode_disabled(patch_config):
+    patch_config.set('Power', 'Engineering-only options', 'Amplitude [%]')
     seq = _bare_sequence()
     seq._engineering_mode = False
 
     with pytest.raises(RuntimeError):
         seq.ampl = 50
+
+
+def test_ampl_setter_succeeds_without_engineering_mode_when_not_configured_as_such(
+        patch_config):
+    """Which options are engineering-only is a config-driven institutional policy, not
+    hardcoded -- an institution that doesn't list amplitude here can set it directly."""
+    patch_config.set('Power', 'Engineering-only options', '')
+    seq = _bare_sequence()
+    seq._engineering_mode = False
+    seq._driving_sys = SimpleNamespace(
+        power_options=['Amplitude [%]'], native_power_params=['Amplitude [%]'], available_ch=1)
+    seq._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
+
+    seq.ampl = 50  # must not raise
+
+    assert seq._ampl == [50]
 
 
 def test_ampl_setter_without_conversion_sets_value_directly():
@@ -917,11 +1025,44 @@ def test_ampl_and_volt_setters_both_work_without_calibration_when_both_are_nativ
 
 # --- focus_wrt_exit_plane ----------------------------------------------------
 
+def test_focus_wrt_exit_plane_setter_raises_when_configured_as_engineering_only(patch_config):
+    """Which focus options are engineering-only is a config-driven institutional policy --
+    exit plane is available to everyone by default, but an institution can gate it too."""
+    patch_config.set('Focus', 'Engineering-only options', 'Focus wrt exit plane [mm]')
+    seq = _bare_sequence()
+    seq._engineering_mode = False
+
+    with pytest.raises(RuntimeError):
+        seq.focus_wrt_exit_plane = 20
+
+
+def test_focus_wrt_exit_plane_setter_succeeds_without_engineering_mode_when_not_configured_as_such(
+        patch_config):
+    """Mirrors test_focus_wrt_mid_bowl_setter_succeeds_without_engineering_mode_when_not_
+    configured_as_such, for the other focus setter -- exit plane is available by default, and
+    stays available when explicitly cleared from Engineering-only options."""
+    patch_config.set('Focus', 'Engineering-only options', '')
+    seq = _bare_sequence()
+    seq._engineering_mode = False
+    seq._driving_sys = SimpleNamespace(
+        focus_options=['Focus wrt exit plane [mm]'],
+        native_focus_params=['Focus wrt exit plane [mm]'])
+    seq._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
+    seq._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
+    seq._chosen_power = None
+
+    seq.focus_wrt_exit_plane = 20  # must not raise
+
+    assert seq.focus_wrt_exit_plane == 20
+
+
 def test_focus_wrt_exit_plane_setter_without_conversion_uses_exit_plane_offset():
     """Exit plane is this driving system's own native focus parameter (matches Sonic
     Concepts/CITRUS), so no calibration is ever needed to set it."""
     seq = _bare_sequence()
-    seq._driving_sys = SimpleNamespace(native_focus_params=['Focus wrt exit plane [mm]'])
+    seq._driving_sys = SimpleNamespace(
+        focus_options=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'],
+        native_focus_params=['Focus wrt exit plane [mm]'])
     seq._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
     seq._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
     seq._chosen_power = None  # no power chosen yet -> power-derived logging is skipped
@@ -947,7 +1088,9 @@ def test_focus_wrt_exit_plane_setter_with_known_combo_uses_focus_curve_and_recal
     active calibration."""
     patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
     seq = _bare_sequence()
-    seq._driving_sys = SimpleNamespace(native_focus_params=['Focus wrt mid bowl [mm]'])
+    seq._driving_sys = SimpleNamespace(
+        focus_options=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'],
+        native_focus_params=['Focus wrt mid bowl [mm]'])
     seq._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
     seq._ds_tran_combo = 'combo1'
     seq._conv_param = {
@@ -978,7 +1121,9 @@ def test_focus_wrt_exit_plane_setter_updates_eq_factor_even_when_no_power_chosen
     eq_factor into that setter's conversion."""
     patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
     seq = _bare_sequence()
-    seq._driving_sys = SimpleNamespace(native_focus_params=['Focus wrt mid bowl [mm]'])
+    seq._driving_sys = SimpleNamespace(
+        focus_options=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'],
+        native_focus_params=['Focus wrt mid bowl [mm]'])
     seq._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
     seq._ds_tran_combo = 'combo1'
     seq._conv_param = {
@@ -1001,11 +1146,29 @@ def test_focus_wrt_exit_plane_setter_updates_eq_factor_even_when_no_power_chosen
 
 def test_focus_wrt_exit_plane_setter_exits_when_out_of_transducer_range():
     seq = _bare_sequence()
-    seq._driving_sys = SimpleNamespace()
+    seq._driving_sys = SimpleNamespace(
+        focus_options=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'],
+        native_focus_params=['Focus wrt exit plane [mm]'])
     seq._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
 
     with pytest.raises(SystemExit):
         seq.focus_wrt_exit_plane = 200
+
+
+def test_focus_wrt_exit_plane_setter_reports_missing_calibration_before_range_error():
+    """Fail fast: whether this driving system can accept focus_wrt_exit_plane at all is
+    checked before anything about the specific value (including the transducer's min/max
+    range) -- so a value that's *both* out of range *and* unconvertible (non-native, no active
+    combo) surfaces the calibration error, not the (less relevant, in this case) range one."""
+    seq = _bare_sequence()
+    seq._driving_sys = SimpleNamespace(
+        focus_options=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'],
+        native_focus_params=['Focus wrt mid bowl [mm]'])
+    seq._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
+    seq._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
+
+    with pytest.raises(SystemExit, match='No active calibration available'):
+        seq.focus_wrt_exit_plane = 200  # also out of the transducer's [0, 100] range
 
 
 def test_focus_wrt_exit_plane_setter_exits_when_combo_unknown_but_required():
@@ -1015,7 +1178,9 @@ def test_focus_wrt_exit_plane_setter_exits_when_combo_unknown_but_required():
     of first assigning a geometric fallback value that would then look valid even though the
     request as a whole was rejected."""
     seq = _bare_sequence()
-    seq._driving_sys = SimpleNamespace(native_focus_params=['Focus wrt mid bowl [mm]'])
+    seq._driving_sys = SimpleNamespace(
+        focus_options=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'],
+        native_focus_params=['Focus wrt mid bowl [mm]'])
     seq._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
     seq._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
 
@@ -1025,7 +1190,8 @@ def test_focus_wrt_exit_plane_setter_exits_when_combo_unknown_but_required():
 
 # --- focus_wrt_mid_bowl -------------------------------------------------------
 
-def test_focus_wrt_mid_bowl_setter_raises_when_engineering_mode_disabled():
+def test_focus_wrt_mid_bowl_setter_raises_when_engineering_mode_disabled(patch_config):
+    patch_config.set('Focus', 'Engineering-only options', 'Focus wrt mid bowl [mm]')
     seq = _bare_sequence()
     seq._engineering_mode = False
 
@@ -1033,12 +1199,57 @@ def test_focus_wrt_mid_bowl_setter_raises_when_engineering_mode_disabled():
         seq.focus_wrt_mid_bowl = 25
 
 
+def test_focus_wrt_mid_bowl_setter_succeeds_without_engineering_mode_when_not_configured_as_such(
+        patch_config):
+    """Which options are engineering-only is a config-driven institutional policy, not
+    hardcoded -- an institution that doesn't list mid bowl here can set it directly."""
+    patch_config.set('Focus', 'Engineering-only options', '')
+    seq = _bare_sequence()
+    seq._engineering_mode = False
+    seq._driving_sys = SimpleNamespace(
+        focus_options=['Focus wrt mid bowl [mm]'],
+        native_focus_params=['Focus wrt mid bowl [mm]'])
+    seq._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
+    seq._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
+    seq._chosen_power = None
+
+    seq.focus_wrt_mid_bowl = 25  # must not raise
+
+    assert seq.focus_wrt_mid_bowl == 25
+
+
+def test_focus_wrt_mid_bowl_setter_exits_when_focus_option_unavailable():
+    """focus_options is a per-driving-system list, mirroring power_options -- a driving system
+    that never offers mid bowl at all (e.g. Sonic Concepts/CITRUS, which only ever have exit
+    plane as a curve-free native option) exits with a clear 'not available' message, distinct
+    from the separate 'no active calibration' message used when the option is offered but
+    unconvertible right now."""
+    seq = _bare_sequence()
+    seq._engineering_mode = True
+    seq._driving_sys = SimpleNamespace(focus_options=['Focus wrt exit plane [mm]'])
+
+    with pytest.raises(SystemExit, match='not available'):
+        seq.focus_wrt_mid_bowl = 25
+
+
+def test_focus_wrt_exit_plane_setter_exits_when_focus_option_unavailable():
+    """Mirrors test_focus_wrt_mid_bowl_setter_exits_when_focus_option_unavailable, for the
+    other focus setter."""
+    seq = _bare_sequence()
+    seq._driving_sys = SimpleNamespace(focus_options=['Focus wrt mid bowl [mm]'])
+
+    with pytest.raises(SystemExit, match='not available'):
+        seq.focus_wrt_exit_plane = 25
+
+
 def test_focus_wrt_mid_bowl_setter_without_conversion_uses_exit_plane_offset():
     """Mid bowl is this driving system's own native focus parameter (matches IGT), so no
     calibration is ever needed to set it."""
     seq = _bare_sequence()
     seq._engineering_mode = True
-    seq._driving_sys = SimpleNamespace(native_focus_params=['Focus wrt mid bowl [mm]'])
+    seq._driving_sys = SimpleNamespace(
+        focus_options=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'],
+        native_focus_params=['Focus wrt mid bowl [mm]'])
     seq._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
     seq._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
     seq._chosen_power = None  # no power chosen yet -> power-derived logging is skipped
@@ -1064,7 +1275,9 @@ def test_focus_wrt_mid_bowl_setter_with_known_combo_finds_x_via_pp_and_recalcula
     patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
     seq = _bare_sequence()
     seq._engineering_mode = True
-    seq._driving_sys = SimpleNamespace(native_focus_params=['Focus wrt exit plane [mm]'])
+    seq._driving_sys = SimpleNamespace(
+        focus_options=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'],
+        native_focus_params=['Focus wrt exit plane [mm]'])
     seq._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
     seq._ds_tran_combo = 'combo1'
     seq._conv_param = {
@@ -1092,7 +1305,9 @@ def test_focus_wrt_mid_bowl_setter_falls_back_when_x_not_found(patch_config):
     patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
     seq = _bare_sequence()
     seq._engineering_mode = True
-    seq._driving_sys = SimpleNamespace(native_focus_params=['Focus wrt exit plane [mm]'])
+    seq._driving_sys = SimpleNamespace(
+        focus_options=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'],
+        native_focus_params=['Focus wrt exit plane [mm]'])
     seq._transducer = SimpleNamespace(min_foc=-100, max_foc=1000, exit_plane_dist=5, name='tran')
     seq._ds_tran_combo = 'combo1'
     seq._conv_param = {
@@ -1117,7 +1332,9 @@ def test_focus_wrt_mid_bowl_setter_exits_when_combo_unknown_but_required():
     convert to exit plane."""
     seq = _bare_sequence()
     seq._engineering_mode = True
-    seq._driving_sys = SimpleNamespace(native_focus_params=['Focus wrt exit plane [mm]'])
+    seq._driving_sys = SimpleNamespace(
+        focus_options=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'],
+        native_focus_params=['Focus wrt exit plane [mm]'])
     seq._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
     seq._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
 
@@ -1131,7 +1348,9 @@ def test_focus_wrt_mid_bowl_setter_updates_eq_factor_even_when_no_power_chosen_y
     patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
     seq = _bare_sequence()
     seq._engineering_mode = True
-    seq._driving_sys = SimpleNamespace(native_focus_params=['Focus wrt exit plane [mm]'])
+    seq._driving_sys = SimpleNamespace(
+        focus_options=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'],
+        native_focus_params=['Focus wrt exit plane [mm]'])
     seq._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
     seq._ds_tran_combo = 'combo1'
     seq._conv_param = {
@@ -1160,6 +1379,7 @@ def test_focus_setters_both_work_without_calibration_when_both_are_native():
     seq = _bare_sequence()
     seq._engineering_mode = True
     seq._driving_sys = SimpleNamespace(
+        focus_options=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'],
         native_focus_params=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'])
     seq._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
     seq._ds_tran_combo = 'combo1'  # no matching config section -> combo not active

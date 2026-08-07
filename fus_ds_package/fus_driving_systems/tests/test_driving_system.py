@@ -19,6 +19,8 @@ def _configure_driving_system_section_only(patch_config, serial, name='Test DS',
                                            available_channels='2', connection_info='COM1',
                                            tran_compatibility='TRAN_A\nTRAN_B',
                                            power_options='Global power\nAmplitude',
+                                           focus_options='Focus wrt mid bowl\n'
+                                                        'Focus wrt exit plane [mm]',
                                            native_power_param='Amplitude',
                                            native_focus_param='Focus wrt mid bowl',
                                            active='True'):
@@ -37,6 +39,7 @@ def _configure_driving_system_section_only(patch_config, serial, name='Test DS',
     patch_config.set(section, 'Connection info', connection_info)
     patch_config.set(section, 'Transducer compatibility', tran_compatibility)
     patch_config.set(section, 'Power options', power_options)
+    patch_config.set(section, 'Focus options', focus_options)
     patch_config.set(section, 'Native power parameters', native_power_param)
     patch_config.set(section, 'Native focus parameters', native_focus_param)
     patch_config.set(section, 'Active?', active)
@@ -58,6 +61,7 @@ def test_init_sets_expected_defaults():
     assert ds.connect_info is None
     assert ds.tran_comp is None
     assert ds.power_options is None
+    assert ds.focus_options is None
     assert ds.native_power_params is None
     assert ds.native_focus_params is None
     assert ds.is_active is True
@@ -72,6 +76,7 @@ def test_str_includes_all_fields():
     ds.connect_info = 'COM3'
     ds.tran_comp = ['TRAN_A', 'TRAN_B']
     ds.power_options = ['Global power']
+    ds.focus_options = ['Focus wrt exit plane [mm]']
     ds.native_power_params = ['Global power']
     ds.native_focus_params = ['Focus wrt exit plane [mm]']
 
@@ -114,6 +119,7 @@ def test_set_ds_info_populates_fields_from_config(patch_config):
     assert ds.connect_info == 'COM1'
     assert ds.tran_comp == ['TRAN_A', 'TRAN_B']
     assert ds.power_options == ['Global power', 'Amplitude']
+    assert ds.focus_options == ['Focus wrt mid bowl', 'Focus wrt exit plane [mm]']
     assert ds.native_power_params == ['Amplitude']
     assert ds.native_focus_params == ['Focus wrt mid bowl']
     assert ds.is_active is True

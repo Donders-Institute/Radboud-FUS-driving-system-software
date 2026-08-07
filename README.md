@@ -363,6 +363,8 @@ maximum pressure allowed in free water [mpa] = 1.4
 
 The maximum pressure setting (1.4 MPa by default) serves as a safety limit. Adjust this based on your specific requirements, but exercise caution to maintain safety. Note that this is a hand-edit to a generated file: it will be silently overwritten if `ds_config.ini` is ever regenerated via `create_config.py`, or replaced by installing a new package release -- keep a copy of your override if you rely on it long-term.
 
+Both `[Power]` and `[Focus]` also have an `engineering-only options` key (e.g. `Amplitude [%]\nVoltage [V]` for `[Power]`, `Focus wrt mid bowl [mm]` for `[Focus]`) listing which options require `Sequence(engineering_mode=True)` to set directly. This check applies uniformly to every power/focus option (`global power`, `max. pressure in free water`, `amplitude`, `voltage`, `focus wrt exit plane`, `focus wrt mid bowl`) -- it's an institutional safety policy choice, not a hardware requirement, and none of these six are hardcoded as exempt. By default only amplitude/voltage/mid-bowl-focus are listed (matching this package's original behavior); remove any of them if your institution doesn't need that gate, or add any of the other three (or clear the list entirely) if you want to gate additional options -- all without touching code.
+
 
 ### Trigger, Power, Focus, Ramp and Timing Parameters
 
@@ -516,6 +518,7 @@ manufacturer = Your Manufacturer Name
 available channels = 4  # Number of channels
 connection info = COM7  # Or other connection info
 power options = Global power [mW]
+focus options = Focus wrt exit plane [mm]
 native power parameters = Global power [mW]
 native focus parameters = Focus wrt exit plane [mm]
 transducer compatibility = YOUR-TRANSDUCER-ID
@@ -527,8 +530,9 @@ The driving system identifier must match one of the identifiers defined in the '
 - **manufacturer**: Must match one of your defined manufacturers
 - **available channels**: Number of channels the system provides
 - **connection info**: COM port, IP address, or path to configuration file
-- **power options**: Power options supported by this which must be chosen from the Power section of the config
-- **native power parameters**: Which of *power options* this system's hardware accepts directly, without needing a calibration curve to convert it (e.g. amplitude for IGT, global power for Sonic Concepts, voltage for CITRUS). Setting a native parameter is always allowed; setting any other power option requires an active `Equipment.Combination.*` entry (see step 4) to convert it. Usually a single value, but if your system's hardware genuinely accepts more than one power representation directly, list them all, one per line (like *power options* above).
+- **power options**: Power options supported by this system at all, which must be chosen from the Power section of the config. Setting a power option this system doesn't list here exits with a clear "not available" error.
+- **focus options**: Same idea, for focus -- one or both of `Focus wrt exit plane [mm]`/`Focus wrt mid bowl [mm]`, whichever this system supports at all (e.g. a system that never has a focus-conversion calibration should only list its native option here).
+- **native power parameters**: Which of *power options* this system's hardware accepts directly, without needing a calibration curve to convert it (e.g. amplitude for IGT, global power for Sonic Concepts, voltage for CITRUS). A native parameter never needs an active calibration to be set (subject to the separate `engineering-only options` check below, if applicable); setting any other power option (that's still listed in *power options*) always requires an active `Equipment.Combination.*` entry (see step 4) to convert it, regardless of `engineering-only options`. Usually a single value, but if your system's hardware genuinely accepts more than one power representation directly, list them all, one per line (like *power options* above).
 - **native focus parameters**: Same idea, for focus -- one or more of `Focus wrt exit plane [mm]`/`Focus wrt mid bowl [mm]`, whichever this system's hardware accepts directly.
 - **transducer compatibility**: List of compatible transducer IDs. This parameter isn't fully implemented yet but will be used in future versions to automatically check compatibility between selected equipment.
 - **active?**: Whether this system is active and available for use
