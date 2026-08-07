@@ -361,7 +361,7 @@ Adjust these settings to control what information is recorded and where. Increas
 maximum pressure allowed in free water [mpa] = 1.4
 ```
 
-The maximum pressure setting (1.4 MPa by default) serves as a safety limit. Adjust this based on your specific requirements, but exercise caution to maintain safety.
+The maximum pressure setting (1.4 MPa by default) serves as a safety limit. Adjust this based on your specific requirements, but exercise caution to maintain safety. Note that this is a hand-edit to a generated file: it will be silently overwritten if `ds_config.ini` is ever regenerated via `create_config.py`, or replaced by installing a new package release -- keep a copy of your override if you rely on it long-term.
 
 
 ### Trigger, Power, Focus, Ramp and Timing Parameters
@@ -479,16 +479,11 @@ transducers = CTX-250-009
     YOUR-TRANSDUCER-ID  # Add your transducer here
 # ...
 combination sign = ~
-combinations = IGT-128-ch_comb_2x10-ch~IS_PCD15287_01001
-	# ...additional combinations...
-inactive_combinations = 
 ```
 
 - **driving systems**: List of available driving system identifiers
 - **transducers**: List of available transducer identifiers
 - **combination sign**: Symbol used to denote system-transducer combinations
-- **combinations**: List of valid equipment combinations. Only needed when conversion equations are required to translate between user-friendly inputs and hardware-specific parameters.
-- **inactive_combinations**: Combinations that exist but are disabled. Only needed when conversion equations are required to translate between user-friendly inputs and hardware-specific parameters.
 
 #### 2. Add Manufacturer Settings
 ```ini
@@ -521,7 +516,8 @@ manufacturer = Your Manufacturer Name
 available channels = 4  # Number of channels
 connection info = COM7  # Or other connection info
 power options = Global power [mW]
-requires conversion equations? = False
+native power parameters = Global power [mW]
+native focus parameters = Focus wrt exit plane [mm]
 transducer compatibility = YOUR-TRANSDUCER-ID
 active? = True
 ```
@@ -532,7 +528,8 @@ The driving system identifier must match one of the identifiers defined in the '
 - **available channels**: Number of channels the system provides
 - **connection info**: COM port, IP address, or path to configuration file
 - **power options**: Power options supported by this which must be chosen from the Power section of the config
-- **requires conversion equations?**: (Advanced feature) Set to True if characterization based conversion between user input and system parameters is needed. This is useful when the driving system doesn't allow "pressure in free water" as direct input, but this relationship can be defined during characterization. When enabled, users can, for example, specify pressure in free water as input, and the system will automatically calculate the required hardware-specific input values using the defined conversion equations.
+- **native power parameters**: Which of *power options* this system's hardware accepts directly, without needing a calibration curve to convert it (e.g. amplitude for IGT, global power for Sonic Concepts, voltage for CITRUS). Setting a native parameter is always allowed; setting any other power option requires an active `Equipment.Combination.*` entry (see step 4) to convert it. Usually a single value, but if your system's hardware genuinely accepts more than one power representation directly, list them all, one per line (like *power options* above).
+- **native focus parameters**: Same idea, for focus -- one or more of `Focus wrt exit plane [mm]`/`Focus wrt mid bowl [mm]`, whichever this system's hardware accepts directly.
 - **transducer compatibility**: List of compatible transducer IDs. This parameter isn't fully implemented yet but will be used in future versions to automatically check compatibility between selected equipment.
 - **active?**: Whether this system is active and available for use
 
@@ -563,14 +560,17 @@ The transducer identifier must match one of the identifiers defined in the '[Equ
 - **active?**: Whether this transducer is active and available for use
 
 #### 4. Add Equipment Combinations (advanced feature, if needed)
-If your system requires conversion equations:
+If your system's *native power parameters* and/or *native focus parameters* isn't the only power/focus option you want to offer, add a combination entry per driving-system/transducer pair to make the other options settable too:
 
 ```ini
 [Equipment.Combination.YOUR-SYSTEM-ID~YOUR-TRANSDUCER-ID]
 driving system serial = YOUR-SYSTEM-ID
 transducer serial = YOUR-TRANSDUCER-ID
+active? = True
 ... conversion equations
 ```
+
+- **active?**: Whether a calibration actually exists for this specific driving-system/transducer pair. `create_config.py` derives this automatically from whether the referenced calibration JSON files exist on disk. Setting a non-native power/focus parameter without an active combination for the current pair exits with a clear error, since there is no way to produce a value the hardware can actually accept.
 
 These combinations are only required if additional equations are needed to convert user input (e.g., pressure in free water and focus with respect to exit plane) to input the driving system understands (e.g., amplitude and focus with respect to mid bowl). This is required for combinations like IGT-Imasonic.
 

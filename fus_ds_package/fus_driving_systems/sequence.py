@@ -55,8 +55,6 @@ class Sequence():
     Attributes:
         _seq_num (int): Number of sequence starting at zero. Currently only used to differentiate
                         and send multiple sequences to the IGT system.
-        _equip_combos (list): List of driving system and transducer combinations that require
-        pressure compensation with an increasing focal depth.
         _driving_sys (DrivingSystem): The driving system associated with the sequence.
         _wait_for_trigger (bool): Boolean indicating if the driving system is waiting for a
                                   trigger.
@@ -116,10 +114,6 @@ class Sequence():
         self._engineering_mode = engineering_mode
 
         self._seq_num = 0
-
-        # Equipment parameters
-        self._equip_combos = get_config_value(get_logger(), config, 'Equipment', 'Combinations',
-                                              '').split('\n')
 
         self._driving_sys = ds.DrivingSystem()
         back_up_default_ds = ds.get_ds_serials()[0]
@@ -195,9 +189,8 @@ class Sequence():
 
         combo_sign = get_config_value(get_logger(), config, 'Equipment', 'Combination sign', '~')
         self._ds_tran_combo = combo_sign.join([self._driving_sys.serial, self._transducer.serial])
-        if self.driving_sys.require_conv_eq:
-            if self._ds_tran_combo in self._equip_combos:
-                self._update_conv_param()
+        if self._combo_is_active():
+            self._update_conv_param()
 
         back_up_ramp_shape = get_config_value(get_logger(), config, 'Ramp', 'Options',
                                               '').split('\n')[0]
@@ -267,44 +260,43 @@ class Sequence():
         else:
             info += "Unknown power option \n "
 
-        if self.driving_sys.require_conv_eq:
-            if self._ds_tran_combo in self._equip_combos:
+        if self._combo_is_active():
 
-                if self.chosen_power != opt_press and len(self._ampl) == 1:
-                    info += f"Maximum pressure in free water [MPa]: {self._press} \n "
+            if self.chosen_power != opt_press and len(self._ampl) == 1:
+                info += f"Maximum pressure in free water [MPa]: {self._press} \n "
 
-                if self.chosen_power != opt_volt:
-                    info += f"Voltage [V]: {self._volt} \n "
+            if self.chosen_power != opt_volt:
+                info += f"Voltage [V]: {self._volt} \n "
 
-                if self.chosen_power != opt_ampl:
-                    info += f"Amplitude [%]: {self._ampl} \n "
+            if self.chosen_power != opt_ampl:
+                info += f"Amplitude [%]: {self._ampl} \n "
 
-                # Information about piecewise polynomial fits
-                info += "Conversion parameters using piecewise polynomial fits:\n "
+            # Information about piecewise polynomial fits
+            info += "Conversion parameters using piecewise polynomial fits:\n "
 
-                if self._conv_param["volt_curve_pp"] is not None:
-                    info += ("- Voltage to amplitude conversion: Using piecewise polynomial fit " +
-                             f"of {self.volt_curve_file}\n ")
+            if self._conv_param["volt_curve_pp"] is not None:
+                info += ("- Voltage to amplitude conversion: Using piecewise polynomial fit " +
+                         f"of {self.volt_curve_file}\n ")
 
-                if self._conv_param["power_curve_pp"] is not None:
-                    info += ("- Pressure to amplitude conversion: Using piecewise polynomial " +
-                             f"fit of {self.power_curve_file}\n ")
+            if self._conv_param["power_curve_pp"] is not None:
+                info += ("- Pressure to amplitude conversion: Using piecewise polynomial " +
+                         f"fit of {self.power_curve_file}\n ")
 
-                if self._conv_param["focus_curve_pp"] is not None:
-                    info += ("- Focus conversion: Using piecewise polynomial fit of " +
-                             f"{self.focus_curve_file}\n ")
+            if self._conv_param["focus_curve_pp"] is not None:
+                info += ("- Focus conversion: Using piecewise polynomial fit of " +
+                         f"{self.focus_curve_file}\n ")
 
-                if self._conv_param["eq_curve_pp"] is not None:
-                    info += ("- Normalization factor calculation: Using piecewise polynomial " +
-                             f"fit of {self.eq_curve_file}\n ")
+            if self._conv_param["eq_curve_pp"] is not None:
+                info += ("- Normalization factor calculation: Using piecewise polynomial " +
+                         f"fit of {self.eq_curve_file}\n ")
 
-                info += ("Normalized pressure [-] based on chosen focal depth wrt exit plane of " +
-                         f"{self._focus_wrt_exit_plane} [mm]: {self._eq_factor} \n ")
+            info += ("Normalized pressure [-] based on chosen focal depth wrt exit plane of " +
+                     f"{self._focus_wrt_exit_plane} [mm]: {self._eq_factor} \n ")
 
-            else:
-                info += ("Pressure correction with an increasing focal depth not available in " +
-                         "the configuration file for this driving system and transducer " +
-                         "combination! \n ")
+        elif self.chosen_power not in self.driving_sys.native_power_params:
+            info += ("Pressure correction with an increasing focal depth not available in " +
+                     "the configuration file for this driving system and transducer " +
+                     "combination! \n ")
 
         info += f"Operating frequency [kHz]: {self._oper_freq} \n "
         info += f"Focal depth wrt exit plane [mm]: {self._focus_wrt_exit_plane} \n "
@@ -383,10 +375,9 @@ class Sequence():
                 get_logger(), config, 'Equipment', 'Combination sign', '~')
             self._ds_tran_combo = combo_sign.join([self._driving_sys.serial,
                                                    self._transducer.serial])
-            if self.driving_sys.require_conv_eq:
-                if self._ds_tran_combo in self._equip_combos:
-                    # New equipment selected, update conversion parameters
-                    self._update_conv_param()
+            if self._combo_is_active():
+                # New equipment selected, update conversion parameters
+                self._update_conv_param()
 
     @property
     def wait_for_trigger(self):
@@ -511,15 +502,11 @@ class Sequence():
                 get_logger(), config, 'Equipment', 'Combination sign', '~')
             self._ds_tran_combo = combo_sign.join([self._driving_sys.serial,
                                                    self._transducer.serial])
-            if self.driving_sys.require_conv_eq:
-                if self._ds_tran_combo in self._equip_combos:
-                    # New equipment selected, update conversion parameters
-                    self._update_conv_param()
-                    self._focus_wrt_mid_bowl = self._conv_param['focus_curve_pp'](
-                        self._focus_wrt_exit_plane)
-                else:
-                    self._focus_wrt_mid_bowl = (self._focus_wrt_exit_plane +
-                                                self._transducer.exit_plane_dist)
+            if self._combo_is_active():
+                # New equipment selected, update conversion parameters
+                self._update_conv_param()
+                self._focus_wrt_mid_bowl = self._conv_param['focus_curve_pp'](
+                    self._focus_wrt_exit_plane)
             else:
                 self._focus_wrt_mid_bowl = (self._focus_wrt_exit_plane +
                                             self._transducer.exit_plane_dist)
@@ -676,23 +663,29 @@ class Sequence():
 
                 self._chosen_power = power_option
 
-                if self.driving_sys.require_conv_eq:
-                    if self._ds_tran_combo in self._equip_combos:
-                        # Convert required amplitude
-                        self._calc_ampl()
+                # Amplitude is not press's native power parameter for every driving system --
+                # converting to it requires an active calibration, since there's no other way
+                # to produce a value this driving system's hardware actually accepts.
+                if (power_option not in self.driving_sys.native_power_params
+                        and not self._combo_is_active()):
+                    message = ('No active calibration available to convert maximum pressure ' +
+                               'in free water to ' +
+                               f'{self.driving_sys.native_power_params} for ' +
+                               f'{self._ds_tran_combo}.')
+                    get_logger().critical(message)
+                    sys.exit(message)
 
-                        # Calculate voltage for logging
-                        self._calc_volt()
+                if self._combo_is_active():
+                    # Convert required amplitude
+                    self._calc_ampl()
 
-                        get_logger().debug('New maximum pressure in free water value of ' +
-                                           f'{self._press:.2f} [MPa] results in a voltage of ' +
-                                           f'{_format_or_unavailable(self._volt[0])} [V] and ' +
-                                           f'an amplitude of {self._ampl[0]:.2f} [%].')
-                    else:
-                        message = ('Conversion equations unknown but required for ' +
-                                   f'{self._ds_tran_combo}.')
-                        get_logger().critical(message)
-                        sys.exit(message)
+                    # Calculate voltage for logging
+                    self._calc_volt()
+
+                    get_logger().debug('New maximum pressure in free water value of ' +
+                                       f'{self._press:.2f} [MPa] results in a voltage of ' +
+                                       f'{_format_or_unavailable(self._volt[0])} [V] and ' +
+                                       f'an amplitude of {self._ampl[0]:.2f} [%].')
         else:
             message = ('Pressure parameter is not available for ' +
                        'chosen driving system. Use one of the following options instead: ' +
@@ -754,45 +747,50 @@ class Sequence():
 
                 self._chosen_power = power_option
 
-                if self.driving_sys.require_conv_eq:
-                    if self._ds_tran_combo in self._equip_combos:
-                        # Convert required to amplitude
-                        self._calc_ampl_using_volt()
+                # Amplitude is not volt's native power parameter for every driving system --
+                # converting to it requires an active calibration, since there's no other way
+                # to produce a value this driving system's hardware actually accepts.
+                if (power_option not in self.driving_sys.native_power_params
+                        and not self._combo_is_active()):
+                    message = ('No active calibration available to convert voltage to ' +
+                               f'{self.driving_sys.native_power_params} for ' +
+                               f'{self._ds_tran_combo}.')
+                    get_logger().critical(message)
+                    sys.exit(message)
 
-                        if n_entries > 1:
-                            round_ampl = [f'{x:.2f}' for x in self._ampl]
-                            round_volt = [f'{x:.2f}' for x in self._volt]
-                        else:
-                            round_ampl = f'{self._ampl[0]:.2f}'
-                            round_volt = f'{self._volt[0]:.2f}'
+                if self._combo_is_active():
+                    # Convert required to amplitude
+                    self._calc_ampl_using_volt()
 
-                        if n_entries == 1:
-                            # Amplitude is what's actually sent to hardware here (volt is
-                            # converted to it above), so this pressure is only derived for the
-                            # log line below -- EXCEPT its max-pressure-exceeded check (inside
-                            # _calc_press) is a deliberate exception to that: exceeding the
-                            # configured safe limit is a safety decision for the engineer, not
-                            # merely a logging concern, so it's intentionally left free to
-                            # sys.exit() here same as anywhere else.
-                            self._calc_press_for_logging('_volt', '_ampl')
-
-                            get_logger().debug(
-                                f'New voltage value of {round_volt} [V] results in a ' +
-                                'maximum pressure in free water of ' +
-                                f'{_format_or_unavailable(self._press)} ' +
-                                f' [MPa] and an amplitude of {round_ampl} [%].')
-                        else:
-                            get_logger().debug(
-                                'Pressure cannot be calculated when multiple voltages ' +
-                                'are given.')
-                            get_logger().debug(
-                                f'New voltage value of {round_volt} [V] results in an ' +
-                                f'amplitude of {round_ampl} [%].')
+                    if n_entries > 1:
+                        round_ampl = [f'{x:.2f}' for x in self._ampl]
+                        round_volt = [f'{x:.2f}' for x in self._volt]
                     else:
-                        message = ('Conversion equations unknown but required for ' +
-                                   f'{self._ds_tran_combo}.')
-                        get_logger().critical(message)
-                        sys.exit(message)
+                        round_ampl = f'{self._ampl[0]:.2f}'
+                        round_volt = f'{self._volt[0]:.2f}'
+
+                    if n_entries == 1:
+                        # Amplitude is what's actually sent to hardware here (volt is
+                        # converted to it above), so this pressure is only derived for the
+                        # log line below -- EXCEPT its max-pressure-exceeded check (inside
+                        # _calc_press) is a deliberate exception to that: exceeding the
+                        # configured safe limit is a safety decision for the engineer, not
+                        # merely a logging concern, so it's intentionally left free to
+                        # sys.exit() here same as anywhere else.
+                        self._calc_press_for_logging('_volt', '_ampl')
+
+                        get_logger().debug(
+                            f'New voltage value of {round_volt} [V] results in a ' +
+                            'maximum pressure in free water of ' +
+                            f'{_format_or_unavailable(self._press)} ' +
+                            f' [MPa] and an amplitude of {round_ampl} [%].')
+                    else:
+                        get_logger().debug(
+                            'Pressure cannot be calculated when multiple voltages ' +
+                            'are given.')
+                        get_logger().debug(
+                            f'New voltage value of {round_volt} [V] results in an ' +
+                            f'amplitude of {round_ampl} [%].')
 
         else:
             message = ('Voltage parameter is not available for ' +
@@ -856,43 +854,50 @@ class Sequence():
 
                 self._chosen_power = power_option
 
-                if self.driving_sys.require_conv_eq:
-                    if self._ds_tran_combo in self._equip_combos:
-                        # Convert amplitude to voltage for logging
-                        self._calc_volt()
+                # Voltage is not ampl's native power parameter for every driving system --
+                # converting to it requires an active calibration, since there's no other way
+                # to produce a value this driving system's hardware actually accepts.
+                if (power_option not in self.driving_sys.native_power_params
+                        and not self._combo_is_active()):
+                    message = ('No active calibration available to convert amplitude to ' +
+                               f'{self.driving_sys.native_power_params} for ' +
+                               f'{self._ds_tran_combo}.')
+                    get_logger().critical(message)
+                    sys.exit(message)
 
-                        round_ampl = f'{self._ampl[0]:.2f}'
-                        # self._calc_volt() above can leave a None entry (calibration doesn't
-                        # cover this amplitude) -- this call is logging-only either way (ampl
-                        # itself is what's actually sent to hardware), so a missing voltage here
-                        # only degrades the log message, never raises.
-                        round_volt = _format_or_unavailable(self._volt[0])
+                if self._combo_is_active():
+                    # Convert amplitude to voltage for logging
+                    self._calc_volt()
 
-                        if n_entries > 1:
-                            # Equipment is not part a combination, so only set amplitude
-                            get_logger().debug(
-                                f'New amplitude value of {round_ampl} [%] results in a ' +
-                                f'voltage of {round_volt} [V].')
-                            get_logger().debug(
-                                'Amplitude array is given. Pressure cannot ' +
-                                'be calculated for logging purposes.')
-                        else:
-                            # Convert amplitude to pressure for logging -- EXCEPT
-                            # _calc_press()'s own max-pressure-exceeded check is a deliberate
-                            # exception to "logging-only": exceeding the configured safe limit
-                            # is a safety decision for the engineer, not merely a logging
-                            # concern, so it's intentionally left free to sys.exit() here same
-                            # as anywhere else.
-                            self._calc_press_for_logging('_ampl', '_volt')
+                    round_ampl = f'{self._ampl[0]:.2f}'
+                    # self._calc_volt() above can leave a None entry (calibration doesn't
+                    # cover this amplitude) -- this call is logging-only either way (ampl
+                    # itself is what's actually sent to hardware), so a missing voltage here
+                    # only degrades the log message, never raises.
+                    round_volt = _format_or_unavailable(self._volt[0])
 
-                            get_logger().debug(
-                                f'New amplitude value of {round_ampl} [%] results in a ' +
-                                'maximum pressure in free water of ' +
-                                f'{_format_or_unavailable(self._press)} ' +
-                                f'[MPa] and a voltage of {round_volt} [V].')
+                    if n_entries > 1:
+                        # Equipment is not part a combination, so only set amplitude
+                        get_logger().debug(
+                            f'New amplitude value of {round_ampl} [%] results in a ' +
+                            f'voltage of {round_volt} [V].')
+                        get_logger().debug(
+                            'Amplitude array is given. Pressure cannot ' +
+                            'be calculated for logging purposes.')
                     else:
-                        message = f'Conversion equations unknown for {self._ds_tran_combo}.'
-                        get_logger().debug(message)
+                        # Convert amplitude to pressure for logging -- EXCEPT
+                        # _calc_press()'s own max-pressure-exceeded check is a deliberate
+                        # exception to "logging-only": exceeding the configured safe limit
+                        # is a safety decision for the engineer, not merely a logging
+                        # concern, so it's intentionally left free to sys.exit() here same
+                        # as anywhere else.
+                        self._calc_press_for_logging('_ampl', '_volt')
+
+                        get_logger().debug(
+                            f'New amplitude value of {round_ampl} [%] results in a ' +
+                            'maximum pressure in free water of ' +
+                            f'{_format_or_unavailable(self._press)} ' +
+                            f'[MPa] and a voltage of {round_volt} [V].')
         else:
             message = ('Amplitude parameter is not available for ' +
                        'chosen driving system. Use one of the following options instead: ' +
@@ -975,33 +980,44 @@ class Sequence():
                 get_logger().critical(message)
                 sys.exit(message)
 
-            if self.driving_sys.require_conv_eq:
-                if self._ds_tran_combo in self._equip_combos:
-                    self._focus_wrt_mid_bowl = self._conv_param['focus_curve_pp'](focus)
-                else:
-                    message = ('Compensation equations are not available. Focus wrt' +
-                               ' mid bowl will be calculated based on exit plane distance of ' +
-                               f'{self._transducer.exit_plane_dist} [mm].')
-                    get_logger().warning(message)
+            focus_option = get_config_value(get_logger(), config, 'Focus', 'Option.exit',
+                                            'Focus wrt exit plane [mm]')
 
-                    self._focus_wrt_mid_bowl = focus + self._transducer.exit_plane_dist
+            # Focus wrt mid bowl is not exit plane's native focus parameter for every driving
+            # system -- converting to it requires an active calibration, since there's no other
+            # way to produce a value this driving system's hardware actually accepts.
+            if (focus_option not in self.driving_sys.native_focus_params
+                    and not self._combo_is_active()):
+                message = ('No active calibration available to convert focus wrt exit plane ' +
+                           f'to {self.driving_sys.native_focus_params} for ' +
+                           f'{self._ds_tran_combo}.')
+                get_logger().critical(message)
+                sys.exit(message)
 
+            if self._combo_is_active():
+                self._focus_wrt_mid_bowl = self._conv_param['focus_curve_pp'](focus)
             else:
+                # Native and no curve available -- fall back to the simple, always-valid
+                # geometric offset (only reached when native, since non-native + inactive exits
+                # above).
                 self._focus_wrt_mid_bowl = focus + self._transducer.exit_plane_dist
 
-            self._chosen_focus = get_config_value(get_logger(), config, 'Focus', 'Option.exit',
-                                                  'Focus wrt exit plane [mm]')
+            self._chosen_focus = focus_option
             self._focus_wrt_exit_plane = focus
 
             get_logger().debug(f'Focus wrt exit plane [mm]: {self._focus_wrt_exit_plane} \n ' +
                                f'Focus wrt bowl middle [mm]: {self._focus_wrt_mid_bowl}')
 
-        # Check if pressure compensation is available for chosen equipment
-        if self.driving_sys.require_conv_eq:
-            if self._ds_tran_combo in self._equip_combos:
-                # Update normalized pressure based on new focal depth
-                self._calc_eq_factor()
+        if self._combo_is_active():
+            # Update normalized pressure based on new focal depth -- kept in sync with the
+            # current focus regardless of whether a power parameter has been chosen yet, so
+            # it's already correct whenever power setting happens later.
+            self._calc_eq_factor()
 
+            # The rest (deriving ampl/press/volt purely for the log line below) is only
+            # meaningful once a power parameter has actually been chosen -- never blocking,
+            # this is purely informational.
+            if self._chosen_power is not None:
                 # Update amplitude accordingly
                 self._calc_ampl()
 
@@ -1027,11 +1043,6 @@ class Sequence():
                     # an earlier logging-only calculation that hit the max-pressure check.
                     f"{_format_or_unavailable(self._press)} [MPa], the voltage as " +
                     f"{round_volt} [V], and the amplitude as {round_ampl} [%].")
-            else:
-                message = ('Conversion equations unknown but required for ' +
-                           f'{self._ds_tran_combo}.')
-                get_logger().critical(message)
-                sys.exit(message)
 
     @property
     def focus_wrt_mid_bowl(self):
@@ -1057,44 +1068,54 @@ class Sequence():
             middle of the FWHM.
         """
 
+        if not self._engineering_mode:
+            raise RuntimeError(
+                "Focus wrt mid bowl mode is disabled. Use focus wrt exit plane instead.")
+
         is_validated = validate_value(focus, 'Focus wrt mid bowl [mm] (focus_wrt_mid_bowl)',
                                       True, True, False, False)
 
         if is_validated:
-            if self.driving_sys.require_conv_eq:
-                if self._ds_tran_combo in self._equip_combos:
-                    target_y_value = focus
-                    self._focus_wrt_exit_plane, status = find_x_for_y_in_pp(
-                        self._conv_param['focus_curve_pp'], target_y_value)
+            focus_option = get_config_value(get_logger(), config, 'Focus', 'Option.bowl',
+                                            'Focus wrt mid bowl [mm]')
 
-                    if status:
-                        get_logger().debug(
-                            f"Found x value: {self._focus_wrt_exit_plane} for y = " +
-                            f"{target_y_value}")
+            # Focus wrt exit plane is not mid bowl's native focus parameter for every driving
+            # system -- converting to it requires an active calibration, since there's no other
+            # way to produce a value this driving system's hardware actually accepts.
+            if (focus_option not in self.driving_sys.native_focus_params
+                    and not self._combo_is_active()):
+                message = ('No active calibration available to convert focus wrt mid bowl ' +
+                           f'to {self.driving_sys.native_focus_params} for ' +
+                           f'{self._ds_tran_combo}.')
+                get_logger().critical(message)
+                sys.exit(message)
 
-                        # Verify
-                        calc_y = self._conv_param['focus_curve_pp'](self._focus_wrt_exit_plane)
-                        get_logger().debug(
-                            f"Verification: pp({self._focus_wrt_exit_plane}) = {calc_y}")
-                    else:
-                        get_logger().warning(
-                            f"Could not find an x value for y = {target_y_value}. " +
-                            'Focus wrt exit plane will be calculated based on ' +
-                            'exit plane distance of ' +
-                            f'{self._transducer.exit_plane_dist} [mm].')
+            if self._combo_is_active():
+                target_y_value = focus
+                self._focus_wrt_exit_plane, status = find_x_for_y_in_pp(
+                    self._conv_param['focus_curve_pp'], target_y_value)
 
-                        self._focus_wrt_exit_plane = focus - self._transducer.exit_plane_dist
+                if status:
+                    get_logger().debug(
+                        f"Found x value: {self._focus_wrt_exit_plane} for y = " +
+                        f"{target_y_value}")
 
+                    # Verify
+                    calc_y = self._conv_param['focus_curve_pp'](self._focus_wrt_exit_plane)
+                    get_logger().debug(
+                        f"Verification: pp({self._focus_wrt_exit_plane}) = {calc_y}")
                 else:
-                    message = ('Compensation equations are not available or applicable. ' +
-                               'Focus wrt exit plane will be calculated based on exit plane ' +
-                               f'distance of {self._transducer.exit_plane_dist} [mm].')
-                    get_logger().warning(message)
+                    get_logger().warning(
+                        f"Could not find an x value for y = {target_y_value}. " +
+                        'Focus wrt exit plane will be calculated based on ' +
+                        'exit plane distance of ' +
+                        f'{self._transducer.exit_plane_dist} [mm].')
 
                     self._focus_wrt_exit_plane = focus - self._transducer.exit_plane_dist
-
             else:
-
+                # Native and no curve available -- fall back to the simple, always-valid
+                # geometric offset (only reached when native, since non-native + inactive exits
+                # above).
                 self._focus_wrt_exit_plane = focus - self._transducer.exit_plane_dist
 
             # Check if focus is within range if compensation equations are not applicable
@@ -1108,20 +1129,23 @@ class Sequence():
                 get_logger().critical(message)
                 sys.exit(message)
 
-            self._chosen_focus = get_config_value(get_logger(), config, 'Focus', 'Option.bowl',
-                                                  'Focus wrt mid bowl [mm]')
+            self._chosen_focus = focus_option
 
             self._focus_wrt_mid_bowl = focus
 
             get_logger().debug(f'Focus wrt exit plane [mm]: {self._focus_wrt_exit_plane} \n ' +
                                f'Focus wrt bowl middle [mm]: {self._focus_wrt_mid_bowl}')
 
-        # Check if pressure compensation is available for chosen equipment
-        if self.driving_sys.require_conv_eq:
-            if self._ds_tran_combo in self._equip_combos:
-                # Update normalized pressure based on new focal depth
-                self._calc_eq_factor()
+        if self._combo_is_active():
+            # Update normalized pressure based on new focal depth -- kept in sync with the
+            # current focus regardless of whether a power parameter has been chosen yet, so
+            # it's already correct whenever power setting happens later.
+            self._calc_eq_factor()
 
+            # The rest (deriving ampl/press/volt purely for the log line below) is only
+            # meaningful once a power parameter has actually been chosen -- never blocking,
+            # this is purely informational.
+            if self._chosen_power is not None:
                 # Update amplitude accordingly
                 self._calc_ampl()
 
@@ -1146,11 +1170,6 @@ class Sequence():
                     # an earlier logging-only calculation that hit the max-pressure check.
                     f"{_format_or_unavailable(self._press)} [MPa], the voltage as " +
                     f"{round_volt} [V], and the amplitude as {round_ampl} [%].")
-            else:
-                message = ('Conversion equations unknown but required for ' +
-                           f'{self._ds_tran_combo}.')
-                get_logger().critical(message)
-                sys.exit(message)
 
     @property
     def dephasing_degree(self):
@@ -1448,6 +1467,22 @@ class Sequence():
                     get_logger(), config, 'Trigger', 'option.ptr',
                     'TriggerOnePulseTrainRepetition'):
                 self._n_triggers = 1
+
+    def _combo_is_active(self):
+        """
+        Determines whether an active calibration exists for the current driving-system/transducer
+        pair -- i.e. whether curve-based power/focus conversion is actually possible right now.
+
+        Returns:
+            bool: True only if an 'Equipment.Combination.<ds_tran_combo>' section exists for the
+            current pair AND its 'Active?' key is True. False (no warning) when the section is
+            simply absent -- normal for equipment that never needs curve-based conversion at all.
+        """
+
+        section = 'Equipment.Combination.' + self._ds_tran_combo
+        if section not in config:
+            return False
+        return get_config_value(get_logger(), config, section, 'Active?', 'True') == 'True'
 
     def _update_conv_param(self):
         """

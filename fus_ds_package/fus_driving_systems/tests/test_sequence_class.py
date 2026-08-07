@@ -514,15 +514,21 @@ def test_global_power_setter_exits_when_option_unavailable(patch_config):
 
 
 # --- press -------------------------------------------------------------------
-# Validates the power option is available, validates/limits the value, and
-# THEN -- only if require_conv_eq and the combo is known -- recalculates
-# amplitude and voltage (for logging) via the already-tested _calc_* methods.
+# Validates the power option is available, validates/limits the value, and THEN
+# -- only if press isn't this driving system's native power parameter AND a
+# calibration is active -- recalculates amplitude and voltage (for logging)
+# via the already-tested _calc_* methods. If press is native, this is always
+# settable; if it isn't and no calibration is active, the setter exits.
 
 def test_press_setter_without_conversion_sets_value_directly(patch_config):
+    """Press is this (hypothetical) driving system's own native power parameter, so no
+    calibration is ever needed to set it."""
     patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '10')
     seq = _bare_sequence()
     seq._driving_sys = SimpleNamespace(
-        power_options=['Max. pressure in free water [MPa]'], require_conv_eq=False)
+        power_options=['Max. pressure in free water [MPa]'],
+        native_power_params=['Max. pressure in free water [MPa]'])
+    seq._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
 
     seq.press = 0.5
 
@@ -531,12 +537,14 @@ def test_press_setter_without_conversion_sets_value_directly(patch_config):
 
 
 def test_press_setter_with_known_combo_triggers_conversion(patch_config):
+    """Press is non-native (amplitude is), so converting it requires an active calibration --
+    provided here via a real 'Equipment.Combination.*' config section, matching IGT."""
     patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '10')
+    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
     seq = _bare_sequence()
     seq._driving_sys = SimpleNamespace(
-        power_options=['Max. pressure in free water [MPa]'], require_conv_eq=True)
+        power_options=['Max. pressure in free water [MPa]'], native_power_params=['Amplitude [%]'])
     seq._ds_tran_combo = 'combo1'
-    seq._equip_combos = ['combo1']
     seq._conv_param = {
         'power_curve_pp': _identity_pp(-10.0, 1000.0),
         'volt_curve_pp': _identity_pp(-10.0, 200.0),
@@ -555,19 +563,20 @@ def test_press_setter_with_known_combo_triggers_conversion(patch_config):
 def test_press_setter_exits_when_power_option_unavailable(patch_config):
     patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '10')
     seq = _bare_sequence()
-    seq._driving_sys = SimpleNamespace(power_options=['Some other option'], require_conv_eq=False)
+    seq._driving_sys = SimpleNamespace(power_options=['Some other option'])
 
     with pytest.raises(SystemExit):
         seq.press = 0.5
 
 
 def test_press_setter_exits_when_combo_unknown_but_required(patch_config):
+    """Press is non-native and no 'Equipment.Combination.*' section exists for this combo at
+    all -- _combo_is_active() is False, so there's no way to convert to amplitude."""
     patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '10')
     seq = _bare_sequence()
     seq._driving_sys = SimpleNamespace(
-        power_options=['Max. pressure in free water [MPa]'], require_conv_eq=True)
-    seq._ds_tran_combo = 'combo1'
-    seq._equip_combos = []  # combo unknown
+        power_options=['Max. pressure in free water [MPa]'], native_power_params=['Amplitude [%]'])
+    seq._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
 
     with pytest.raises(SystemExit):
         seq.press = 0.5
@@ -576,8 +585,7 @@ def test_press_setter_exits_when_combo_unknown_but_required(patch_config):
 def test_press_setter_exits_when_above_configured_max(patch_config):
     patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '1')
     seq = _bare_sequence()
-    seq._driving_sys = SimpleNamespace(
-        power_options=['Max. pressure in free water [MPa]'], require_conv_eq=False)
+    seq._driving_sys = SimpleNamespace(power_options=['Max. pressure in free water [MPa]'])
 
     with pytest.raises(SystemExit):
         seq.press = 5
@@ -597,10 +605,13 @@ def test_volt_setter_raises_when_engineering_mode_disabled():
 
 
 def test_volt_setter_without_conversion_sets_value_directly():
+    """Voltage is this (hypothetical) driving system's own native power parameter, so no
+    calibration is ever needed to set it -- matches CITRUS."""
     seq = _bare_sequence()
     seq._engineering_mode = True
     seq._driving_sys = SimpleNamespace(
-        power_options=['Voltage [V]'], require_conv_eq=False, available_ch=1)
+        power_options=['Voltage [V]'], native_power_params=['Voltage [V]'], available_ch=1)
+    seq._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
 
     seq.volt = 50
 
@@ -608,13 +619,15 @@ def test_volt_setter_without_conversion_sets_value_directly():
     assert seq._chosen_power == 'Voltage [V]'
 
 
-def test_volt_setter_with_known_combo_triggers_conversion():
+def test_volt_setter_with_known_combo_triggers_conversion(patch_config):
+    """Voltage is non-native (amplitude is), so converting it requires an active calibration --
+    matches IGT."""
+    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
     seq = _bare_sequence()
     seq._engineering_mode = True
     seq._driving_sys = SimpleNamespace(
-        power_options=['Voltage [V]'], require_conv_eq=True, available_ch=1)
+        power_options=['Voltage [V]'], native_power_params=['Amplitude [%]'], available_ch=1)
     seq._ds_tran_combo = 'combo1'
-    seq._equip_combos = ['combo1']
     seq._conv_param = {
         'volt_curve_pp': _identity_pp(-10.0, 200.0),
         'power_curve_pp': _identity_pp(-10.0, 1000.0),
@@ -628,18 +641,18 @@ def test_volt_setter_with_known_combo_triggers_conversion():
     assert seq._press == pytest.approx(5e-5)
 
 
-def test_volt_setter_logging_only_press_failure_does_not_raise():
+def test_volt_setter_logging_only_press_failure_does_not_raise(patch_config):
     """BUGFIX: _calc_press() is called here purely to log a derived pressure value -- the real
     value being sent to hardware (voltage/amplitude) was already set independently above. If the
     power curve's domain doesn't cover the resulting amplitude, _calc_press() used to leave
     self._press = None, which then crashed the very next debug line's f'{self._press:.2f}' with
     an unrelated-looking TypeError. Must now just degrade the log message instead."""
+    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
     seq = _bare_sequence()
     seq._engineering_mode = True
     seq._driving_sys = SimpleNamespace(
-        power_options=['Voltage [V]'], require_conv_eq=True, available_ch=1)
+        power_options=['Voltage [V]'], native_power_params=['Amplitude [%]'], available_ch=1)
     seq._ds_tran_combo = 'combo1'
-    seq._equip_combos = ['combo1']
     seq._conv_param = {
         'volt_curve_pp': _identity_pp(-10.0, 200.0),
         # power_curve_pp's domain doesn't cover the resulting amplitude (50) --
@@ -665,12 +678,12 @@ def test_volt_setter_exits_when_derived_press_exceeds_configured_max(patch_confi
     its derived _ampl) are also cleared back to None -- otherwise they'd still look like a
     valid, current result even though the request as a whole was refused."""
     patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '1.4')
+    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
     seq = _bare_sequence()
     seq._engineering_mode = True
     seq._driving_sys = SimpleNamespace(
-        power_options=['Voltage [V]'], require_conv_eq=True, available_ch=1)
+        power_options=['Voltage [V]'], native_power_params=['Amplitude [%]'], available_ch=1)
     seq._ds_tran_combo = 'combo1'
-    seq._equip_combos = ['combo1']
     seq._conv_param = {
         # identity pp -> volt=2_000_000 converts straight to ampl=2_000_000
         'volt_curve_pp': _identity_pp(-10.0, 1e7),
@@ -688,15 +701,15 @@ def test_volt_setter_exits_when_derived_press_exceeds_configured_max(patch_confi
     assert seq._ampl is None
 
 
-def test_volt_setter_with_multiple_values_skips_press_calculation():
+def test_volt_setter_with_multiple_values_skips_press_calculation(patch_config):
     """When more than one voltage is given, _calc_press() is deliberately not
     called (pressure cannot be derived from a per-element voltage array)."""
+    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
     seq = _bare_sequence()
     seq._engineering_mode = True
     seq._driving_sys = SimpleNamespace(
-        power_options=['Voltage [V]'], require_conv_eq=True, available_ch=2)
+        power_options=['Voltage [V]'], native_power_params=['Amplitude [%]'], available_ch=2)
     seq._ds_tran_combo = 'combo1'
-    seq._equip_combos = ['combo1']
     seq._conv_param = {
         'volt_curve_pp': _identity_pp(-10.0, 200.0),
         'power_curve_pp': _identity_pp(-10.0, 1000.0),
@@ -714,7 +727,7 @@ def test_volt_setter_with_multiple_values_skips_press_calculation():
 def test_volt_setter_exits_when_power_option_unavailable():
     seq = _bare_sequence()
     seq._engineering_mode = True
-    seq._driving_sys = SimpleNamespace(power_options=['Some other option'], require_conv_eq=False)
+    seq._driving_sys = SimpleNamespace(power_options=['Some other option'])
 
     with pytest.raises(SystemExit):
         seq.volt = 50
@@ -724,23 +737,22 @@ def test_volt_setter_exits_on_wrong_length_list():
     seq = _bare_sequence()
     seq._engineering_mode = True
     seq._driving_sys = SimpleNamespace(
-        power_options=['Voltage [V]'], require_conv_eq=False, available_ch=4)
+        power_options=['Voltage [V]'], native_power_params=['Voltage [V]'], available_ch=4)
 
     with pytest.raises(SystemExit):
         seq.volt = [10, 20]  # neither 1 entry nor 4 (available_ch) entries
 
 
 def test_volt_setter_exits_when_combo_unknown_but_required():
-    """Mirrors test_press_setter_exits_when_combo_unknown_but_required --
-    volt's setter has the identical 'require_conv_eq True but combo not in
-    _equip_combos' -> sys.exit branch as press (this is the behavior ampl's
-    setter deviates from, per the already-documented asymmetry)."""
+    """Mirrors test_press_setter_exits_when_combo_unknown_but_required -- volt is non-native
+    (amplitude is) and no 'Equipment.Combination.*' section exists for this combo at all, so
+    there's no way to convert to amplitude (this is the behavior ampl's setter deviates from,
+    per the already-documented asymmetry)."""
     seq = _bare_sequence()
     seq._engineering_mode = True
-    seq._driving_sys = SimpleNamespace(power_options=['Voltage [V]'], require_conv_eq=True,
-                                       available_ch=1)
-    seq._ds_tran_combo = 'combo1'
-    seq._equip_combos = []  # combo unknown
+    seq._driving_sys = SimpleNamespace(power_options=['Voltage [V]'],
+                                       native_power_params=['Amplitude [%]'], available_ch=1)
+    seq._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
 
     with pytest.raises(SystemExit):
         seq.volt = 50
@@ -761,10 +773,16 @@ def test_ampl_setter_raises_when_engineering_mode_disabled():
 
 
 def test_ampl_setter_without_conversion_sets_value_directly():
+    """Amplitude is this driving system's own native power parameter (matches IGT), so no
+    calibration is ever needed to set it -- succeeds even with no active combo. CONFIRMED
+    INTENDED asymmetry with press/volt (which both sys.exit() in this same situation, per
+    their own tests): without an active calibration those two genuinely cannot derive the
+    amplitude actually sent to hardware, whereas ampl already *is* that value."""
     seq = _bare_sequence()
     seq._engineering_mode = True
     seq._driving_sys = SimpleNamespace(
-        power_options=['Amplitude [%]'], require_conv_eq=False, available_ch=1)
+        power_options=['Amplitude [%]'], native_power_params=['Amplitude [%]'], available_ch=1)
+    seq._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
 
     seq.ampl = 50
 
@@ -772,13 +790,13 @@ def test_ampl_setter_without_conversion_sets_value_directly():
     assert seq._chosen_power == 'Amplitude [%]'
 
 
-def test_ampl_setter_with_known_combo_triggers_conversion():
+def test_ampl_setter_with_known_combo_triggers_conversion(patch_config):
+    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
     seq = _bare_sequence()
     seq._engineering_mode = True
     seq._driving_sys = SimpleNamespace(
-        power_options=['Amplitude [%]'], require_conv_eq=True, available_ch=1)
+        power_options=['Amplitude [%]'], native_power_params=['Amplitude [%]'], available_ch=1)
     seq._ds_tran_combo = 'combo1'
-    seq._equip_combos = ['combo1']
     seq._conv_param = {
         'volt_curve_pp': _identity_pp(-10.0, 200.0),
         'power_curve_pp': _identity_pp(-10.0, 1000.0),
@@ -792,17 +810,17 @@ def test_ampl_setter_with_known_combo_triggers_conversion():
     assert seq._press == pytest.approx(5e-5)
 
 
-def test_ampl_setter_logging_only_press_failure_does_not_raise():
+def test_ampl_setter_logging_only_press_failure_does_not_raise(patch_config):
     """BUGFIX: same crash as test_volt_setter_logging_only_press_failure_does_not_raise, reached
     via ampl's setter instead -- the power curve's domain doesn't cover the set amplitude, so
     find_x_for_y_in_pp() inside _calc_press() can't find a match and leaves self._press = None,
     which must not crash the debug log line right after."""
+    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
     seq = _bare_sequence()
     seq._engineering_mode = True
     seq._driving_sys = SimpleNamespace(
-        power_options=['Amplitude [%]'], require_conv_eq=True, available_ch=1)
+        power_options=['Amplitude [%]'], native_power_params=['Amplitude [%]'], available_ch=1)
     seq._ds_tran_combo = 'combo1'
-    seq._equip_combos = ['combo1']
     seq._conv_param = {
         'volt_curve_pp': _identity_pp(-10.0, 200.0),
         'power_curve_pp': _identity_pp(80.0, 1000.0),  # domain doesn't cover ampl=50
@@ -826,12 +844,12 @@ def test_ampl_setter_exits_when_derived_press_exceeds_configured_max(patch_confi
     (and its derived _volt) are also cleared back to None -- otherwise they'd still look like a
     valid, current result even though the request as a whole was refused."""
     patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '1.4')
+    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
     seq = _bare_sequence()
     seq._engineering_mode = True
     seq._driving_sys = SimpleNamespace(
-        power_options=['Amplitude [%]'], require_conv_eq=True, available_ch=1)
+        power_options=['Amplitude [%]'], native_power_params=['Amplitude [%]'], available_ch=1)
     seq._ds_tran_combo = 'combo1'
-    seq._equip_combos = ['combo1']
     seq._conv_param = {
         'volt_curve_pp': _identity_pp(-10.0, 200.0),
         # identity pp -> find_x_for_y_in_pp(ampl) finds x = ampl = 2_000_000, so
@@ -854,7 +872,7 @@ def test_ampl_setter_exits_on_wrong_length_list():
     seq = _bare_sequence()
     seq._engineering_mode = True
     seq._driving_sys = SimpleNamespace(
-        power_options=['Amplitude [%]'], require_conv_eq=False, available_ch=4)
+        power_options=['Amplitude [%]'], native_power_params=['Amplitude [%]'], available_ch=4)
 
     with pytest.raises(SystemExit):
         seq.ampl = [10, 20]  # neither 1 entry nor 4 (available_ch) entries
@@ -873,45 +891,65 @@ def test_ampl_setter_exits_when_power_option_unavailable():
         seq.ampl = 50
 
 
-def test_ampl_setter_does_not_exit_when_combo_unknown_but_required():
-    """CONFIRMED INTENDED (not a bug): press's and volt's setters both
-    sys.exit when require_conv_eq is True but the combo is unknown, because
-    without the conversion equations they cannot derive the amplitude to
-    send to the hardware. ampl's setter is different on purpose: it already
-    has the value to send (it *is* the amplitude), so the missing
-    conversion only means the derived press/volt values can't be logged --
-    not a fatal error. It logs a debug message and keeps the set value."""
+def test_ampl_and_volt_setters_both_work_without_calibration_when_both_are_native():
+    """native_power_params is a list, not a single value -- a driving system whose hardware
+    genuinely accepts more than one power representation directly (no calibration needed for
+    either) can declare both as native. Neither should need an active combo."""
     seq = _bare_sequence()
     seq._engineering_mode = True
     seq._driving_sys = SimpleNamespace(
-        power_options=['Amplitude [%]'], require_conv_eq=True, available_ch=1)
-    seq._ds_tran_combo = 'combo1'
-    seq._equip_combos = []  # combo unknown
+        power_options=['Amplitude [%]', 'Voltage [V]'],
+        native_power_params=['Amplitude [%]', 'Voltage [V]'], available_ch=1)
+    seq._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
+    # Sentinel (not None -- that could also be a genuine _calc_* error-path result): must
+    # survive untouched, proving _calc_volt() inside ampl's setter is actually skipped when
+    # the combo isn't active, not just that ampl itself gets set correctly.
+    seq._volt = 'untouched'
 
-    seq.ampl = 50  # must not raise, unlike press/volt in the same situation
-
+    seq.ampl = 50
     assert seq._ampl == [50]
+    assert seq._volt == 'untouched'  # _calc_volt() skipped -- combo not active
+
+    seq.volt = 60
+    assert seq._volt == [60]
+    assert seq._ampl == [50]  # _calc_ampl_using_volt() skipped -- unchanged from before
 
 
 # --- focus_wrt_exit_plane ----------------------------------------------------
 
 def test_focus_wrt_exit_plane_setter_without_conversion_uses_exit_plane_offset():
+    """Exit plane is this driving system's own native focus parameter (matches Sonic
+    Concepts/CITRUS), so no calibration is ever needed to set it."""
     seq = _bare_sequence()
-    seq._driving_sys = SimpleNamespace(require_conv_eq=False)
+    seq._driving_sys = SimpleNamespace(native_focus_params=['Focus wrt exit plane [mm]'])
     seq._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
+    seq._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
+    seq._chosen_power = None  # no power chosen yet -> power-derived logging is skipped
+    # Sentinels (not None -- that could also be a genuine _calc_* error-path result): must
+    # survive untouched, proving the whole power-recompute block (eq_factor included) is
+    # skipped when the combo isn't active, not just that the focus values themselves are right.
+    seq._eq_factor = 'untouched'
+    seq._ampl = 'untouched'
+    seq._volt = 'untouched'
 
     seq.focus_wrt_exit_plane = 20
 
     assert seq.focus_wrt_exit_plane == 20
     assert seq.focus_wrt_mid_bowl == 25  # focus + exit_plane_dist
+    assert seq._eq_factor == 'untouched'
+    assert seq._ampl == 'untouched'
+    assert seq._volt == 'untouched'
 
 
-def test_focus_wrt_exit_plane_setter_with_known_combo_uses_focus_curve_and_recalculates():
+def test_focus_wrt_exit_plane_setter_with_known_combo_uses_focus_curve_and_recalculates(
+        patch_config):
+    """Exit plane is non-native (mid bowl is, matching IGT), so converting it requires an
+    active calibration."""
+    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
     seq = _bare_sequence()
-    seq._driving_sys = SimpleNamespace(require_conv_eq=True)
+    seq._driving_sys = SimpleNamespace(native_focus_params=['Focus wrt mid bowl [mm]'])
     seq._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
     seq._ds_tran_combo = 'combo1'
-    seq._equip_combos = ['combo1']
     seq._conv_param = {
         'focus_curve_pp': _identity_pp(0.0, 100.0),
         'eq_curve_pp': _identity_pp(0.0, 100.0),
@@ -919,6 +957,7 @@ def test_focus_wrt_exit_plane_setter_with_known_combo_uses_focus_curve_and_recal
         'volt_curve_pp': _identity_pp(-10.0, 200.0),
     }
     seq._press = 2e-6  # MPa -> press_pa = 2
+    seq._chosen_power = 'Max. pressure in free water [MPa]'  # power already chosen
 
     seq.focus_wrt_exit_plane = 20
 
@@ -930,9 +969,39 @@ def test_focus_wrt_exit_plane_setter_with_known_combo_uses_focus_curve_and_recal
     assert seq._volt == pytest.approx([40.0])
 
 
+def test_focus_wrt_exit_plane_setter_updates_eq_factor_even_when_no_power_chosen_yet(
+        patch_config):
+    """BUGFIX: _calc_eq_factor() must run whenever the combo is active, regardless of whether a
+    power parameter has been chosen yet -- it was previously nested inside the same "only if
+    chosen_power is not None" guard as the ampl/volt logging, which left self._eq_factor stale
+    (computed for the OLD focus) until the first power setter ran, silently feeding a wrong
+    eq_factor into that setter's conversion."""
+    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
+    seq = _bare_sequence()
+    seq._driving_sys = SimpleNamespace(native_focus_params=['Focus wrt mid bowl [mm]'])
+    seq._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
+    seq._ds_tran_combo = 'combo1'
+    seq._conv_param = {
+        'focus_curve_pp': _identity_pp(0.0, 100.0),
+        'eq_curve_pp': _identity_pp(0.0, 100.0),
+    }
+    seq._chosen_power = None  # no power chosen yet -> ampl/volt logging is skipped
+    # Sentinels (not None -- that could also be a genuine _calc_* error-path result): must
+    # survive untouched, proving _calc_ampl()/_calc_volt() were actually skipped, not just that
+    # _eq_factor happens to be right.
+    seq._ampl = 'untouched'
+    seq._volt = 'untouched'
+
+    seq.focus_wrt_exit_plane = 20
+
+    assert float(seq._eq_factor) == pytest.approx(20.0)  # eq_curve_pp(20) via identity
+    assert seq._ampl == 'untouched'
+    assert seq._volt == 'untouched'
+
+
 def test_focus_wrt_exit_plane_setter_exits_when_out_of_transducer_range():
     seq = _bare_sequence()
-    seq._driving_sys = SimpleNamespace(require_conv_eq=False)
+    seq._driving_sys = SimpleNamespace()
     seq._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
 
     with pytest.raises(SystemExit):
@@ -940,42 +1009,64 @@ def test_focus_wrt_exit_plane_setter_exits_when_out_of_transducer_range():
 
 
 def test_focus_wrt_exit_plane_setter_exits_when_combo_unknown_but_required():
-    """The first block only warns and falls back when the combo is unknown;
-    it's the second, unconditional block further down that always
-    sys.exit()s in this situation -- so the fallback state from the first
-    block is still visible after the exit is caught."""
+    """BUGFIX: exit plane is non-native (mid bowl is, matching IGT) and no
+    'Equipment.Combination.*' section exists for this combo at all, so there's no way to
+    convert to mid bowl -- the setter now exits immediately, before assigning anything, instead
+    of first assigning a geometric fallback value that would then look valid even though the
+    request as a whole was rejected."""
     seq = _bare_sequence()
-    seq._driving_sys = SimpleNamespace(require_conv_eq=True)
+    seq._driving_sys = SimpleNamespace(native_focus_params=['Focus wrt mid bowl [mm]'])
     seq._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
-    seq._ds_tran_combo = 'combo1'
-    seq._equip_combos = []  # combo unknown
+    seq._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
 
     with pytest.raises(SystemExit):
         seq.focus_wrt_exit_plane = 20
 
-    assert seq.focus_wrt_exit_plane == 20
-    assert seq.focus_wrt_mid_bowl == 25  # fallback: focus + exit_plane_dist
-
 
 # --- focus_wrt_mid_bowl -------------------------------------------------------
 
-def test_focus_wrt_mid_bowl_setter_without_conversion_uses_exit_plane_offset():
+def test_focus_wrt_mid_bowl_setter_raises_when_engineering_mode_disabled():
     seq = _bare_sequence()
-    seq._driving_sys = SimpleNamespace(require_conv_eq=False)
+    seq._engineering_mode = False
+
+    with pytest.raises(RuntimeError):
+        seq.focus_wrt_mid_bowl = 25
+
+
+def test_focus_wrt_mid_bowl_setter_without_conversion_uses_exit_plane_offset():
+    """Mid bowl is this driving system's own native focus parameter (matches IGT), so no
+    calibration is ever needed to set it."""
+    seq = _bare_sequence()
+    seq._engineering_mode = True
+    seq._driving_sys = SimpleNamespace(native_focus_params=['Focus wrt mid bowl [mm]'])
     seq._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
+    seq._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
+    seq._chosen_power = None  # no power chosen yet -> power-derived logging is skipped
+    # Sentinels (not None -- that could also be a genuine _calc_* error-path result): must
+    # survive untouched, proving the whole power-recompute block (eq_factor included) is
+    # skipped when the combo isn't active, not just that the focus values themselves are right.
+    seq._eq_factor = 'untouched'
+    seq._ampl = 'untouched'
+    seq._volt = 'untouched'
 
     seq.focus_wrt_mid_bowl = 25
 
     assert seq.focus_wrt_mid_bowl == 25
     assert seq.focus_wrt_exit_plane == 20  # focus - exit_plane_dist
+    assert seq._eq_factor == 'untouched'
+    assert seq._ampl == 'untouched'
+    assert seq._volt == 'untouched'
 
 
-def test_focus_wrt_mid_bowl_setter_with_known_combo_finds_x_via_pp_and_recalculates():
+def test_focus_wrt_mid_bowl_setter_with_known_combo_finds_x_via_pp_and_recalculates(patch_config):
+    """Mid bowl is non-native (exit plane is, matching Sonic Concepts/CITRUS), so converting it
+    requires an active calibration."""
+    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
     seq = _bare_sequence()
-    seq._driving_sys = SimpleNamespace(require_conv_eq=True)
+    seq._engineering_mode = True
+    seq._driving_sys = SimpleNamespace(native_focus_params=['Focus wrt exit plane [mm]'])
     seq._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
     seq._ds_tran_combo = 'combo1'
-    seq._equip_combos = ['combo1']
     seq._conv_param = {
         'focus_curve_pp': _identity_pp(0.0, 100.0),
         'eq_curve_pp': _identity_pp(0.0, 100.0),
@@ -983,6 +1074,7 @@ def test_focus_wrt_mid_bowl_setter_with_known_combo_finds_x_via_pp_and_recalcula
         'volt_curve_pp': _identity_pp(-10.0, 200.0),
     }
     seq._press = 2e-6
+    seq._chosen_power = 'Max. pressure in free water [MPa]'  # power already chosen
 
     seq.focus_wrt_mid_bowl = 20  # within focus_curve_pp's [0, 100] range -> found
 
@@ -993,16 +1085,16 @@ def test_focus_wrt_mid_bowl_setter_with_known_combo_finds_x_via_pp_and_recalcula
     assert seq._volt == pytest.approx([40.0])
 
 
-def test_focus_wrt_mid_bowl_setter_falls_back_when_x_not_found():
-    """When find_x_for_y_in_pp can't find an x value for the target
-    focus_wrt_mid_bowl (target outside the focus_curve_pp's y-range), the
-    setter logs a warning and falls back to focus - exit_plane_dist rather
-    than raising."""
+def test_focus_wrt_mid_bowl_setter_falls_back_when_x_not_found(patch_config):
+    """When find_x_for_y_in_pp can't find an x value for the target focus_wrt_mid_bowl (target
+    outside the focus_curve_pp's y-range) despite an active calibration, the setter logs a
+    warning and falls back to focus - exit_plane_dist rather than raising."""
+    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
     seq = _bare_sequence()
-    seq._driving_sys = SimpleNamespace(require_conv_eq=True)
+    seq._engineering_mode = True
+    seq._driving_sys = SimpleNamespace(native_focus_params=['Focus wrt exit plane [mm]'])
     seq._transducer = SimpleNamespace(min_foc=-100, max_foc=1000, exit_plane_dist=5, name='tran')
     seq._ds_tran_combo = 'combo1'
-    seq._equip_combos = ['combo1']
     seq._conv_param = {
         'focus_curve_pp': _identity_pp(0.0, 100.0),
         'eq_curve_pp': _identity_pp(-1000.0, 1000.0),
@@ -1010,6 +1102,7 @@ def test_focus_wrt_mid_bowl_setter_falls_back_when_x_not_found():
         'volt_curve_pp': _identity_pp(-1000.0, 1000.0),
     }
     seq._press = 0
+    seq._chosen_power = 'Max. pressure in free water [MPa]'  # power already chosen
 
     seq.focus_wrt_mid_bowl = 500  # outside focus_curve_pp's [0, 100] y-range -> not found
 
@@ -1019,14 +1112,74 @@ def test_focus_wrt_mid_bowl_setter_falls_back_when_x_not_found():
 
 
 def test_focus_wrt_mid_bowl_setter_exits_when_combo_unknown_but_required():
+    """BUGFIX: mid bowl is non-native (exit plane is, matching Sonic Concepts/CITRUS) and no
+    'Equipment.Combination.*' section exists for this combo at all, so there's no way to
+    convert to exit plane."""
     seq = _bare_sequence()
-    seq._driving_sys = SimpleNamespace(require_conv_eq=True)
+    seq._engineering_mode = True
+    seq._driving_sys = SimpleNamespace(native_focus_params=['Focus wrt exit plane [mm]'])
     seq._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
-    seq._ds_tran_combo = 'combo1'
-    seq._equip_combos = []  # combo unknown
+    seq._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
 
     with pytest.raises(SystemExit):
         seq.focus_wrt_mid_bowl = 20
+
+
+def test_focus_wrt_mid_bowl_setter_updates_eq_factor_even_when_no_power_chosen_yet(patch_config):
+    """BUGFIX: see the identical note in
+    test_focus_wrt_exit_plane_setter_updates_eq_factor_even_when_no_power_chosen_yet."""
+    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
+    seq = _bare_sequence()
+    seq._engineering_mode = True
+    seq._driving_sys = SimpleNamespace(native_focus_params=['Focus wrt exit plane [mm]'])
+    seq._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
+    seq._ds_tran_combo = 'combo1'
+    seq._conv_param = {
+        'focus_curve_pp': _identity_pp(0.0, 100.0),
+        'eq_curve_pp': _identity_pp(0.0, 100.0),
+    }
+    seq._chosen_power = None  # no power chosen yet -> ampl/volt logging is skipped
+    # Sentinels (not None -- that could also be a genuine _calc_* error-path result): must
+    # survive untouched, proving _calc_ampl()/_calc_volt() were actually skipped, not just that
+    # _eq_factor happens to be right.
+    seq._ampl = 'untouched'
+    seq._volt = 'untouched'
+
+    seq.focus_wrt_mid_bowl = 20  # within focus_curve_pp's [0, 100] range -> found
+
+    assert float(seq._eq_factor) == pytest.approx(20.0)  # eq_curve_pp(20) via identity
+    assert seq._ampl == 'untouched'
+    assert seq._volt == 'untouched'
+
+
+def test_focus_setters_both_work_without_calibration_when_both_are_native():
+    """native_focus_params is a list, not a single value -- a driving system whose hardware
+    genuinely accepts more than one focus representation directly (e.g. an exact, curve-free
+    geometric relationship for every transducer it supports) can declare both as native.
+    Neither should need an active combo."""
+    seq = _bare_sequence()
+    seq._engineering_mode = True
+    seq._driving_sys = SimpleNamespace(
+        native_focus_params=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'])
+    seq._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
+    seq._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
+    seq._chosen_power = None
+    # Sentinels (not None -- that could also be a genuine _calc_* error-path result): must
+    # survive untouched, proving the whole power-recompute block (eq_factor included) is
+    # skipped for both calls, not just that the focus values themselves are right.
+    seq._eq_factor = 'untouched'
+    seq._ampl = 'untouched'
+    seq._volt = 'untouched'
+
+    seq.focus_wrt_exit_plane = 20
+    assert seq.focus_wrt_exit_plane == 20
+
+    seq.focus_wrt_mid_bowl = 30
+    assert seq.focus_wrt_mid_bowl == 30
+
+    assert seq._eq_factor == 'untouched'
+    assert seq._ampl == 'untouched'
+    assert seq._volt == 'untouched'
 
 
 # --- _update_conv_param -----------------------------------------------------

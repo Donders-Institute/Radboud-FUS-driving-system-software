@@ -53,8 +53,11 @@ class DrivingSystem:
         config. file (IGT).
         tran_comp (List[str]): List of transducers the driving system is compatible with.
         power_options (List[str]): List of power options compatible with the driving system.
-        require_conv_eq (bool.): determines if pressure conversion equations are required or
-            pressure can be used as a direct input.
+        native_power_params (List[str]): The power parameter(s) this driving system's hardware
+            accepts directly, without needing a calibration curve to convert them (e.g.
+            amplitude for IGT). Usually a single entry, but a driving system whose hardware
+            genuinely accepts more than one power representation directly can list several.
+        native_focus_params (List[str]): Same idea as native_power_params, for focus.
         is_active (Boolean): Indication if the driving system is used with the code.
     """
 
@@ -71,7 +74,8 @@ class DrivingSystem:
         self.connect_info = None
         self.tran_comp = None
         self.power_options = None
-        self.require_conv_eq = False
+        self.native_power_params = None
+        self.native_focus_params = None
         self.is_active = True
 
     def set_ds_info(self, serial):
@@ -108,8 +112,10 @@ class DrivingSystem:
             get_logger(), config, section, 'Transducer compatibility', '').split('\n')
         self.power_options = get_config_value(get_logger(), config, section, 'Power options',
                                               '').split('\n')
-        self.require_conv_eq = get_config_value(
-            get_logger(), config, section, 'Requires conversion equations?', 'False') == 'True'
+        self.native_power_params = get_config_value(
+            get_logger(), config, section, 'Native power parameters', '', True).split('\n')
+        self.native_focus_params = get_config_value(
+            get_logger(), config, section, 'Native focus parameters', '', True).split('\n')
         self.is_active = get_config_value(
             get_logger(), config, section, 'Active?', 'True') == 'True'
 
@@ -133,8 +139,10 @@ class DrivingSystem:
 
         power_options = '\n '.join(self.power_options)
         info += f"Driving system power options: {power_options} \n "
-        info += ("Driving system requires conversion equations?: " +
-                 f"{self.require_conv_eq} \n ")
+        native_power_params = '\n '.join(self.native_power_params)
+        info += f"Driving system native power parameter(s): {native_power_params} \n "
+        native_focus_params = '\n '.join(self.native_focus_params)
+        info += f"Driving system native focus parameter(s): {native_focus_params} \n "
 
         return info
 

@@ -19,11 +19,17 @@ def _configure_driving_system_section_only(patch_config, serial, name='Test DS',
                                            available_channels='2', connection_info='COM1',
                                            tran_compatibility='TRAN_A\nTRAN_B',
                                            power_options='Global power\nAmplitude',
-                                           requires_conv_eq='False', active='True'):
+                                           native_power_param='Amplitude',
+                                           native_focus_param='Focus wrt mid bowl',
+                                           active='True'):
     """Configures only the per-serial section, without touching the
     combined 'Equipment'/'Driving systems' list -- use this (with an
     explicit patch_config.set('Equipment', 'Driving systems', ...) of your
-    own) when a test needs more than one driving system at once."""
+    own) when a test needs more than one driving system at once.
+
+    native_power_param/native_focus_param here are the raw (usually single-valued) config
+    string -- DrivingSystem.native_power_params/native_focus_params splits them into lists,
+    supporting a driving system with more than one genuinely native parameter."""
     section = f'Equipment.Driving system.{serial}'
     patch_config.set(section, 'Name', name)
     patch_config.set(section, 'Manufacturer', manufacturer)
@@ -31,7 +37,8 @@ def _configure_driving_system_section_only(patch_config, serial, name='Test DS',
     patch_config.set(section, 'Connection info', connection_info)
     patch_config.set(section, 'Transducer compatibility', tran_compatibility)
     patch_config.set(section, 'Power options', power_options)
-    patch_config.set(section, 'Requires conversion equations?', requires_conv_eq)
+    patch_config.set(section, 'Native power parameters', native_power_param)
+    patch_config.set(section, 'Native focus parameters', native_focus_param)
     patch_config.set(section, 'Active?', active)
 
 
@@ -51,7 +58,8 @@ def test_init_sets_expected_defaults():
     assert ds.connect_info is None
     assert ds.tran_comp is None
     assert ds.power_options is None
-    assert ds.require_conv_eq is False
+    assert ds.native_power_params is None
+    assert ds.native_focus_params is None
     assert ds.is_active is True
 
 
@@ -64,7 +72,8 @@ def test_str_includes_all_fields():
     ds.connect_info = 'COM3'
     ds.tran_comp = ['TRAN_A', 'TRAN_B']
     ds.power_options = ['Global power']
-    ds.require_conv_eq = True
+    ds.native_power_params = ['Global power']
+    ds.native_focus_params = ['Focus wrt exit plane [mm]']
 
     text = str(ds)
     assert '12345' in text
@@ -74,7 +83,7 @@ def test_str_includes_all_fields():
     assert 'COM3' in text
     assert 'TRAN_A' in text and 'TRAN_B' in text
     assert 'Global power' in text
-    assert 'True' in text
+    assert 'Focus wrt exit plane [mm]' in text
 
 
 def test_clone_returns_independent_deep_copy():
@@ -105,8 +114,23 @@ def test_set_ds_info_populates_fields_from_config(patch_config):
     assert ds.connect_info == 'COM1'
     assert ds.tran_comp == ['TRAN_A', 'TRAN_B']
     assert ds.power_options == ['Global power', 'Amplitude']
-    assert ds.require_conv_eq is False
+    assert ds.native_power_params == ['Amplitude']
+    assert ds.native_focus_params == ['Focus wrt mid bowl']
     assert ds.is_active is True
+
+
+def test_set_ds_info_supports_more_than_one_native_parameter(patch_config):
+    """native_power_params/native_focus_params are lists, not a single value -- a driving
+    system whose hardware genuinely accepts more than one power or focus representation
+    directly (no calibration needed for either) can declare all of them."""
+    _configure_driving_system(patch_config, 'UNITTEST_DS',
+                              native_power_param='Amplitude\nVoltage',
+                              native_focus_param='Focus wrt mid bowl\nFocus wrt exit plane [mm]')
+    ds = driving_system.DrivingSystem()
+    ds.set_ds_info('UNITTEST_DS')
+
+    assert ds.native_power_params == ['Amplitude', 'Voltage']
+    assert ds.native_focus_params == ['Focus wrt mid bowl', 'Focus wrt exit plane [mm]']
 
 
 def test_set_ds_info_exits_with_clear_message_for_unknown_serial(patch_config):

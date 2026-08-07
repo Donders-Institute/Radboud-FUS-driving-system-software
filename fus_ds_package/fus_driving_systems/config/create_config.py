@@ -28,9 +28,29 @@ If you use this kit in your research or project, please refer to the 'How to Cit
 README.md file of https://github.com/Donders-Institute/Radboud-FUS-driving-system-software.
 """
 
-from fus_driving_systems import utils
 import configparser
+import importlib.resources
 import os
+
+from fus_driving_systems import utils
+
+
+def _combo_files_exist(*rel_paths):
+    """
+    True only if every given calibration file actually exists on disk. Paths are resolved
+    relative to the fus_driving_systems package, matching how sequence.py's
+    extract_and_define_pp() resolves the very same config values at runtime.
+
+    Parameters:
+        rel_paths (str): Config-relative paths to calibration JSON files (e.g. the value of an
+        'Equipment.Combination.*' section's 'EqualizationCurveFit json file' key).
+
+    Returns:
+        bool: True if every path exists, False if any is missing.
+    """
+
+    package_root = importlib.resources.files('fus_driving_systems')
+    return all(os.path.isfile(str(package_root.joinpath(rel_path))) for rel_path in rel_paths)
 
 
 CONFIG_FOLDER = utils.get_config_folder()  # should be in the same directory as code
@@ -101,7 +121,8 @@ config['Power']['Default.input_press'] = str(0)
 config['Power']['Default.calc_ampl'] = str(0)
 
 MAX_ALLOWED_PRESSURE = 1.4  # MPa
-config['Power']['Maximum pressure allowed in free water [MPa]'] = str(MAX_ALLOWED_PRESSURE)
+MAX_PRESSURE_KEY = 'Maximum pressure allowed in free water [MPa]'
+config['Power'][MAX_PRESSURE_KEY] = str(MAX_ALLOWED_PRESSURE)
 
 # Focus options
 FOC_WRT_EXIT = 'Focus wrt exit plane [mm]'
@@ -296,9 +317,6 @@ DS_TRAN_COMBOS = [
     COMBO_JOIN_SIGN.join([IGT_DS[8], IS_TRANS[6]])
                                                      ]
 
-config['Equipment']['Combinations'] = '\n'.join(DS_TRAN_COMBOS)
-config['Equipment']['inactive_combinations'] = ''
-
 #######################################################################################
 # Sonic Concepts - Driving systems
 #######################################################################################
@@ -310,7 +328,8 @@ config['Equipment.Driving system.' + SC_DS[0]]['Manufacturer'] = SONIC_CONCEPTS
 config['Equipment.Driving system.' + SC_DS[0]]['Available channels'] = str(4)
 config['Equipment.Driving system.' + SC_DS[0]]['Connection info'] = 'COM6'
 config['Equipment.Driving system.' + SC_DS[0]]['Power options'] = '\n'.join([POW_GP])
-config['Equipment.Driving system.' + SC_DS[0]]['Requires conversion equations?'] = str(False)
+config['Equipment.Driving system.' + SC_DS[0]]['Native power parameters'] = POW_GP
+config['Equipment.Driving system.' + SC_DS[0]]['Native focus parameters'] = FOC_WRT_EXIT
 config['Equipment.Driving system.' + SC_DS[0]]['Transducer compatibility'] = str('\n'.join(
     SC_TRANS + DUMMIES))
 config['Equipment.Driving system.' + SC_DS[0]]['Active?'] = str(True)
@@ -324,7 +343,8 @@ config['Equipment.Driving system.' + SC_DS[1]]['Connection info'] = 'COM5'
 config['Equipment.Driving system.' + SC_DS[1]]['Transducer compatibility'] = str('\n'.join(
     SC_TRANS + DUMMIES))
 config['Equipment.Driving system.' + SC_DS[1]]['Power options'] = '\n'.join([POW_GP])
-config['Equipment.Driving system.' + SC_DS[1]]['Requires conversion equations?'] = str(False)
+config['Equipment.Driving system.' + SC_DS[1]]['Native power parameters'] = POW_GP
+config['Equipment.Driving system.' + SC_DS[1]]['Native focus parameters'] = FOC_WRT_EXIT
 config['Equipment.Driving system.' + SC_DS[1]]['Active?'] = str(True)
 
 
@@ -344,7 +364,8 @@ config['Equipment.Driving system.' + IGT_DS[0]]['Transducer compatibility'] = st
     DUMMIES))
 config['Equipment.Driving system.' + IGT_DS[0]]['Power options'] = '\n'.join([POW_AMPL, POW_PRESS,
                                                                               POW_VOLT])
-config['Equipment.Driving system.' + IGT_DS[0]]['Requires conversion equations?'] = str(True)
+config['Equipment.Driving system.' + IGT_DS[0]]['Native power parameters'] = POW_AMPL
+config['Equipment.Driving system.' + IGT_DS[0]]['Native focus parameters'] = FOC_WRT_BOWL
 config['Equipment.Driving system.' + IGT_DS[0]]['Active?'] = str(True)
 
 config['Equipment.Driving system.' + IGT_DS[1]] = {}
@@ -358,7 +379,8 @@ config['Equipment.Driving system.' + IGT_DS[1]]['Transducer compatibility'] = st
     IS_TRANS + DUMMIES))
 config['Equipment.Driving system.' + IGT_DS[1]]['Power options'] = '\n'.join([POW_AMPL, POW_PRESS,
                                                                               POW_VOLT])
-config['Equipment.Driving system.' + IGT_DS[1]]['Requires conversion equations?'] = str(True)
+config['Equipment.Driving system.' + IGT_DS[1]]['Native power parameters'] = POW_AMPL
+config['Equipment.Driving system.' + IGT_DS[1]]['Native focus parameters'] = FOC_WRT_BOWL
 config['Equipment.Driving system.' + IGT_DS[1]]['Active?'] = str(True)
 
 config['Equipment.Driving system.' + IGT_DS[2]] = {}
@@ -372,7 +394,8 @@ config['Equipment.Driving system.' + IGT_DS[2]]['Transducer compatibility'] = st
     IS_TRANS + DUMMIES))
 config['Equipment.Driving system.' + IGT_DS[2]]['Power options'] = '\n'.join([POW_AMPL, POW_PRESS,
                                                                               POW_VOLT])
-config['Equipment.Driving system.' + IGT_DS[2]]['Requires conversion equations?'] = str(True)
+config['Equipment.Driving system.' + IGT_DS[2]]['Native power parameters'] = POW_AMPL
+config['Equipment.Driving system.' + IGT_DS[2]]['Native focus parameters'] = FOC_WRT_BOWL
 config['Equipment.Driving system.' + IGT_DS[2]]['Active?'] = str(True)
 
 config['Equipment.Driving system.' + IGT_DS[3]] = {}
@@ -386,7 +409,8 @@ config['Equipment.Driving system.' + IGT_DS[3]]['Transducer compatibility'] = st
     SC_TRAN_4CH + DUMMIES))
 config['Equipment.Driving system.' + IGT_DS[3]]['Power options'] = '\n'.join([POW_AMPL, POW_PRESS,
                                                                               POW_VOLT])
-config['Equipment.Driving system.' + IGT_DS[3]]['Requires conversion equations?'] = str(True)
+config['Equipment.Driving system.' + IGT_DS[3]]['Native power parameters'] = POW_AMPL
+config['Equipment.Driving system.' + IGT_DS[3]]['Native focus parameters'] = FOC_WRT_BOWL
 config['Equipment.Driving system.' + IGT_DS[3]]['Active?'] = str(False)
 
 config['Equipment.Driving system.' + IGT_DS[4]] = {}
@@ -400,7 +424,8 @@ config['Equipment.Driving system.' + IGT_DS[4]]['Transducer compatibility'] = st
     SC_TRANS + DUMMIES))
 config['Equipment.Driving system.' + IGT_DS[4]]['Power options'] = '\n'.join([POW_AMPL, POW_PRESS,
                                                                               POW_VOLT])
-config['Equipment.Driving system.' + IGT_DS[4]]['Requires conversion equations?'] = str(True)
+config['Equipment.Driving system.' + IGT_DS[4]]['Native power parameters'] = POW_AMPL
+config['Equipment.Driving system.' + IGT_DS[4]]['Native focus parameters'] = FOC_WRT_BOWL
 config['Equipment.Driving system.' + IGT_DS[4]]['Active?'] = str(False)
 
 config['Equipment.Driving system.' + IGT_DS[5]] = {}
@@ -414,7 +439,8 @@ config['Equipment.Driving system.' + IGT_DS[5]]['Transducer compatibility'] = st
     SC_TRAN_2CH + DUMMIES))
 config['Equipment.Driving system.' + IGT_DS[5]]['Power options'] = '\n'.join([POW_AMPL, POW_PRESS,
                                                                               POW_VOLT])
-config['Equipment.Driving system.' + IGT_DS[5]]['Requires conversion equations?'] = str(True)
+config['Equipment.Driving system.' + IGT_DS[5]]['Native power parameters'] = POW_AMPL
+config['Equipment.Driving system.' + IGT_DS[5]]['Native focus parameters'] = FOC_WRT_BOWL
 config['Equipment.Driving system.' + IGT_DS[5]]['Active?'] = str(False)
 
 # # 32 ch. # #
@@ -429,7 +455,8 @@ config['Equipment.Driving system.' + IGT_DS[6]]['Power options'] = '\n'.join([PO
                                                                               POW_VOLT])
 config['Equipment.Driving system.' + IGT_DS[6]]['Transducer compatibility'] = str('\n'.join(
     DUMMIES))
-config['Equipment.Driving system.' + IGT_DS[6]]['Requires conversion equations?'] = str(True)
+config['Equipment.Driving system.' + IGT_DS[6]]['Native power parameters'] = POW_AMPL
+config['Equipment.Driving system.' + IGT_DS[6]]['Native focus parameters'] = FOC_WRT_BOWL
 config['Equipment.Driving system.' + IGT_DS[6]]['Active?'] = str(True)
 
 config['Equipment.Driving system.' + IGT_DS[7]] = {}
@@ -443,7 +470,8 @@ config['Equipment.Driving system.' + IGT_DS[7]]['Transducer compatibility'] = st
     IS_TRANS + DUMMIES))
 config['Equipment.Driving system.' + IGT_DS[7]]['Power options'] = '\n'.join([POW_AMPL, POW_PRESS,
                                                                               POW_VOLT])
-config['Equipment.Driving system.' + IGT_DS[7]]['Requires conversion equations?'] = str(True)
+config['Equipment.Driving system.' + IGT_DS[7]]['Native power parameters'] = POW_AMPL
+config['Equipment.Driving system.' + IGT_DS[7]]['Native focus parameters'] = FOC_WRT_BOWL
 config['Equipment.Driving system.' + IGT_DS[7]]['Active?'] = str(True)
 
 config['Equipment.Driving system.' + IGT_DS[8]] = {}
@@ -457,7 +485,8 @@ config['Equipment.Driving system.' + IGT_DS[8]]['Transducer compatibility'] = st
     IS_TRANS + DUMMIES))
 config['Equipment.Driving system.' + IGT_DS[8]]['Power options'] = '\n'.join([POW_AMPL, POW_PRESS,
                                                                               POW_VOLT])
-config['Equipment.Driving system.' + IGT_DS[8]]['Requires conversion equations?'] = str(True)
+config['Equipment.Driving system.' + IGT_DS[8]]['Native power parameters'] = POW_AMPL
+config['Equipment.Driving system.' + IGT_DS[8]]['Native focus parameters'] = FOC_WRT_BOWL
 config['Equipment.Driving system.' + IGT_DS[8]]['Active?'] = str(True)
 
 
@@ -473,7 +502,8 @@ config['Equipment.Driving system.' + IGT_DS[9]]['Transducer compatibility'] = st
     SC_TRAN_4CH + DUMMIES))
 config['Equipment.Driving system.' + IGT_DS[9]]['Power options'] = '\n'.join([POW_AMPL, POW_PRESS,
                                                                               POW_VOLT])
-config['Equipment.Driving system.' + IGT_DS[9]]['Requires conversion equations?'] = str(True)
+config['Equipment.Driving system.' + IGT_DS[9]]['Native power parameters'] = POW_AMPL
+config['Equipment.Driving system.' + IGT_DS[9]]['Native focus parameters'] = FOC_WRT_BOWL
 config['Equipment.Driving system.' + IGT_DS[9]]['Active?'] = str(False)
 
 config['Equipment.Driving system.' + IGT_DS[10]] = {}
@@ -487,7 +517,8 @@ config['Equipment.Driving system.' + IGT_DS[10]]['Transducer compatibility'] = s
     SC_TRAN_4CH + DUMMIES))
 config['Equipment.Driving system.' + IGT_DS[10]]['Power options'] = '\n'.join([POW_AMPL, POW_PRESS,
                                                                               POW_VOLT])
-config['Equipment.Driving system.' + IGT_DS[10]]['Requires conversion equations?'] = str(True)
+config['Equipment.Driving system.' + IGT_DS[10]]['Native power parameters'] = POW_AMPL
+config['Equipment.Driving system.' + IGT_DS[10]]['Native focus parameters'] = FOC_WRT_BOWL
 config['Equipment.Driving system.' + IGT_DS[10]]['Active?'] = str(False)
 
 config['Equipment.Driving system.' + IGT_DS[11]] = {}
@@ -501,7 +532,8 @@ config['Equipment.Driving system.' + IGT_DS[11]]['Transducer compatibility'] = s
     SC_TRAN_2CH + DUMMIES))
 config['Equipment.Driving system.' + IGT_DS[11]]['Power options'] = '\n'.join([POW_AMPL, POW_PRESS,
                                                                               POW_VOLT])
-config['Equipment.Driving system.' + IGT_DS[11]]['Requires conversion equations?'] = str(True)
+config['Equipment.Driving system.' + IGT_DS[11]]['Native power parameters'] = POW_AMPL
+config['Equipment.Driving system.' + IGT_DS[11]]['Native focus parameters'] = FOC_WRT_BOWL
 config['Equipment.Driving system.' + IGT_DS[11]]['Active?'] = str(False)
 
 config['Equipment.Driving system.' + IGT_DS[12]] = {}
@@ -515,7 +547,8 @@ config['Equipment.Driving system.' + IGT_DS[12]]['Transducer compatibility'] = s
     SC_TRAN_2CH + DUMMIES))
 config['Equipment.Driving system.' + IGT_DS[12]]['Power options'] = '\n'.join([POW_AMPL, POW_PRESS,
                                                                               POW_VOLT])
-config['Equipment.Driving system.' + IGT_DS[12]]['Requires conversion equations?'] = str(True)
+config['Equipment.Driving system.' + IGT_DS[12]]['Native power parameters'] = POW_AMPL
+config['Equipment.Driving system.' + IGT_DS[12]]['Native focus parameters'] = FOC_WRT_BOWL
 config['Equipment.Driving system.' + IGT_DS[12]]['Active?'] = str(False)
 
 #######################################################################################
@@ -530,7 +563,8 @@ config['Equipment.Driving system.' + CITRUS_DS[0]]['Connection info'] = 'COM1'
 config['Equipment.Driving system.' + CITRUS_DS[0]]['Transducer compatibility'] = str('\n'.join(
     CITRUS_TRANS + DUMMIES))
 config['Equipment.Driving system.' + CITRUS_DS[0]]['Power options'] = '\n'.join([POW_VOLT])
-config['Equipment.Driving system.' + CITRUS_DS[0]]['Requires conversion equations?'] = str(False)
+config['Equipment.Driving system.' + CITRUS_DS[0]]['Native power parameters'] = POW_VOLT
+config['Equipment.Driving system.' + CITRUS_DS[0]]['Native focus parameters'] = FOC_WRT_EXIT
 config['Equipment.Driving system.' + CITRUS_DS[0]]['Active?'] = str(True)
 
 #######################################################################################
@@ -1081,6 +1115,11 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['PowerCurveFit json file'] 
     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01001_powerCurveFitExport.json'))
 config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['VoltageCurveFit json file'] = str(
     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['Active?'] = str(_combo_files_exist(
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['EqualizationCurveFit json file'],
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['FocusCurveFit json file'],
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['PowerCurveFit json file'],
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['VoltageCurveFit json file']))
 
 # IGT-32-ch_comb_2x10-ch~IS_PCD15287_01002
 config['Equipment.Combination.' + DS_TRAN_COMBOS[1]] = {}
@@ -1098,6 +1137,11 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['PowerCurveFit json file'] 
     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01002_powerCurveFitExport.json'))
 config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['VoltageCurveFit json file'] = str(
     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['Active?'] = str(_combo_files_exist(
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['EqualizationCurveFit json file'],
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['FocusCurveFit json file'],
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['PowerCurveFit json file'],
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['VoltageCurveFit json file']))
 
 # IGT-32-ch_comb_2x10-ch~IS_PCD15473_01001
 config['Equipment.Combination.' + DS_TRAN_COMBOS[2]] = {}
@@ -1115,6 +1159,11 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['PowerCurveFit json file'] 
     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01001_powerCurveFitExport.json'))
 config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['VoltageCurveFit json file'] = str(
     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['Active?'] = str(_combo_files_exist(
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['EqualizationCurveFit json file'],
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['FocusCurveFit json file'],
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['PowerCurveFit json file'],
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['VoltageCurveFit json file']))
 
 # IGT-32-ch_comb_2x10-ch~IS_PCD15473_01002
 config['Equipment.Combination.' + DS_TRAN_COMBOS[3]] = {}
@@ -1132,6 +1181,11 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['PowerCurveFit json file'] 
     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01002_powerCurveFitExport.json'))
 config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['VoltageCurveFit json file'] = str(
     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['Active?'] = str(_combo_files_exist(
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['EqualizationCurveFit json file'],
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['FocusCurveFit json file'],
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['PowerCurveFit json file'],
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['VoltageCurveFit json file']))
 
 # IGT-32-ch_comb_2x10-ch~IS_PCD15473_01003
 config['Equipment.Combination.' + DS_TRAN_COMBOS[4]] = {}
@@ -1149,6 +1203,11 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['PowerCurveFit json file'] 
     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01003_powerCurveFitExport.json'))
 config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['VoltageCurveFit json file'] = str(
     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['Active?'] = str(_combo_files_exist(
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['EqualizationCurveFit json file'],
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['FocusCurveFit json file'],
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['PowerCurveFit json file'],
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['VoltageCurveFit json file']))
 
 # IGT-32-ch_comb_2x10-ch~IS_PCD15473_01001_OPM
 config['Equipment.Combination.' + DS_TRAN_COMBOS[5]] = {}
@@ -1170,6 +1229,11 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['PowerCurveFit json file'] 
         'IS_PCD15473_01001_OPM_powerCurveFitExport.json'))
 config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['VoltageCurveFit json file'] = str(
     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['Active?'] = str(_combo_files_exist(
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['EqualizationCurveFit json file'],
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['FocusCurveFit json file'],
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['PowerCurveFit json file'],
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['VoltageCurveFit json file']))
 
 # IGT-32-ch_comb_2x10-ch~IS_PCD15473_01003_OPM
 config['Equipment.Combination.' + DS_TRAN_COMBOS[6]] = {}
@@ -1191,6 +1255,11 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['PowerCurveFit json file'] 
         'IS_PCD15473_01003_OPM_powerCurveFitExport.json'))
 config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['VoltageCurveFit json file'] = str(
     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['Active?'] = str(_combo_files_exist(
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['EqualizationCurveFit json file'],
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['FocusCurveFit json file'],
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['PowerCurveFit json file'],
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['VoltageCurveFit json file']))
 
 # IGT-32-ch_comb_1x10-ch~IS_PCD15287_01001
 config['Equipment.Combination.' + DS_TRAN_COMBOS[7]] = {}
@@ -1208,6 +1277,11 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['PowerCurveFit json file'] 
     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01001_powerCurveFitExport.json'))
 config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['VoltageCurveFit json file'] = str(
     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['Active?'] = str(_combo_files_exist(
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['EqualizationCurveFit json file'],
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['FocusCurveFit json file'],
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['PowerCurveFit json file'],
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['VoltageCurveFit json file']))
 
 # IGT-32-ch_comb_1x10-ch~IS_PCD15287_01002
 config['Equipment.Combination.' + DS_TRAN_COMBOS[8]] = {}
@@ -1225,6 +1299,11 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['PowerCurveFit json file'] 
     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01002_powerCurveFitExport.json'))
 config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['VoltageCurveFit json file'] = str(
     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['Active?'] = str(_combo_files_exist(
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['EqualizationCurveFit json file'],
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['FocusCurveFit json file'],
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['PowerCurveFit json file'],
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['VoltageCurveFit json file']))
 
 # IGT-32-ch_comb_1x10-ch~IS_PCD15473_01001
 config['Equipment.Combination.' + DS_TRAN_COMBOS[9]] = {}
@@ -1242,6 +1321,11 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['PowerCurveFit json file'] 
     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01001_powerCurveFitExport.json'))
 config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['VoltageCurveFit json file'] = str(
     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['Active?'] = str(_combo_files_exist(
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['EqualizationCurveFit json file'],
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['FocusCurveFit json file'],
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['PowerCurveFit json file'],
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['VoltageCurveFit json file']))
 
 # IGT-32-ch_comb_1x10-ch~IS_PCD15473_01002
 config['Equipment.Combination.' + DS_TRAN_COMBOS[10]] = {}
@@ -1259,6 +1343,11 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['PowerCurveFit json file']
     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01002_powerCurveFitExport.json'))
 config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['VoltageCurveFit json file'] = str(
     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['Active?'] = str(_combo_files_exist(
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['EqualizationCurveFit json file'],
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['FocusCurveFit json file'],
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['PowerCurveFit json file'],
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['VoltageCurveFit json file']))
 
 # IGT-32-ch_comb_1x10-ch~IS_PCD15473_01003
 config['Equipment.Combination.' + DS_TRAN_COMBOS[11]] = {}
@@ -1276,6 +1365,11 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['PowerCurveFit json file']
     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01003_powerCurveFitExport.json'))
 config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['VoltageCurveFit json file'] = str(
     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['Active?'] = str(_combo_files_exist(
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['EqualizationCurveFit json file'],
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['FocusCurveFit json file'],
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['PowerCurveFit json file'],
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['VoltageCurveFit json file']))
 
 # IGT-32-ch_comb_1x10-ch~IS_PCD15473_01001_OPM
 config['Equipment.Combination.' + DS_TRAN_COMBOS[12]] = {}
@@ -1297,6 +1391,11 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['PowerCurveFit json file']
         'IS_PCD15473_01001_OPM_powerCurveFitExport.json'))
 config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['VoltageCurveFit json file'] = str(
     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['Active?'] = str(_combo_files_exist(
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['EqualizationCurveFit json file'],
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['FocusCurveFit json file'],
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['PowerCurveFit json file'],
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['VoltageCurveFit json file']))
 
 # IGT-32-ch_comb_1x10-ch~IS_PCD15473_01003_OPM
 config['Equipment.Combination.' + DS_TRAN_COMBOS[13]] = {}
@@ -1318,7 +1417,31 @@ config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['PowerCurveFit json file']
         'IS_PCD15473_01003_OPM_powerCurveFitExport.json'))
 config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['VoltageCurveFit json file'] = str(
     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
+config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['Active?'] = str(_combo_files_exist(
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['EqualizationCurveFit json file'],
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['FocusCurveFit json file'],
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['PowerCurveFit json file'],
+    config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['VoltageCurveFit json file']))
 
 
 with open(CONFIG_FILE, 'w') as configfile:
     config.write(configfile)
+
+# Insert a comment directly above the max-pressure key in the generated file itself: hand-editing
+# this file is fine, but a plain '= value' line gives no hint that the edit is silently lost the
+# next time this script regenerates the file, or a new package release ships a fresh one.
+with open(CONFIG_FILE, encoding='utf-8') as configfile:
+    generated_contents = configfile.read()
+
+MAX_PRESSURE_LINE = f'{MAX_PRESSURE_KEY.lower()} = {MAX_ALLOWED_PRESSURE}'
+MAX_PRESSURE_WARNING = (
+    '; SAFETY LIMIT: only raise this after confirming your hardware and setup can safely\n'
+    "; exceed it. Hand-editing this value is fine, but it will be silently overwritten if\n"
+    '; this file is ever regenerated via create_config.py, or replaced by installing a new\n'
+    '; package release -- keep a copy of your override if you rely on it long-term.\n'
+)
+generated_contents = generated_contents.replace(
+    MAX_PRESSURE_LINE, MAX_PRESSURE_WARNING + MAX_PRESSURE_LINE)
+
+with open(CONFIG_FILE, 'w', encoding='utf-8') as configfile:
+    configfile.write(generated_contents)
