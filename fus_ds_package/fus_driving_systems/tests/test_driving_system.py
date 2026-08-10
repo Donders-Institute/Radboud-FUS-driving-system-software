@@ -64,6 +64,7 @@ def test_init_sets_expected_defaults():
     assert ds.focus_options is None
     assert ds.native_power_params is None
     assert ds.native_focus_params is None
+    assert ds.max_tran_slots == 1
     assert ds.is_active is True
 
 
@@ -79,6 +80,7 @@ def test_str_includes_all_fields():
     ds.focus_options = ['Focus wrt exit plane [mm]']
     ds.native_power_params = ['Global power']
     ds.native_focus_params = ['Focus wrt exit plane [mm]']
+    ds.max_tran_slots = 7
 
     text = str(ds)
     assert '12345' in text
@@ -89,6 +91,7 @@ def test_str_includes_all_fields():
     assert 'TRAN_A' in text and 'TRAN_B' in text
     assert 'Global power' in text
     assert 'Focus wrt exit plane [mm]' in text
+    assert 'Driving system max. transducer slots: 7' in text
 
 
 def test_clone_returns_independent_deep_copy():
@@ -122,7 +125,17 @@ def test_set_ds_info_populates_fields_from_config(patch_config):
     assert ds.focus_options == ['Focus wrt mid bowl', 'Focus wrt exit plane [mm]']
     assert ds.native_power_params == ['Amplitude']
     assert ds.native_focus_params == ['Focus wrt mid bowl']
+    assert ds.max_tran_slots == 1  # default, since 'Max. transducer slots' isn't configured here
     assert ds.is_active is True
+
+
+def test_set_ds_info_reads_max_tran_slots_when_configured(patch_config):
+    _configure_driving_system(patch_config, 'UNITTEST_DS')
+    patch_config.set('Equipment.Driving system.UNITTEST_DS', 'Max. transducer slots', '2')
+    ds = driving_system.DrivingSystem()
+    ds.set_ds_info('UNITTEST_DS')
+
+    assert ds.max_tran_slots == 2
 
 
 def test_set_ds_info_supports_more_than_one_native_parameter(patch_config):

@@ -59,6 +59,9 @@ class DrivingSystem:
             amplitude for IGT). Usually a single entry, but a driving system whose hardware
             genuinely accepts more than one power representation directly can list several.
         native_focus_params (List[str]): Same idea as native_power_params, for focus.
+        max_tran_slots (int): The number of transducers this driving system can drive
+            simultaneously (see Sequence.add_slot()). Default 1 -- a driving system that
+            doesn't declare a higher value is single-transducer-only.
         is_active (Boolean): Indication if the driving system is used with the code.
     """
 
@@ -78,6 +81,7 @@ class DrivingSystem:
         self.focus_options = None
         self.native_power_params = None
         self.native_focus_params = None
+        self.max_tran_slots = 1
         self.is_active = True
 
     def set_ds_info(self, serial):
@@ -120,6 +124,8 @@ class DrivingSystem:
             get_logger(), config, section, 'Native power parameters', '', True).split('\n')
         self.native_focus_params = get_config_value(
             get_logger(), config, section, 'Native focus parameters', '', True).split('\n')
+        self.max_tran_slots = int(get_config_value(
+            get_logger(), config, section, 'Max. transducer slots', 1))
         self.is_active = get_config_value(
             get_logger(), config, section, 'Active?', 'True') == 'True'
 
@@ -149,6 +155,7 @@ class DrivingSystem:
         info += f"Driving system native power parameter(s): {native_power_params} \n "
         native_focus_params = '\n '.join(self.native_focus_params)
         info += f"Driving system native focus parameter(s): {native_focus_params} \n "
+        info += f"Driving system max. transducer slots: {self.max_tran_slots} \n "
 
         return info
 

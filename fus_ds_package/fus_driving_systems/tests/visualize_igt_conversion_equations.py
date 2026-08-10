@@ -39,7 +39,7 @@ filename = "test_igt_conversion_equations"
 logger = initialize_logger(log_dir, filename)
 
 
-from fus_driving_systems import sequence
+from fus_driving_systems import calc_utils
 
 
 def test_pp_conversions(pp_file):
@@ -52,7 +52,7 @@ def test_pp_conversions(pp_file):
     logger.info(f"Testing PP conversions with file: {pp_file}")
 
     # Load the PP
-    pp, breaks = sequence.extract_and_define_pp(pp_file, return_breaks=True)
+    pp, breaks = calc_utils.extract_and_define_pp(pp_file, return_breaks=True)
     if pp is None:
         logger.error("Failed to load PP")
         return
@@ -64,14 +64,14 @@ def test_pp_conversions(pp_file):
     logger.info("Testing forward evaluation (x to y)")
     test_x_values = np.linspace(x_min, x_max, 5)
     for x in test_x_values:
-        y, status = sequence.safe_evaluate_pp(pp, x)
+        y, status = calc_utils.safe_evaluate_pp(pp, x)
         logger.info(f"x = {x:.2f} -> y = {y:.2f}, status: {status}")
 
     # Test boundary conditions
     logger.info("Testing boundary conditions")
-    y, status = sequence.safe_evaluate_pp(pp, x_min - 1)
+    y, status = calc_utils.safe_evaluate_pp(pp, x_min - 1)
     logger.info(f"Below range: x = {x_min - 1:.2f} -> status: {status}")
-    y, status = sequence.safe_evaluate_pp(pp, x_max + 1)
+    y, status = calc_utils.safe_evaluate_pp(pp, x_max + 1)
     logger.info(f"Above range: x = {x_max + 1:.2f} -> status: {status}")
 
     # Test inverse evaluation (y to x)
@@ -83,10 +83,10 @@ def test_pp_conversions(pp_file):
 
     test_y_values = np.linspace(y_min, y_max, 5)
     for y in test_y_values:
-        x, status = sequence.find_x_for_y_in_pp(pp, y)
+        x, status = calc_utils.find_x_for_y_in_pp(pp, y)
         if status:
             # Verify by evaluating the result
-            y_check, _ = sequence.safe_evaluate_pp(pp, x)
+            y_check, _ = calc_utils.safe_evaluate_pp(pp, x)
             error = abs(y - y_check)
             logger.info(f"y = {y:.2f} -> x = {x:.2f}, verification error: {error:.6f}")
         else:
@@ -94,16 +94,16 @@ def test_pp_conversions(pp_file):
 
     # Test boundary conditions for inverse
     logger.info("Testing inverse boundary conditions")
-    x, status = sequence.find_x_for_y_in_pp(pp, y_min - 1)
+    x, status = calc_utils.find_x_for_y_in_pp(pp, y_min - 1)
     logger.info(f"Below range: y = {y_min - 1:.2f} -> status: {status}")
-    x, status = sequence.find_x_for_y_in_pp(pp, y_max + 1)
+    x, status = calc_utils.find_x_for_y_in_pp(pp, y_max + 1)
     logger.info(f"Above range: y = {y_max + 1:.2f} -> status: {status}")
 
     # Test round-trip conversion
     logger.info("Testing round-trip conversion (x -> y -> x)")
     for x_orig in test_x_values:
-        y, _ = sequence.safe_evaluate_pp(pp, x_orig)
-        x_back, status = sequence.find_x_for_y_in_pp(pp, y)
+        y, _ = calc_utils.safe_evaluate_pp(pp, x_orig)
+        x_back, status = calc_utils.find_x_for_y_in_pp(pp, y)
         if status:
             error = abs(x_orig - x_back)
             logger.info(f"x = {x_orig:.2f} -> y = {y:.2f} -> x = {x_back:.2f}, error: {error:.6f}")
@@ -126,7 +126,7 @@ def visualize_piecewise_polynomials(pp_files, titles, save_path=None):
         plt.subplot(2, 2, i + 1)
 
         try:
-            pp, breaks = sequence.extract_and_define_pp(pp_file, return_breaks=True)
+            pp, breaks = calc_utils.extract_and_define_pp(pp_file, return_breaks=True)
 
             if pp is None:
                 plt.title(f"{title} - Not available")
@@ -147,7 +147,7 @@ def visualize_piecewise_polynomials(pp_files, titles, save_path=None):
             y_demo = np.linspace(min(y), max(y), 9)
             for y_val in y_demo:
                 # Use our find_x_for_y_in_pp function
-                x_result, status = sequence.find_x_for_y_in_pp(pp, y_val)
+                x_result, status = calc_utils.find_x_for_y_in_pp(pp, y_val)
                 if status:
                     plt.plot([x_result], [y_val], 'go', markersize=8)
                     plt.annotate(f'y={y_val:.2f} -> x={x_result:.2f}',
@@ -183,7 +183,7 @@ def demonstrate_inverse_lookup(pp_file, y_values, title):
         y_values (list): List of y values to find x values for
         title (str): Title for the plot
     """
-    pp, breaks = sequence.extract_and_define_pp(pp_file, return_breaks=True)
+    pp, breaks = calc_utils.extract_and_define_pp(pp_file, return_breaks=True)
 
     if pp is None:
         logger.error(f"{title} - Not available")
@@ -202,7 +202,7 @@ def demonstrate_inverse_lookup(pp_file, y_values, title):
 
     # Find x values for each y value
     for y_val in y_values:
-        x_result, status = sequence.find_x_for_y_in_pp(pp, y_val)
+        x_result, status = calc_utils.find_x_for_y_in_pp(pp, y_val)
         if status:
             plt.plot([x_result], [y_val], 'go', markersize=8)
             plt.annotate(f'y={y_val:.2f} -> x={x_result:.2f}',

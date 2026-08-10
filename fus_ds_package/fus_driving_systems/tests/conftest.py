@@ -110,7 +110,7 @@ def conversion_data_dir():
 def resource_path():
     """
     Returns the package-relative path (forward slashes, no absolute
-    path) as expected by functions like sequence.extract_and_define_pp,
+    path) as expected by functions like calc_utils.extract_and_define_pp,
     which internally resolve it via
     importlib.resources.files('fus_driving_systems').joinpath(...).
     Use this fixture (not fit_path) for those functions.
@@ -128,7 +128,7 @@ def fit_path(conversion_data_dir):
     Returns the full, absolute path to a config file based on its
     filename. Use this ONLY for reading the raw JSON directly via
     open() (see load_json) -- not for functions like
-    sequence.extract_and_define_pp that resolve the path themselves via
+    calc_utils.extract_and_define_pp that resolve the path themselves via
     importlib.resources (see resource_path's note on why absolute
     paths aren't appropriate there). Use resource_path for that.
     """

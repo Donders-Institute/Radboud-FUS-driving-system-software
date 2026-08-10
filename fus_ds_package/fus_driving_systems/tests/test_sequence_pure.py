@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
 Tests for the pure, hardware- and file-I/O-free functions in
-fus_driving_systems.sequence: _check_parameter, validate_value,
+fus_driving_systems.calc_utils: _check_parameter, validate_value,
 safe_evaluate_pp and find_x_for_y_in_pp. extract_and_define_pp (the one
-sequence-module function that touches the filesystem) is already covered
+calc_utils function that touches the filesystem) is already covered
 by test_fitparams_loading.py against the real in-package JSON files.
 """
 import logging
@@ -12,8 +12,8 @@ from types import SimpleNamespace
 import pytest
 from scipy.interpolate import PPoly
 
-from fus_driving_systems.sequence import (_check_parameter, find_x_for_y_in_pp,
-                                          safe_evaluate_pp, validate_value)
+from fus_driving_systems.calc_utils import (_check_parameter, find_x_for_y_in_pp,
+                                            safe_evaluate_pp, validate_value)
 
 
 # --- _check_parameter -------------------------------------------------

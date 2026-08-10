@@ -66,7 +66,7 @@ config['General']['Maximum reconnection attempts'] = str(5)
 config['General']['Package name'] = 'fus_driving_systems'
 config['General']['Speed of sound water [m/s]'] = str(1500)
 # DEPRECATED
-config['General']['Trigger option.seq'] = 'TriggerSequence'
+config['General']['Trigger option.seq'] = 'TriggerOnePulseTrain'
 
 # Logging
 config['Logging'] = {}
@@ -84,8 +84,11 @@ config['Logging']['Max log file size [MB]'] = str(10)
 
 # Trigger options
 TRIG_NONE = 'None'
-TRIG_SEQ = 'TriggerSequence'
-TRIG_PTR = 'TriggerOnePulseTrainRepetition'
+# One pulse train fires per external trigger received -- n_triggers says how many to expect.
+TRIG_SEQ = 'TriggerOnePulseTrain'
+# One trigger fires the entire, already fully-timed sequence at once (equivalent to executing it
+# directly, just gated behind that one trigger).
+TRIG_PTR = 'TriggerWholeProtocol'
 
 config['Trigger'] = {}
 config['Trigger']['Options'] = '\n'.join([TRIG_NONE, TRIG_SEQ, TRIG_PTR])
@@ -94,7 +97,6 @@ config['Trigger']['Option.none'] = TRIG_NONE
 config['Trigger']['Option.seq'] = TRIG_SEQ
 config['Trigger']['Option.ptr'] = TRIG_PTR
 
-config['Trigger']['Default wait_for_trigger'] = 'False'
 config['Trigger']['Default n_triggers'] = str(0)
 
 # Power options
@@ -114,15 +116,9 @@ config['Power']['Option.volt'] = POW_VOLT
 # hardcoded: a different institution using this package can list a different set here, or none.
 config['Power']['Engineering-only options'] = '\n'.join([POW_AMPL, POW_VOLT])
 
-config['Power']['Default.glob_pow'] = str(0)
-config['Power']['Default.ampl'] = str(0)
-config['Power']['Default.press'] = str(0)
-config['Power']['Default.volt'] = str(0)
-
-config['Power']['Default.eq_factor'] = str(0)
-config['Power']['Default.eq_press'] = str(0)
-config['Power']['Default.input_press'] = str(0)
-config['Power']['Default.calc_ampl'] = str(0)
+# No Default.* keys here (global_power/press/volt/ampl/eq_factor/eq_press/input_press/
+# calc_ampl) -- TransducerSlot.__init__ hardcodes those to None directly, since every one of
+# them is always overwritten before it can ever be read (see the comment there).
 
 MAX_ALLOWED_PRESSURE = 1.4  # MPa
 MAX_PRESSURE_KEY = 'Maximum pressure allowed in free water [MPa]'
@@ -140,8 +136,10 @@ config['Focus']['Option.bowl'] = FOC_WRT_BOWL
 # See the identical rationale on config['Power']['Engineering-only options'] above.
 config['Focus']['Engineering-only options'] = FOC_WRT_BOWL
 
-config['Focus']['Default.exit'] = str(40)  # [mm]
-config['Focus']['Default.bowl'] = str(50)  # [mm]
+# No Default.exit/Default.bowl keys here -- TransducerSlot.__init__ hardcodes
+# _focus_wrt_exit_plane/_focus_wrt_mid_bowl to None directly. Default.bowl used to be read there,
+# but the transducer setter always overwrites it right after construction, before it can ever be
+# read (see the comment there); Default.exit was never actually read by anything at all.
 config['Focus']['Default.minimum'] = str(15)  # [mm]
 config['Focus']['Default.maximum'] = str(1000)  # [mm]
 
@@ -339,6 +337,7 @@ config['Equipment.Driving system.' + SC_DS[0]]['Native focus parameters'] = FOC_
 config['Equipment.Driving system.' + SC_DS[0]]['Focus options'] = '\n'.join([FOC_WRT_EXIT])
 config['Equipment.Driving system.' + SC_DS[0]]['Transducer compatibility'] = str('\n'.join(
     SC_TRANS + DUMMIES))
+config['Equipment.Driving system.' + SC_DS[0]]['Max. transducer slots'] = str(1)
 config['Equipment.Driving system.' + SC_DS[0]]['Active?'] = str(True)
 
 config['Equipment.Driving system.' + SC_DS[1]] = {}
@@ -353,6 +352,7 @@ config['Equipment.Driving system.' + SC_DS[1]]['Power options'] = '\n'.join([POW
 config['Equipment.Driving system.' + SC_DS[1]]['Native power parameters'] = POW_GP
 config['Equipment.Driving system.' + SC_DS[1]]['Native focus parameters'] = FOC_WRT_EXIT
 config['Equipment.Driving system.' + SC_DS[1]]['Focus options'] = '\n'.join([FOC_WRT_EXIT])
+config['Equipment.Driving system.' + SC_DS[1]]['Max. transducer slots'] = str(1)
 config['Equipment.Driving system.' + SC_DS[1]]['Active?'] = str(True)
 
 
@@ -376,6 +376,7 @@ config['Equipment.Driving system.' + IGT_DS[0]]['Native power parameters'] = POW
 config['Equipment.Driving system.' + IGT_DS[0]]['Native focus parameters'] = FOC_WRT_BOWL
 config['Equipment.Driving system.' + IGT_DS[0]]['Focus options'] = '\n'.join(
     [FOC_WRT_EXIT, FOC_WRT_BOWL])
+config['Equipment.Driving system.' + IGT_DS[0]]['Max. transducer slots'] = str(2)
 config['Equipment.Driving system.' + IGT_DS[0]]['Active?'] = str(True)
 
 config['Equipment.Driving system.' + IGT_DS[1]] = {}
@@ -393,6 +394,8 @@ config['Equipment.Driving system.' + IGT_DS[1]]['Native power parameters'] = POW
 config['Equipment.Driving system.' + IGT_DS[1]]['Native focus parameters'] = FOC_WRT_BOWL
 config['Equipment.Driving system.' + IGT_DS[1]]['Focus options'] = '\n'.join(
     [FOC_WRT_EXIT, FOC_WRT_BOWL])
+# 2 x 10 ch.: this driving system config drives two 10-element transducers at once.
+config['Equipment.Driving system.' + IGT_DS[1]]['Max. transducer slots'] = str(2)
 config['Equipment.Driving system.' + IGT_DS[1]]['Active?'] = str(True)
 
 config['Equipment.Driving system.' + IGT_DS[2]] = {}
@@ -410,6 +413,7 @@ config['Equipment.Driving system.' + IGT_DS[2]]['Native power parameters'] = POW
 config['Equipment.Driving system.' + IGT_DS[2]]['Native focus parameters'] = FOC_WRT_BOWL
 config['Equipment.Driving system.' + IGT_DS[2]]['Focus options'] = '\n'.join(
     [FOC_WRT_EXIT, FOC_WRT_BOWL])
+config['Equipment.Driving system.' + IGT_DS[2]]['Max. transducer slots'] = str(1)
 config['Equipment.Driving system.' + IGT_DS[2]]['Active?'] = str(True)
 
 config['Equipment.Driving system.' + IGT_DS[3]] = {}
@@ -427,6 +431,7 @@ config['Equipment.Driving system.' + IGT_DS[3]]['Native power parameters'] = POW
 config['Equipment.Driving system.' + IGT_DS[3]]['Native focus parameters'] = FOC_WRT_BOWL
 config['Equipment.Driving system.' + IGT_DS[3]]['Focus options'] = '\n'.join(
     [FOC_WRT_EXIT, FOC_WRT_BOWL])
+config['Equipment.Driving system.' + IGT_DS[3]]['Max. transducer slots'] = str(1)
 config['Equipment.Driving system.' + IGT_DS[3]]['Active?'] = str(False)
 
 config['Equipment.Driving system.' + IGT_DS[4]] = {}
@@ -444,6 +449,7 @@ config['Equipment.Driving system.' + IGT_DS[4]]['Native power parameters'] = POW
 config['Equipment.Driving system.' + IGT_DS[4]]['Native focus parameters'] = FOC_WRT_BOWL
 config['Equipment.Driving system.' + IGT_DS[4]]['Focus options'] = '\n'.join(
     [FOC_WRT_EXIT, FOC_WRT_BOWL])
+config['Equipment.Driving system.' + IGT_DS[4]]['Max. transducer slots'] = str(1)
 config['Equipment.Driving system.' + IGT_DS[4]]['Active?'] = str(False)
 
 config['Equipment.Driving system.' + IGT_DS[5]] = {}
@@ -461,6 +467,7 @@ config['Equipment.Driving system.' + IGT_DS[5]]['Native power parameters'] = POW
 config['Equipment.Driving system.' + IGT_DS[5]]['Native focus parameters'] = FOC_WRT_BOWL
 config['Equipment.Driving system.' + IGT_DS[5]]['Focus options'] = '\n'.join(
     [FOC_WRT_EXIT, FOC_WRT_BOWL])
+config['Equipment.Driving system.' + IGT_DS[5]]['Max. transducer slots'] = str(1)
 config['Equipment.Driving system.' + IGT_DS[5]]['Active?'] = str(False)
 
 # # 32 ch. # #
@@ -479,6 +486,7 @@ config['Equipment.Driving system.' + IGT_DS[6]]['Native power parameters'] = POW
 config['Equipment.Driving system.' + IGT_DS[6]]['Native focus parameters'] = FOC_WRT_BOWL
 config['Equipment.Driving system.' + IGT_DS[6]]['Focus options'] = '\n'.join(
     [FOC_WRT_EXIT, FOC_WRT_BOWL])
+config['Equipment.Driving system.' + IGT_DS[6]]['Max. transducer slots'] = str(2)
 config['Equipment.Driving system.' + IGT_DS[6]]['Active?'] = str(True)
 
 config['Equipment.Driving system.' + IGT_DS[7]] = {}
@@ -496,6 +504,8 @@ config['Equipment.Driving system.' + IGT_DS[7]]['Native power parameters'] = POW
 config['Equipment.Driving system.' + IGT_DS[7]]['Native focus parameters'] = FOC_WRT_BOWL
 config['Equipment.Driving system.' + IGT_DS[7]]['Focus options'] = '\n'.join(
     [FOC_WRT_EXIT, FOC_WRT_BOWL])
+# 2 x 10 ch.: this driving system config drives two 10-element transducers at once.
+config['Equipment.Driving system.' + IGT_DS[7]]['Max. transducer slots'] = str(2)
 config['Equipment.Driving system.' + IGT_DS[7]]['Active?'] = str(True)
 
 config['Equipment.Driving system.' + IGT_DS[8]] = {}
@@ -513,6 +523,7 @@ config['Equipment.Driving system.' + IGT_DS[8]]['Native power parameters'] = POW
 config['Equipment.Driving system.' + IGT_DS[8]]['Native focus parameters'] = FOC_WRT_BOWL
 config['Equipment.Driving system.' + IGT_DS[8]]['Focus options'] = '\n'.join(
     [FOC_WRT_EXIT, FOC_WRT_BOWL])
+config['Equipment.Driving system.' + IGT_DS[8]]['Max. transducer slots'] = str(1)
 config['Equipment.Driving system.' + IGT_DS[8]]['Active?'] = str(True)
 
 
@@ -532,6 +543,8 @@ config['Equipment.Driving system.' + IGT_DS[9]]['Native power parameters'] = POW
 config['Equipment.Driving system.' + IGT_DS[9]]['Native focus parameters'] = FOC_WRT_BOWL
 config['Equipment.Driving system.' + IGT_DS[9]]['Focus options'] = '\n'.join(
     [FOC_WRT_EXIT, FOC_WRT_BOWL])
+# 2 x 4 ch.: this driving system config drives two 4-element transducers at once.
+config['Equipment.Driving system.' + IGT_DS[9]]['Max. transducer slots'] = str(2)
 config['Equipment.Driving system.' + IGT_DS[9]]['Active?'] = str(False)
 
 config['Equipment.Driving system.' + IGT_DS[10]] = {}
@@ -549,6 +562,7 @@ config['Equipment.Driving system.' + IGT_DS[10]]['Native power parameters'] = PO
 config['Equipment.Driving system.' + IGT_DS[10]]['Native focus parameters'] = FOC_WRT_BOWL
 config['Equipment.Driving system.' + IGT_DS[10]]['Focus options'] = '\n'.join(
     [FOC_WRT_EXIT, FOC_WRT_BOWL])
+config['Equipment.Driving system.' + IGT_DS[10]]['Max. transducer slots'] = str(1)
 config['Equipment.Driving system.' + IGT_DS[10]]['Active?'] = str(False)
 
 config['Equipment.Driving system.' + IGT_DS[11]] = {}
@@ -566,6 +580,8 @@ config['Equipment.Driving system.' + IGT_DS[11]]['Native power parameters'] = PO
 config['Equipment.Driving system.' + IGT_DS[11]]['Native focus parameters'] = FOC_WRT_BOWL
 config['Equipment.Driving system.' + IGT_DS[11]]['Focus options'] = '\n'.join(
     [FOC_WRT_EXIT, FOC_WRT_BOWL])
+# 2 x 2 ch.: this driving system config drives two 2-element transducers at once.
+config['Equipment.Driving system.' + IGT_DS[11]]['Max. transducer slots'] = str(2)
 config['Equipment.Driving system.' + IGT_DS[11]]['Active?'] = str(False)
 
 config['Equipment.Driving system.' + IGT_DS[12]] = {}
@@ -583,6 +599,7 @@ config['Equipment.Driving system.' + IGT_DS[12]]['Native power parameters'] = PO
 config['Equipment.Driving system.' + IGT_DS[12]]['Native focus parameters'] = FOC_WRT_BOWL
 config['Equipment.Driving system.' + IGT_DS[12]]['Focus options'] = '\n'.join(
     [FOC_WRT_EXIT, FOC_WRT_BOWL])
+config['Equipment.Driving system.' + IGT_DS[12]]['Max. transducer slots'] = str(1)
 config['Equipment.Driving system.' + IGT_DS[12]]['Active?'] = str(False)
 
 #######################################################################################
@@ -600,6 +617,7 @@ config['Equipment.Driving system.' + CITRUS_DS[0]]['Power options'] = '\n'.join(
 config['Equipment.Driving system.' + CITRUS_DS[0]]['Native power parameters'] = POW_VOLT
 config['Equipment.Driving system.' + CITRUS_DS[0]]['Native focus parameters'] = FOC_WRT_EXIT
 config['Equipment.Driving system.' + CITRUS_DS[0]]['Focus options'] = '\n'.join([FOC_WRT_EXIT])
+config['Equipment.Driving system.' + CITRUS_DS[0]]['Max. transducer slots'] = str(2)
 config['Equipment.Driving system.' + CITRUS_DS[0]]['Active?'] = str(True)
 
 #######################################################################################
