@@ -86,7 +86,7 @@ igt_driving_sys.connect(ds_info.connect_info, log_dir, filename)
 
 from sequences import sequence_1_10_ch
 
-seq1, seq2 = sequence_1_10_ch.create_sequence_collection(logger)
+seq_a = sequence_1_10_ch.create_sequence(logger)
 
 ##############################################################################
 # second sequence collection
@@ -94,7 +94,7 @@ seq1, seq2 = sequence_1_10_ch.create_sequence_collection(logger)
 
 from sequences import sequence_17_26_ch
 
-seq3, seq4 = sequence_17_26_ch.create_sequence_collection(logger)
+seq_b = sequence_17_26_ch.create_sequence(logger)
 
 total_duration_ms = 80000  # [ms]
 
@@ -112,12 +112,18 @@ total_duration_ms = 80000  # [ms]
 # 'execute_sequence()' into your code or by using the external trigger.
 
 try:
-    igt_driving_sys.send_sequence(seq1, seq2, seq3, seq4, total_duration_ms)
+    # Ramping (pulse_ramp_shape/pulse_ramp_dur) is a whole-group setting for the generator, not
+    # something each interleaved sequence configures independently -- send_sequence() reads it
+    # from only the first sequence given (seq_a here), and silently ignores seq_b's own ramp
+    # settings. Both sequence scripts happen to set the same values below, which is why this
+    # doesn't currently produce a visible discrepancy -- but if you ever give them different
+    # ramp settings, only seq_a's will actually take effect.
+    igt_driving_sys.send_sequence([seq_a, seq_b], total_duration_ms)
 
-    #igt_driving_sys.execute_sequence(seq1, seq2, seq3, seq4, total_duration_ms)
+    #igt_driving_sys.execute_sequence([seq_a, seq_b], total_duration_ms)
 
     # or even better wait for trigger
-    igt_driving_sys.wait_for_trigger(seq1, seq2, seq3, seq4, total_duration_ms)
+    igt_driving_sys.wait_for_trigger([seq_a, seq_b], total_duration_ms)
 
     # wait_for_trigger() above only arms the sequence to fire on the external trigger and
     # returns immediately -- it does NOT wait for, or check, the actual execution result. The

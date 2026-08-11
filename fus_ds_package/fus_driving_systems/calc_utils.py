@@ -269,7 +269,7 @@ def format_or_unavailable(value):
     (couldn't be calculated -- out of the current calibration's range).
 
     Parameters:
-        value (float or None): The value to format, e.g. slot.press or slot.volt[0].
+        value (float or None): The value to format, e.g. slot.press or slot.volt.
 
     Returns:
         str: value formatted to 2 decimal places, or a fallback string if value is None.

@@ -2,26 +2,33 @@
 """
 Characterization tests for fus_driving_systems.sequence.Sequence.
 
-Sequence.__init__ pulls in ~25 config-driven defaults and, depending on
-the chosen driving-system/transducer combo, can trigger real JSON file
-loading via extract_and_define_pp. To keep these tests fast and
-independent of any specific driving-system/transducer/config
-combination, every test here builds the instance with
-Sequence.__new__(Sequence) (bypassing __init__ entirely) and sets only
-the private attributes the method-under-test actually reads.
+Sequence.__init__ pulls in several config-driven defaults. To keep these tests fast and
+independent of any specific driving-system/transducer/config combination, every test here builds
+the instance with Sequence.__new__(Sequence) (bypassing __init__ entirely) and sets only the
+private attributes the method-under-test actually reads.
 
 Covers:
-- The cascading timing-property setters: pulse_dur -> pulse_rep_int ->
-  pulse_train_dur -> pulse_train_rep_int -> pulse_train_rep_dur.
-- The private _calc_* pressure/amplitude/voltage conversion methods,
-  driven by small hand-built scipy.interpolate.PPoly objects (same
-  pattern as test_sequence_pure.py's linear_pp/decreasing_pp fixtures).
+- configure_timing() -- the only way to set any timing/trigger parameter (pulse_dur,
+  pulse_rep_int, pulse_train_dur, pulse_train_rep_int, pulse_train_rep_dur, pulse_ramp_shape,
+  pulse_ramp_dur, trigger_option, n_triggers all have getters only), including the cascade
+  defaults each level falls back to when not given, and the trigger_option-dependent choice
+  between n_triggers and pulse_train_rep_int/pulse_train_rep_dur.
+- add_slot() and _validate_channel_count(). driving_sys itself is read-only (set once, at
+  construction) -- see its getter's own docstring for why swapping it isn't supported at all.
+  add_slot() itself delegates transducer/focus/power configuration entirely to
+  TransducerSlot.update_transducer() -- see test_transducer_slot.py for that method's own
+  coverage (including swapping an already-added slot's transducer directly via
+  seq.slots[i].update_transducer(...), and the per-slot element-count check it runs).
+
+There are no single-slot delegating properties on Sequence (no seq.press/seq.transducer/etc.) --
+every per-transducer attribute is always addressed via seq.slots[i].<attribute>, whether there's
+one slot or several, so a script never has to guess which access style applies. Power/focus
+setter logic itself (everything TransducerSlot owns) moved to test_transducer_slot.py
+-- see that module instead.
 """
-import json
 from types import SimpleNamespace
 
 import pytest
-from scipy.interpolate import PPoly
 
 from fus_driving_systems.sequence import Sequence
 
@@ -31,141 +38,15 @@ def _bare_sequence():
     return Sequence.__new__(Sequence)
 
 
-def _identity_pp(a, b):
-    """A piecewise polynomial with pp(x) == x over the domain [a, b]."""
-    return PPoly(c=[[1.0], [a]], x=[a, b], extrapolate=False)
+def _fake_slot(serial='TRAN-A', elements=1, ampl=None):
+    """A minimal stand-in for a TransducerSlot, for tests that only need Sequence's own
+    bookkeeping (slots list, delegation, channel counting) and not any real power/focus
+    calculation."""
+    return SimpleNamespace(
+        transducer=SimpleNamespace(serial=serial, elements=elements), ampl=ampl)
 
 
-# --- pulse_dur ---------------------------------------------------------
-# pulse_dur is the lowest timing level: setting it cascades its own value
-# down to every higher level (pulse_rep_int, pulse_train_dur,
-# pulse_train_rep_int, pulse_train_rep_dur), each stored internally in ms.
-
-def test_pulse_dur_setter_cascades_to_all_downstream_levels():
-    seq = _bare_sequence()
-    seq._timing_param = {}
-    seq._trigger_option = 'TriggerSequence'  # not the ptr option -> no n_triggers side effect
-
-    seq.pulse_dur = 20
-
-    assert seq.pulse_dur == 20
-    assert seq.pulse_rep_int == 20
-    assert seq.pulse_train_dur == 20
-    assert seq.pulse_train_rep_int == 20
-    # pulse_train_rep_dur's own setter takes SECONDS and stores ms
-    # (value * 1e3); pulse_dur's cascade passes pulse_dur / 1e3, so the
-    # ms<->s conversions cancel out and the stored ms value still equals
-    # pulse_dur.
-    assert seq.pulse_train_rep_dur == 20
-
-
-def test_pulse_dur_setter_rejects_zero():
-    seq = _bare_sequence()
-    seq._timing_param = {}
-    seq._trigger_option = 'TriggerSequence'
-
-    with pytest.raises(SystemExit):
-        seq.pulse_dur = 0
-
-
-def test_pulse_dur_setter_rejects_negative():
-    seq = _bare_sequence()
-    seq._timing_param = {}
-    seq._trigger_option = 'TriggerSequence'
-
-    with pytest.raises(SystemExit):
-        seq.pulse_dur = -5
-
-
-# --- pulse_rep_int -------------------------------------------------------
-# Cascades upward only -- it must not touch pulse_dur, the level below it.
-
-def test_pulse_rep_int_setter_cascades_up_but_not_down():
-    seq = _bare_sequence()
-    seq._timing_param = {'pulse_dur': 5}
-    seq._trigger_option = 'TriggerSequence'
-
-    seq.pulse_rep_int = 30
-
-    assert seq.pulse_dur == 5  # untouched
-    assert seq.pulse_rep_int == 30
-    assert seq.pulse_train_dur == 30
-    assert seq.pulse_train_rep_int == 30
-    assert seq.pulse_train_rep_dur == 30
-
-
-# --- pulse_train_dur -----------------------------------------------------
-
-def test_pulse_train_dur_setter_cascades_up_but_not_down():
-    seq = _bare_sequence()
-    seq._timing_param = {'pulse_dur': 5, 'pulse_rep_int': 10}
-    seq._trigger_option = 'TriggerSequence'
-
-    seq.pulse_train_dur = 40
-
-    assert seq.pulse_dur == 5
-    assert seq.pulse_rep_int == 10
-    assert seq.pulse_train_dur == 40
-    assert seq.pulse_train_rep_int == 40
-    assert seq.pulse_train_rep_dur == 40
-
-
-# --- pulse_train_rep_int --------------------------------------------------
-# Only cascades to pulse_train_rep_dur -- pulse_train_dur is left alone.
-
-def test_pulse_train_rep_int_setter_cascades_only_to_rep_dur():
-    seq = _bare_sequence()
-    seq._timing_param = {'pulse_dur': 5, 'pulse_rep_int': 10, 'pulse_train_dur': 20}
-    seq._trigger_option = 'TriggerSequence'
-
-    seq.pulse_train_rep_int = 50
-
-    assert seq.pulse_train_dur == 20  # untouched
-    assert seq.pulse_train_rep_int == 50
-    assert seq.pulse_train_rep_dur == 50
-
-
-# --- pulse_train_rep_dur ---------------------------------------------------
-# Top of the cascade: takes SECONDS (unlike every level below it, which is
-# ms) and stores the value converted to ms. Also has a side effect wholly
-# unrelated to timing: when the trigger option is
-# 'TriggerOnePulseTrainRepetition' it forces n_triggers to 1.
-
-def test_pulse_train_rep_dur_setter_converts_seconds_to_ms():
-    seq = _bare_sequence()
-    seq._timing_param = {}
-    seq._trigger_option = 'TriggerSequence'
-
-    seq.pulse_train_rep_dur = 2  # seconds
-
-    assert seq.pulse_train_rep_dur == 2000  # ms
-
-
-def test_pulse_train_rep_dur_setter_forces_single_trigger_for_ptr_option(patch_config):
-    patch_config.set('Trigger', 'option.ptr', 'TriggerOnePulseTrainRepetition')
-    seq = _bare_sequence()
-    seq._timing_param = {}
-    seq._trigger_option = 'TriggerOnePulseTrainRepetition'
-    seq._n_triggers = 5
-
-    seq.pulse_train_rep_dur = 1
-
-    assert seq._n_triggers == 1
-
-
-def test_pulse_train_rep_dur_setter_leaves_n_triggers_for_other_options(patch_config):
-    patch_config.set('Trigger', 'option.ptr', 'TriggerOnePulseTrainRepetition')
-    seq = _bare_sequence()
-    seq._timing_param = {}
-    seq._trigger_option = 'TriggerSequence'
-    seq._n_triggers = 7
-
-    seq.pulse_train_rep_dur = 1
-
-    assert seq._n_triggers == 7  # untouched
-
-
-# --- get_ramp_shapes / pulse_ramp_shape / pulse_ramp_dur --------------------
+# --- get_ramp_shapes ----------------------------------------------------------
 
 def test_get_ramp_shapes_splits_config_value_on_newline(patch_config):
     patch_config.set('Ramp', 'Options', 'Rectangular - no ramping\nLinear\nTukey')
@@ -174,1286 +55,475 @@ def test_get_ramp_shapes_splits_config_value_on_newline(patch_config):
     assert seq.get_ramp_shapes() == ['Rectangular - no ramping', 'Linear', 'Tukey']
 
 
-def test_pulse_ramp_shape_setter_accepts_a_configured_option(patch_config):
+# --- wait_for_trigger --------------------------------------------------------
+# Derived from trigger_option, not stored independently -- True whenever trigger_option is
+# anything other than the config's designated "no trigger" option (option.none).
+
+def test_wait_for_trigger_is_false_for_the_none_trigger_option(patch_config):
+    patch_config.set('Trigger', 'option.none', 'None')
+    seq = _bare_sequence()
+    seq._trigger_option = 'None'
+
+    assert seq.wait_for_trigger is False
+
+
+def test_wait_for_trigger_is_true_for_any_other_trigger_option(patch_config):
+    patch_config.set('Trigger', 'option.none', 'None')
+    seq = _bare_sequence()
+    seq._trigger_option = 'TriggerOnePulseTrain'
+
+    assert seq.wait_for_trigger is True
+
+
+# --- configure_timing --------------------------------------------------------
+# The only way to set any timing/trigger parameter -- pulse_dur, pulse_rep_int, pulse_train_dur,
+# pulse_train_rep_int, pulse_train_rep_dur, pulse_ramp_shape, pulse_ramp_dur, trigger_option and
+# n_triggers all have getters only. Applies every one of them in one fixed, always-safe internal
+# order (lowest cascade level first), regardless of the order its own keyword arguments were
+# given in. pulse_dur is the only required parameter: every level above it defaults to the level
+# directly below it when not given, so a single pulse train, repeated once, is already a
+# complete, self-consistent result. trigger_option/pulse_ramp_shape/pulse_ramp_dur left as None
+# reset to their own safe/off default EVERY call (the config's "no trigger" option; "no ramping"
+# and 0) rather than inheriting whatever an earlier, unrelated call left them at. There is no
+# wait_for_trigger parameter -- it's derived from trigger_option (see above).
+
+def test_configure_timing_requires_only_pulse_dur(patch_config):
+    """pulse_dur is the only required parameter -- everything else, including trigger_option,
+    resets to its own safe/off default rather than requiring an explicit value."""
+    patch_config.set('Trigger', 'option.none', 'None')
+    seq = _bare_sequence()
+    seq._timing_param = {}
+    seq._n_triggers = 'unchanged'
+
+    seq.configure_timing(pulse_dur=10)
+
+    assert seq.pulse_dur == 10
+    assert seq.pulse_rep_int == 10
+    assert seq.pulse_train_dur == 10
+    assert seq.pulse_train_rep_int == 10
+    assert seq.pulse_train_rep_dur == 10
+    assert seq.trigger_option == 'None'
+    assert seq._n_triggers == 'unchanged'  # left untouched -- n_triggers itself wasn't given
+
+
+def test_configure_timing_resets_trigger_option_to_none_when_not_given(patch_config):
+    """Unlike pulse_rep_int/pulse_train_dur/etc. (which are freshly re-derived from THIS call's
+    pulse_dur every time, so there's nothing stale to inherit), trigger_option has no such
+    cascade -- so leaving it out must reset to the safe "no trigger" default, not silently keep
+    whatever an earlier, unrelated call left it at."""
+    patch_config.set('Trigger', 'option.none', 'None')
+    seq = _bare_sequence()
+    seq._timing_param = {}
+    seq._trigger_option = 'TriggerOnePulseTrain'  # a stale value from some earlier call
+
+    seq.configure_timing(pulse_dur=10)
+
+    assert seq.trigger_option == 'None'
+
+
+def test_configure_timing_resets_ramp_to_no_ramping_when_not_given(patch_config):
+    patch_config.set('Ramp', 'option.rect', 'Rectangular - no ramping')
+    seq = _bare_sequence()
+    # A stale ramp from some earlier call -- must not survive a call that doesn't mention ramping.
+    seq._timing_param = {'pulse_ramp_shape': 'Linear', 'pulse_ramp_dur': 3}
+
+    seq.configure_timing(pulse_dur=10)
+
+    assert seq.pulse_ramp_shape == 'Rectangular - no ramping'
+    assert seq.pulse_ramp_dur == 0
+
+
+def test_configure_timing_rejects_zero_pulse_dur():
+    seq = _bare_sequence()
+    seq._timing_param = {}
+
+    with pytest.raises(SystemExit):
+        seq.configure_timing(pulse_dur=0)
+
+
+def test_configure_timing_rejects_negative_pulse_dur():
+    seq = _bare_sequence()
+    seq._timing_param = {}
+
+    with pytest.raises(SystemExit):
+        seq.configure_timing(pulse_dur=-5)
+
+
+def test_configure_timing_exits_for_unavailable_trigger_option():
+    seq = _bare_sequence()
+    seq._timing_param = {}
+
+    with pytest.raises(SystemExit):
+        seq.configure_timing(pulse_dur=10, trigger_option='Something else')
+
+
+def test_configure_timing_pulse_rep_int_overrides_default_but_leaves_pulse_dur():
+    seq = _bare_sequence()
+    seq._timing_param = {}
+
+    seq.configure_timing(pulse_dur=5, pulse_rep_int=30)
+
+    assert seq.pulse_dur == 5  # untouched
+    assert seq.pulse_rep_int == 30
+    assert seq.pulse_train_dur == 30  # defaults to the level below it, not to pulse_dur
+    # ...and the cascade keeps propagating past that one level, all the way to the top.
+    assert seq.pulse_train_rep_int == 30
+    assert seq.pulse_train_rep_dur == 30
+
+
+def test_configure_timing_pulse_train_dur_overrides_default_but_leaves_lower_levels():
+    seq = _bare_sequence()
+    seq._timing_param = {}
+
+    seq.configure_timing(pulse_dur=5, pulse_rep_int=10, pulse_train_dur=40)
+
+    assert seq.pulse_dur == 5
+    assert seq.pulse_rep_int == 10
+    assert seq.pulse_train_dur == 40
+    # ...and the two levels above it default from THIS value, not from pulse_dur/pulse_rep_int.
+    assert seq.pulse_train_rep_int == 40
+    assert seq.pulse_train_rep_dur == 40
+
+
+def test_configure_timing_sets_pulse_ramp_shape(patch_config):
     patch_config.set('Ramp', 'Options', 'Linear\nTukey')
     seq = _bare_sequence()
     seq._timing_param = {}
 
-    seq.pulse_ramp_shape = 'Linear'
+    seq.configure_timing(pulse_dur=10, pulse_ramp_shape='Linear')
 
     assert seq.pulse_ramp_shape == 'Linear'
 
 
-def test_pulse_ramp_shape_setter_exits_for_unavailable_option(patch_config):
+def test_configure_timing_exits_for_unavailable_ramp_shape(patch_config):
     patch_config.set('Ramp', 'Options', 'Linear\nTukey')
     seq = _bare_sequence()
     seq._timing_param = {}
 
     with pytest.raises(SystemExit):
-        seq.pulse_ramp_shape = 'Something else'
+        seq.configure_timing(pulse_dur=10, pulse_ramp_shape='Something else')
 
 
-def test_pulse_ramp_dur_setter_accepts_zero():
-    """check_nonzero=False for this setter -- 0 is a legitimate 'no ramp
-    duration set yet' value, unlike the pulse_dur family above."""
+def test_configure_timing_pulse_ramp_dur_accepts_zero():
+    """check_nonzero=False for this parameter -- 0 is a legitimate 'no ramp duration set yet'
+    value, unlike pulse_dur/pulse_rep_int/pulse_train_dur above."""
     seq = _bare_sequence()
     seq._timing_param = {}
 
-    seq.pulse_ramp_dur = 0
+    seq.configure_timing(pulse_dur=10, pulse_ramp_dur=0)
 
     assert seq.pulse_ramp_dur == 0
 
 
-def test_pulse_ramp_dur_setter_rejects_negative():
+def test_configure_timing_rejects_negative_pulse_ramp_dur():
     seq = _bare_sequence()
     seq._timing_param = {}
 
     with pytest.raises(SystemExit):
-        seq.pulse_ramp_dur = -1
+        seq.configure_timing(pulse_dur=10, pulse_ramp_dur=-1)
 
 
-# --- _calc_eq_factor -------------------------------------------------------
-
-def test_calc_eq_factor_evaluates_pp_at_focus_wrt_exit_plane():
+def test_configure_timing_forces_single_trigger_for_ptr_option(patch_config):
+    patch_config.set('Trigger', 'option.ptr', 'TriggerWholeProtocol')
     seq = _bare_sequence()
-    seq._conv_param = {'eq_curve_pp': _identity_pp(0.0, 10.0)}
-    seq._focus_wrt_exit_plane = 5
+    seq._timing_param = {}
+    seq._trigger_option = 'None'
+    seq._n_triggers = 5
 
-    seq._calc_eq_factor()
+    seq.configure_timing(pulse_dur=10, trigger_option='TriggerWholeProtocol')
 
-    assert float(seq._eq_factor) == pytest.approx(5.0)
+    assert seq.n_triggers == 1
 
 
-def test_calc_eq_factor_exits_when_focus_is_not_numeric():
-    """
-    The except ValueError branch is only reachable when focus_wrt_exit_plane
-    can't be converted to a float at all (e.g. a string) -- verified
-    directly against scipy: PPoly.__call__ with extrapolate=False returns
-    NaN for an out-of-range NUMERIC value rather than raising. So an
-    out-of-range (but numeric) focus does NOT hit this except block at all;
-    it silently produces a NaN eq_factor and continues. That gap is noted
-    separately (see the plan's findings list) -- this test only documents
-    the one input shape that actually does raise.
-    """
+def test_configure_timing_leaves_n_triggers_untouched_for_the_none_option(patch_config):
+    patch_config.set('Trigger', 'option.ptr', 'TriggerWholeProtocol')
     seq = _bare_sequence()
-    seq._conv_param = {'eq_curve_pp': _identity_pp(0.0, 10.0)}
-    seq._focus_wrt_exit_plane = 'not-a-number'
-    # 'transducer' is itself a property whose setter expects a serial
-    # number string (it does a config lookup) -- set the private
-    # attribute it's backed by directly, same as everywhere else in this
-    # file.
-    seq._transducer = SimpleNamespace(min_foc=0, max_foc=10)
+    seq._timing_param = {}
+    seq._trigger_option = 'TriggerOnePulseTrain'
+    seq._n_triggers = 7
+
+    seq.configure_timing(pulse_dur=10, trigger_option='None')
+
+    assert seq.n_triggers == 7  # untouched -- forcing to 1 is specific to the ptr option
+
+
+def test_configure_timing_sets_every_level_via_n_triggers(patch_config):
+    patch_config.set('Trigger', 'option.ptr', 'TriggerWholeProtocol')
+    seq = _bare_sequence()
+    seq._timing_param = {}
+    seq._trigger_option = 'None'
+    seq._n_triggers = 0
+
+    seq.configure_timing(pulse_dur=10, pulse_rep_int=200, pulse_train_dur=200,
+                         trigger_option='TriggerOnePulseTrain',
+                         pulse_ramp_shape='Linear', pulse_ramp_dur=5, n_triggers=4)
+
+    assert seq.pulse_dur == 10
+    assert seq.pulse_rep_int == 200
+    assert seq.pulse_train_dur == 200
+    assert seq.trigger_option == 'TriggerOnePulseTrain'
+    assert seq.n_triggers == 4
+    assert seq.pulse_ramp_shape == 'Linear'
+    assert seq.pulse_ramp_dur == 5
+    # Don't apply to this trigger mode (n_triggers governs repetition instead), but still
+    # cascade to their own "repeat once" default rather than being left unset/stale.
+    assert seq.pulse_train_rep_int == 200
+    assert seq.pulse_train_rep_dur == 200
+
+
+def test_configure_timing_sets_every_level_via_duration(patch_config):
+    patch_config.set('Trigger', 'option.ptr', 'TriggerWholeProtocol')
+    seq = _bare_sequence()
+    seq._timing_param = {}
+    seq._trigger_option = 'None'
+    seq._n_triggers = 0
+
+    seq.configure_timing(pulse_dur=10, pulse_rep_int=200, pulse_train_dur=200,
+                         trigger_option='TriggerWholeProtocol',
+                         pulse_train_rep_int=200, pulse_train_rep_dur=2)
+
+    assert seq.pulse_train_rep_int == 200
+    assert seq.pulse_train_rep_dur == 2000  # stored in ms, setter takes seconds
+    # n_triggers isn't valid for this trigger mode -- forced to 1 regardless of what's given
+    # (nothing is given here), purely for ControlDrivingSystem implementations' own logging.
+    assert seq.n_triggers == 1
+
+
+def test_configure_timing_is_order_independent():
+    """The exact scenario configure_timing() exists to prevent: with no public setters left,
+    the only way this could still go wrong is configure_timing() itself applying its own
+    arguments in the order they were listed/passed in, rather than always lowest-cascade-level
+    first -- pulse_train_dur given before pulse_dur must not have pulse_dur's own default
+    silently clobber it back down."""
+    seq = _bare_sequence()
+    seq._timing_param = {}
+
+    seq.configure_timing(pulse_train_dur=500, pulse_dur=10, pulse_rep_int=200,
+                         pulse_train_rep_int=500, pulse_train_rep_dur=5)
+
+    assert seq.pulse_dur == 10
+    assert seq.pulse_train_dur == 500  # not clobbered back down to 10
+
+
+def test_configure_timing_derives_pulse_train_rep_dur_from_rep_int_alone():
+    """Giving only pulse_train_rep_int derives pulse_train_rep_dur as exactly one repetition of
+    that interval -- the same ms<->s relationship as the "repeat once" default used when neither
+    is given, just anchored to the explicitly given value instead of pulse_train_dur."""
+    seq = _bare_sequence()
+    seq._timing_param = {}
+
+    seq.configure_timing(pulse_dur=10, pulse_train_rep_int=300)
+
+    assert seq.pulse_train_rep_int == 300
+    assert seq.pulse_train_rep_dur == 300  # stored in ms -- 300/1e3 s * 1e3 = 300 ms
+
+
+def test_configure_timing_pulse_train_rep_dur_alone_repeats_back_to_back():
+    """Unlike giving only pulse_train_rep_int (which derives pulse_train_rep_dur to match, i.e.
+    "repeat once"), giving only pulse_train_rep_dur -- a total span to repeat over -- fills that
+    span back-to-back: pulse_train_rep_int defaults to pulse_train_dur, not to a value derived
+    from the given pulse_train_rep_dur (which would make the given value self-referential)."""
+    seq = _bare_sequence()
+    seq._timing_param = {}
+
+    seq.configure_timing(pulse_dur=10, pulse_train_rep_dur=0.3)
+
+    assert seq.pulse_train_rep_int == 10  # pulse_train_dur, unrelated to the given rep_dur
+    assert seq.pulse_train_rep_dur == 300  # stored in ms -- 0.3 s * 1e3, kept as given
+
+
+def test_configure_timing_exits_when_both_trigger_modes_given(patch_config):
+    seq = _bare_sequence()
+    seq._timing_param = {}
+    seq._trigger_option = 'None'
 
     with pytest.raises(SystemExit):
-        seq._calc_eq_factor()
+        seq.configure_timing(pulse_dur=10, pulse_rep_int=200, pulse_train_dur=200,
+                             trigger_option='TriggerOnePulseTrain',
+                             n_triggers=4, pulse_train_rep_int=200, pulse_train_rep_dur=2)
 
 
-# --- _calc_volt --------------------------------------------------------
-
-def test_calc_volt_finds_x_for_each_amplitude():
+def test_configure_timing_exits_when_n_triggers_given_for_non_seq_trigger_option():
+    """n_triggers only applies when trigger_option is the "trigger per sequence" option --
+    giving it alongside any other trigger_option (the default, 'None', here) is a mismatch,
+    not silently corrected."""
     seq = _bare_sequence()
-    seq._conv_param = {'volt_curve_pp': _identity_pp(-10.0, 200.0)}
-    seq._ampl = [20, 80]
-
-    seq._calc_volt()
-
-    assert seq._volt == pytest.approx([20.0, 80.0])
-
-
-def test_calc_volt_records_none_when_amplitude_out_of_range():
-    """BUGFIX: when no x can be found for a given amplitude, _calc_volt does not raise -- it
-    records None for that entry, not 0 (0 would look like a genuine, calculated voltage to any
-    later read of self._volt, when really no value could be found at all)."""
-    seq = _bare_sequence()
-    seq._conv_param = {'volt_curve_pp': _identity_pp(-10.0, 200.0)}
-    seq._ampl = [999]  # above the pp's range
-
-    seq._calc_volt()
-
-    assert seq._volt == [None]
-
-
-# --- _calc_ampl ----------------------------------------------------------
-# calc_ampl = power_curve_pp(press[Pa] * eq_factor). Three outcomes when
-# in range: normal (0-100 inclusive), clamped to 100 (exits), clamped to 0
-# (does not exit). x_value outside the pp's domain entirely exits too.
-
-def test_calc_ampl_rounds_normal_in_range_value():
-    seq = _bare_sequence()
-    seq._conv_param = {'power_curve_pp': _identity_pp(-10.0, 1000.0)}
-    seq._eq_factor = 1.0
-    seq._press = 50e-6  # MPa -> press_pa = 50, x_value = 50 * eq_factor = 50
-
-    seq._calc_ampl()
-
-    assert seq._ampl == [50.0]
-    assert seq._input_press_mpa == seq._press
-    assert seq._eq_press_mpa == pytest.approx(50e-6)
-
-
-def test_calc_ampl_exits_when_x_value_above_pp_range():
-    """BUGFIX: this branch used to exit without ever touching self._ampl, unlike the >100
-    branch below -- self._ampl is now reset to None upfront in _calc_ampl, so a stale value
-    from an earlier, unrelated calculation can no longer look like a valid, current result if
-    this SystemExit is ever caught further up."""
-    seq = _bare_sequence()
-    seq._conv_param = {'power_curve_pp': _identity_pp(-10.0, 1000.0)}
-    seq._eq_factor = 1.0
-    seq._ampl = ['stale']
-    seq._press = 2000e-6  # x_value = 2000, above the pp's max of 1000
+    seq._timing_param = {}
 
     with pytest.raises(SystemExit):
-        seq._calc_ampl()
-
-    assert seq._ampl is None
+        seq.configure_timing(pulse_dur=10, n_triggers=4)
 
 
-def test_calc_ampl_exits_when_x_value_below_pp_range():
-    """BUGFIX: see the identical note in test_calc_ampl_exits_when_x_value_above_pp_range."""
+def test_configure_timing_exits_when_duration_given_for_seq_trigger_option(patch_config):
+    """pulse_train_rep_int/pulse_train_rep_dur don't apply when trigger_option is the "trigger
+    per sequence" option -- give n_triggers instead."""
     seq = _bare_sequence()
-    seq._conv_param = {'power_curve_pp': _identity_pp(-10.0, 1000.0)}
-    seq._eq_factor = 1.0
-    seq._ampl = ['stale']
-    seq._press = -20e-6  # x_value = -20, below the pp's min of -10
+    seq._timing_param = {}
+    seq._trigger_option = 'None'
 
     with pytest.raises(SystemExit):
-        seq._calc_ampl()
+        seq.configure_timing(pulse_dur=10, trigger_option='TriggerOnePulseTrain',
+                             pulse_train_rep_int=200, pulse_train_rep_dur=2)
 
-    assert seq._ampl is None
 
-
-def test_calc_ampl_clamps_to_100_and_exits_when_calculated_above_100():
-    """calc_ampl > 100 (but still within the pp's domain) is clamped to 100% just long enough
-    to compute the _press/_volt shown in the error message, then the method exits -- BUGFIX:
-    self._ampl is cleared back to None right before exiting, since the request as a whole was
-    rejected and [100] would otherwise look like a valid, current amplitude to any later read."""
+def test_configure_timing_exits_when_n_triggers_omitted_for_seq_trigger_option():
+    """One pulse train fires per trigger under 'TriggerOnePulseTrain' -- the driving system
+    genuinely needs to know in advance how many triggers to expect, so unlike every other
+    parameter in this method, n_triggers has no sensible default to silently fall back to."""
     seq = _bare_sequence()
-    seq._conv_param = {
-        'power_curve_pp': _identity_pp(-10.0, 1000.0),
-        'volt_curve_pp': _identity_pp(-10.0, 200.0),
-    }
-    seq._eq_factor = 1.0
-    seq._press = 150e-6  # x_value = 150 -> calc_ampl = 150 > 100
-    seq._focus_wrt_exit_plane = 5
+    seq._timing_param = {}
 
     with pytest.raises(SystemExit):
-        seq._calc_ampl()
-
-    assert seq._ampl is None
+        seq.configure_timing(pulse_dur=10, trigger_option='TriggerOnePulseTrain')
 
 
-def test_calc_ampl_clamps_to_0_without_exiting_when_calculated_below_0():
-    """calc_ampl < 0 (but still within the pp's domain) is clamped to 0%,
-    _press/_volt are recalculated, and the method returns normally --
-    unlike the >100 case, this is not treated as an error."""
+# --- driving_sys ------------------------------------------------------------
+# Read-only -- set once, at construction (see __init__), never changed afterward. Swapping which
+# physical driving system a Sequence targets mid-experiment isn't supported: construct a new
+# Sequence and re-add_slot() every transducer instead (see the getter's own docstring for why).
+
+def test_driving_sys_has_no_setter():
     seq = _bare_sequence()
-    seq._conv_param = {
-        # pp(x) = x - 50, so an in-range x can still yield a negative y
-        'power_curve_pp': PPoly(c=[[1.0], [-50.0]], x=[0.0, 100.0], extrapolate=False),
-        'volt_curve_pp': _identity_pp(-10.0, 200.0),
-    }
-    seq._eq_factor = 1.0
-    seq._press = 20e-6  # x_value = 20 -> calc_ampl = 20 - 50 = -30 < 0
-    seq._focus_wrt_exit_plane = 5
+    seq._driving_sys = SimpleNamespace()
 
-    seq._calc_ampl()  # must not raise
-
-    assert seq._ampl == [0]
-    assert seq._press == pytest.approx(5e-5)
-    assert seq._volt == pytest.approx([0.0])
+    with pytest.raises(AttributeError):
+        seq.driving_sys = SimpleNamespace()
 
 
-# --- _calc_ampl_using_volt -------------------------------------------------
-# Mirrors _calc_ampl but keyed off self._volt instead of self._press, and
-# is NOT symmetric with it: below-range here just clamps to 0% and moves
-# on (no exit), while _calc_ampl's below-range case above always exits.
+# --- get_power_options / get_focus_options -----------------------------------
+# Available straight off the driving system, before any slot has been added -- add_slot() itself
+# needs a valid option string, so callers must be able to query these first.
 
-def test_calc_ampl_using_volt_rounds_normal_in_range_value():
-    seq = _bare_sequence()
-    seq._conv_param = {'volt_curve_pp': _identity_pp(-10.0, 200.0)}
-    seq._volt = [50]
-
-    seq._calc_ampl_using_volt()
-
-    assert seq._ampl == [50.0]
-
-
-def test_calc_ampl_using_volt_clamps_to_0_without_exiting_when_below_range():
-    seq = _bare_sequence()
-    seq._conv_param = {'volt_curve_pp': _identity_pp(-10.0, 200.0)}
-    seq._volt = [-20]  # below the pp's min of -10
-
-    seq._calc_ampl_using_volt()  # must not raise
-
-    assert seq._ampl == [0.0]
-
-
-def test_calc_ampl_using_volt_clamps_to_100_and_exits_when_above_range():
-    """BUGFIX: mirrors test_calc_ampl_clamps_to_100_and_exits_when_calculated_above_100 --
-    self._ampl is cleared back to None right before exiting, not left at the provisional [100]
-    used to compute the error message's press/volt."""
-    seq = _bare_sequence()
-    seq._conv_param = {
-        'volt_curve_pp': _identity_pp(-10.0, 200.0),
-        'power_curve_pp': _identity_pp(-10.0, 1000.0),
-    }
-    seq._eq_factor = 1.0
-    seq._press = 0  # overwritten by the _calc_press() call triggered below
-    seq._focus_wrt_exit_plane = 5
-    seq._volt = [300]  # above the pp's max of 200
-
-    with pytest.raises(SystemExit):
-        seq._calc_ampl_using_volt()
-
-    assert seq._ampl is None
-
-
-# --- _calc_press -----------------------------------------------------------
-# Inverse of _calc_ampl: finds the pressure that reproduces the given
-# amplitude, then enforces the configured max free-water pressure.
-
-def test_calc_press_computes_pressure_within_limit(patch_config):
-    patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '10')
-    seq = _bare_sequence()
-    seq._conv_param = {'power_curve_pp': _identity_pp(-10.0, 1000.0)}
-    seq._eq_factor = 1.0
-    seq._ampl = [50]
-
-    seq._calc_press()
-
-    assert seq._press == pytest.approx(5e-5)
-
-
-def test_calc_press_exits_when_result_exceeds_configured_max(patch_config):
-    patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '1')
-    seq = _bare_sequence()
-    seq._conv_param = {'power_curve_pp': _identity_pp(-10.0, 1000.0)}
-    seq._eq_factor = 1e-5  # inflates press_mpa well above the 1 MPa limit
-    seq._ampl = [50]
-
-    with pytest.raises(SystemExit):
-        seq._calc_press()
-
-
-def test_calc_press_sets_none_when_amplitude_out_of_range():
-    """Characterizes the fallback: when no x can be found for the target
-    amplitude, _calc_press does not raise -- it records _press as None."""
-    seq = _bare_sequence()
-    seq._conv_param = {'power_curve_pp': _identity_pp(-10.0, 1000.0)}
-    seq._eq_factor = 1.0
-    seq._ampl = [9999]  # above the pp's monotonic range
-
-    seq._calc_press()
-
-    assert seq._press is None
-
-
-# --- chosen_power / chosen_focus --------------------------------------------
-
-def test_chosen_power_setter_accepts_a_configured_option(patch_config):
-    patch_config.set('Power', 'Options', 'Global power [W]\nAmplitude [%]')
-    seq = _bare_sequence()
-
-    seq.chosen_power = 'Global power [W]'
-
-    assert seq.chosen_power == 'Global power [W]'
-
-
-def test_chosen_power_setter_exits_for_unavailable_option(patch_config):
-    patch_config.set('Power', 'Options', 'Global power [W]\nAmplitude [%]')
-    seq = _bare_sequence()
-
-    with pytest.raises(SystemExit):
-        seq.chosen_power = 'Something else'
-
-
-def test_chosen_focus_setter_accepts_a_configured_option(patch_config):
-    patch_config.set('Focus', 'Options', 'Focus wrt exit plane [mm]\nFocus wrt mid bowl [mm]')
-    seq = _bare_sequence()
-
-    seq.chosen_focus = 'Focus wrt exit plane [mm]'
-
-    assert seq.chosen_focus == 'Focus wrt exit plane [mm]'
-
-
-def test_chosen_focus_setter_exits_for_unavailable_option(patch_config):
-    patch_config.set('Focus', 'Options', 'Focus wrt exit plane [mm]\nFocus wrt mid bowl [mm]')
-    seq = _bare_sequence()
-
-    with pytest.raises(SystemExit):
-        seq.chosen_focus = 'Something else'
-
-
-# --- global_power ------------------------------------------------------------
-# No _calc_* orchestration here (unlike press/volt/ampl below) -- it just
-# validates the value and records it, or exits if the option isn't available.
-
-def test_global_power_setter_raises_when_configured_as_engineering_only(patch_config):
-    """Which power options are engineering-only is a config-driven institutional policy --
-    global power is available to everyone by default, but an institution can gate it too."""
-    patch_config.set('Power', 'Option.glob_pow', 'Global power [mW]')
-    patch_config.set('Power', 'Engineering-only options', 'Global power [mW]')
-    seq = _bare_sequence()
-    seq._engineering_mode = False
-
-    with pytest.raises(RuntimeError):
-        seq.global_power = 5
-
-
-def test_global_power_setter_succeeds_without_engineering_mode_when_not_configured_as_such(
-        patch_config):
-    """Global power is available by default, and stays available when explicitly cleared
-    from Engineering-only options."""
-    patch_config.set('Power', 'Option.glob_pow', 'Global power [mW]')
-    patch_config.set('Power', 'Engineering-only options', '')
-    seq = _bare_sequence()
-    seq._engineering_mode = False
-    seq._driving_sys = SimpleNamespace(power_options=['Global power [mW]'])
-
-    seq.global_power = 5  # must not raise
-
-    assert seq._global_power == 5
-
-
-def test_global_power_setter_sets_value_when_option_available(patch_config):
-    patch_config.set('Power', 'Option.glob_pow', 'Global power [mW]')
+def test_get_power_options_forwards_to_driving_sys():
     seq = _bare_sequence()
     seq._driving_sys = SimpleNamespace(power_options=['Global power [mW]'])
 
-    seq.global_power = 5
-
-    assert seq._global_power == 5
-    assert seq._chosen_power == 'Global power [mW]'
-    # reset to None at the top of the setter, and never re-set here -- 0 would look like a
-    # genuine, computed value for a power option that isn't active right now.
-    assert seq._ampl is None
-    assert seq._press is None
-    assert seq._volt is None
+    assert seq.get_power_options() == ['Global power [mW]']
 
 
-def test_global_power_setter_exits_when_option_unavailable(patch_config):
-    patch_config.set('Power', 'Option.glob_pow', 'Global power [mW]')
+def test_get_focus_options_forwards_to_driving_sys():
     seq = _bare_sequence()
-    seq._driving_sys = SimpleNamespace(power_options=['Some other option'])
-
-    with pytest.raises(SystemExit):
-        seq.global_power = 5
-
-
-# --- press -------------------------------------------------------------------
-# Validates the power option is available, validates/limits the value, and THEN
-# -- only if press isn't this driving system's native power parameter AND a
-# calibration is active -- recalculates amplitude and voltage (for logging)
-# via the already-tested _calc_* methods. If press is native, this is always
-# settable; if it isn't and no calibration is active, the setter exits.
-
-def test_press_setter_raises_when_configured_as_engineering_only(patch_config):
-    """Which power options are engineering-only is a config-driven institutional policy --
-    press is available to everyone by default, but an institution can choose to gate it too."""
-    patch_config.set('Power', 'Engineering-only options', 'Max. pressure in free water [MPa]')
-    seq = _bare_sequence()
-    seq._engineering_mode = False
-
-    with pytest.raises(RuntimeError):
-        seq.press = 0.5
-
-
-def test_press_setter_succeeds_without_engineering_mode_when_not_configured_as_such(
-        patch_config):
-    """Press is available by default, and stays available when explicitly cleared from
-    Engineering-only options."""
-    patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '10')
-    patch_config.set('Power', 'Engineering-only options', '')
-    seq = _bare_sequence()
-    seq._engineering_mode = False
-    seq._driving_sys = SimpleNamespace(
-        power_options=['Max. pressure in free water [MPa]'],
-        native_power_params=['Max. pressure in free water [MPa]'])
-    seq._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
-
-    seq.press = 0.5  # must not raise
-
-    assert seq._press == 0.5
-
-
-def test_press_setter_without_conversion_sets_value_directly(patch_config):
-    """Press is this (hypothetical) driving system's own native power parameter, so no
-    calibration is ever needed to set it."""
-    patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '10')
-    seq = _bare_sequence()
-    seq._driving_sys = SimpleNamespace(
-        power_options=['Max. pressure in free water [MPa]'],
-        native_power_params=['Max. pressure in free water [MPa]'])
-    seq._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
-
-    seq.press = 0.5
-
-    assert seq._press == 0.5
-    assert seq._chosen_power == 'Max. pressure in free water [MPa]'
-
-
-def test_press_setter_with_known_combo_triggers_conversion(patch_config):
-    """Press is non-native (amplitude is), so converting it requires an active calibration --
-    provided here via a real 'Equipment.Combination.*' config section, matching IGT."""
-    patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '10')
-    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
-    seq = _bare_sequence()
-    seq._driving_sys = SimpleNamespace(
-        power_options=['Max. pressure in free water [MPa]'], native_power_params=['Amplitude [%]'])
-    seq._ds_tran_combo = 'combo1'
-    seq._conv_param = {
-        'power_curve_pp': _identity_pp(-10.0, 1000.0),
-        'volt_curve_pp': _identity_pp(-10.0, 200.0),
-    }
-    seq._eq_factor = 1.0
-
-    seq.press = 50e-6  # MPa -> press_pa = 50, x_value = 50 * eq_factor = 50
-
-    # press setter stores the raw input value directly -- _calc_ampl/_calc_volt
-    # are only triggered for logging purposes here, not to overwrite _press.
-    assert seq._press == 50e-6
-    assert seq._ampl == [50.0]
-    assert seq._volt == pytest.approx([50.0])
-
-
-def test_press_setter_exits_when_power_option_unavailable(patch_config):
-    patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '10')
-    seq = _bare_sequence()
-    seq._driving_sys = SimpleNamespace(power_options=['Some other option'])
-
-    with pytest.raises(SystemExit):
-        seq.press = 0.5
-
-
-def test_press_setter_exits_when_combo_unknown_but_required(patch_config):
-    """Press is non-native and no 'Equipment.Combination.*' section exists for this combo at
-    all -- _combo_is_active() is False, so there's no way to convert to amplitude."""
-    patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '10')
-    seq = _bare_sequence()
-    seq._driving_sys = SimpleNamespace(
-        power_options=['Max. pressure in free water [MPa]'], native_power_params=['Amplitude [%]'])
-    seq._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
-
-    with pytest.raises(SystemExit):
-        seq.press = 0.5
-
-
-def test_press_setter_exits_when_above_configured_max(patch_config):
-    patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '1')
-    seq = _bare_sequence()
-    seq._driving_sys = SimpleNamespace(
-        power_options=['Max. pressure in free water [MPa]'],
-        native_power_params=['Max. pressure in free water [MPa]'])
-
-    with pytest.raises(SystemExit):
-        seq.press = 5
-
-
-def test_press_setter_reports_missing_calibration_before_value_specific_errors(patch_config):
-    """Fail fast: whether this driving system can accept press at all is checked before
-    anything about the specific value (is_validated, the max-pressure limit) -- so a value
-    that's *both* above the configured max *and* unconvertible (non-native, no active combo)
-    surfaces the calibration error, not the (less relevant, in this case) max-pressure one."""
-    patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '1')
-    seq = _bare_sequence()
-    seq._driving_sys = SimpleNamespace(
-        power_options=['Max. pressure in free water [MPa]'],
-        native_power_params=['Amplitude [%]'])
-    seq._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
-
-    with pytest.raises(SystemExit, match='No active calibration available'):
-        seq.press = 5  # also above the configured max of 1 -- must not be the error surfaced
-
-
-# --- volt ----------------------------------------------------------------
-# Same shape as press, plus: requires engineering_mode, accepts scalar or
-# list, and only calls _calc_press() (in addition to _calc_ampl_using_volt())
-# when exactly one value was given.
-
-def test_volt_setter_raises_when_engineering_mode_disabled(patch_config):
-    patch_config.set('Power', 'Engineering-only options', 'Voltage [V]')
-    seq = _bare_sequence()
-    seq._engineering_mode = False
-
-    with pytest.raises(RuntimeError):
-        seq.volt = 50
-
-
-def test_volt_setter_succeeds_without_engineering_mode_when_not_configured_as_such(
-        patch_config):
-    """Which options are engineering-only is a config-driven institutional policy, not
-    hardcoded -- an institution that doesn't list voltage here can set it directly."""
-    patch_config.set('Power', 'Engineering-only options', '')
-    seq = _bare_sequence()
-    seq._engineering_mode = False
-    seq._driving_sys = SimpleNamespace(
-        power_options=['Voltage [V]'], native_power_params=['Voltage [V]'], available_ch=1)
-    seq._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
-
-    seq.volt = 50  # must not raise
-
-    assert seq._volt == [50]
-
-
-def test_volt_setter_without_conversion_sets_value_directly():
-    """Voltage is this (hypothetical) driving system's own native power parameter, so no
-    calibration is ever needed to set it -- matches CITRUS."""
-    seq = _bare_sequence()
-    seq._engineering_mode = True
-    seq._driving_sys = SimpleNamespace(
-        power_options=['Voltage [V]'], native_power_params=['Voltage [V]'], available_ch=1)
-    seq._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
-
-    seq.volt = 50
-
-    assert seq._volt == [50]
-    assert seq._chosen_power == 'Voltage [V]'
-
-
-def test_volt_setter_with_known_combo_triggers_conversion(patch_config):
-    """Voltage is non-native (amplitude is), so converting it requires an active calibration --
-    matches IGT."""
-    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
-    seq = _bare_sequence()
-    seq._engineering_mode = True
-    seq._driving_sys = SimpleNamespace(
-        power_options=['Voltage [V]'], native_power_params=['Amplitude [%]'], available_ch=1)
-    seq._ds_tran_combo = 'combo1'
-    seq._conv_param = {
-        'volt_curve_pp': _identity_pp(-10.0, 200.0),
-        'power_curve_pp': _identity_pp(-10.0, 1000.0),
-    }
-    seq._eq_factor = 1.0
-
-    seq.volt = 50  # single value -> _calc_ampl_using_volt() then _calc_press()
-
-    assert seq._volt == [50]
-    assert seq._ampl == [50.0]
-    assert seq._press == pytest.approx(5e-5)
-
-
-def test_volt_setter_logging_only_press_failure_does_not_raise(patch_config):
-    """BUGFIX: _calc_press() is called here purely to log a derived pressure value -- the real
-    value being sent to hardware (voltage/amplitude) was already set independently above. If the
-    power curve's domain doesn't cover the resulting amplitude, _calc_press() used to leave
-    self._press = None, which then crashed the very next debug line's f'{self._press:.2f}' with
-    an unrelated-looking TypeError. Must now just degrade the log message instead."""
-    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
-    seq = _bare_sequence()
-    seq._engineering_mode = True
-    seq._driving_sys = SimpleNamespace(
-        power_options=['Voltage [V]'], native_power_params=['Amplitude [%]'], available_ch=1)
-    seq._ds_tran_combo = 'combo1'
-    seq._conv_param = {
-        'volt_curve_pp': _identity_pp(-10.0, 200.0),
-        # power_curve_pp's domain doesn't cover the resulting amplitude (50) --
-        # find_x_for_y_in_pp() inside _calc_press() won't find a match.
-        'power_curve_pp': _identity_pp(80.0, 1000.0),
-    }
-    seq._eq_factor = 1.0
-
-    seq.volt = 50  # must not raise
-
-    assert seq._volt == [50]
-    assert seq._ampl == pytest.approx([50.0])
-    assert seq._press is None
-
-
-def test_volt_setter_exits_when_derived_press_exceeds_configured_max(patch_config):
-    """CONFIRMED INTENDED (not a bug): mirrors
-    test_ampl_setter_exits_when_derived_press_exceeds_configured_max -- amplitude is what's
-    actually sent to hardware here (voltage is converted to it above), but exceeding the
-    configured safe pressure limit is a deliberate safety checkpoint for the engineer, so
-    _calc_press()'s max-pressure-exceeded sys.exit() is intentionally left free to propagate.
-    BUGFIX: the whole voltage request is rejected in that case, so the just-assigned _volt (and
-    its derived _ampl) are also cleared back to None -- otherwise they'd still look like a
-    valid, current result even though the request as a whole was refused."""
-    patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '1.4')
-    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
-    seq = _bare_sequence()
-    seq._engineering_mode = True
-    seq._driving_sys = SimpleNamespace(
-        power_options=['Voltage [V]'], native_power_params=['Amplitude [%]'], available_ch=1)
-    seq._ds_tran_combo = 'combo1'
-    seq._conv_param = {
-        # identity pp -> volt=2_000_000 converts straight to ampl=2_000_000
-        'volt_curve_pp': _identity_pp(-10.0, 1e7),
-        # identity pp -> find_x_for_y_in_pp(ampl=2_000_000) finds x = 2_000_000, so
-        # press_mpa = 2_000_000 * 1e-6 / eq_factor(1.0) = 2.0 MPa, above the 1.4 MPa max.
-        'power_curve_pp': _identity_pp(-10.0, 1e7),
-    }
-    seq._eq_factor = 1.0
-
-    with pytest.raises(SystemExit):
-        seq.volt = 2_000_000
-
-    assert seq._press is None
-    assert seq._volt is None
-    assert seq._ampl is None
-
-
-def test_volt_setter_with_multiple_values_skips_press_calculation(patch_config):
-    """When more than one voltage is given, _calc_press() is deliberately not
-    called (pressure cannot be derived from a per-element voltage array)."""
-    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
-    seq = _bare_sequence()
-    seq._engineering_mode = True
-    seq._driving_sys = SimpleNamespace(
-        power_options=['Voltage [V]'], native_power_params=['Amplitude [%]'], available_ch=2)
-    seq._ds_tran_combo = 'combo1'
-    seq._conv_param = {
-        'volt_curve_pp': _identity_pp(-10.0, 200.0),
-        'power_curve_pp': _identity_pp(-10.0, 1000.0),
-    }
-    seq._eq_factor = 1.0
-    seq._press = 'untouched'  # sentinel: must survive since _calc_press is skipped
-
-    seq.volt = [50, 60]
-
-    assert seq._volt == [50, 60]
-    assert seq._ampl == pytest.approx([50.0, 60.0])
-    assert seq._press == 'untouched'
-
-
-def test_volt_setter_exits_when_power_option_unavailable():
-    seq = _bare_sequence()
-    seq._engineering_mode = True
-    seq._driving_sys = SimpleNamespace(power_options=['Some other option'])
-
-    with pytest.raises(SystemExit):
-        seq.volt = 50
-
-
-def test_volt_setter_exits_on_wrong_length_list():
-    seq = _bare_sequence()
-    seq._engineering_mode = True
-    seq._driving_sys = SimpleNamespace(
-        power_options=['Voltage [V]'], native_power_params=['Voltage [V]'], available_ch=4)
-
-    with pytest.raises(SystemExit):
-        seq.volt = [10, 20]  # neither 1 entry nor 4 (available_ch) entries
-
-
-def test_volt_setter_exits_when_combo_unknown_but_required():
-    """Mirrors test_press_setter_exits_when_combo_unknown_but_required -- volt is non-native
-    (amplitude is) and no 'Equipment.Combination.*' section exists for this combo at all, so
-    there's no way to convert to amplitude (this is the behavior ampl's setter deviates from,
-    per the already-documented asymmetry)."""
-    seq = _bare_sequence()
-    seq._engineering_mode = True
-    seq._driving_sys = SimpleNamespace(power_options=['Voltage [V]'],
-                                       native_power_params=['Amplitude [%]'], available_ch=1)
-    seq._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
-
-    with pytest.raises(SystemExit):
-        seq.volt = 50
-
-
-# --- ampl ------------------------------------------------------------------
-# Mirrors volt (engineering_mode guard, scalar-or-list, wrong-length exit,
-# and now also the unavailable-power-option exit). Its handling of an
-# unknown-but-required combo is intentionally different from press/volt --
-# see the test below documenting why.
-
-def test_ampl_setter_raises_when_engineering_mode_disabled(patch_config):
-    patch_config.set('Power', 'Engineering-only options', 'Amplitude [%]')
-    seq = _bare_sequence()
-    seq._engineering_mode = False
-
-    with pytest.raises(RuntimeError):
-        seq.ampl = 50
-
-
-def test_ampl_setter_succeeds_without_engineering_mode_when_not_configured_as_such(
-        patch_config):
-    """Which options are engineering-only is a config-driven institutional policy, not
-    hardcoded -- an institution that doesn't list amplitude here can set it directly."""
-    patch_config.set('Power', 'Engineering-only options', '')
-    seq = _bare_sequence()
-    seq._engineering_mode = False
-    seq._driving_sys = SimpleNamespace(
-        power_options=['Amplitude [%]'], native_power_params=['Amplitude [%]'], available_ch=1)
-    seq._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
-
-    seq.ampl = 50  # must not raise
-
-    assert seq._ampl == [50]
-
-
-def test_ampl_setter_without_conversion_sets_value_directly():
-    """Amplitude is this driving system's own native power parameter (matches IGT), so no
-    calibration is ever needed to set it -- succeeds even with no active combo. CONFIRMED
-    INTENDED asymmetry with press/volt (which both sys.exit() in this same situation, per
-    their own tests): without an active calibration those two genuinely cannot derive the
-    amplitude actually sent to hardware, whereas ampl already *is* that value."""
-    seq = _bare_sequence()
-    seq._engineering_mode = True
-    seq._driving_sys = SimpleNamespace(
-        power_options=['Amplitude [%]'], native_power_params=['Amplitude [%]'], available_ch=1)
-    seq._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
-
-    seq.ampl = 50
-
-    assert seq._ampl == [50]
-    assert seq._chosen_power == 'Amplitude [%]'
-
-
-def test_ampl_setter_with_known_combo_triggers_conversion(patch_config):
-    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
-    seq = _bare_sequence()
-    seq._engineering_mode = True
-    seq._driving_sys = SimpleNamespace(
-        power_options=['Amplitude [%]'], native_power_params=['Amplitude [%]'], available_ch=1)
-    seq._ds_tran_combo = 'combo1'
-    seq._conv_param = {
-        'volt_curve_pp': _identity_pp(-10.0, 200.0),
-        'power_curve_pp': _identity_pp(-10.0, 1000.0),
-    }
-    seq._eq_factor = 1.0
-
-    seq.ampl = 50  # single value -> _calc_volt() then _calc_press()
-
-    assert seq._ampl == [50]
-    assert seq._volt == pytest.approx([50.0])
-    assert seq._press == pytest.approx(5e-5)
-
-
-def test_ampl_setter_logging_only_press_failure_does_not_raise(patch_config):
-    """BUGFIX: same crash as test_volt_setter_logging_only_press_failure_does_not_raise, reached
-    via ampl's setter instead -- the power curve's domain doesn't cover the set amplitude, so
-    find_x_for_y_in_pp() inside _calc_press() can't find a match and leaves self._press = None,
-    which must not crash the debug log line right after."""
-    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
-    seq = _bare_sequence()
-    seq._engineering_mode = True
-    seq._driving_sys = SimpleNamespace(
-        power_options=['Amplitude [%]'], native_power_params=['Amplitude [%]'], available_ch=1)
-    seq._ds_tran_combo = 'combo1'
-    seq._conv_param = {
-        'volt_curve_pp': _identity_pp(-10.0, 200.0),
-        'power_curve_pp': _identity_pp(80.0, 1000.0),  # domain doesn't cover ampl=50
-    }
-    seq._eq_factor = 1.0
-
-    seq.ampl = 50  # must not raise
-
-    assert seq._ampl == [50]
-    assert seq._volt == pytest.approx([50.0])
-    assert seq._press is None
-
-
-def test_ampl_setter_exits_when_derived_press_exceeds_configured_max(patch_config):
-    """CONFIRMED INTENDED (not a bug): even though amplitude is what's actually sent to
-    hardware here (the derived pressure is otherwise only for the log line), exceeding the
-    configured safe pressure limit is a deliberate safety checkpoint for the engineer, not
-    merely a logging concern -- _calc_press()'s max-pressure-exceeded sys.exit() is
-    intentionally left free to propagate through this setter rather than being caught.
-    BUGFIX: the whole amplitude request is rejected in that case, so the just-assigned _ampl
-    (and its derived _volt) are also cleared back to None -- otherwise they'd still look like a
-    valid, current result even though the request as a whole was refused."""
-    patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '1.4')
-    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
-    seq = _bare_sequence()
-    seq._engineering_mode = True
-    seq._driving_sys = SimpleNamespace(
-        power_options=['Amplitude [%]'], native_power_params=['Amplitude [%]'], available_ch=1)
-    seq._ds_tran_combo = 'combo1'
-    seq._conv_param = {
-        'volt_curve_pp': _identity_pp(-10.0, 200.0),
-        # identity pp -> find_x_for_y_in_pp(ampl) finds x = ampl = 2_000_000, so
-        # press_mpa = 2_000_000 * 1e-6 / eq_factor(1.0) = 2.0 MPa, above the 1.4 MPa max.
-        'power_curve_pp': _identity_pp(-10.0, 1e7),
-    }
-    seq._eq_factor = 1.0
-
-    with pytest.raises(SystemExit):
-        seq.ampl = 2_000_000
-
-    # Cleared right before the exit, per the "don't leave a stale, valid-looking value behind
-    # a rejected request" principle applied consistently across this whole module.
-    assert seq._press is None
-    assert seq._ampl is None
-    assert seq._volt is None
-
-
-def test_ampl_setter_exits_on_wrong_length_list():
-    seq = _bare_sequence()
-    seq._engineering_mode = True
-    seq._driving_sys = SimpleNamespace(
-        power_options=['Amplitude [%]'], native_power_params=['Amplitude [%]'], available_ch=4)
-
-    with pytest.raises(SystemExit):
-        seq.ampl = [10, 20]  # neither 1 entry nor 4 (available_ch) entries
-
-
-def test_ampl_setter_exits_when_power_option_unavailable():
-    """SOLVED: ampl's setter now mirrors press/volt with an explicit
-    `else: sys.exit(...)` when the power option isn't in
-    driving_sys.power_options, instead of silently leaving self._ampl at
-    the reset value of 0 with no error."""
-    seq = _bare_sequence()
-    seq._engineering_mode = True
-    seq._driving_sys = SimpleNamespace(power_options=['Some other option'], available_ch=1)
-
-    with pytest.raises(SystemExit):
-        seq.ampl = 50
-
-
-def test_ampl_and_volt_setters_both_work_without_calibration_when_both_are_native():
-    """native_power_params is a list, not a single value -- a driving system whose hardware
-    genuinely accepts more than one power representation directly (no calibration needed for
-    either) can declare both as native. Neither should need an active combo."""
-    seq = _bare_sequence()
-    seq._engineering_mode = True
-    seq._driving_sys = SimpleNamespace(
-        power_options=['Amplitude [%]', 'Voltage [V]'],
-        native_power_params=['Amplitude [%]', 'Voltage [V]'], available_ch=1)
-    seq._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
-    # Sentinel (not None -- that could also be a genuine _calc_* error-path result): must
-    # survive untouched, proving _calc_volt() inside ampl's setter is actually skipped when
-    # the combo isn't active, not just that ampl itself gets set correctly.
-    seq._volt = 'untouched'
-
-    seq.ampl = 50
-    assert seq._ampl == [50]
-    assert seq._volt == 'untouched'  # _calc_volt() skipped -- combo not active
-
-    seq.volt = 60
-    assert seq._volt == [60]
-    assert seq._ampl == [50]  # _calc_ampl_using_volt() skipped -- unchanged from before
-
-
-# --- focus_wrt_exit_plane ----------------------------------------------------
-
-def test_focus_wrt_exit_plane_setter_raises_when_configured_as_engineering_only(patch_config):
-    """Which focus options are engineering-only is a config-driven institutional policy --
-    exit plane is available to everyone by default, but an institution can gate it too."""
-    patch_config.set('Focus', 'Engineering-only options', 'Focus wrt exit plane [mm]')
-    seq = _bare_sequence()
-    seq._engineering_mode = False
-
-    with pytest.raises(RuntimeError):
-        seq.focus_wrt_exit_plane = 20
-
-
-def test_focus_wrt_exit_plane_setter_succeeds_without_engineering_mode_when_not_configured_as_such(
-        patch_config):
-    """Mirrors test_focus_wrt_mid_bowl_setter_succeeds_without_engineering_mode_when_not_
-    configured_as_such, for the other focus setter -- exit plane is available by default, and
-    stays available when explicitly cleared from Engineering-only options."""
-    patch_config.set('Focus', 'Engineering-only options', '')
-    seq = _bare_sequence()
-    seq._engineering_mode = False
-    seq._driving_sys = SimpleNamespace(
-        focus_options=['Focus wrt exit plane [mm]'],
-        native_focus_params=['Focus wrt exit plane [mm]'])
-    seq._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
-    seq._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
-    seq._chosen_power = None
-
-    seq.focus_wrt_exit_plane = 20  # must not raise
-
-    assert seq.focus_wrt_exit_plane == 20
-
-
-def test_focus_wrt_exit_plane_setter_without_conversion_uses_exit_plane_offset():
-    """Exit plane is this driving system's own native focus parameter (matches Sonic
-    Concepts/CITRUS), so no calibration is ever needed to set it."""
-    seq = _bare_sequence()
-    seq._driving_sys = SimpleNamespace(
-        focus_options=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'],
-        native_focus_params=['Focus wrt exit plane [mm]'])
-    seq._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
-    seq._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
-    seq._chosen_power = None  # no power chosen yet -> power-derived logging is skipped
-    # Sentinels (not None -- that could also be a genuine _calc_* error-path result): must
-    # survive untouched, proving the whole power-recompute block (eq_factor included) is
-    # skipped when the combo isn't active, not just that the focus values themselves are right.
-    seq._eq_factor = 'untouched'
-    seq._ampl = 'untouched'
-    seq._volt = 'untouched'
-
-    seq.focus_wrt_exit_plane = 20
-
-    assert seq.focus_wrt_exit_plane == 20
-    assert seq.focus_wrt_mid_bowl == 25  # focus + exit_plane_dist
-    assert seq._eq_factor == 'untouched'
-    assert seq._ampl == 'untouched'
-    assert seq._volt == 'untouched'
-
-
-def test_focus_wrt_exit_plane_setter_with_known_combo_uses_focus_curve_and_recalculates(
-        patch_config):
-    """Exit plane is non-native (mid bowl is, matching IGT), so converting it requires an
-    active calibration."""
-    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
-    seq = _bare_sequence()
-    seq._driving_sys = SimpleNamespace(
-        focus_options=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'],
-        native_focus_params=['Focus wrt mid bowl [mm]'])
-    seq._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
-    seq._ds_tran_combo = 'combo1'
-    seq._conv_param = {
-        'focus_curve_pp': _identity_pp(0.0, 100.0),
-        'eq_curve_pp': _identity_pp(0.0, 100.0),
-        'power_curve_pp': _identity_pp(-10.0, 1000.0),
-        'volt_curve_pp': _identity_pp(-10.0, 200.0),
-    }
-    seq._press = 2e-6  # MPa -> press_pa = 2
-    seq._chosen_power = 'Max. pressure in free water [MPa]'  # power already chosen
-
-    seq.focus_wrt_exit_plane = 20
-
-    assert seq.focus_wrt_exit_plane == 20
-    assert seq.focus_wrt_mid_bowl == pytest.approx(20.0)  # focus_curve_pp(20) via identity
-    assert float(seq._eq_factor) == pytest.approx(20.0)  # eq_curve_pp(20) via identity
-    # x_value = press_pa(2) * eq_factor(20) = 40 -> power_curve_pp identity -> ampl = 40
-    assert seq._ampl == [40.0]
-    assert seq._volt == pytest.approx([40.0])
-
-
-def test_focus_wrt_exit_plane_setter_updates_eq_factor_even_when_no_power_chosen_yet(
-        patch_config):
-    """BUGFIX: _calc_eq_factor() must run whenever the combo is active, regardless of whether a
-    power parameter has been chosen yet -- it was previously nested inside the same "only if
-    chosen_power is not None" guard as the ampl/volt logging, which left self._eq_factor stale
-    (computed for the OLD focus) until the first power setter ran, silently feeding a wrong
-    eq_factor into that setter's conversion."""
-    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
-    seq = _bare_sequence()
-    seq._driving_sys = SimpleNamespace(
-        focus_options=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'],
-        native_focus_params=['Focus wrt mid bowl [mm]'])
-    seq._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
-    seq._ds_tran_combo = 'combo1'
-    seq._conv_param = {
-        'focus_curve_pp': _identity_pp(0.0, 100.0),
-        'eq_curve_pp': _identity_pp(0.0, 100.0),
-    }
-    seq._chosen_power = None  # no power chosen yet -> ampl/volt logging is skipped
-    # Sentinels (not None -- that could also be a genuine _calc_* error-path result): must
-    # survive untouched, proving _calc_ampl()/_calc_volt() were actually skipped, not just that
-    # _eq_factor happens to be right.
-    seq._ampl = 'untouched'
-    seq._volt = 'untouched'
-
-    seq.focus_wrt_exit_plane = 20
-
-    assert float(seq._eq_factor) == pytest.approx(20.0)  # eq_curve_pp(20) via identity
-    assert seq._ampl == 'untouched'
-    assert seq._volt == 'untouched'
-
-
-def test_focus_wrt_exit_plane_setter_exits_when_out_of_transducer_range():
-    seq = _bare_sequence()
-    seq._driving_sys = SimpleNamespace(
-        focus_options=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'],
-        native_focus_params=['Focus wrt exit plane [mm]'])
-    seq._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
-
-    with pytest.raises(SystemExit):
-        seq.focus_wrt_exit_plane = 200
-
-
-def test_focus_wrt_exit_plane_setter_reports_missing_calibration_before_range_error():
-    """Fail fast: whether this driving system can accept focus_wrt_exit_plane at all is
-    checked before anything about the specific value (including the transducer's min/max
-    range) -- so a value that's *both* out of range *and* unconvertible (non-native, no active
-    combo) surfaces the calibration error, not the (less relevant, in this case) range one."""
-    seq = _bare_sequence()
-    seq._driving_sys = SimpleNamespace(
-        focus_options=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'],
-        native_focus_params=['Focus wrt mid bowl [mm]'])
-    seq._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
-    seq._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
-
-    with pytest.raises(SystemExit, match='No active calibration available'):
-        seq.focus_wrt_exit_plane = 200  # also out of the transducer's [0, 100] range
-
-
-def test_focus_wrt_exit_plane_setter_exits_when_combo_unknown_but_required():
-    """BUGFIX: exit plane is non-native (mid bowl is, matching IGT) and no
-    'Equipment.Combination.*' section exists for this combo at all, so there's no way to
-    convert to mid bowl -- the setter now exits immediately, before assigning anything, instead
-    of first assigning a geometric fallback value that would then look valid even though the
-    request as a whole was rejected."""
-    seq = _bare_sequence()
-    seq._driving_sys = SimpleNamespace(
-        focus_options=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'],
-        native_focus_params=['Focus wrt mid bowl [mm]'])
-    seq._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
-    seq._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
-
-    with pytest.raises(SystemExit):
-        seq.focus_wrt_exit_plane = 20
-
-
-# --- focus_wrt_mid_bowl -------------------------------------------------------
-
-def test_focus_wrt_mid_bowl_setter_raises_when_engineering_mode_disabled(patch_config):
-    patch_config.set('Focus', 'Engineering-only options', 'Focus wrt mid bowl [mm]')
-    seq = _bare_sequence()
-    seq._engineering_mode = False
-
-    with pytest.raises(RuntimeError):
-        seq.focus_wrt_mid_bowl = 25
-
-
-def test_focus_wrt_mid_bowl_setter_succeeds_without_engineering_mode_when_not_configured_as_such(
-        patch_config):
-    """Which options are engineering-only is a config-driven institutional policy, not
-    hardcoded -- an institution that doesn't list mid bowl here can set it directly."""
-    patch_config.set('Focus', 'Engineering-only options', '')
-    seq = _bare_sequence()
-    seq._engineering_mode = False
-    seq._driving_sys = SimpleNamespace(
-        focus_options=['Focus wrt mid bowl [mm]'],
-        native_focus_params=['Focus wrt mid bowl [mm]'])
-    seq._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
-    seq._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
-    seq._chosen_power = None
-
-    seq.focus_wrt_mid_bowl = 25  # must not raise
-
-    assert seq.focus_wrt_mid_bowl == 25
-
-
-def test_focus_wrt_mid_bowl_setter_exits_when_focus_option_unavailable():
-    """focus_options is a per-driving-system list, mirroring power_options -- a driving system
-    that never offers mid bowl at all (e.g. Sonic Concepts/CITRUS, which only ever have exit
-    plane as a curve-free native option) exits with a clear 'not available' message, distinct
-    from the separate 'no active calibration' message used when the option is offered but
-    unconvertible right now."""
-    seq = _bare_sequence()
-    seq._engineering_mode = True
     seq._driving_sys = SimpleNamespace(focus_options=['Focus wrt exit plane [mm]'])
 
-    with pytest.raises(SystemExit, match='not available'):
-        seq.focus_wrt_mid_bowl = 25
+    assert seq.get_focus_options() == ['Focus wrt exit plane [mm]']
 
 
-def test_focus_wrt_exit_plane_setter_exits_when_focus_option_unavailable():
-    """Mirrors test_focus_wrt_mid_bowl_setter_exits_when_focus_option_unavailable, for the
-    other focus setter."""
+# --- slots / add_slot / _dispatch_focus / _dispatch_power -------------------
+
+def _configure_transducer(patch_config, serial, elements=2):
+    """Configures a minimal, real 'Equipment.Transducer.*' section -- add_slot() assigns a real
+    transducer serial via TransducerSlot.transducer's setter, which does a real config lookup
+    (unlike driving_sys, which add_slot()'s other tests get away with faking via a plain
+    SimpleNamespace)."""
+    section = f'Equipment.Transducer.{serial}'
+    patch_config.set(section, 'Elements', str(elements))
+    patch_config.set(section, 'Fund. freq.', '300')
+    patch_config.set(section, 'Min. focus', '0')
+    patch_config.set(section, 'Max. focus', '100')
+    patch_config.set(section, 'Exit plane - first element dist.', '5')
+    patch_config.set(section, 'Steer information', '')
+    patch_config.set(section, 'Active?', 'True')
+
+
+def test_add_slot_exits_when_max_tran_slots_exceeded():
     seq = _bare_sequence()
-    seq._driving_sys = SimpleNamespace(focus_options=['Focus wrt mid bowl [mm]'])
-
-    with pytest.raises(SystemExit, match='not available'):
-        seq.focus_wrt_exit_plane = 25
-
-
-def test_focus_wrt_mid_bowl_setter_without_conversion_uses_exit_plane_offset():
-    """Mid bowl is this driving system's own native focus parameter (matches IGT), so no
-    calibration is ever needed to set it."""
-    seq = _bare_sequence()
-    seq._engineering_mode = True
-    seq._driving_sys = SimpleNamespace(
-        focus_options=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'],
-        native_focus_params=['Focus wrt mid bowl [mm]'])
-    seq._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
-    seq._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
-    seq._chosen_power = None  # no power chosen yet -> power-derived logging is skipped
-    # Sentinels (not None -- that could also be a genuine _calc_* error-path result): must
-    # survive untouched, proving the whole power-recompute block (eq_factor included) is
-    # skipped when the combo isn't active, not just that the focus values themselves are right.
-    seq._eq_factor = 'untouched'
-    seq._ampl = 'untouched'
-    seq._volt = 'untouched'
-
-    seq.focus_wrt_mid_bowl = 25
-
-    assert seq.focus_wrt_mid_bowl == 25
-    assert seq.focus_wrt_exit_plane == 20  # focus - exit_plane_dist
-    assert seq._eq_factor == 'untouched'
-    assert seq._ampl == 'untouched'
-    assert seq._volt == 'untouched'
-
-
-def test_focus_wrt_mid_bowl_setter_with_known_combo_finds_x_via_pp_and_recalculates(patch_config):
-    """Mid bowl is non-native (exit plane is, matching Sonic Concepts/CITRUS), so converting it
-    requires an active calibration."""
-    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
-    seq = _bare_sequence()
-    seq._engineering_mode = True
-    seq._driving_sys = SimpleNamespace(
-        focus_options=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'],
-        native_focus_params=['Focus wrt exit plane [mm]'])
-    seq._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
-    seq._ds_tran_combo = 'combo1'
-    seq._conv_param = {
-        'focus_curve_pp': _identity_pp(0.0, 100.0),
-        'eq_curve_pp': _identity_pp(0.0, 100.0),
-        'power_curve_pp': _identity_pp(-10.0, 1000.0),
-        'volt_curve_pp': _identity_pp(-10.0, 200.0),
-    }
-    seq._press = 2e-6
-    seq._chosen_power = 'Max. pressure in free water [MPa]'  # power already chosen
-
-    seq.focus_wrt_mid_bowl = 20  # within focus_curve_pp's [0, 100] range -> found
-
-    assert seq.focus_wrt_exit_plane == pytest.approx(20.0)
-    assert seq.focus_wrt_mid_bowl == 20
-    assert float(seq._eq_factor) == pytest.approx(20.0)
-    assert seq._ampl == [40.0]
-    assert seq._volt == pytest.approx([40.0])
-
-
-def test_focus_wrt_mid_bowl_setter_falls_back_when_x_not_found(patch_config):
-    """When find_x_for_y_in_pp can't find an x value for the target focus_wrt_mid_bowl (target
-    outside the focus_curve_pp's y-range) despite an active calibration, the setter logs a
-    warning and falls back to focus - exit_plane_dist rather than raising."""
-    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
-    seq = _bare_sequence()
-    seq._engineering_mode = True
-    seq._driving_sys = SimpleNamespace(
-        focus_options=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'],
-        native_focus_params=['Focus wrt exit plane [mm]'])
-    seq._transducer = SimpleNamespace(min_foc=-100, max_foc=1000, exit_plane_dist=5, name='tran')
-    seq._ds_tran_combo = 'combo1'
-    seq._conv_param = {
-        'focus_curve_pp': _identity_pp(0.0, 100.0),
-        'eq_curve_pp': _identity_pp(-1000.0, 1000.0),
-        'power_curve_pp': _identity_pp(-1000.0, 1000.0),
-        'volt_curve_pp': _identity_pp(-1000.0, 1000.0),
-    }
-    seq._press = 0
-    seq._chosen_power = 'Max. pressure in free water [MPa]'  # power already chosen
-
-    seq.focus_wrt_mid_bowl = 500  # outside focus_curve_pp's [0, 100] y-range -> not found
-
-    assert seq.focus_wrt_exit_plane == 495  # fallback: focus - exit_plane_dist
-    assert seq._ampl == [0.0]
-    assert seq._volt == pytest.approx([0.0])
-
-
-def test_focus_wrt_mid_bowl_setter_exits_when_combo_unknown_but_required():
-    """BUGFIX: mid bowl is non-native (exit plane is, matching Sonic Concepts/CITRUS) and no
-    'Equipment.Combination.*' section exists for this combo at all, so there's no way to
-    convert to exit plane."""
-    seq = _bare_sequence()
-    seq._engineering_mode = True
-    seq._driving_sys = SimpleNamespace(
-        focus_options=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'],
-        native_focus_params=['Focus wrt exit plane [mm]'])
-    seq._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
-    seq._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
+    seq._engineering_mode = False
+    seq._driving_sys = SimpleNamespace(serial='DS1', max_tran_slots=1)
+    seq._slots = [_fake_slot()]
 
     with pytest.raises(SystemExit):
-        seq.focus_wrt_mid_bowl = 20
+        seq.add_slot('TRAN-B', 'Focus wrt exit plane [mm]', 20, 'Amplitude [%]', 30)
 
 
-def test_focus_wrt_mid_bowl_setter_updates_eq_factor_even_when_no_power_chosen_yet(patch_config):
-    """BUGFIX: see the identical note in
-    test_focus_wrt_exit_plane_setter_updates_eq_factor_even_when_no_power_chosen_yet."""
-    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
+def test_add_slot_exits_when_transducer_exceeds_elements_per_slot(patch_config):
+    """Slots are always evenly divided, so the per-slot ceiling is simply
+    available_ch / max_tran_slots -- no separate config key for it. A transducer with more
+    elements than that must be rejected before ever touching focus/power, regardless of how the
+    *other* slots end up filled."""
+    _configure_transducer(patch_config, 'TRAN-BIG', elements=60)
+    seq = _bare_sequence()
+    seq._engineering_mode = False
+    seq._driving_sys = SimpleNamespace(serial='DS1', max_tran_slots=4, available_ch=208,
+                                       tran_comp=['TRAN-BIG'])
+    seq._slots = []
+
+    with pytest.raises(SystemExit, match='60 elements'):
+        seq.add_slot('TRAN-BIG', 'Focus wrt exit plane [mm]', 20, 'Amplitude [%]', 30)
+
+
+def test_add_slot_accepts_transducer_at_exactly_the_per_slot_ceiling(patch_config):
+    _configure_transducer(patch_config, 'TRAN-52', elements=52)
+    patch_config.set('Power', 'Option.ampl', 'Amplitude [%]')
+    patch_config.set('Focus', 'Option.exit', 'Focus wrt exit plane [mm]')
     seq = _bare_sequence()
     seq._engineering_mode = True
     seq._driving_sys = SimpleNamespace(
-        focus_options=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'],
-        native_focus_params=['Focus wrt exit plane [mm]'])
-    seq._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
-    seq._ds_tran_combo = 'combo1'
-    seq._conv_param = {
-        'focus_curve_pp': _identity_pp(0.0, 100.0),
-        'eq_curve_pp': _identity_pp(0.0, 100.0),
-    }
-    seq._chosen_power = None  # no power chosen yet -> ampl/volt logging is skipped
-    # Sentinels (not None -- that could also be a genuine _calc_* error-path result): must
-    # survive untouched, proving _calc_ampl()/_calc_volt() were actually skipped, not just that
-    # _eq_factor happens to be right.
-    seq._ampl = 'untouched'
-    seq._volt = 'untouched'
+        serial='DS1', max_tran_slots=4, available_ch=208, tran_comp=['TRAN-52'],
+        power_options=['Amplitude [%]'], focus_options=['Focus wrt exit plane [mm]'],
+        native_power_params=['Amplitude [%]'], native_focus_params=['Focus wrt exit plane [mm]'])
+    seq._slots = []
 
-    seq.focus_wrt_mid_bowl = 20  # within focus_curve_pp's [0, 100] range -> found
+    slot = seq.add_slot('TRAN-52', 'Focus wrt exit plane [mm]', 20, 'Amplitude [%]', 30)
 
-    assert float(seq._eq_factor) == pytest.approx(20.0)  # eq_curve_pp(20) via identity
-    assert seq._ampl == 'untouched'
-    assert seq._volt == 'untouched'
+    assert slot.transducer.elements == 52
 
 
-def test_focus_setters_both_work_without_calibration_when_both_are_native():
-    """native_focus_params is a list, not a single value -- a driving system whose hardware
-    genuinely accepts more than one focus representation directly (e.g. an exact, curve-free
-    geometric relationship for every transducer it supports) can declare both as native.
-    Neither should need an active combo."""
+def test_add_slot_sets_optional_oper_freq_and_dephasing_degree(patch_config):
+    _configure_transducer(patch_config, 'TRAN-A', elements=2)
+    patch_config.set('Power', 'Option.ampl', 'Amplitude [%]')
+    patch_config.set('Focus', 'Option.exit', 'Focus wrt exit plane [mm]')
     seq = _bare_sequence()
     seq._engineering_mode = True
     seq._driving_sys = SimpleNamespace(
-        focus_options=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'],
-        native_focus_params=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'])
-    seq._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
-    seq._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
-    seq._chosen_power = None
-    # Sentinels (not None -- that could also be a genuine _calc_* error-path result): must
-    # survive untouched, proving the whole power-recompute block (eq_factor included) is
-    # skipped for both calls, not just that the focus values themselves are right.
-    seq._eq_factor = 'untouched'
-    seq._ampl = 'untouched'
-    seq._volt = 'untouched'
+        serial='DS1', max_tran_slots=1, available_ch=2, tran_comp=['TRAN-A'],
+        power_options=['Amplitude [%]'], focus_options=['Focus wrt exit plane [mm]'],
+        native_power_params=['Amplitude [%]'], native_focus_params=['Focus wrt exit plane [mm]'])
+    seq._slots = []
 
-    seq.focus_wrt_exit_plane = 20
-    assert seq.focus_wrt_exit_plane == 20
+    slot = seq.add_slot('TRAN-A', 'Focus wrt exit plane [mm]', 20, 'Amplitude [%]', 30,
+                        oper_freq=500, dephasing_degree=[90, 180])
 
-    seq.focus_wrt_mid_bowl = 30
-    assert seq.focus_wrt_mid_bowl == 30
-
-    assert seq._eq_factor == 'untouched'
-    assert seq._ampl == 'untouched'
-    assert seq._volt == 'untouched'
+    assert slot.oper_freq == 500
+    assert slot.dephasing_degree == [90, 180]
 
 
-# --- _update_conv_param -----------------------------------------------------
-
-def _write_identity_fit_json(tmp_path, name, x0, x1):
-    """
-    Writes a synthetic single-piece FitParams JSON file to tmp_path whose
-    resulting PPoly is the identity function pp(x) == x over [x0, x1] --
-    same convention as _identity_pp above (c=[[1.0], [x0]]) -- and returns
-    its absolute path as a string, suitable for passing straight to
-    extract_and_define_pp/_update_conv_param via patch_config (see the
-    module docstring's note on absolute tmp_path resolution).
-    """
-    fit_params = {
-        "xTransform": "none",
-        "FitParams": {"breaks": [x0, x1], "coefs": [[1.0, x0]]},
-    }
-    path = tmp_path / name
-    path.write_text(json.dumps(fit_params))
-    return str(path)
-
-
-def test_update_conv_param_populates_all_four_curves_and_updates_transducer_range(
-        tmp_path, patch_config):
+def test_add_slot_defaults_oper_freq_to_transducer_fund_freq_when_not_given(patch_config):
+    """oper_freq has no calibration-ordering hazard (unlike focus/power) -- it's optional, and
+    when not given keeps whatever TransducerSlot.transducer's own setter already derived from
+    the transducer's fundamental frequency."""
+    _configure_transducer(patch_config, 'TRAN-A', elements=2)
+    patch_config.set('Power', 'Option.ampl', 'Amplitude [%]')
+    patch_config.set('Focus', 'Option.exit', 'Focus wrt exit plane [mm]')
     seq = _bare_sequence()
-    seq._ds_tran_combo = 'combo1'
-    seq._transducer = SimpleNamespace(min_foc=0, max_foc=0)
-    seq._focus_wrt_exit_plane = 20
-    seq._press = 2e-6  # MPa -> press_pa = 2
+    seq._engineering_mode = True
+    seq._driving_sys = SimpleNamespace(
+        serial='DS1', max_tran_slots=1, available_ch=2, tran_comp=['TRAN-A'],
+        power_options=['Amplitude [%]'], focus_options=['Focus wrt exit plane [mm]'],
+        native_power_params=['Amplitude [%]'], native_focus_params=['Focus wrt exit plane [mm]'])
+    seq._slots = []
 
-    eq_file = _write_identity_fit_json(tmp_path, 'eq.json', 0.0, 100.0)
-    focus_file = _write_identity_fit_json(tmp_path, 'focus.json', 0.0, 100.0)
-    power_file = _write_identity_fit_json(tmp_path, 'power.json', -10.0, 1000.0)
-    volt_file = _write_identity_fit_json(tmp_path, 'volt.json', -10.0, 200.0)
+    slot = seq.add_slot('TRAN-A', 'Focus wrt exit plane [mm]', 20, 'Amplitude [%]', 30)
 
-    section = 'Equipment.Combination.combo1'
-    patch_config.set(section, 'EqualizationCurveFit json file', eq_file)
-    patch_config.set(section, 'FocusCurveFit json file', focus_file)
-    patch_config.set(section, 'PowerCurveFit json file', power_file)
-    patch_config.set(section, 'VoltageCurveFit json file', volt_file)
+    assert slot.oper_freq == 300  # transducer's own 'Fund. freq.', from _configure_transducer
+    assert slot.dephasing_degree is None
 
-    seq._update_conv_param()
 
-    assert seq._conv_param['eq_curve_pp'] is not None
-    assert seq._conv_param['focus_curve_pp'] is not None
-    assert seq._conv_param['power_curve_pp'] is not None
-    assert seq._conv_param['volt_curve_pp'] is not None
+# --- _validate_channel_count -------------------------------------------------
 
-    # transducer.min_foc/max_foc are (re)set from the equalization curve's breaks
-    assert seq.transducer.min_foc == 0.0
-    assert seq.transducer.max_foc == 100.0
+def test_validate_channel_count_exits_when_total_elements_exceed_available_ch():
+    seq = _bare_sequence()
+    seq._driving_sys = SimpleNamespace(available_ch=4)
+    seq._slots = [_fake_slot(elements=3), _fake_slot(elements=3)]
 
-    # eq_curve_pp(focus_wrt_exit_plane=20) -> eq_factor, via identity
-    assert float(seq._eq_factor) == pytest.approx(20.0)
-    # x_value = press_pa(2) * eq_factor(20) = 40 -> power_curve_pp identity -> ampl = 40
-    assert seq._ampl == [40.0]
-    assert seq._volt == pytest.approx([40.0])
+    with pytest.raises(SystemExit):
+        seq._validate_channel_count()
+
+
+def test_validate_channel_count_allows_building_up_to_the_exact_total():
+    """Deliberately not an exact-equality check -- a driving system with more than one slot
+    (max_tran_slots > 1) is legitimately 'not done yet' after just the first add_slot() call."""
+    seq = _bare_sequence()
+    seq._driving_sys = SimpleNamespace(available_ch=4)
+    seq._slots = [_fake_slot(elements=2)]
+
+    seq._validate_channel_count()  # must not raise -- 2 < 4, still room for another slot

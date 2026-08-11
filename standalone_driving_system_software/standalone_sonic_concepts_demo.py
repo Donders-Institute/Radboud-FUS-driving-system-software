@@ -48,129 +48,179 @@ logger = initialize_logger(log_dir, filename)
 # sync_logger(logger)  # logger needs to be created with logging.getLogger()
 
 ##############################################################################
+# connect with the driving system
+##############################################################################
+
+# Connecting doesn't require a sequence to exist yet. In practice, you typically connect once
+# when your experiment starts, then build/adapt sequences iteratively as it progresses -- so
+# look up the driving system's connection info directly via DrivingSystem, rather than through
+# a Sequence.
+
+from fus_driving_systems import driving_system
+from fus_driving_systems.sonic_concepts import sonic_concepts_ds
+
+# to check available driving systems: print(driving_system.get_ds_serials())
+# choose one driving system from that list as input
+ds_info = driving_system.DrivingSystem()
+ds_info.set_ds_info('203-035')
+ds_info.connect_info = 'COM5'  # COM port the driving system is actually connected to on this machine
+
+sc_ds = sonic_concepts_ds.SonicConcepts()
+sc_ds.connect(ds_info.connect_info)
+
+# you can check if the system is still connected by using the following:
+# print(sc_ds.is_connected())
+
+# optional: check if correct transducer is selected on driving system before continuining
+sc_ds.check_tran_sel()
+
+##############################################################################
 # create a sequence for a SC driving system
 # a sequence can be created in advance and a new sequence can be defined
 # later on in the code
 ##############################################################################
 
-from fus_driving_systems import driving_system, sequence, transducer
+from fus_driving_systems import sequence, transducer
 
-slow_seq = sequence.Sequence()
+# equipment: same driving system already used to connect() above
+slow_seq = sequence.Sequence(ds_info.serial)
 
-# equipment
-# to check available driving systems: print(driving_system.get_ds_serials())
-# choose one driving system from that list as input
-slow_seq.driving_sys = '203-035'
-slow_seq.driving_sys.connect_info = 'COM5'  # COM port the driving system is connected to
+# send_sequence()/execute_sequence() automatically reconnect using slow_seq.driving_sys.connect_info
+# if the connection ever drops -- propagate this machine's actual COM port onto the sequence's own
+# driving system too (ds_info above is a separate object), so that automatic reconnect uses the
+# right port instead of falling back to whatever ds_config.ini happens to default to.
+slow_seq.driving_sys.connect_info = ds_info.connect_info
 
-# set wait_for_trigger to true if you want to use trigger
-slow_seq.wait_for_trigger = False
-
+# add_slot() fully configures one transducer -- serial, focus, and power all at once (no
+# partial/half-configured slot). This driving system currently supports only one transducer slot
+# (see ds_info.max_tran_slots) -- add another add_slot() call for each additional transducer if a
+# future SC driving system ever supports more.
 # to check available transducers: print(transducer.get_tran_serials())
 # choose one transducer from that list as input
-slow_seq.transducer = 'CTX-250-014'
-
-# set general parameters
-slow_seq.oper_freq = 250  # [kHz], operating frequency
-slow_seq.focus_wrt_exit_plane = 40  # [mm], focal depth
-slow_seq.global_power = 15  # [W], global power. NOTE: DIFFERENT THAN IGT
+slow_slot = slow_seq.add_slot(
+    'CTX-250-014',
+    'Focus wrt exit plane [mm]', 40,  # [mm], focal depth
+    'Global power [mW]', 15,  # [W], global power. NOTE: DIFFERENT THAN IGT
+    oper_freq=250,  # [kHz], operating frequency
+)
 
 # # timing parameters # #
 # you can use the TUS Calculator to visualize the timing parameters:
 # https://www.socsci.ru.nl/fusinitiative/tuscalculator/
 
-# ## pulse ## #
-slow_seq.pulse_dur = 100  # [ms], pulse duration
-slow_seq.pulse_rep_int = 1000  # [ms], pulse repetition interval
+# configure_timing() sets every pulse/pulse-train/trigger parameter together, in one call --
+# it's the only way to set any of them (pulse_dur, pulse_rep_int, pulse_ramp_shape, ...,
+# trigger_option, n_triggers all have getters only), precisely because they cascade/interact
+# with each other and are prone to ordering hazards if set individually and out of order.
+slow_seq.configure_timing(
+    # ## pulse ## #
+    pulse_dur=100,  # [ms], pulse duration
 
-# pulse ramping
-# to check available ramp shapes: print(seq.get_ramp_shapes())
-# choose one ramp shape from that list as input
-slow_seq.pulse_ramp_shape = 'Rectangular - no ramping'
+    # pulse ramping
+    # to check available ramp shapes: print(slow_seq.get_ramp_shapes())
+    # choose one ramp shape from that list as input
+    pulse_ramp_shape='Rectangular - no ramping',
+    # ramping up and ramping down duration are equal and are equal to ramp duration
+    pulse_ramp_dur=0,  # [ms], ramp duration
 
-# ramping up and ramping down duration are equal and are equal to ramp duration
-slow_seq.pulse_ramp_dur = 0  # [ms], ramp duration
+    # ## pulse train ## #
+    pulse_rep_int=1000,  # [ms], pulse repetition interval
 
-# ## pulse train ## #
-# if you only want one pulse train, keep the values equal to the pulse repetition interval
-slow_seq.pulse_train_dur = 80000  # [ms], pulse train duration
+    # if you only want one pulse train, you don't need to set this at all -- it defaults to
+    # pulse_rep_int. Set explicitly here for clarity.
+    pulse_train_dur=80000,  # [ms], pulse train duration
+
+    # wait_for_trigger is derived from trigger_option -- there is no separate flag to set. Use
+    # 'None' (this template's default) to not use a trigger at all; 'TriggerOnePulseTrain' to fire
+    # one pulse train per trigger received; 'TriggerWholeProtocol' to fire the entire, already
+    # fully-timed sequence at once with a single trigger (equivalent to executing it directly,
+    # just gated behind that one trigger). To check available trigger options:
+    # print(slow_seq.get_trigger_options())
+    trigger_option='None',
+    # trigger_option='TriggerOnePulseTrain',
+    # trigger_option='TriggerWholeProtocol'
+)
 
 
 #################################################################
 
-fast_seq = sequence.Sequence()
+# equipment: same driving system already used to connect() above
+fast_seq = sequence.Sequence(ds_info.serial)
 
-# equipment
-# to check available driving systems: print(driving_system.get_ds_serials())
-# choose one driving system from that list as input
-fast_seq.driving_sys = '203-035'
-fast_seq.driving_sys.connect_info = 'COM5'  # COM port the driving system is connected to
+# send_sequence()/execute_sequence() automatically reconnect using fast_seq.driving_sys.connect_info
+# if the connection ever drops -- propagate this machine's actual COM port onto the sequence's own
+# driving system too (ds_info above is a separate object), so that automatic reconnect uses the
+# right port instead of falling back to whatever ds_config.ini happens to default to.
+fast_seq.driving_sys.connect_info = ds_info.connect_info
 
-# set wait_for_trigger to true if you want to use trigger
-fast_seq.wait_for_trigger = False
-
+# add_slot() fully configures one transducer -- serial, focus, and power all at once (no
+# partial/half-configured slot). This driving system currently supports only one transducer slot
+# (see ds_info.max_tran_slots) -- add another add_slot() call for each additional transducer if a
+# future SC driving system ever supports more.
 # to check available transducers: print(transducer.get_tran_serials())
 # choose one transducer from that list as input
-fast_seq.transducer = 'CTX-250-014'
-
-# set general parameters
-fast_seq.oper_freq = 250  # [kHz], operating frequency
-fast_seq.focus_wrt_exit_plane = 40  # [mm], focal depth
-fast_seq.global_power = 15  # [W], global power. NOTE: DIFFERENT THAN IGT
+fast_slot = fast_seq.add_slot(
+    'CTX-250-014',
+    'Focus wrt exit plane [mm]', 40,  # [mm], focal depth
+    'Global power [mW]', 15,  # [W], global power. NOTE: DIFFERENT THAN IGT
+    oper_freq=250,  # [kHz], operating frequency
+)
 
 # # timing parameters # #
 # you can use the TUS Calculator to visualize the timing parameters:
-# https://www.socsci.ru.nl/fusinitiative/tuscalculator/
+# https://www.itrusst.com/tus-calculator
 
-# ## pulse ## #
-fast_seq.pulse_dur = 0.1  # [ms], pulse duration
-fast_seq.pulse_rep_int = 1  # [ms], pulse repetition interval
+# configure_timing() sets every pulse/pulse-train/trigger parameter together, in one call --
+# it's the only way to set any of them (pulse_dur, pulse_rep_int, pulse_ramp_shape, ...,
+# trigger_option, n_triggers all have getters only), precisely because they cascade/interact
+# with each other and are prone to ordering hazards if set individually and out of order.
+fast_seq.configure_timing(
+    # ## pulse ## #
+    pulse_dur=0.1,  # [ms], pulse duration
 
-# pulse ramping
-# to check available ramp shapes: print(seq.get_ramp_shapes())
-# choose one ramp shape from that list as input
-fast_seq.pulse_ramp_shape = 'Rectangular - no ramping'
+    # pulse ramping
+    # to check available ramp shapes: print(fast_seq.get_ramp_shapes())
+    # choose one ramp shape from that list as input
+    pulse_ramp_shape='Rectangular - no ramping',
+    # ramping up and ramping down duration are equal and are equal to ramp duration
+    pulse_ramp_dur=0,  # [ms], ramp duration
 
-# ramping up and ramping down duration are equal and are equal to ramp duration
-fast_seq.pulse_ramp_dur = 0  # [ms], ramp duration
+    # ## pulse train ## #
+    pulse_rep_int=1,  # [ms], pulse repetition interval
 
-# ## pulse train ## #
-# if you only want one pulse train, keep the values equal to the pulse repetition interval
-fast_seq.pulse_train_dur = 80000  # [ms], pulse train duration
+    # if you only want one pulse train, you don't need to set this at all -- it defaults to
+    # pulse_rep_int. Set explicitly here for clarity.
+    pulse_train_dur=80000,  # [ms], pulse train duration
+
+    # wait_for_trigger is derived from trigger_option -- there is no separate flag to set. Use
+    # 'None' (this template's default) to not use a trigger at all; 'TriggerOnePulseTrain' to fire
+    # one pulse train per trigger received; 'TriggerWholeProtocol' to fire the entire, already
+    # fully-timed sequence at once with a single trigger (equivalent to executing it directly,
+    # just gated behind that one trigger). To check available trigger options:
+    # print(fast_seq.get_trigger_options())
+    trigger_option='None',
+    # trigger_option='TriggerOnePulseTrain',
+    # trigger_option='TriggerWholeProtocol'
+)
 
 ##############################################################################
-# connect with driving system and execute sequence
+# send and execute the sequence
 ##############################################################################
 
-# creating a SC driving system instance, connecting to it and sending your first sequence can be
-# done when initializing your experiment. When appropriate, execute your sequence by implementing
+# sending your first sequence, and executing it when appropriate, can be done when initializing
+# your experiment. When appropriate, execute your sequence by implementing
 # 'execute_sequence()' into your code.
 
 # when you want to change your sequence in the middle of your experimental code, create a new
-# sequence as above and send the new sequence: 'send_sequence()'. When appropriate, execute your
-# sequence by implementing 'execute_sequence()' into your code.
+# sequence as above (the driving system is already connected, see above) and send the new
+# sequence: 'send_sequence()'. When appropriate, execute your sequence by implementing
+# 'execute_sequence()' into your code.
 
 # It is important to place your experimental code into a try-finally block, so if your code is
 # stopped abruptly, the driving system will be disconnected. Otherwise, there is a change that it
 # keeps on firing ultrasound sequences.
 
-##############################################################################
-# connect with the driving system
-##############################################################################
-
-from fus_driving_systems.sonic_concepts import sonic_concepts_ds
-
-sc_ds = sonic_concepts_ds.SonicConcepts()
-
 try:
-    sc_ds.connect(slow_seq.driving_sys.connect_info)
-
-    # you can check if the system is still connected by using the following:
-    # print(sc_ds.is_connected())
-
-    # optional: check if correct transducer is selected on driving system before continuining
-    sc_ds.check_tran_sel()
-
     # If wait_for_trigger is true, only the sequence is sent and will be executed by the external trigger
     if slow_seq.wait_for_trigger:
         sc_ds.send_sequence(slow_seq)  # currently, triggermode is set to 1. Triggermode of 2 is not supported yet.

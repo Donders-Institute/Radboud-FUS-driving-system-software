@@ -43,6 +43,7 @@ import pandas as pd
 
 # Own packages
 from fus_driving_systems import control_driving_system as ds
+from fus_driving_systems.sequence import Sequence
 
 from fus_driving_systems.igt.utils import ExecListener
 from fus_driving_systems.igt import transducer_xyz
@@ -333,8 +334,12 @@ class IGT(ds.ControlDrivingSystem):
             if sequence.pulse_ramp_dur > sequence.pulse_dur/2 - min_time_between_ramps/2:
                 error_messages.append('When applying ramping, there needs to be at least ' +
                                       '70 us between ramping up and down')
-        if sequence.ampl is None:
-            error_messages.append("Intensity parameter may be set incorrectly. Amplitude is None.")
+        for i, slot in enumerate(sequence.slots):
+            if slot.ampl is None:
+                error_messages.append(
+                    f"Intensity parameter may be set incorrectly for transducer slot {i} " +
+                    f"(counting from 0, i.e. sequence.slots[{i}]; {slot.transducer.serial}). " +
+                    "Amplitude is None.")
 
         n_pulses = sequence.pulse_train_dur/sequence.pulse_rep_int
         max_n_pulses = int(get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
@@ -345,32 +350,72 @@ class IGT(ds.ControlDrivingSystem):
 
         return error_messages
 
-    def send_sequence(self, seq1, seq2=None, seq3=None, seq4=None, duration_ms=0):
+    def _assert_ready_to_send(self, sequence):
         """
-        Validates and sends an ultrasound sequence to the IGT ultrasound driving system.
+        Authoritative gate, run once per sequence right before it's actually used: at least one
+        transducer slot must have been added (see Sequence.add_slot()), and the combined elements
+        across all of its slots must exactly match this driving system's available channels.
+
+        add_slot() itself only fails fast on exceeding available_ch (see
+        Sequence._validate_channel_count()) -- it can't require an exact match, since a driving
+        system with more than one slot is legitimately "not done yet" after just the first
+        add_slot() call. This is the one place that must see the final, complete picture.
 
         Parameters:
-            sequence(Object): contains, amongst other things, of:
-                the ultrasound protocol (focus, pulse duration, pulse rep. interval and etcetera)
-                used equipment (driving system and transducer)
+            sequence (Sequence): The sequence to check.
         """
 
-        if seq2 is None and (seq3 is not None or seq4 is not None):
-            message = ('seq3/seq4 can only be used together with seq2 (two-transducer, ' +
-                       'four-sequence mode) -- seq2 is missing.')
+        if not sequence.slots:
+            message = ('No transducer slot configured on this sequence -- call ' +
+                       'sequence.add_slot(...) at least once before sending it.')
             get_logger().critical(message)
             sys.exit(message)
 
+        total_elements = sum(slot.transducer.elements for slot in sequence.slots)
+        if total_elements != sequence.driving_sys.available_ch:
+            message = (f'Number of available channels ({sequence.driving_sys.available_ch}) ' +
+                       f'does not match the combined elements of the {len(sequence.slots)} ' +
+                       f'transducer slot(s) ({total_elements}).')
+            get_logger().critical(message)
+            sys.exit(message)
+
+    def send_sequence(self, sequences, duration_ms=0):
+        """
+        Validates and sends one or more ultrasound sequences to the IGT ultrasound driving
+        system. More than one sequence means they are interleaved: sent as one alternating group,
+        fired in the order given, repeating for duration_ms. Ramping (pulse_ramp_shape/
+        pulse_ramp_dur) is applied once for the whole interleaved group, taken from only the
+        first sequence given -- it's a generator-wide setting, not something each interleaved
+        sequence can configure independently, so every other sequence's own ramp settings are
+        silently ignored.
+
+        When interleaving, each sequence contributes exactly one pulse per round of the
+        alternating group -- not a repeated pulse train of its own. pulse_dur/pulse_rep_int
+        still apply per sequence (pulse_rep_int decides how much of the shared round this
+        sequence's own pulse occupies, via its trailing delay), but pulse_train_dur/
+        pulse_train_rep_int/pulse_train_rep_dur do not: there is currently no way for one
+        interleaved sequence to internally repeat its own pulse a number of times before handing
+        off to the next one. Only relevant with more than one sequence -- a single sequence still
+        gets its full pulse train via _define_pulse_train().
+
+        Parameters:
+            sequences (Sequence or list(Sequence)): One sequence, or a list of sequences to
+                interleave. Each sequence contains, amongst other things:
+                the ultrasound protocol (focus, pulse duration, pulse rep. interval and etcetera)
+                used equipment (driving system and transducer slot(s))
+            duration_ms (float): Only used when interleaving (more than one sequence) -- total
+                duration [ms] the alternating group repeats for.
+        """
+
+        if isinstance(sequences, Sequence):
+            sequences = [sequences]
+
+        for sequence in sequences:
+            self._assert_ready_to_send(sequence)
+
         get_logger().info('Validating sequence...')
 
-        seqs = [seq1]
-        if seq2 is not None:
-            seqs = [seq1, seq2]
-
-            if seq3 is not None and seq4 is not None:
-                seqs = [seq1, seq2, seq3, seq4]
-
-        for seq in seqs:
+        for seq in sequences:
             get_logger().debug(
                 'Sequence with the following parameters is validated before sending: \n ' +
                 '%s', seq)
@@ -385,44 +430,49 @@ class IGT(ds.ControlDrivingSystem):
         get_logger().info('Sending sequence...')
         if self.is_connected():
 
-            # define pulse
-            if seq2 is None:
-                pulse, phases = self._define_pulse(seq1)
-            else:
-                get_logger().debug(
-                    'Two sequences are sent indicating two transducers are connected.')
-                get_logger().debug('Timing parameters will be based on first sequence.')
-                pulse, phases = self._define_two_tran_slots(seq1, seq2)
+            pulses = [self._define_pulse_group(seq) for seq in sequences]
+            seq0 = sequences[0]
 
-                if seq3 is not None and seq4 is not None:
-                    pulse2, phases2 = self._define_two_tran_slots(seq3, seq4)
+            if len(sequences) == 1:
+                pulse, phases = pulses[0]
 
-                    # Test if it will not break the SonoRover One code
-                    phases = [phases, phases2]
-
-            if seq3 is not None and seq4 is not None:
-                # Safe: reaching here with seq3/seq4 set implies seq2 was
-                # also set (guarded at the top of this method), so the
-                # seq3/seq4 branch above always assigned pulse2.
-                pulse_train_seq = [pulse, pulse2]  # pylint: disable=used-before-assignment
-                pulse_train_delay = 0
-
-                total_pulse_rep_int_ms = seq1.pulse_train_dur + seq3.pulse_train_dur
-                n_pulse_train_rep = math.floor(duration_ms / total_pulse_rep_int_ms)
-
-            else:
                 # define pulse train
-                pulse_train_seq, pulse_train_delay = self._define_pulse_train(seq1, pulse)
+                pulse_train_seq, pulse_train_delay = self._define_pulse_train(seq0, pulse)
 
                 # Define pulse train repetition
                 # number of executions of one pulse train
-                n_pulse_train_rep = math.floor(seq1.pulse_train_rep_dur / seq1.pulse_train_rep_int)
+                n_pulse_train_rep = math.floor(seq0.pulse_train_rep_dur / seq0.pulse_train_rep_int)
+            else:
+                get_logger().debug(
+                    f'{len(sequences)} sequences are sent, indicating they are interleaved.')
 
-            # Apply ramping
+                # One pulse per sequence, not a repeated pulse train per sequence -- unlike the
+                # N=1 branch above (_define_pulse_train()), each interleaved sequence's own
+                # pulse_train_dur/pulse_train_rep_int/pulse_train_rep_dur have no effect here
+                # (see this method's own docstring). Theoretically possible to support, but not
+                # yet designed: would need a real decision on what "interleaved pulse trains"
+                # (as opposed to interleaved single pulses) should actually mean here.
+                pulse_train_seq = [pulse for pulse, _ in pulses]
+                phases = [seq_phases for _, seq_phases in pulses]
+                pulse_train_delay = 0
+
+                # One round of the alternating group takes as long as every sequence's own
+                # pulse_rep_int summed -- each sequence's pulse occupies that whole time slot
+                # (pulse_dur active, then its own trailing delay), not pulse_train_dur (which
+                # would describe a repeated train this pulse never actually fires here).
+                total_pulse_rep_int_ms = sum(seq.pulse_rep_int for seq in sequences)
+                n_pulse_train_rep = math.floor(duration_ms / total_pulse_rep_int_ms)
+
+            # Apply ramping -- read from seq0 only. Ramping is set once on the generator as a
+            # whole (rising/falling PulseRamp), not per pulse train, so it's an all-or-nothing
+            # property of the entire interleaved group, not something each interleaved sequence
+            # can configure independently: seq0's pulse_ramp_shape/pulse_ramp_dur decide it for
+            # every sequence in this send_sequence() call, and any other sequence's own ramp
+            # settings are silently ignored.
             rect_ramp = get_config_value(get_logger(), config, 'Ramp', 'Option.rect',
                                          'Rectangular - no ramping')
-            if seq1.pulse_ramp_shape != rect_ramp:
-                self._apply_ramping(seq1)
+            if seq0.pulse_ramp_shape != rect_ramp:
+                self._apply_ramping(seq0)
             else:
                 self.gen.setPulseModulation([], 0, [], 0)  # disable any modulation
                 self.gen.setPulseRamp(unifus.PulseRamp.Rising, 0)
@@ -438,9 +488,9 @@ class IGT(ds.ControlDrivingSystem):
             # gen.setParam (unifus.GenParam.MultiplexerValue, 3);
 
             # Upload the sequence
-            self.gen.sendSequence(seq1.seq_num, pulse_train_seq)
+            self.gen.sendSequence(seq0.seq_num, pulse_train_seq)
 
-            self.register_sent_sequence(seq1.seq_num, pulse_train_seq, n_pulse_train_rep,
+            self.register_sent_sequence(seq0.seq_num, pulse_train_seq, n_pulse_train_rep,
                                         pulse_train_delay, phases)
 
         else:
@@ -448,51 +498,62 @@ class IGT(ds.ControlDrivingSystem):
             get_logger().warning("Reconnecting with driving system...")
 
             # if no connection can be made, program stops preventing infinite loop
-            self.connect(seq1.driving_sys.connect_info)
-            self.send_sequence(seq1, seq2)
+            self.connect(sequences[0].driving_sys.connect_info)
+            self.send_sequence(sequences, duration_ms)
 
-    def _define_two_tran_slots(self, seq1, seq2):
+    def _define_pulse_group(self, sequence):
         """
-        Validates and sends an ultrasound sequence to both transducer slots of the IGT ultrasound
-        driving system.
+        Defines the combined pulse for every transducer slot of one sequence, concatenating each
+        slot's own fully-expanded (per-element) amplitude/frequency arrays -- uniformly, whether
+        there's 1 slot or several. N is never hardcoded -- however many slots this sequence
+        actually has is how many this loops over.
 
         Parameters:
-            seq1, seq2 (Object): contains, amongst other things, of:
-                the ultrasound protocol (focus, pulse duration, pulse rep. interval and etcetera)
-                used equipment (driving system and transducer)
+            sequence (Sequence): The sequence object containing ultrasound parameters.
+
+        Returns:
+            tuple: (unifus.Pulse, list) -- the defined pulse and its phases.
         """
 
         pulse = unifus.Pulse(self.n_channels, 1, 1)  # n phases, n frequencies, n amplitudes
 
         # duration in ms, delay in ms
-        pulse.setDuration(seq1.pulse_dur, round(seq1.pulse_rep_int - seq1.pulse_dur, 1))
+        pulse.setDuration(sequence.pulse_dur,
+                          round(sequence.pulse_rep_int - sequence.pulse_dur, 1))
+
+        slots = sequence.slots
 
         # frequencies have to be set first before phases can be computed
-        # determine  per sequence
         phases = []
         freqs = []
         ampls = []
-        for seq in [seq1, seq2]:
-            if len(seq.ampl) == 1:
-                ampls = ampls + seq.ampl * seq.transducer.elements
-            else:
-                ampls = ampls + seq.ampl
+        for slot in slots:
+            if slot.ampl is None:
+                message = "Power parameter may be set incorrectly. Amplitude is None."
+                get_logger().critical(message)
+                sys.exit(message)
 
-            oper_freq_hz = int(seq.oper_freq * 1e3)
-            tran_freq = [oper_freq_hz] * seq.transducer.elements
+            # Every slot's own value is expanded to its own element count before concatenating
+            # -- applied uniformly, whether this sequence has 1 slot or several.
+            tran_freq = [int(slot.oper_freq * 1e3)] * slot.transducer.elements
+            if len(slot.ampl) == 1:
+                ampls = ampls + slot.ampl * slot.transducer.elements
+            else:
+                ampls = ampls + slot.ampl
+
             freqs = freqs + tran_freq
 
             pulse.setFrequencies(tran_freq)
-            if seq.dephasing_degree is not None and (len(seq.dephasing_degree) ==
-                                                     seq.transducer.elements):
+            if slot.dephasing_degree is not None and (
+                    len(slot.dephasing_degree) == slot.transducer.elements):
                 get_logger().info('Phases are overridden by phases set at dephasing_degree: ' +
-                                  f'{seq.dephasing_degree}')
-                phases = phases + seq.dephasing_degree
+                                  f'{slot.dephasing_degree}')
+                phases = phases + slot.dephasing_degree
             else:
-                computed_phases = self._set_phases(pulse, seq.focus_wrt_mid_bowl,
-                                                   seq.transducer.steer_info,
-                                                   seq.transducer.natural_foc,
-                                                   seq.dephasing_degree)
+                computed_phases = self._set_phases(pulse, slot.focus_wrt_mid_bowl,
+                                                   slot.transducer.steer_info,
+                                                   slot.transducer.natural_foc,
+                                                   slot.dephasing_degree)
                 phases = phases + computed_phases
 
         # set phase offset for all channels (angle in [0,360] degrees)
@@ -506,15 +567,26 @@ class IGT(ds.ControlDrivingSystem):
 
         return pulse, phases
 
-    def wait_for_trigger(self, seq1, seq2=None, seq3=None, seq4=None, duration_ms=0,
-                         debug_info=True):
+    def wait_for_trigger(self, sequences, duration_ms=0, debug_info=True):
         """
         Activates the listener on the IGT ultrasound driving system to wait for the trigger to
-        execte the previously sent sequence.
+        execute the previously sent sequence(s). When interleaving, the ramp-transient timing
+        this computes is taken from only the first sequence given, matching send_sequence()'s
+        own "ramping is a whole-group setting, not per interleaved sequence" behavior.
+
+        Parameters:
+            sequences (Sequence or list(Sequence)): Same sequence(s) already passed to
+                send_sequence().
+            duration_ms (float): Same value already passed to send_sequence().
+            debug_info (bool): Whether to compute and set additional execution flags.
         """
 
+        if isinstance(sequences, Sequence):
+            sequences = [sequences]
+        seq0 = sequences[0]
+
         if self.is_connected():
-            if self.is_sequence_sent(seq1.seq_num):
+            if self.is_sequence_sent(seq0.seq_num):
                 try:
                     # Use unifus.ExecFlag.NONE if nothing special, or simply don't pass the
                     # exec_flags argument. Use '|' to combine multiple flags: flag1 | flag2 | flag3
@@ -527,7 +599,11 @@ class IGT(ds.ControlDrivingSystem):
                         ramp_transient_t = 0
                         rect_ramp = get_config_value(get_logger(), config, 'Ramp', 'Option.rect',
                                                      'Rectangular - no ramping')
-                        if seq1.pulse_ramp_dur > 0 and (seq1.pulse_ramp_shape != rect_ramp):
+                        # seq0 only -- ramping is a whole-group setting for send_sequence(), not
+                        # something each interleaved sequence configures independently (see its
+                        # own docstring), so this timing must be based on the same sequence that
+                        # actually decided it.
+                        if seq0.pulse_ramp_dur > 0 and (seq0.pulse_ramp_shape != rect_ramp):
                             ramp_transient_t = float(
                                 get_config_value(
                                     get_logger(), config, 'Equipment.Manufacturer.IGT',
@@ -545,41 +621,41 @@ class IGT(ds.ControlDrivingSystem):
                         measure_time_level = float(
                             get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
                                              'Pulse dur. flag level MeasureTimings [ms]', 0.001))
-                        if seq1.pulse_dur > measure_ch_level + ramp_transient_t:  # [ms]
+                        if seq0.pulse_dur > measure_ch_level + ramp_transient_t:  # [ms]
                             exec_flags |= unifus.ExecFlag.MeasureChannels
 
-                        elif seq1.pulse_dur >= measure_boards_level + ramp_transient_t:  # [ms]
+                        elif seq0.pulse_dur >= measure_boards_level + ramp_transient_t:  # [ms]
                             exec_flags |= unifus.ExecFlag.MeasureBoards
 
-                        elif seq1.pulse_dur >= measure_time_level + ramp_transient_t:  # [ms]:
+                        elif seq0.pulse_dur >= measure_time_level + ramp_transient_t:  # [ms]:
                             exec_flags |= unifus.ExecFlag.MeasureTimings  # or NONE
 
-                    sent_seq_info = self.sent_seqs.get(seq1.seq_num, {})
+                    sent_seq_info = self.sent_seqs.get(seq0.seq_num, {})
                     n_pulse_train_rep = sent_seq_info.get('n_pulse_train_rep')
                     pulse_train_delay = sent_seq_info.get('pulse_train_delay')
 
                     # Determining trigger flag
                     seq_trigger = get_config_value(get_logger(), config, 'Trigger', 'Option.seq',
-                                                   'TriggerSequence')
+                                                   'TriggerOnePulseTrain')
                     ptr_trigger = get_config_value(get_logger(), config, 'Trigger', 'Option.ptr',
-                                                   'TriggerOnePulseTrainRepetition')
-                    if seq1.trigger_option == seq_trigger:
+                                                   'TriggerWholeProtocol')
+                    if seq0.trigger_option == seq_trigger:
                         exec_flags |= unifus.ExecFlag.TriggerOneSequence
-                        n_pulse_train_rep = seq1.n_triggers
+                        n_pulse_train_rep = seq0.n_triggers
                         pulse_train_delay = 0  # trigger will determine delay
 
-                    elif seq1.trigger_option == ptr_trigger:
+                    elif seq0.trigger_option == ptr_trigger:
                         exec_flags |= unifus.ExecFlag.TriggerAllSequences
 
                     else:
-                        message = (f'Trigger option {seq1.trigger_option} is not identical to ' +
-                                   f'implemented trigger options: {seq1.get_trigger_options()}.')
+                        message = (f'Trigger option {seq0.trigger_option} is not identical to ' +
+                                   f'implemented trigger options: {seq0.get_trigger_options()}.')
                         get_logger().critical(message)
                         sys.exit(message)
 
-                    get_logger().info(f"Waiting for a total of {seq1.n_triggers} trigger(s)...")
+                    get_logger().info(f"Waiting for a total of {seq0.n_triggers} trigger(s)...")
 
-                    self.gen.prepareSequence(seq1.seq_num, n_pulse_train_rep, pulse_train_delay,
+                    self.gen.prepareSequence(seq0.seq_num, n_pulse_train_rep, pulse_train_delay,
                                              exec_flags)
 
                     self.gen.startSequence()
@@ -594,16 +670,16 @@ class IGT(ds.ControlDrivingSystem):
                     'the driving system can wait for a trigger.')
                 get_logger().warning('Sending sequence...')
 
-                self.send_sequence(seq1, seq2, seq3, seq4, duration_ms)
-                self.wait_for_trigger(seq1, seq2, seq3, seq4, duration_ms, debug_info)
+                self.send_sequence(sequences, duration_ms)
+                self.wait_for_trigger(sequences, duration_ms, debug_info)
         else:
             get_logger().warning("No connection with driving system.")
             get_logger().warning("Reconnecting with driving system...")
 
             # if no connection can be made, program stops preventing infinite loop
-            self.connect(seq1.driving_sys.connect_info)
-            self.send_sequence(seq1, seq2, seq3, seq4, duration_ms)
-            self.wait_for_trigger(seq1, seq2, seq3, seq4, duration_ms, debug_info)
+            self.connect(seq0.driving_sys.connect_info)
+            self.send_sequence(sequences, duration_ms)
+            self.wait_for_trigger(sequences, duration_ms, debug_info)
 
     def wait_for_trigger_result(self, timeout_s=5.0):
         """
@@ -647,11 +723,23 @@ class IGT(ds.ControlDrivingSystem):
 
         return self.listener.exec_error_code
 
-    def execute_sequence(self, seq1, seq2=None, seq3=None, seq4=None, duration_ms=0,
-                         debug_info=True):
+    def execute_sequence(self, sequences, duration_ms=0, debug_info=True):
         """
-        Executes the previously sent sequence on the IGT ultrasound driving system.
+        Executes the previously sent sequence(s) on the IGT ultrasound driving system. When
+        interleaving, the ramp-transient timing this computes is taken from only the first
+        sequence given, matching send_sequence()'s own "ramping is a whole-group setting, not
+        per interleaved sequence" behavior.
+
+        Parameters:
+            sequences (Sequence or list(Sequence)): Same sequence(s) already passed to
+                send_sequence().
+            duration_ms (float): Same value already passed to send_sequence().
+            debug_info (bool): Whether to compute and set additional execution flags.
         """
+
+        if isinstance(sequences, Sequence):
+            sequences = [sequences]
+        seq0 = sequences[0]
 
         max_press = get_config_value(get_logger(), config, 'Power',
                                      'Maximum pressure allowed in free water [MPa]',
@@ -662,7 +750,7 @@ class IGT(ds.ControlDrivingSystem):
         get_logger().info('Executing sequence...')
 
         if self.is_connected():
-            if self.is_sequence_sent(seq1.seq_num):
+            if self.is_sequence_sent(seq0.seq_num):
                 try:
                     # Use unifus.ExecFlag.NONE if nothing special, or simply don't pass the
                     # exec_flags argument. Use '|' to combine multiple flags: flag1 | flag2 | flag3
@@ -675,7 +763,11 @@ class IGT(ds.ControlDrivingSystem):
                         ramp_transient_t = 0
                         rect_ramp = get_config_value(get_logger(), config, 'Ramp', 'Option.rect',
                                                      'Rectangular - no ramping')
-                        if seq1.pulse_ramp_dur > 0 and seq1.pulse_ramp_shape != rect_ramp:
+                        # seq1 only -- ramping is a whole-group setting for send_sequence(), not
+                        # something each interleaved sequence configures independently (see its
+                        # own docstring), so this timing must be based on the same sequence that
+                        # actually decided it.
+                        if seq0.pulse_ramp_dur > 0 and seq0.pulse_ramp_shape != rect_ramp:
                             ramp_transient_t = float(
                                 get_config_value(
                                     get_logger(), config, 'Equipment.Manufacturer.IGT',
@@ -693,17 +785,17 @@ class IGT(ds.ControlDrivingSystem):
                         measure_time_level = float(
                             get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
                                              'Pulse dur. flag level MeasureTimings [ms]', 0.001))
-                        if seq1.pulse_dur > measure_ch_level + ramp_transient_t:  # [ms]
+                        if seq0.pulse_dur > measure_ch_level + ramp_transient_t:  # [ms]
                             exec_flags |= unifus.ExecFlag.MeasureChannels
 
-                        elif seq1.pulse_dur >= measure_boards_level + ramp_transient_t:  # [ms]
+                        elif seq0.pulse_dur >= measure_boards_level + ramp_transient_t:  # [ms]
                             exec_flags |= unifus.ExecFlag.MeasureBoards
 
-                        elif seq1.pulse_dur >= measure_time_level + ramp_transient_t:  # [ms]:
+                        elif seq0.pulse_dur >= measure_time_level + ramp_transient_t:  # [ms]:
                             exec_flags |= unifus.ExecFlag.MeasureTimings  # or NONE
 
-                    sent_seq_info = self.sent_seqs.get(seq1.seq_num, {})
-                    self.gen.prepareSequence(seq1.seq_num, sent_seq_info.get('n_pulse_train_rep'),
+                    sent_seq_info = self.sent_seqs.get(seq0.seq_num, {})
+                    self.gen.prepareSequence(seq0.seq_num, sent_seq_info.get('n_pulse_train_rep'),
                                              sent_seq_info.get('pulse_train_delay'), exec_flags)
 
                     self.gen.startSequence()
@@ -727,17 +819,17 @@ class IGT(ds.ControlDrivingSystem):
                     'the driving system can execute a sequence.')
                 get_logger().warning('Sending sequence...')
 
-                self.send_sequence(seq1, seq2, seq3, seq4, duration_ms)
-                self.execute_sequence(seq1, seq2, seq3, seq4, duration_ms, debug_info)
+                self.send_sequence(sequences, duration_ms)
+                self.execute_sequence(sequences, duration_ms, debug_info)
 
         else:
             get_logger().warning("No connection with driving system.")
             get_logger().warning("Reconnecting with driving system...")
 
             # if no connection can be made, program stops preventing infinite loop
-            self.connect(seq1.driving_sys.connect_info)
-            self.send_sequence(seq1, seq2, seq3, seq4, duration_ms)
-            self.execute_sequence(seq1, seq2, seq3, seq4, duration_ms, debug_info)
+            self.connect(seq0.driving_sys.connect_info)
+            self.send_sequence(sequences, duration_ms)
+            self.execute_sequence(sequences, duration_ms, debug_info)
 
     def disconnect(self):
         """
@@ -764,49 +856,6 @@ class IGT(ds.ControlDrivingSystem):
             else:
                 get_logger().error("Failed to disconnect")
                 self.connected = True
-
-    def _define_pulse(self, sequence):
-        """
-        Defines the pulse for the IGT ultrasound driving system.
-
-        Parameters:
-            sequence (Sequence): The sequence object containing ultrasound parameters.
-
-        Returns:
-            unifus.Pulse: The defined pulse.
-        """
-
-        pulse = unifus.Pulse(self.n_channels, 1, 1)  # n phases, n frequencies, n amplitudes
-
-        # duration in ms, delay in ms
-        pulse.setDuration(sequence.pulse_dur,
-                          round(sequence.pulse_rep_int - sequence.pulse_dur, 1))
-
-        # set same frequency for all channels = 250KHz, in Hz
-        oper_freq_hz = int(sequence.oper_freq * 1e3)
-        pulse.setFrequencies([oper_freq_hz])
-
-        # set same amplitude for all channels in percent (of max amplitude)
-        if sequence.ampl is not None:
-            pulse.setAmplitudes(sequence.ampl)
-        else:
-            message = "Power parameter may be set incorrectly. Amplitude is None."
-            get_logger().critical(message)
-            sys.exit(message)
-
-        # set same phase offset for all channels (angle in [0,360] degrees)
-        if (sequence.dephasing_degree is not None
-                and len(sequence.dephasing_degree) == sequence.transducer.elements):
-            get_logger().info('Phases are overridden by phases set at dephasing_degree: ' +
-                              f'{sequence.dephasing_degree}')
-            phases = sequence.dephasing_degree
-        else:
-            phases = self._set_phases(pulse, sequence.focus_wrt_mid_bowl,
-                                      sequence.transducer.steer_info,
-                                      sequence.transducer.natural_foc, sequence.dephasing_degree)
-        pulse.setPhases(phases)
-
-        return pulse, phases
 
     def _define_pulse_train(self, sequence, pulse):
         """

@@ -1,0 +1,1614 @@
+# -*- coding: utf-8 -*-
+"""
+Characterization tests for fus_driving_systems.transducer_slot.TransducerSlot.
+
+This is where all of Sequence's former power/focus test coverage moved to in Phase 3 (multi-
+transducer slots) -- the logic itself moved essentially verbatim, so most assertions are
+unchanged; only the calc methods' calling convention changed (explicit parameters and return
+values instead of implicit self._X reads/writes -- see the class docstring/plan for why).
+
+Every test here builds the instance with TransducerSlot.__new__(TransducerSlot) (bypassing
+__init__ entirely) and sets only the private attributes the method-under-test actually reads,
+same pattern as test_sequence_class.py.
+"""
+import json
+from types import SimpleNamespace
+
+import pytest
+from scipy.interpolate import PPoly
+
+from fus_driving_systems.transducer_slot import TransducerSlot
+
+
+def _bare_slot():
+    """A TransducerSlot instance with __init__ skipped entirely."""
+    return TransducerSlot.__new__(TransducerSlot)
+
+
+def _identity_pp(a, b):
+    """A piecewise polynomial with pp(x) == x over the domain [a, b]."""
+    return PPoly(c=[[1.0], [a]], x=[a, b], extrapolate=False)
+
+
+# --- _calc_eq_factor -------------------------------------------------------
+
+def test_calc_eq_factor_evaluates_pp_at_focus_wrt_exit_plane():
+    slot = _bare_slot()
+    slot._conv_param = {'eq_curve_pp': _identity_pp(0.0, 10.0)}
+
+    eq_factor = slot._calc_eq_factor(5)
+
+    assert float(eq_factor) == pytest.approx(5.0)
+
+
+def test_calc_eq_factor_exits_when_focus_is_not_numeric():
+    """
+    The except ValueError branch is only reachable when focus_wrt_exit_plane
+    can't be converted to a float at all (e.g. a string) -- verified
+    directly against scipy: PPoly.__call__ with extrapolate=False returns
+    NaN for an out-of-range NUMERIC value rather than raising. So an
+    out-of-range (but numeric) focus does NOT hit this except block at all;
+    it silently produces a NaN eq_factor and continues. That gap is noted
+    separately (see the plan's findings list) -- this test only documents
+    the one input shape that actually does raise.
+    """
+    slot = _bare_slot()
+    slot._conv_param = {'eq_curve_pp': _identity_pp(0.0, 10.0)}
+    # 'transducer' is itself a property whose setter expects a serial
+    # number string (it does a config lookup) -- set the private
+    # attribute it's backed by directly, same as everywhere else in this
+    # file.
+    slot._transducer = SimpleNamespace(min_foc=0, max_foc=10)
+
+    with pytest.raises(SystemExit):
+        slot._calc_eq_factor('not-a-number')
+
+
+# --- _calc_volt --------------------------------------------------------
+
+def test_calc_volt_finds_x_for_each_amplitude():
+    slot = _bare_slot()
+    slot._conv_param = {'volt_curve_pp': _identity_pp(-10.0, 200.0)}
+
+    volt = slot._calc_volt([20, 80])
+
+    assert volt == pytest.approx([20.0, 80.0])
+
+
+def test_calc_volt_records_none_when_amplitude_out_of_range():
+    """BUGFIX: when no x can be found for a given amplitude, _calc_volt does not raise -- it
+    records None for that entry, not 0 (0 would look like a genuine, calculated voltage to any
+    later read of self._volt, when really no value could be found at all)."""
+    slot = _bare_slot()
+    slot._conv_param = {'volt_curve_pp': _identity_pp(-10.0, 200.0)}
+
+    volt = slot._calc_volt([999])  # above the pp's range
+
+    assert volt == [None]
+
+
+# --- _calc_ampl ----------------------------------------------------------
+# calc_ampl = power_curve_pp(press[Pa] * eq_factor). Three outcomes when
+# in range: normal (0-100 inclusive), clamped to 100 (exits), clamped to 0
+# (does not exit). x_value outside the pp's domain entirely exits too.
+# _calc_ampl no longer reads/writes self._X -- it takes press/eq_factor as
+# explicit parameters and returns a dict of results, so these tests check
+# the returned dict directly rather than instance state.
+
+def test_calc_ampl_rounds_normal_in_range_value():
+    slot = _bare_slot()
+    slot._conv_param = {'power_curve_pp': _identity_pp(-10.0, 1000.0)}
+
+    result = slot._calc_ampl(50e-6, 1.0)  # MPa -> press_pa = 50, x_value = 50 * eq_factor = 50
+
+    assert result['ampl'] == [50.0]
+    assert result['input_press_mpa'] == 50e-6
+    assert result['eq_press_mpa'] == pytest.approx(50e-6)
+
+
+def test_calc_ampl_exits_when_x_value_above_pp_range():
+    slot = _bare_slot()
+    slot._conv_param = {'power_curve_pp': _identity_pp(-10.0, 1000.0)}
+
+    with pytest.raises(SystemExit):
+        slot._calc_ampl(2000e-6, 1.0)  # x_value = 2000, above the pp's max of 1000
+
+
+def test_calc_ampl_exits_when_x_value_below_pp_range():
+    slot = _bare_slot()
+    slot._conv_param = {'power_curve_pp': _identity_pp(-10.0, 1000.0)}
+
+    with pytest.raises(SystemExit):
+        slot._calc_ampl(-20e-6, 1.0)  # x_value = -20, below the pp's min of -10
+
+
+def test_calc_ampl_clamps_to_100_and_exits_when_calculated_above_100():
+    """calc_ampl > 100 (but still within the pp's domain) is clamped to 100% just long enough
+    to compute the press/volt shown in the error message, then the method exits without
+    returning anything -- unlike the pre-Phase-3 self-mutating version, there is no self._ampl
+    left behind to clear: the setters that call this now reset self._ampl to None themselves
+    before calling, precisely because this function can no longer do it on their behalf."""
+    slot = _bare_slot()
+    slot._conv_param = {
+        'power_curve_pp': _identity_pp(-10.0, 1000.0),
+        'volt_curve_pp': _identity_pp(-10.0, 200.0),
+    }
+
+    with pytest.raises(SystemExit):
+        slot._calc_ampl(150e-6, 1.0)  # x_value = 150 -> calc_ampl = 150 > 100
+
+
+def test_calc_ampl_clamps_to_0_without_exiting_when_calculated_below_0():
+    """calc_ampl < 0 (but still within the pp's domain) is clamped to 0%, and the returned
+    'press' is corrected to what's actually achievable at that clamped amplitude -- unlike the
+    >100 case, this is not treated as an error. Correcting volt for this same case is left to
+    the caller (every caller already recomputes volt from the returned ampl unconditionally)."""
+    slot = _bare_slot()
+    slot._conv_param = {
+        # pp(x) = x - 50, so an in-range x can still yield a negative y
+        'power_curve_pp': PPoly(c=[[1.0], [-50.0]], x=[0.0, 100.0], extrapolate=False),
+    }
+
+    result = slot._calc_ampl(20e-6, 1.0)  # x_value = 20 -> calc_ampl = 20 - 50 = -30 < 0
+
+    assert result['ampl'] == [0]
+    assert result['press'] == pytest.approx(5e-5)
+
+
+# --- _calc_ampl_using_volt -------------------------------------------------
+# Mirrors _calc_ampl but keyed off volt instead of press, and is NOT
+# symmetric with it: below-range here just clamps to 0% and moves on (no
+# exit), while _calc_ampl's below-range case above always exits.
+
+def test_calc_ampl_using_volt_rounds_normal_in_range_value():
+    slot = _bare_slot()
+    slot._conv_param = {'volt_curve_pp': _identity_pp(-10.0, 200.0)}
+
+    ampl = slot._calc_ampl_using_volt([50], 1.0)
+
+    assert ampl == [50.0]
+
+
+def test_calc_ampl_using_volt_clamps_to_0_without_exiting_when_below_range():
+    slot = _bare_slot()
+    slot._conv_param = {'volt_curve_pp': _identity_pp(-10.0, 200.0)}
+
+    ampl = slot._calc_ampl_using_volt([-20], 1.0)  # below the pp's min of -10
+
+    assert ampl == [0.0]
+
+
+def test_calc_ampl_using_volt_clamps_to_100_and_exits_when_above_range():
+    """Mirrors test_calc_ampl_clamps_to_100_and_exits_when_calculated_above_100 -- nothing to
+    clear here either, since this is a pure function; the caller (volt's setter) resets its own
+    self._ampl to None before calling, for the same reason."""
+    slot = _bare_slot()
+    slot._conv_param = {
+        'volt_curve_pp': _identity_pp(-10.0, 200.0),
+        'power_curve_pp': _identity_pp(-10.0, 1000.0),
+    }
+
+    with pytest.raises(SystemExit):
+        slot._calc_ampl_using_volt([300], 1.0)  # above the pp's max of 200
+
+
+# --- _calc_press -----------------------------------------------------------
+# Inverse of _calc_ampl: finds the pressure that reproduces the given
+# amplitude, then enforces the configured max free-water pressure.
+
+def test_calc_press_computes_pressure_within_limit(patch_config):
+    patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '10')
+    slot = _bare_slot()
+    slot._conv_param = {'power_curve_pp': _identity_pp(-10.0, 1000.0)}
+
+    press = slot._calc_press([50], 1.0)
+
+    assert press == pytest.approx(5e-5)
+
+
+def test_calc_press_exits_when_result_exceeds_configured_max(patch_config):
+    patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '1')
+    slot = _bare_slot()
+    slot._conv_param = {'power_curve_pp': _identity_pp(-10.0, 1000.0)}
+
+    with pytest.raises(SystemExit):
+        slot._calc_press([50], 1e-5)  # inflates press_mpa well above the 1 MPa limit
+
+
+def test_calc_press_returns_none_when_amplitude_out_of_range():
+    """Characterizes the fallback: when no x can be found for the target
+    amplitude, _calc_press does not raise -- it returns None."""
+    slot = _bare_slot()
+    slot._conv_param = {'power_curve_pp': _identity_pp(-10.0, 1000.0)}
+
+    press = slot._calc_press([9999], 1.0)  # above the pp's monotonic range
+    assert press is None
+
+
+def test_calc_press_exits_when_given_more_than_one_amplitude_value():
+    """A multi-channel amplitude array has no one pressure that represents it -- rejected
+    outright rather than silently deriving a value from just the first entry."""
+    slot = _bare_slot()
+
+    with pytest.raises(SystemExit, match='2 entries'):
+        slot._calc_press([50, 60], 1.0)
+
+
+# --- _non_engineering_options -------------------------------------------------
+# Used to make an "engineering_mode required" RuntimeError actionable -- naming a hardcoded
+# alternative could be wrong (not offered by this driving system, or also engineering-only for
+# this institution), so it's computed from the driving system's own options instead.
+
+def test_non_engineering_options_excludes_engineering_only_power_options(patch_config):
+    patch_config.set('Power', 'Engineering-only options', 'Voltage [V]\nAmplitude [%]')
+    slot = _bare_slot()
+    slot.driving_sys = SimpleNamespace(power_options=[
+        'Global power [mW]', 'Max. pressure in free water [MPa]', 'Voltage [V]',
+        'Amplitude [%]'])
+
+    assert slot._non_engineering_options('Power') == [
+        'Global power [mW]', 'Max. pressure in free water [MPa]']
+
+
+def test_non_engineering_options_excludes_engineering_only_focus_options(patch_config):
+    patch_config.set('Focus', 'Engineering-only options', 'Focus wrt mid bowl [mm]')
+    slot = _bare_slot()
+    slot.driving_sys = SimpleNamespace(
+        focus_options=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'])
+
+    assert slot._non_engineering_options('Focus') == ['Focus wrt exit plane [mm]']
+
+
+def test_volt_setter_names_available_alternatives_when_engineering_mode_disabled(patch_config):
+    """The message must name what's actually available for THIS driving system, not a
+    hardcoded alternative -- e.g. suggesting press would be wrong if this driving system
+    doesn't even offer it, or if it's also configured as engineering-only."""
+    patch_config.set('Power', 'Engineering-only options', 'Voltage [V]\nAmplitude [%]')
+    slot = _bare_slot()
+    slot._engineering_mode = False
+    slot.driving_sys = SimpleNamespace(power_options=[
+        'Global power [mW]', 'Max. pressure in free water [MPa]', 'Voltage [V]',
+        'Amplitude [%]'])
+
+    with pytest.raises(RuntimeError) as exc_info:
+        slot._set_volt(50)
+    message = str(exc_info.value)
+    assert 'Global power [mW]' in message
+    assert 'Max. pressure in free water [MPa]' in message
+    assert 'Voltage [V]' not in message.split(':', 1)[1]  # not offered as its own alternative
+
+
+# --- chosen_power / chosen_focus ---------------------------------------------
+# Read-only -- there is no setter for either; both are only ever set as a side effect of
+# _set_power()/_set_focus() (see the tests for those below), never independently.
+
+# --- global_power ------------------------------------------------------------
+# No _calc_* orchestration here (unlike press/volt/ampl below) -- it just
+# validates the value and records it, or exits if the option isn't available.
+
+def test_global_power_setter_raises_when_configured_as_engineering_only(patch_config):
+    """Which power options are engineering-only is a config-driven institutional policy --
+    global power is available to everyone by default, but an institution can gate it too."""
+    patch_config.set('Power', 'Option.glob_pow', 'Global power [mW]')
+    patch_config.set('Power', 'Engineering-only options', 'Global power [mW]')
+    slot = _bare_slot()
+    slot._engineering_mode = False
+    slot.driving_sys = SimpleNamespace(power_options=['Global power [mW]'])
+
+    with pytest.raises(RuntimeError):
+        slot._set_global_power(5)
+
+
+def test_global_power_setter_succeeds_without_engineering_mode_when_not_configured_as_such(
+        patch_config):
+    """Global power is available by default, and stays available when explicitly cleared
+    from Engineering-only options."""
+    patch_config.set('Power', 'Option.glob_pow', 'Global power [mW]')
+    patch_config.set('Power', 'Engineering-only options', '')
+    slot = _bare_slot()
+    slot._engineering_mode = False
+    slot.driving_sys = SimpleNamespace(power_options=['Global power [mW]'])
+
+    slot._set_global_power(5)  # must not raise
+
+    assert slot._global_power == 5
+
+
+def test_global_power_setter_sets_value_when_option_available(patch_config):
+    patch_config.set('Power', 'Option.glob_pow', 'Global power [mW]')
+    slot = _bare_slot()
+    slot.driving_sys = SimpleNamespace(power_options=['Global power [mW]'])
+
+    slot._set_global_power(5)
+
+    assert slot._global_power == 5
+    assert slot._chosen_power == 'Global power [mW]'
+    # reset to None at the top of the setter, and never re-set here -- 0 would look like a
+    # genuine, computed value for a power option that isn't active right now.
+    assert slot._ampl is None
+    assert slot._press is None
+    assert slot._volt is None
+
+
+def test_global_power_setter_exits_when_option_unavailable(patch_config):
+    patch_config.set('Power', 'Option.glob_pow', 'Global power [mW]')
+    slot = _bare_slot()
+    slot.driving_sys = SimpleNamespace(power_options=['Some other option'])
+
+    with pytest.raises(SystemExit):
+        slot._set_global_power(5)
+
+
+# --- press -------------------------------------------------------------------
+# Validates the power option is available, validates/limits the value, and THEN
+# -- only if press isn't this driving system's native power parameter AND a
+# calibration is active -- recalculates amplitude and voltage (for logging)
+# via the already-tested _calc_* methods. If press is native, this is always
+# settable; if it isn't and no calibration is active, the setter exits.
+
+def test_press_setter_raises_when_configured_as_engineering_only(patch_config):
+    """Which power options are engineering-only is a config-driven institutional policy --
+    press is available to everyone by default, but an institution can choose to gate it too."""
+    patch_config.set('Power', 'Engineering-only options', 'Max. pressure in free water [MPa]')
+    slot = _bare_slot()
+    slot._engineering_mode = False
+    slot.driving_sys = SimpleNamespace(power_options=['Max. pressure in free water [MPa]'])
+
+    with pytest.raises(RuntimeError):
+        slot._set_press(0.5)
+
+
+def test_press_setter_succeeds_without_engineering_mode_when_not_configured_as_such(
+        patch_config):
+    """Press is available by default, and stays available when explicitly cleared from
+    Engineering-only options."""
+    patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '10')
+    patch_config.set('Power', 'Engineering-only options', '')
+    slot = _bare_slot()
+    slot._engineering_mode = False
+    slot.driving_sys = SimpleNamespace(
+        power_options=['Max. pressure in free water [MPa]'],
+        native_power_params=['Max. pressure in free water [MPa]'])
+    slot._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
+
+    slot._set_press(0.5)  # must not raise
+
+    assert slot._press == 0.5
+
+
+def test_press_setter_without_conversion_sets_value_directly(patch_config):
+    """Press is this (hypothetical) driving system's own native power parameter, so no
+    calibration is ever needed to set it."""
+    patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '10')
+    slot = _bare_slot()
+    slot.driving_sys = SimpleNamespace(
+        power_options=['Max. pressure in free water [MPa]'],
+        native_power_params=['Max. pressure in free water [MPa]'])
+    slot._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
+
+    slot._set_press(0.5)
+
+    assert slot._press == 0.5
+    assert slot._chosen_power == 'Max. pressure in free water [MPa]'
+
+
+def test_press_setter_with_known_combo_triggers_conversion(patch_config):
+    """Press is non-native (amplitude is), so converting it requires an active calibration --
+    provided here via a real 'Equipment.Combination.*' config section, matching IGT."""
+    patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '10')
+    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
+    slot = _bare_slot()
+    slot.driving_sys = SimpleNamespace(
+        power_options=['Max. pressure in free water [MPa]'], native_power_params=['Amplitude [%]'])
+    slot._ds_tran_combo = 'combo1'
+    slot._conv_param = {
+        'power_curve_pp': _identity_pp(-10.0, 1000.0),
+        'volt_curve_pp': _identity_pp(-10.0, 200.0),
+    }
+    slot._eq_factor = 1.0
+
+    slot._set_press(50e-6)  # MPa -> press_pa = 50, x_value = 50 * eq_factor = 50
+
+    # press setter stores the raw input value directly -- _calc_ampl/_calc_volt
+    # are only triggered for logging purposes here, not to overwrite _press.
+    assert slot._press == 50e-6
+    assert slot._ampl == [50.0]
+    assert slot._volt == pytest.approx([50.0])
+
+
+def test_press_setter_exits_when_power_option_unavailable(patch_config):
+    patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '10')
+    slot = _bare_slot()
+    slot.driving_sys = SimpleNamespace(power_options=['Some other option'])
+
+    with pytest.raises(SystemExit):
+        slot._set_press(0.5)
+
+
+def test_press_setter_exits_when_combo_unknown_but_required(patch_config):
+    """Press is non-native and no 'Equipment.Combination.*' section exists for this combo at
+    all -- _combo_is_active() is False, so there's no way to convert to amplitude."""
+    patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '10')
+    slot = _bare_slot()
+    slot.driving_sys = SimpleNamespace(
+        power_options=['Max. pressure in free water [MPa]'], native_power_params=['Amplitude [%]'])
+    slot._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
+
+    with pytest.raises(SystemExit):
+        slot._set_press(0.5)
+
+
+def test_press_setter_exits_when_above_configured_max(patch_config):
+    patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '1')
+    slot = _bare_slot()
+    slot.driving_sys = SimpleNamespace(
+        power_options=['Max. pressure in free water [MPa]'],
+        native_power_params=['Max. pressure in free water [MPa]'])
+
+    with pytest.raises(SystemExit):
+        slot._set_press(5)
+
+
+def test_press_setter_reports_missing_calibration_before_value_specific_errors(patch_config):
+    """Fail fast: whether this driving system can accept press at all is checked before
+    anything about the specific value (is_validated, the max-pressure limit) -- so a value
+    that's *both* above the configured max *and* unconvertible (non-native, no active combo)
+    surfaces the calibration error, not the (less relevant, in this case) max-pressure one."""
+    patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '1')
+    slot = _bare_slot()
+    slot.driving_sys = SimpleNamespace(
+        power_options=['Max. pressure in free water [MPa]'],
+        native_power_params=['Amplitude [%]'])
+    slot._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
+
+    with pytest.raises(SystemExit, match='No active calibration available'):
+        slot._set_press(5)  # also above the configured max of 1 -- must not be the error surfaced
+
+
+def test_press_setter_exits_and_clears_ampl_when_calculated_amplitude_exceeds_100(patch_config):
+    """_calc_ampl() itself no longer has any self._ampl to clear on this exit (it's a pure
+    function now) -- the setter resets self._ampl to None before calling it, so this end-to-end
+    guarantee (a rejected request never leaves a stale, valid-looking amplitude behind) survives
+    the Phase 3 refactor even though the low-level unit test for it moved to a plain return-value
+    check (see test_calc_ampl_clamps_to_100_and_exits_when_calculated_above_100)."""
+    patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '10')
+    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
+    slot = _bare_slot()
+    slot.driving_sys = SimpleNamespace(
+        power_options=['Max. pressure in free water [MPa]'], native_power_params=['Amplitude [%]'])
+    slot._ds_tran_combo = 'combo1'
+    slot._conv_param = {
+        'power_curve_pp': _identity_pp(-10.0, 1000.0),
+        'volt_curve_pp': _identity_pp(-10.0, 200.0),
+    }
+    slot._eq_factor = 1.0
+    slot._ampl = ['stale']
+
+    with pytest.raises(SystemExit):
+        slot._set_press(150e-6)  # x_value = 150 -> calc_ampl = 150 > 100
+
+    assert slot._ampl is None
+
+
+# --- volt ----------------------------------------------------------------
+# Same shape as press, plus: requires engineering_mode, accepts scalar or
+# list, and only calls _calc_press() (in addition to _calc_ampl_using_volt())
+# when exactly one value was given.
+
+def test_volt_setter_raises_when_engineering_mode_disabled(patch_config):
+    patch_config.set('Power', 'Engineering-only options', 'Voltage [V]')
+    slot = _bare_slot()
+    slot._engineering_mode = False
+    slot.driving_sys = SimpleNamespace(power_options=['Voltage [V]'])
+
+    with pytest.raises(RuntimeError):
+        slot._set_volt(50)
+
+
+def test_volt_setter_succeeds_without_engineering_mode_when_not_configured_as_such(
+        patch_config):
+    """Which options are engineering-only is a config-driven institutional policy, not
+    hardcoded -- an institution that doesn't list voltage here can set it directly."""
+    patch_config.set('Power', 'Engineering-only options', '')
+    slot = _bare_slot()
+    slot._engineering_mode = False
+    slot.driving_sys = SimpleNamespace(
+        power_options=['Voltage [V]'], native_power_params=['Voltage [V]'], available_ch=1)
+    slot._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
+
+    slot._set_volt(50)  # must not raise
+
+    assert slot._volt == [50]
+
+
+def test_volt_setter_without_conversion_sets_value_directly():
+    """Voltage is this (hypothetical) driving system's own native power parameter, so no
+    calibration is ever needed to set it -- matches CITRUS."""
+    slot = _bare_slot()
+    slot._engineering_mode = True
+    slot.driving_sys = SimpleNamespace(
+        power_options=['Voltage [V]'], native_power_params=['Voltage [V]'], available_ch=1)
+    slot._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
+
+    slot._set_volt(50)
+
+    assert slot._volt == [50]
+    assert slot._chosen_power == 'Voltage [V]'
+
+
+def test_volt_setter_with_known_combo_triggers_conversion(patch_config):
+    """Voltage is non-native (amplitude is), so converting it requires an active calibration --
+    matches IGT."""
+    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
+    slot = _bare_slot()
+    slot._engineering_mode = True
+    slot.driving_sys = SimpleNamespace(
+        power_options=['Voltage [V]'], native_power_params=['Amplitude [%]'], available_ch=1)
+    slot._ds_tran_combo = 'combo1'
+    slot._conv_param = {
+        'volt_curve_pp': _identity_pp(-10.0, 200.0),
+        'power_curve_pp': _identity_pp(-10.0, 1000.0),
+    }
+    slot._eq_factor = 1.0
+
+    slot._set_volt(50)  # single value -> _calc_ampl_using_volt() then _calc_press()
+
+    assert slot._volt == [50]
+    assert slot._ampl == [50.0]
+    assert slot._press == pytest.approx(5e-5)
+
+
+def test_volt_setter_logging_only_press_failure_does_not_raise(patch_config):
+    """_calc_press() is called here purely to log a derived pressure value -- the real value
+    being sent to hardware (voltage/amplitude) was already set independently above. If the
+    power curve's domain doesn't cover the resulting amplitude, _calc_press() returns None,
+    which must not crash the debug log line right after (see format_or_unavailable)."""
+    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
+    slot = _bare_slot()
+    slot._engineering_mode = True
+    slot.driving_sys = SimpleNamespace(
+        power_options=['Voltage [V]'], native_power_params=['Amplitude [%]'], available_ch=1)
+    slot._ds_tran_combo = 'combo1'
+    slot._conv_param = {
+        'volt_curve_pp': _identity_pp(-10.0, 200.0),
+        # power_curve_pp's domain doesn't cover the resulting amplitude (50) --
+        # find_x_for_y_in_pp() inside _calc_press() won't find a match.
+        'power_curve_pp': _identity_pp(80.0, 1000.0),
+    }
+    slot._eq_factor = 1.0
+
+    slot._set_volt(50)  # must not raise
+
+    assert slot._volt == [50]
+    assert slot._ampl == pytest.approx([50.0])
+    assert slot._press is None
+
+
+def test_volt_setter_exits_when_derived_press_exceeds_configured_max(patch_config):
+    """CONFIRMED INTENDED (not a bug): amplitude is what's actually sent to hardware here
+    (voltage is converted to it above), but exceeding the configured safe pressure limit is a
+    deliberate safety checkpoint for the engineer, so _calc_press()'s max-pressure-exceeded
+    sys.exit() is intentionally left free to propagate. The whole voltage request is rejected
+    in that case, so the just-assigned _volt (and its derived _ampl) are also cleared back to
+    None -- otherwise they'd still look like a valid, current result even though the request as
+    a whole was refused."""
+    patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '1.4')
+    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
+    slot = _bare_slot()
+    slot._engineering_mode = True
+    slot.driving_sys = SimpleNamespace(
+        power_options=['Voltage [V]'], native_power_params=['Amplitude [%]'], available_ch=1)
+    slot._ds_tran_combo = 'combo1'
+    slot._conv_param = {
+        # identity pp -> volt=2_000_000 converts straight to ampl=2_000_000
+        'volt_curve_pp': _identity_pp(-10.0, 1e7),
+        # identity pp -> find_x_for_y_in_pp(ampl=2_000_000) finds x = 2_000_000, so
+        # press_mpa = 2_000_000 * 1e-6 / eq_factor(1.0) = 2.0 MPa, above the 1.4 MPa max.
+        'power_curve_pp': _identity_pp(-10.0, 1e7),
+    }
+    slot._eq_factor = 1.0
+
+    with pytest.raises(SystemExit):
+        slot._set_volt(2_000_000)
+
+    assert slot._press is None
+    assert slot._volt is None
+    assert slot._ampl is None
+
+
+def test_volt_setter_with_multiple_values_skips_press_calculation(patch_config):
+    """When more than one voltage is given, _calc_press() is deliberately not called (pressure
+    cannot be derived from a per-element voltage array) -- self._press stays at the None every
+    power setter resets it to upfront, rather than being computed."""
+    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
+    slot = _bare_slot()
+    slot._engineering_mode = True
+    slot.driving_sys = SimpleNamespace(
+        power_options=['Voltage [V]'], native_power_params=['Amplitude [%]'], available_ch=2)
+    slot._ds_tran_combo = 'combo1'
+    slot._conv_param = {
+        'volt_curve_pp': _identity_pp(-10.0, 200.0),
+        'power_curve_pp': _identity_pp(-10.0, 1000.0),
+    }
+    slot._eq_factor = 1.0
+
+    slot._set_volt([50, 60])
+
+    assert slot._volt == [50, 60]
+    assert slot._ampl == pytest.approx([50.0, 60.0])
+    assert slot._press is None
+
+
+def test_volt_setter_exits_when_power_option_unavailable():
+    slot = _bare_slot()
+    slot._engineering_mode = True
+    slot.driving_sys = SimpleNamespace(power_options=['Some other option'])
+
+    with pytest.raises(SystemExit):
+        slot._set_volt(50)
+
+
+def test_volt_setter_exits_on_wrong_length_list():
+    slot = _bare_slot()
+    slot._engineering_mode = True
+    slot.driving_sys = SimpleNamespace(
+        power_options=['Voltage [V]'], native_power_params=['Voltage [V]'], available_ch=4)
+
+    with pytest.raises(SystemExit):
+        slot._set_volt([10, 20])  # neither 1 entry nor 4 (available_ch) entries
+
+
+def test_volt_setter_exits_when_combo_unknown_but_required():
+    """Mirrors test_press_setter_exits_when_combo_unknown_but_required -- volt is non-native
+    (amplitude is) and no 'Equipment.Combination.*' section exists for this combo at all, so
+    there's no way to convert to amplitude (this is the behavior ampl's setter deviates from,
+    per the already-documented asymmetry)."""
+    slot = _bare_slot()
+    slot._engineering_mode = True
+    slot.driving_sys = SimpleNamespace(power_options=['Voltage [V]'],
+                                       native_power_params=['Amplitude [%]'], available_ch=1)
+    slot._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
+
+    with pytest.raises(SystemExit):
+        slot._set_volt(50)
+
+
+def test_volt_setter_exits_and_clears_ampl_when_calculated_amplitude_exceeds_100(patch_config):
+    """Mirrors test_press_setter_exits_and_clears_ampl_when_calculated_amplitude_exceeds_100 --
+    _calc_ampl_using_volt()'s own internal >100% exit no longer has a self._ampl to clear
+    either; volt's setter resets it to None before calling, for the same reason."""
+    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
+    slot = _bare_slot()
+    slot._engineering_mode = True
+    slot.driving_sys = SimpleNamespace(
+        power_options=['Voltage [V]'], native_power_params=['Amplitude [%]'], available_ch=1)
+    slot._ds_tran_combo = 'combo1'
+    slot._conv_param = {
+        'volt_curve_pp': _identity_pp(-10.0, 200.0),
+        'power_curve_pp': _identity_pp(-10.0, 1000.0),
+    }
+    slot._eq_factor = 1.0
+    slot._ampl = ['stale']
+
+    with pytest.raises(SystemExit):
+        slot._set_volt(300)  # above volt_curve_pp's max of 200 -> calc_ampl > 100
+
+    assert slot._ampl is None
+
+
+# --- ampl ------------------------------------------------------------------
+# Mirrors volt (engineering_mode guard, scalar-or-list, wrong-length exit,
+# and now also the unavailable-power-option exit). Its handling of an
+# unknown-but-required combo is intentionally different from press/volt --
+# see the test below documenting why.
+
+def test_ampl_setter_raises_when_engineering_mode_disabled(patch_config):
+    patch_config.set('Power', 'Engineering-only options', 'Amplitude [%]')
+    slot = _bare_slot()
+    slot._engineering_mode = False
+    slot.driving_sys = SimpleNamespace(power_options=['Amplitude [%]'])
+
+    with pytest.raises(RuntimeError):
+        slot._set_ampl(50)
+
+
+def test_ampl_setter_succeeds_without_engineering_mode_when_not_configured_as_such(
+        patch_config):
+    """Which options are engineering-only is a config-driven institutional policy, not
+    hardcoded -- an institution that doesn't list amplitude here can set it directly."""
+    patch_config.set('Power', 'Engineering-only options', '')
+    slot = _bare_slot()
+    slot._engineering_mode = False
+    slot.driving_sys = SimpleNamespace(
+        power_options=['Amplitude [%]'], native_power_params=['Amplitude [%]'], available_ch=1)
+    slot._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
+
+    slot._set_ampl(50)  # must not raise
+
+    assert slot._ampl == [50]
+
+
+def test_ampl_setter_without_conversion_sets_value_directly():
+    """Amplitude is this driving system's own native power parameter (matches IGT), so no
+    calibration is ever needed to set it -- succeeds even with no active combo. CONFIRMED
+    INTENDED asymmetry with press/volt (which both sys.exit() in this same situation, per
+    their own tests): without an active calibration those two genuinely cannot derive the
+    amplitude actually sent to hardware, whereas ampl already *is* that value."""
+    slot = _bare_slot()
+    slot._engineering_mode = True
+    slot.driving_sys = SimpleNamespace(
+        power_options=['Amplitude [%]'], native_power_params=['Amplitude [%]'], available_ch=1)
+    slot._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
+
+    slot._set_ampl(50)
+
+    assert slot._ampl == [50]
+    assert slot._chosen_power == 'Amplitude [%]'
+
+
+def test_ampl_setter_with_known_combo_triggers_conversion(patch_config):
+    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
+    slot = _bare_slot()
+    slot._engineering_mode = True
+    slot.driving_sys = SimpleNamespace(
+        power_options=['Amplitude [%]'], native_power_params=['Amplitude [%]'], available_ch=1)
+    slot._ds_tran_combo = 'combo1'
+    slot._conv_param = {
+        'volt_curve_pp': _identity_pp(-10.0, 200.0),
+        'power_curve_pp': _identity_pp(-10.0, 1000.0),
+    }
+    slot._eq_factor = 1.0
+
+    slot._set_ampl(50)  # single value -> _calc_volt() then _calc_press()
+
+    assert slot._ampl == [50]
+    assert slot._volt == pytest.approx([50.0])
+    assert slot._press == pytest.approx(5e-5)
+
+
+def test_ampl_setter_logging_only_press_failure_does_not_raise(patch_config):
+    """Same shape as test_volt_setter_logging_only_press_failure_does_not_raise, reached via
+    ampl's setter instead -- the power curve's domain doesn't cover the set amplitude, so
+    _calc_press() returns None, which must not crash the debug log line right after."""
+    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
+    slot = _bare_slot()
+    slot._engineering_mode = True
+    slot.driving_sys = SimpleNamespace(
+        power_options=['Amplitude [%]'], native_power_params=['Amplitude [%]'], available_ch=1)
+    slot._ds_tran_combo = 'combo1'
+    slot._conv_param = {
+        'volt_curve_pp': _identity_pp(-10.0, 200.0),
+        'power_curve_pp': _identity_pp(80.0, 1000.0),  # domain doesn't cover ampl=50
+    }
+    slot._eq_factor = 1.0
+
+    slot._set_ampl(50)  # must not raise
+
+    assert slot._ampl == [50]
+    assert slot._volt == pytest.approx([50.0])
+    assert slot._press is None
+
+
+def test_ampl_setter_exits_when_derived_press_exceeds_configured_max(patch_config):
+    """CONFIRMED INTENDED (not a bug): even though amplitude is what's actually sent to
+    hardware here (the derived pressure is otherwise only for the log line), exceeding the
+    configured safe pressure limit is a deliberate safety checkpoint for the engineer, not
+    merely a logging concern -- _calc_press()'s max-pressure-exceeded sys.exit() is
+    intentionally left free to propagate through this setter rather than being caught.
+    The whole amplitude request is rejected in that case, so the just-assigned _ampl (and its
+    derived _volt) are also cleared back to None -- otherwise they'd still look like a valid,
+    current result even though the request as a whole was refused."""
+    patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '1.4')
+    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
+    slot = _bare_slot()
+    slot._engineering_mode = True
+    slot.driving_sys = SimpleNamespace(
+        power_options=['Amplitude [%]'], native_power_params=['Amplitude [%]'], available_ch=1)
+    slot._ds_tran_combo = 'combo1'
+    slot._conv_param = {
+        'volt_curve_pp': _identity_pp(-10.0, 200.0),
+        # identity pp -> find_x_for_y_in_pp(ampl) finds x = ampl = 2_000_000, so
+        # press_mpa = 2_000_000 * 1e-6 / eq_factor(1.0) = 2.0 MPa, above the 1.4 MPa max.
+        'power_curve_pp': _identity_pp(-10.0, 1e7),
+    }
+    slot._eq_factor = 1.0
+
+    with pytest.raises(SystemExit):
+        slot._set_ampl(2_000_000)
+
+    # Cleared right before the exit, per the "don't leave a stale, valid-looking value behind
+    # a rejected request" principle applied consistently across this whole module.
+    assert slot._press is None
+    assert slot._ampl is None
+    assert slot._volt is None
+
+
+def test_ampl_setter_exits_on_wrong_length_list():
+    slot = _bare_slot()
+    slot._engineering_mode = True
+    slot.driving_sys = SimpleNamespace(
+        power_options=['Amplitude [%]'], native_power_params=['Amplitude [%]'], available_ch=4)
+
+    with pytest.raises(SystemExit):
+        slot._set_ampl([10, 20])  # neither 1 entry nor 4 (available_ch) entries
+
+
+def test_ampl_setter_exits_when_power_option_unavailable():
+    """SOLVED: ampl's setter now mirrors press/volt with an explicit
+    `else: sys.exit(...)` when the power option isn't in
+    driving_sys.power_options, instead of silently leaving self._ampl at
+    the reset value of 0 with no error."""
+    slot = _bare_slot()
+    slot._engineering_mode = True
+    slot.driving_sys = SimpleNamespace(power_options=['Some other option'], available_ch=1)
+
+    with pytest.raises(SystemExit):
+        slot._set_ampl(50)
+
+
+def test_ampl_and_volt_setters_both_work_without_calibration_when_both_are_native():
+    """native_power_params is a list, not a single value -- a driving system whose hardware
+    genuinely accepts more than one power representation directly (no calibration needed for
+    either) can declare both as native. Neither should need an active combo. Every power setter
+    resets every sibling to None upfront (see e.g. global_power's setter), so the proof that the
+    combo-gated conversion is actually skipped is the sibling ending up None, not some stale
+    value surviving from before -- a sibling ever landing on the OTHER setter's real value would
+    mean the conversion ran when it shouldn't have."""
+    slot = _bare_slot()
+    slot._engineering_mode = True
+    slot.driving_sys = SimpleNamespace(
+        power_options=['Amplitude [%]', 'Voltage [V]'],
+        native_power_params=['Amplitude [%]', 'Voltage [V]'], available_ch=1)
+    slot._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
+
+    slot._set_ampl(50)
+    assert slot._ampl == [50]
+    assert slot._volt is None  # _calc_volt() skipped -- combo not active
+
+    slot._set_volt(60)
+    assert slot._volt == [60]
+    assert slot._ampl is None  # _calc_ampl_using_volt() skipped -- combo not active
+
+
+# --- focus_wrt_exit_plane ----------------------------------------------------
+
+def test_focus_wrt_exit_plane_setter_raises_when_configured_as_engineering_only(patch_config):
+    """Which focus options are engineering-only is a config-driven institutional policy --
+    exit plane is available to everyone by default, but an institution can gate it too."""
+    patch_config.set('Focus', 'Engineering-only options', 'Focus wrt exit plane [mm]')
+    slot = _bare_slot()
+    slot._engineering_mode = False
+    slot.driving_sys = SimpleNamespace(focus_options=['Focus wrt exit plane [mm]'])
+
+    with pytest.raises(RuntimeError):
+        slot._set_focus_wrt_exit_plane(20)
+
+
+def test_focus_wrt_exit_plane_setter_succeeds_without_engineering_mode_when_not_configured_as_such(
+        patch_config):
+    """Mirrors test_focus_wrt_mid_bowl_setter_succeeds_without_engineering_mode_when_not_
+    configured_as_such, for the other focus setter -- exit plane is available by default, and
+    stays available when explicitly cleared from Engineering-only options."""
+    patch_config.set('Focus', 'Engineering-only options', '')
+    slot = _bare_slot()
+    slot._engineering_mode = False
+    slot.driving_sys = SimpleNamespace(
+        focus_options=['Focus wrt exit plane [mm]'],
+        native_focus_params=['Focus wrt exit plane [mm]'])
+    slot._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
+    slot._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
+    slot._chosen_power = None
+
+    slot._set_focus_wrt_exit_plane(20)  # must not raise
+
+    assert slot.focus_wrt_exit_plane == 20
+
+
+def test_focus_wrt_exit_plane_setter_without_conversion_uses_exit_plane_offset():
+    """Exit plane is this driving system's own native focus parameter (matches Sonic
+    Concepts/CITRUS), so no calibration is ever needed to set it."""
+    slot = _bare_slot()
+    slot.driving_sys = SimpleNamespace(
+        focus_options=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'],
+        native_focus_params=['Focus wrt exit plane [mm]'])
+    slot._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
+    slot._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
+    slot._chosen_power = None  # no power chosen yet -> power-derived logging is skipped
+    # Sentinels (not None -- that could also be a genuine _calc_* error-path result): must
+    # survive untouched, proving the whole power-recompute block (eq_factor included) is
+    # skipped when the combo isn't active, not just that the focus values themselves are right.
+    slot._eq_factor = 'untouched'
+    slot._ampl = 'untouched'
+    slot._volt = 'untouched'
+
+    slot._set_focus_wrt_exit_plane(20)
+
+    assert slot.focus_wrt_exit_plane == 20
+    assert slot.focus_wrt_mid_bowl == 25  # focus + exit_plane_dist
+    assert slot._eq_factor == 'untouched'
+    assert slot._ampl == 'untouched'
+    assert slot._volt == 'untouched'
+
+
+def test_focus_wrt_exit_plane_setter_with_known_combo_uses_focus_curve_and_recalculates(
+        patch_config):
+    """Exit plane is non-native (mid bowl is, matching IGT), so converting it requires an
+    active calibration."""
+    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
+    slot = _bare_slot()
+    slot.driving_sys = SimpleNamespace(
+        focus_options=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'],
+        native_focus_params=['Focus wrt mid bowl [mm]'])
+    slot._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
+    slot._ds_tran_combo = 'combo1'
+    slot._conv_param = {
+        'focus_curve_pp': _identity_pp(0.0, 100.0),
+        'eq_curve_pp': _identity_pp(0.0, 100.0),
+    }
+
+    slot._set_focus_wrt_exit_plane(20)
+
+    assert slot.focus_wrt_exit_plane == 20
+    assert slot.focus_wrt_mid_bowl == pytest.approx(20.0)  # focus_curve_pp(20) via identity
+    assert float(slot._eq_factor) == pytest.approx(20.0)  # eq_curve_pp(20) via identity
+
+
+def test_focus_wrt_exit_plane_setter_updates_eq_factor_but_never_touches_ampl_or_volt(
+        patch_config):
+    """_calc_eq_factor() must run whenever the combo is active -- it's an input _set_power()
+    needs right after this, within the same configure() call. ampl/press/volt are deliberately
+    never recomputed/logged here (regardless of self._chosen_power/self._press, which this
+    method doesn't even read): _set_focus() only ever runs from configure(), which always calls
+    _set_power() immediately after, so any value computed here would only ever describe a
+    transient state _set_power() is about to replace or reset anyway."""
+    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
+    slot = _bare_slot()
+    slot.driving_sys = SimpleNamespace(
+        focus_options=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'],
+        native_focus_params=['Focus wrt mid bowl [mm]'])
+    slot._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
+    slot._ds_tran_combo = 'combo1'
+    slot._conv_param = {
+        'focus_curve_pp': _identity_pp(0.0, 100.0),
+        'eq_curve_pp': _identity_pp(0.0, 100.0),
+    }
+    # Sentinels (not None -- that could also be a genuine _calc_* error-path result): must
+    # survive untouched, proving _calc_ampl()/_calc_volt() are never even attempted here.
+    slot._ampl = 'untouched'
+    slot._volt = 'untouched'
+
+    slot._set_focus_wrt_exit_plane(20)
+
+    assert float(slot._eq_factor) == pytest.approx(20.0)  # eq_curve_pp(20) via identity
+    assert slot._ampl == 'untouched'
+    assert slot._volt == 'untouched'
+
+
+def test_focus_wrt_exit_plane_setter_exits_when_out_of_transducer_range():
+    slot = _bare_slot()
+    slot.driving_sys = SimpleNamespace(
+        focus_options=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'],
+        native_focus_params=['Focus wrt exit plane [mm]'])
+    slot._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
+
+    with pytest.raises(SystemExit):
+        slot._set_focus_wrt_exit_plane(200)
+
+
+def test_focus_wrt_exit_plane_setter_reports_missing_calibration_before_range_error():
+    """Fail fast: whether this driving system can accept focus_wrt_exit_plane at all is
+    checked before anything about the specific value (including the transducer's min/max
+    range) -- so a value that's *both* out of range *and* unconvertible (non-native, no active
+    combo) surfaces the calibration error, not the (less relevant, in this case) range one."""
+    slot = _bare_slot()
+    slot.driving_sys = SimpleNamespace(
+        focus_options=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'],
+        native_focus_params=['Focus wrt mid bowl [mm]'])
+    slot._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
+    slot._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
+
+    with pytest.raises(SystemExit, match='No active calibration available'):
+        slot._set_focus_wrt_exit_plane(200)  # also out of the transducer's [0, 100] range
+
+
+def test_focus_wrt_exit_plane_setter_exits_when_combo_unknown_but_required():
+    """Exit plane is non-native (mid bowl is, matching IGT) and no
+    'Equipment.Combination.*' section exists for this combo at all, so there's no way to
+    convert to mid bowl -- the setter exits immediately, before assigning anything, instead of
+    first assigning a geometric fallback value that would then look valid even though the
+    request as a whole was rejected."""
+    slot = _bare_slot()
+    slot.driving_sys = SimpleNamespace(
+        focus_options=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'],
+        native_focus_params=['Focus wrt mid bowl [mm]'])
+    slot._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
+    slot._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
+
+    with pytest.raises(SystemExit):
+        slot._set_focus_wrt_exit_plane(20)
+
+
+def test_focus_wrt_exit_plane_setter_exits_when_focus_option_unavailable():
+    """Mirrors test_focus_wrt_mid_bowl_setter_exits_when_focus_option_unavailable, for the
+    other focus setter."""
+    slot = _bare_slot()
+    slot.driving_sys = SimpleNamespace(focus_options=['Focus wrt mid bowl [mm]'])
+
+    with pytest.raises(SystemExit, match='not available'):
+        slot._set_focus_wrt_exit_plane(25)
+
+
+# --- focus_wrt_mid_bowl -------------------------------------------------------
+
+def test_focus_wrt_mid_bowl_setter_raises_when_engineering_mode_disabled(patch_config):
+    patch_config.set('Focus', 'Engineering-only options', 'Focus wrt mid bowl [mm]')
+    slot = _bare_slot()
+    slot._engineering_mode = False
+    slot.driving_sys = SimpleNamespace(focus_options=['Focus wrt mid bowl [mm]'])
+
+    with pytest.raises(RuntimeError):
+        slot._set_focus_wrt_mid_bowl(25)
+
+
+def test_focus_wrt_mid_bowl_setter_succeeds_without_engineering_mode_when_not_configured_as_such(
+        patch_config):
+    """Which options are engineering-only is a config-driven institutional policy, not
+    hardcoded -- an institution that doesn't list mid bowl here can set it directly."""
+    patch_config.set('Focus', 'Engineering-only options', '')
+    slot = _bare_slot()
+    slot._engineering_mode = False
+    slot.driving_sys = SimpleNamespace(
+        focus_options=['Focus wrt mid bowl [mm]'],
+        native_focus_params=['Focus wrt mid bowl [mm]'])
+    slot._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
+    slot._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
+    slot._chosen_power = None
+
+    slot._set_focus_wrt_mid_bowl(25)  # must not raise
+
+    assert slot.focus_wrt_mid_bowl == 25
+
+
+def test_focus_wrt_mid_bowl_setter_exits_when_focus_option_unavailable():
+    """focus_options is a per-driving-system list, mirroring power_options -- a driving system
+    that never offers mid bowl at all (e.g. Sonic Concepts/CITRUS, which only ever have exit
+    plane as a curve-free native option) exits with a clear 'not available' message, distinct
+    from the separate 'no active calibration' message used when the option is offered but
+    unconvertible right now."""
+    slot = _bare_slot()
+    slot._engineering_mode = True
+    slot.driving_sys = SimpleNamespace(focus_options=['Focus wrt exit plane [mm]'])
+
+    with pytest.raises(SystemExit, match='not available'):
+        slot._set_focus_wrt_mid_bowl(25)
+
+
+def test_focus_wrt_mid_bowl_setter_without_conversion_uses_exit_plane_offset():
+    """Mid bowl is this driving system's own native focus parameter (matches IGT), so no
+    calibration is ever needed to set it."""
+    slot = _bare_slot()
+    slot._engineering_mode = True
+    slot.driving_sys = SimpleNamespace(
+        focus_options=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'],
+        native_focus_params=['Focus wrt mid bowl [mm]'])
+    slot._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
+    slot._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
+    slot._chosen_power = None  # no power chosen yet -> power-derived logging is skipped
+    # Sentinels (not None -- that could also be a genuine _calc_* error-path result): must
+    # survive untouched, proving the whole power-recompute block (eq_factor included) is
+    # skipped when the combo isn't active, not just that the focus values themselves are right.
+    slot._eq_factor = 'untouched'
+    slot._ampl = 'untouched'
+    slot._volt = 'untouched'
+
+    slot._set_focus_wrt_mid_bowl(25)
+
+    assert slot.focus_wrt_mid_bowl == 25
+    assert slot.focus_wrt_exit_plane == 20  # focus - exit_plane_dist
+    assert slot._eq_factor == 'untouched'
+    assert slot._ampl == 'untouched'
+    assert slot._volt == 'untouched'
+
+
+def test_focus_wrt_mid_bowl_setter_with_known_combo_finds_x_via_pp_and_recalculates(patch_config):
+    """Mid bowl is non-native (exit plane is, matching Sonic Concepts/CITRUS), so converting it
+    requires an active calibration."""
+    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
+    slot = _bare_slot()
+    slot._engineering_mode = True
+    slot.driving_sys = SimpleNamespace(
+        focus_options=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'],
+        native_focus_params=['Focus wrt exit plane [mm]'])
+    slot._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
+    slot._ds_tran_combo = 'combo1'
+    slot._conv_param = {
+        'focus_curve_pp': _identity_pp(0.0, 100.0),
+        'eq_curve_pp': _identity_pp(0.0, 100.0),
+    }
+
+    slot._set_focus_wrt_mid_bowl(20)  # within focus_curve_pp's [0, 100] range -> found
+
+    assert slot.focus_wrt_exit_plane == pytest.approx(20.0)
+    assert slot.focus_wrt_mid_bowl == 20
+    assert float(slot._eq_factor) == pytest.approx(20.0)
+
+
+def test_focus_wrt_mid_bowl_setter_falls_back_when_x_not_found(patch_config):
+    """When find_x_for_y_in_pp can't find an x value for the target focus_wrt_mid_bowl (target
+    outside the focus_curve_pp's y-range) despite an active calibration, the setter logs a
+    warning and falls back to focus - exit_plane_dist rather than raising -- characterizing
+    CURRENT behavior, not endorsing it as correct: this fallback isn't guarded by native-ness
+    the way the other, combo-not-active-at-all fallback a few lines above it is (that one is
+    only reachable when mid bowl IS native, by construction). Here, exit plane is the native
+    parameter (see native_focus_params below) -- so this silently hands hardware an imprecise
+    geometric approximation of the parameter it actually needs to be accurate, with only a
+    warning logged, not a sys.exit(). Known, deferred gap (Phase 2 review's point 5, carried
+    into Phase 3 verbatim, not fixed there either) -- see the plan's own notes."""
+    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
+    slot = _bare_slot()
+    slot._engineering_mode = True
+    slot.driving_sys = SimpleNamespace(
+        focus_options=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'],
+        native_focus_params=['Focus wrt exit plane [mm]'])
+    slot._transducer = SimpleNamespace(min_foc=-100, max_foc=1000, exit_plane_dist=5, name='tran')
+    slot._ds_tran_combo = 'combo1'
+    slot._conv_param = {
+        'focus_curve_pp': _identity_pp(0.0, 100.0),
+        'eq_curve_pp': _identity_pp(-1000.0, 1000.0),
+    }
+
+    slot._set_focus_wrt_mid_bowl(500)  # outside focus_curve_pp's [0, 100] y-range -> not found
+
+    assert slot.focus_wrt_exit_plane == 495  # fallback: focus - exit_plane_dist
+
+
+def test_focus_wrt_mid_bowl_setter_exits_when_combo_unknown_but_required():
+    """Mid bowl is non-native (exit plane is, matching Sonic Concepts/CITRUS) and no
+    'Equipment.Combination.*' section exists for this combo at all, so there's no way to
+    convert to exit plane."""
+    slot = _bare_slot()
+    slot._engineering_mode = True
+    slot.driving_sys = SimpleNamespace(
+        focus_options=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'],
+        native_focus_params=['Focus wrt exit plane [mm]'])
+    slot._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
+    slot._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
+
+    with pytest.raises(SystemExit):
+        slot._set_focus_wrt_mid_bowl(20)
+
+
+def test_focus_wrt_mid_bowl_setter_updates_eq_factor_but_never_touches_ampl_or_volt(
+        patch_config):
+    """See the identical note in
+    test_focus_wrt_exit_plane_setter_updates_eq_factor_but_never_touches_ampl_or_volt."""
+    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
+    slot = _bare_slot()
+    slot._engineering_mode = True
+    slot.driving_sys = SimpleNamespace(
+        focus_options=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'],
+        native_focus_params=['Focus wrt exit plane [mm]'])
+    slot._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
+    slot._ds_tran_combo = 'combo1'
+    slot._conv_param = {
+        'focus_curve_pp': _identity_pp(0.0, 100.0),
+        'eq_curve_pp': _identity_pp(0.0, 100.0),
+    }
+    # Sentinels (not None -- that could also be a genuine _calc_* error-path result): must
+    # survive untouched, proving _calc_ampl()/_calc_volt() are never even attempted here.
+    slot._ampl = 'untouched'
+    slot._volt = 'untouched'
+
+    slot._set_focus_wrt_mid_bowl(20)  # within focus_curve_pp's [0, 100] range -> found
+
+    assert float(slot._eq_factor) == pytest.approx(20.0)  # eq_curve_pp(20) via identity
+    assert slot._ampl == 'untouched'
+    assert slot._volt == 'untouched'
+
+
+def test_focus_setters_both_work_without_calibration_when_both_are_native():
+    """native_focus_params is a list, not a single value -- a driving system whose hardware
+    genuinely accepts more than one focus representation directly (e.g. an exact, curve-free
+    geometric relationship for every transducer it supports) can declare both as native.
+    Neither should need an active combo."""
+    slot = _bare_slot()
+    slot._engineering_mode = True
+    slot.driving_sys = SimpleNamespace(
+        focus_options=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'],
+        native_focus_params=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'])
+    slot._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
+    slot._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
+    slot._chosen_power = None
+    # Sentinels (not None -- that could also be a genuine _calc_* error-path result): must
+    # survive untouched, proving the whole power-recompute block (eq_factor included) is
+    # skipped for both calls, not just that the focus values themselves are right.
+    slot._eq_factor = 'untouched'
+    slot._ampl = 'untouched'
+    slot._volt = 'untouched'
+
+    slot._set_focus_wrt_exit_plane(20)
+    assert slot.focus_wrt_exit_plane == 20
+
+    slot._set_focus_wrt_mid_bowl(30)
+    assert slot.focus_wrt_mid_bowl == 30
+
+    assert slot._eq_factor == 'untouched'
+    assert slot._ampl == 'untouched'
+    assert slot._volt == 'untouched'
+
+
+# --- transducer ---------------------------------------------------------------
+
+def test_transducer_setter_exits_when_not_compatible(patch_config):
+    slot = _bare_slot()
+    slot.driving_sys = SimpleNamespace(serial='DS1', tran_comp=['TRAN-A', 'TRAN-B'])
+
+    with pytest.raises(SystemExit):
+        slot._set_transducer('TRAN-C')
+
+
+def test_transducer_setter_sets_default_oper_freq_and_resets_focus(patch_config):
+    """oper_freq defaults from the new transducer's own fundamental frequency (add_slot()'s own
+    oper_freq parameter relies on this) -- but focus no longer defaults to anything, it resets
+    to None, since nothing in FDS's own add_slot() flow ever observes that intermediate state
+    (configure() always sets the real focus right after) and SonoRover One (the one known
+    external consumer of the old min_foc default) needs its own rewrite against this API
+    regardless."""
+    slot = _bare_slot()
+    slot.driving_sys = SimpleNamespace(serial='DS1', tran_comp=['TRAN-A'])
+    slot._transducer = SimpleNamespace(
+        serial='', set_transducer_info=lambda serial: setattr(slot._transducer, 'serial', serial),
+        fund_freq=300, min_foc=40)
+    # Stale values from a previous transducer -- must not survive.
+    slot._chosen_focus = 'Focus wrt exit plane [mm]'
+    slot._focus_wrt_exit_plane = 20
+    slot._focus_wrt_mid_bowl = 25
+
+    slot._set_transducer('TRAN-A')
+
+    assert slot.oper_freq == 300
+    assert slot._chosen_focus is None
+    assert slot._focus_wrt_exit_plane is None
+    assert slot._focus_wrt_mid_bowl is None
+    assert slot._ds_tran_combo == 'DS1~TRAN-A'
+
+
+def test_transducer_setter_loads_real_curves_when_combo_active(tmp_path, patch_config):
+    """_set_transducer() -> _refresh_combo() -> _update_conv_param() actually runs (and doesn't
+    crash) when a calibration combo exists for the new pair -- proven with real curve-fit JSON
+    files, not just a mocked _combo_is_active(). Distinct from
+    test_update_conv_param_populates_all_four_curves_and_updates_transducer_range, which calls
+    _update_conv_param() directly: this one exercises the actual _set_transducer() ->
+    _refresh_combo() trigger path. _update_conv_param() itself no longer touches focus/power/
+    eq_factor at all (see its own docstring), so there's nothing focus/power-related left to set
+    up or assert on here -- this used to also characterize that, back when it still ran a guard
+    clause for it."""
+    section = 'Equipment.Combination.DS1~TRAN-A'
+    patch_config.set(section, 'Active?', 'True')
+    eq_file = _write_identity_fit_json(tmp_path, 'eq.json', 0.0, 100.0)
+    patch_config.set(section, 'EqualizationCurveFit json file', eq_file)
+    patch_config.set(section, 'FocusCurveFit json file', eq_file)
+    patch_config.set(section, 'PowerCurveFit json file', eq_file)
+    patch_config.set(section, 'VoltageCurveFit json file', eq_file)
+
+    slot = _bare_slot()
+    slot.driving_sys = SimpleNamespace(serial='DS1', tran_comp=['TRAN-A'])
+    slot._transducer = SimpleNamespace(
+        serial='', set_transducer_info=lambda serial: setattr(slot._transducer, 'serial', serial),
+        fund_freq=300, min_foc=40)
+
+    slot._set_transducer('TRAN-A')  # must not raise
+
+    assert slot._ds_tran_combo == 'DS1~TRAN-A'
+    assert slot._conv_param['eq_curve_pp'] is not None  # proves _update_conv_param() really ran
+
+
+# --- update_transducer --------------------------------------------------------
+# Combines _set_transducer() + this slot's own per-slot element-count validation +
+# oper_freq/dephasing_degree + configure() -- used both by Sequence.add_slot() (a freshly
+# constructed slot) and directly on an already-added slot to swap its transducer later, e.g.
+# sequence.slots[0].update_transducer(...). Unlike Sequence's own _validate_channel_count()
+# (the *aggregate* check across every slot, which needs the full slots list this method has no
+# way to see), the per-slot check here is self-contained -- and is enough on its own to keep the
+# aggregate within bounds too: if every existing slot already satisfies its own
+# available_ch / max_tran_slots ceiling, and the slot count never exceeds max_tran_slots
+# (add_slot()'s own job), the sum can never exceed available_ch either.
+
+def _fake_transducer(elements=2, fund_freq=300):
+    tran = SimpleNamespace(serial='', elements=elements, fund_freq=fund_freq, min_foc=0,
+                           max_foc=100, name='tran', exit_plane_dist=5)
+    tran.set_transducer_info = lambda serial: setattr(tran, 'serial', serial)
+    return tran
+
+
+def _driving_sys_for(*tran_serials, max_tran_slots=4, available_ch=208):
+    return SimpleNamespace(
+        serial='DS1', max_tran_slots=max_tran_slots, available_ch=available_ch,
+        tran_comp=list(tran_serials), power_options=['Amplitude [%]'],
+        focus_options=['Focus wrt exit plane [mm]'], native_power_params=['Amplitude [%]'],
+        native_focus_params=['Focus wrt exit plane [mm]'])
+
+
+def test_update_transducer_swaps_transducer_and_reconfigures(patch_config):
+    patch_config.set('Power', 'Option.ampl', 'Amplitude [%]')
+    patch_config.set('Focus', 'Option.exit', 'Focus wrt exit plane [mm]')
+    slot = _bare_slot()
+    slot._engineering_mode = True
+    slot.driving_sys = _driving_sys_for('TRAN-A', 'TRAN-B', max_tran_slots=1, available_ch=2)
+    slot._transducer = _fake_transducer(elements=2)
+    slot.update_transducer('TRAN-A', 'Focus wrt exit plane [mm]', 20, 'Amplitude [%]', 30)
+
+    slot.update_transducer('TRAN-B', 'Focus wrt exit plane [mm]', 25, 'Amplitude [%]', 35)
+
+    assert slot.transducer.serial == 'TRAN-B'
+    assert slot.focus_wrt_exit_plane == 25
+    assert slot.ampl == [35]
+
+
+def test_update_transducer_defaults_dephasing_degree_to_none_even_when_old_slot_had_one(
+        patch_config):
+    patch_config.set('Power', 'Option.ampl', 'Amplitude [%]')
+    patch_config.set('Focus', 'Option.exit', 'Focus wrt exit plane [mm]')
+    slot = _bare_slot()
+    slot._engineering_mode = True
+    slot.driving_sys = _driving_sys_for('TRAN-A', 'TRAN-B', max_tran_slots=1, available_ch=2)
+    slot._transducer = _fake_transducer(elements=2)
+    slot.update_transducer('TRAN-A', 'Focus wrt exit plane [mm]', 20, 'Amplitude [%]', 30,
+                           dephasing_degree=[90, 180])
+
+    slot.update_transducer('TRAN-B', 'Focus wrt exit plane [mm]', 25, 'Amplitude [%]', 35)
+
+    # A dephasing list sized for TRAN-A's element count isn't safe to assume for TRAN-B, even
+    # though they happen to share the same count here -- it's never carried over automatically.
+    assert slot.dephasing_degree is None
+
+
+def test_update_transducer_validates_new_transducers_element_count(patch_config):
+    patch_config.set('Power', 'Option.ampl', 'Amplitude [%]')
+    patch_config.set('Focus', 'Option.exit', 'Focus wrt exit plane [mm]')
+    slot = _bare_slot()
+    slot._engineering_mode = True
+    slot.driving_sys = _driving_sys_for('TRAN-BIG', max_tran_slots=4, available_ch=208)
+    slot._transducer = _fake_transducer(elements=60)
+
+    with pytest.raises(SystemExit, match='60 elements'):
+        slot.update_transducer('TRAN-BIG', 'Focus wrt exit plane [mm]', 20, 'Amplitude [%]', 30)
+
+
+def test_update_transducer_sets_optional_oper_freq(patch_config):
+    patch_config.set('Power', 'Option.ampl', 'Amplitude [%]')
+    patch_config.set('Focus', 'Option.exit', 'Focus wrt exit plane [mm]')
+    slot = _bare_slot()
+    slot._engineering_mode = True
+    slot.driving_sys = _driving_sys_for('TRAN-A', max_tran_slots=1, available_ch=2)
+    slot._transducer = _fake_transducer(elements=2, fund_freq=300)
+
+    slot.update_transducer('TRAN-A', 'Focus wrt exit plane [mm]', 20, 'Amplitude [%]', 30,
+                           oper_freq=500)
+
+    assert slot.oper_freq == 500
+
+
+def test_update_transducer_defaults_oper_freq_to_transducer_fund_freq_when_not_given(
+        patch_config):
+    """Two distinct transducers, each with its own fund_freq (TRAN-A: 300, TRAN-B: 999) --
+    starting on TRAN-A and updating to TRAN-B, oper_freq must end up at TRAN-B's fund_freq (999),
+    not stay at TRAN-A's (300). A single, fixed fund_freq shared by both couldn't distinguish
+    "correctly re-derived from the new transducer" from "coincidentally already the same value".
+    Real Transducer.set_transducer_info(serial) reloads every field -- including fund_freq --
+    from config for the given serial, mutating the same object in place rather than replacing
+    it; simulated here with a serial -> fund_freq lookup instead of _fake_transducer()'s own
+    lambda (which only ever updates .serial)."""
+    patch_config.set('Power', 'Option.ampl', 'Amplitude [%]')
+    patch_config.set('Focus', 'Option.exit', 'Focus wrt exit plane [mm]')
+    slot = _bare_slot()
+    slot._engineering_mode = True
+    slot.driving_sys = _driving_sys_for('TRAN-A', 'TRAN-B', max_tran_slots=1, available_ch=2)
+    slot._transducer = _fake_transducer(elements=2, fund_freq=300)  # starts on TRAN-A
+
+    fund_freq_by_serial = {'TRAN-A': 300, 'TRAN-B': 999}
+
+    def _swap(serial):
+        slot._transducer.serial = serial
+        slot._transducer.fund_freq = fund_freq_by_serial[serial]
+
+    slot._transducer.set_transducer_info = _swap
+
+    slot.update_transducer('TRAN-B', 'Focus wrt exit plane [mm]', 20, 'Amplitude [%]', 30)
+
+    assert slot.oper_freq == 999
+
+
+# --- _set_focus / _set_power / configure --------------------------------------
+# configure() (used by Sequence.add_slot() to build a new slot, and equally usable directly on
+# an already-added slot to update its focus/power later) just forwards to these two dispatchers,
+# in a fixed safe order (focus first, then power).
+
+def test_set_focus_forwards_to_matching_property(patch_config):
+    patch_config.set('Focus', 'Option.exit', 'Focus wrt exit plane [mm]')
+    patch_config.set('Focus', 'Option.bowl', 'Focus wrt mid bowl [mm]')
+    slot = _bare_slot()
+    slot.driving_sys = SimpleNamespace(
+        focus_options=['Focus wrt mid bowl [mm]'], native_focus_params=['Focus wrt mid bowl [mm]'])
+    slot._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
+    slot._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
+    slot._chosen_power = None
+    slot._engineering_mode = True
+
+    slot._set_focus('Focus wrt mid bowl [mm]', 42)
+
+    assert slot.focus_wrt_mid_bowl == 42
+
+
+def test_set_focus_exits_for_unknown_option(patch_config):
+    patch_config.set('Focus', 'Option.exit', 'Focus wrt exit plane [mm]')
+    patch_config.set('Focus', 'Option.bowl', 'Focus wrt mid bowl [mm]')
+    slot = _bare_slot()
+
+    with pytest.raises(SystemExit):
+        slot._set_focus('Something else', 42)
+
+
+def test_set_power_forwards_to_matching_property(patch_config):
+    patch_config.set('Power', 'Option.glob_pow', 'Global power [mW]')
+    patch_config.set('Power', 'Option.press', 'Max. pressure in free water [MPa]')
+    patch_config.set('Power', 'Option.volt', 'Voltage [V]')
+    patch_config.set('Power', 'Option.ampl', 'Amplitude [%]')
+    slot = _bare_slot()
+    slot.driving_sys = SimpleNamespace(
+        power_options=['Max. pressure in free water [MPa]'],
+        native_power_params=['Max. pressure in free water [MPa]'])
+    slot._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
+    slot._engineering_mode = True
+
+    slot._set_power('Max. pressure in free water [MPa]', 0.5)
+
+    assert slot.press == 0.5
+
+
+def test_set_power_exits_for_unknown_option(patch_config):
+    patch_config.set('Power', 'Option.glob_pow', 'Global power [mW]')
+    patch_config.set('Power', 'Option.press', 'Max. pressure in free water [MPa]')
+    patch_config.set('Power', 'Option.volt', 'Voltage [V]')
+    patch_config.set('Power', 'Option.ampl', 'Amplitude [%]')
+    slot = _bare_slot()
+
+    with pytest.raises(SystemExit):
+        slot._set_power('Something else', 5)
+
+
+def test_configure_sets_focus_before_power(patch_config):
+    """Focus must be applied before power -- compensation equations may need the just-updated
+    focus (specifically, its derived eq_factor) to convert power correctly. Needs a non-native
+    power option (press, which converts via eq_factor) and an active combo to actually be
+    order-sensitive: with a native power option and no active combo (as an earlier version of
+    this test had), neither setter depends on the other at all, so swapping the order produces
+    identical final values -- the assertions couldn't have told "focus first" apart from "power
+    first" either way. Confirmed directly: calling _set_power() before _set_focus() in this
+    exact setup raises AttributeError (self._eq_factor not set yet); configure() must not do
+    that."""
+    patch_config.set('Focus', 'Option.exit', 'Focus wrt exit plane [mm]')
+    patch_config.set('Power', 'Option.press', 'Max. pressure in free water [MPa]')
+    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
+    slot = _bare_slot()
+    slot.driving_sys = SimpleNamespace(
+        focus_options=['Focus wrt exit plane [mm]'],
+        native_focus_params=['Focus wrt exit plane [mm]'],
+        power_options=['Max. pressure in free water [MPa]'],
+        native_power_params=['Voltage [V]'],  # press is NOT native -> needs eq_factor from focus
+        available_ch=1)
+    slot._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
+    slot._ds_tran_combo = 'combo1'
+    slot._chosen_power = None
+    slot._engineering_mode = True
+    slot._conv_param = {
+        'focus_curve_pp': _identity_pp(0.0, 100.0),
+        'eq_curve_pp': _identity_pp(0.0, 100.0),
+        'power_curve_pp': _identity_pp(-10.0, 1000.0),
+        'volt_curve_pp': _identity_pp(-10.0, 200.0),
+    }
+
+    slot.configure('Focus wrt exit plane [mm]', 20, 'Max. pressure in free water [MPa]', 2e-6)
+
+    assert slot.focus_wrt_exit_plane == 20
+    assert slot.press == 2e-6
+    assert slot.ampl == [40.0]  # power_curve_pp(press_pa * eq_factor) via identity -- needs
+    # eq_factor(20) == 20 to already be correct at this point
+
+
+# --- _update_conv_param -----------------------------------------------------
+
+def _write_identity_fit_json(tmp_path, name, x0, x1):
+    """
+    Writes a synthetic single-piece FitParams JSON file to tmp_path whose
+    resulting PPoly is the identity function pp(x) == x over [x0, x1] --
+    same convention as _identity_pp above (c=[[1.0], [x0]]) -- and returns
+    its absolute path as a string, suitable for passing straight to
+    extract_and_define_pp/_update_conv_param via patch_config (see the
+    module docstring's note on absolute tmp_path resolution).
+    """
+    fit_params = {
+        "xTransform": "none",
+        "FitParams": {"breaks": [x0, x1], "coefs": [[1.0, x0]]},
+    }
+    path = tmp_path / name
+    path.write_text(json.dumps(fit_params))
+    return str(path)
+
+
+def test_update_conv_param_populates_all_four_curves_and_updates_transducer_range(
+        tmp_path, patch_config):
+    """This method only ever runs from _set_transducer() (via update_transducer()), which
+    always resets focus to None right before calling it -- so eq_factor is never meaningful to
+    compute here; _set_focus()'s own setters do that once configure() provides a real focus
+    value moments later. Seeded as a sentinel (not None -- that could also look like a genuine
+    fresh-slot default) to prove it's genuinely never touched, not just correct by coincidence."""
+    slot = _bare_slot()
+    slot._ds_tran_combo = 'combo1'
+    slot._transducer = SimpleNamespace(min_foc=0, max_foc=0)
+    slot._eq_factor = 'untouched'
+
+    eq_file = _write_identity_fit_json(tmp_path, 'eq.json', 0.0, 100.0)
+    focus_file = _write_identity_fit_json(tmp_path, 'focus.json', 0.0, 100.0)
+    power_file = _write_identity_fit_json(tmp_path, 'power.json', -10.0, 1000.0)
+    volt_file = _write_identity_fit_json(tmp_path, 'volt.json', -10.0, 200.0)
+
+    section = 'Equipment.Combination.combo1'
+    patch_config.set(section, 'EqualizationCurveFit json file', eq_file)
+    patch_config.set(section, 'FocusCurveFit json file', focus_file)
+    patch_config.set(section, 'PowerCurveFit json file', power_file)
+    patch_config.set(section, 'VoltageCurveFit json file', volt_file)
+
+    slot._update_conv_param()
+
+    assert slot._conv_param['eq_curve_pp'] is not None
+    assert slot._conv_param['focus_curve_pp'] is not None
+    assert slot._conv_param['power_curve_pp'] is not None
+    assert slot._conv_param['volt_curve_pp'] is not None
+
+    # transducer.min_foc/max_foc are (re)set from the equalization curve's breaks
+    assert slot.transducer.min_foc == 0.0
+    assert slot.transducer.max_foc == 100.0
+
+    assert slot._eq_factor == 'untouched'
+
+
+# --- __str__ -----------------------------------------------------------------
+
+def _str_ready_slot():
+    """A slot with just enough set for __str__ to run without crashing: chosen_power ==
+    'Global power [mW]' needs the fewest additional fields (no input_press_mpa/eq_press_mpa/
+    calculated_ampl to fill in, unlike the press branch)."""
+    slot = _bare_slot()
+    slot._transducer = SimpleNamespace()
+    slot._chosen_power = 'Global power [mW]'
+    slot._global_power = 2.5
+    slot._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
+    slot._oper_freq = 500
+    slot._focus_wrt_exit_plane = 40
+    slot._focus_wrt_mid_bowl = 40
+    slot._dephasing_degree = None
+    return slot
+
+
+def test_str_reports_native_power_needs_no_correction_when_combo_inactive():
+    """Previously silent in this case (neither the combo-active block nor the old "not
+    available" elif applied) -- now always says something, since a native power parameter never
+    needing pressure correction in the first place is worth stating explicitly, not omitting."""
+    slot = _str_ready_slot()
+    slot.driving_sys = SimpleNamespace(native_power_params=['Global power [mW]'], serial='DS-1')
+
+    info = str(slot)
+
+    assert "Global power [mW] is already DS-1's native power parameter" in info
+    assert "not available in the configuration file" not in info
+
+
+def test_str_reports_missing_correction_when_not_native_and_combo_inactive():
+    slot = _str_ready_slot()
+    slot.driving_sys = SimpleNamespace(native_power_params=['Amplitude [%]'], serial='DS-1')
+
+    info = str(slot)
+
+    assert "not available in the configuration file" in info
+    assert "native power parameter" not in info

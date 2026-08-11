@@ -99,7 +99,7 @@ class Sequence():
         self._seq_num = 0
 
         self._driving_sys = ds.DrivingSystem()
-        self.driving_sys = driving_sys_serial
+        self._driving_sys.set_ds_info(driving_sys_serial)
 
         back_up_trigger_option = get_config_value(get_logger(), config, 'Trigger', 'Options',
                                                   '').split('\n')[0]
@@ -158,7 +158,7 @@ class Sequence():
         info += f"Number of times a trigger is sent: {self._n_triggers} \n "
 
         for i, slot in enumerate(self._slots):
-            info += f"--- Transducer slot {i} --- \n "
+            info += f"--- Transducer slot {i} (counting from 0, i.e. slots[{i}]) --- \n "
             info += str(slot)
 
         info += f"Pulse duration [ms]: {self._timing_param['pulse_dur']} \n "
@@ -205,42 +205,19 @@ class Sequence():
     @property
     def driving_sys(self):
         """
-        Getter method for the driving system.
+        Getter method for the driving system. Read-only -- set once, at construction, and never
+        changed afterward. Swapping which physical driving system a Sequence targets mid-
+        experiment isn't a realistic scenario (it would mean swapping the actual connected
+        hardware), and reusing existing slots' focus/power values against a different driving
+        system's calibration curves is risky even if it were: the same numeric value can mean a
+        very different actual physical output once its calibration is a different pair
+        entirely. Construct a new Sequence and re-add_slot() every transducer instead.
 
         Returns:
             DrivingSystem: The driving system associated with the sequence.
         """
 
         return self._driving_sys
-
-    @driving_sys.setter
-    def driving_sys(self, serial):
-        """
-        Sets the driving system based on the provided serial number.
-
-        Existing slots keep referring to the same DrivingSystem object (mutated in place by
-        set_ds_info() below, not replaced) -- so this only needs to re-validate them against the
-        new driving system's transducer compatibility and reload their conversion parameters,
-        not repoint anything.
-
-        Parameters:
-            serial (str): Serial number of the driving system.
-        """
-
-        self._driving_sys.set_ds_info(serial)
-
-        for slot in getattr(self, '_slots', []):
-            if slot.transducer.serial not in self._driving_sys.tran_comp:
-                message = (f'{slot.transducer.serial} is not compatible with ' +
-                           f'{self._driving_sys.serial}. Use one of the following instead: ' +
-                           f'{self._driving_sys.tran_comp}.')
-                get_logger().critical(message)
-                sys.exit(message)
-            # pylint: disable-next=protected-access
-            slot._refresh_combo()
-
-        if getattr(self, '_slots', []):
-            self._validate_channel_count()
 
     @property
     def wait_for_trigger(self):
@@ -343,6 +320,11 @@ class Sequence():
         there's no correctness reason they must be set here rather than on the returned slot
         afterward -- only offered as kwargs for convenience.
 
+        To swap an already-added slot's transducer for a different one later, call
+        seq.slots[slot_index].update_transducer(...) directly -- same required arguments as
+        here, since the new transducer's calibration curve/geometric range differ from the old
+        one's, so old focus/power numbers can't just be assumed to still be correct.
+
         Parameters:
             transducer_serial (str): Serial number of the transducer for this slot. Must be
                                      compatible with this sequence's driving system (see
@@ -373,38 +355,13 @@ class Sequence():
             sys.exit(message)
 
         slot = TransducerSlot(self._driving_sys, self._engineering_mode)
-        slot.transducer = transducer_serial
-        self._validate_slot_element_count(slot)
-
-        if oper_freq is not None:
-            slot.oper_freq = oper_freq
-        slot.dephasing_degree = dephasing_degree
-
-        slot.configure(focus_option, focus_value, power_option, power_value)
+        slot.update_transducer(transducer_serial, focus_option, focus_value, power_option,
+                               power_value, oper_freq, dephasing_degree)
 
         self._slots.append(slot)
         self._validate_channel_count()
 
         return slot
-
-    def _validate_slot_element_count(self, slot):
-        """
-        Fails fast if the given slot's transducer has more elements than this driving system's
-        channels-per-slot allow. Slots are always evenly divided, so that per-slot ceiling is
-        simply available_ch / max_tran_slots -- there is no separate config key for it.
-
-        Parameters:
-            slot (TransducerSlot): The slot to check (its transducer must already be assigned).
-        """
-
-        max_elements_per_slot = self._driving_sys.available_ch / self._driving_sys.max_tran_slots
-        if slot.transducer.elements > max_elements_per_slot:
-            message = (f'{slot.transducer.serial} has {slot.transducer.elements} elements, ' +
-                       f'more than the {max_elements_per_slot:.0f} channels available per slot ' +
-                       f'on {self._driving_sys.serial} ({self._driving_sys.available_ch} ' +
-                       f'available channels / {self._driving_sys.max_tran_slots} slots).')
-            get_logger().critical(message)
-            sys.exit(message)
 
     def _validate_channel_count(self):
         """
