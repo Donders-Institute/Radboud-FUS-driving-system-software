@@ -535,6 +535,7 @@ native power parameters = Global power [mW]
 native focus parameters = Focus wrt exit plane [mm]
 transducer compatibility = YOUR-TRANSDUCER-ID
 max. transducer slots = 1
+max. buffers = 1
 active? = True
 ```
 
@@ -549,6 +550,7 @@ The driving system identifier must match one of the identifiers defined in the '
 - **native focus parameters**: Same idea, for focus -- one or more of `Focus wrt exit plane [mm]`/`Focus wrt mid bowl [mm]`, whichever this system's hardware accepts directly.
 - **transducer compatibility**: List of compatible transducer IDs. `Sequence.add_slot()`/`sequence.slots[i].update_transducer()` exit with a clear error if you try to assign a transducer that isn't listed here for this driving system.
 - **max. transducer slots**: How many transducers this driving system can drive simultaneously. Defaults to `1` (single-transducer-only) when omitted -- only set this above `1` for a driving system that genuinely supports it (e.g. IGT's `_comb_2x10-ch`-style configs).
+- **max. buffers**: How many hardware buffers this driving system can hold a sequence in at once -- each buffer can be pre-loaded with its own sequence ahead of time and triggered/executed independently (see `Sequence.buffer_num`). Defaults to `1` (no real buffer concept, `buffer_num` is then only ever `0`) when omitted -- all current IGT systems declare `2` here.
 - **active?**: Whether this system is active and available for use
 
 ```ini

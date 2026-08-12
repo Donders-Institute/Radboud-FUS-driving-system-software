@@ -97,20 +97,24 @@ class IGT(ds.ControlDrivingSystem):
         self.listener = None
         self.n_channels = 0
 
-    def is_sequence_sent(self, seq_num):
+    def is_sequence_sent(self, buffer_num):
         """
-        Checks whether a sequence has been sent to the ultrasound driving system.
+        Checks whether a sequence has been sent to the given hardware buffer.
+
+        Parameters:
+            buffer_num (int): Which hardware buffer to check (see Sequence.buffer_num).
 
         Returns:
-            bool: True if a sequence has been sent, False otherwise.
+            bool: True if a sequence has been sent to that buffer, False otherwise.
         """
 
-        return seq_num in self.sent_seqs
+        return buffer_num in self.sent_seqs
 
-    def register_sent_sequence(self, seq_num, seq, n_pulse_train_rep, pulse_train_delay,
+    def register_sent_sequence(self, buffer_num, seq, n_pulse_train_rep, pulse_train_delay,
                                phases=None):
         """
-        Adds the sequence number of the sent sequence to the sent sequence list.
+        Records the sent sequence under its buffer number in the sent sequence list.
+            buffer_num: which hardware buffer this sequence was sent to (see Sequence.buffer_num)
             seq: list of pulses representing a pulse train
             n_pulse_train_rep: number of executions of one pulse train
             pulse_train_delay: pulse train delay in miliseconds
@@ -118,21 +122,22 @@ class IGT(ds.ControlDrivingSystem):
             total_sequence_duration_ms (float): Total duration of the sequence in milliseconds.
         """
 
-        self.sent_seqs[seq_num] = {}
-        self.sent_seqs[seq_num]['seq'] = seq
-        self.sent_seqs[seq_num]['n_pulse_train_rep'] = n_pulse_train_rep
-        self.sent_seqs[seq_num]['pulse_train_delay'] = pulse_train_delay
-        self.sent_seqs[seq_num]['phases'] = phases
+        self.sent_seqs[buffer_num] = {}
+        self.sent_seqs[buffer_num]['seq'] = seq
+        self.sent_seqs[buffer_num]['n_pulse_train_rep'] = n_pulse_train_rep
+        self.sent_seqs[buffer_num]['pulse_train_delay'] = pulse_train_delay
+        self.sent_seqs[buffer_num]['phases'] = phases
 
         total_sequence_duration_ms = unifus.sequenceDurationMs(seq, n_pulse_train_rep,
                                                                pulse_train_delay)
 
         wait_time_ms = float(get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
                                               'Wait time before responsive [ms]', 100))
-        self.sent_seqs[seq_num]['total_sequence_duration_ms'] = (total_sequence_duration_ms +
-                                                                 wait_time_ms)
+        self.sent_seqs[buffer_num]['total_sequence_duration_ms'] = (total_sequence_duration_ms +
+                                                                    wait_time_ms)
 
-        get_logger().debug(f"Stored sequence {seq_num}: {self.sent_seqs[seq_num]}")
+        get_logger().debug(f"Stored sequence in buffer {buffer_num}: " +
+                           f"{self.sent_seqs[buffer_num]}")
 
     def connect(self, connect_info, log_dir=None, log_name=None, attempt=0):
         """
@@ -413,6 +418,18 @@ class IGT(ds.ControlDrivingSystem):
         for sequence in sequences:
             self._assert_ready_to_send(sequence)
 
+        # Only sequences[0].buffer_num is ever actually read below (the whole interleaved group
+        # is sent to that one buffer, not one buffer per sequence) -- but a caller giving
+        # different buffer_num values across the group almost certainly means they mixed up
+        # sequences that were never meant to be interleaved together, so reject it explicitly
+        # instead of silently going with whichever one happens to be first.
+        if len(sequences) > 1 and any(seq.buffer_num != sequences[0].buffer_num
+                                      for seq in sequences[1:]):
+            message = ('All sequences given to interleave must target the same buffer -- got ' +
+                       f'{[seq.buffer_num for seq in sequences]}.')
+            get_logger().critical(message)
+            sys.exit(message)
+
         get_logger().info('Validating sequence...')
 
         for seq in sequences:
@@ -488,9 +505,9 @@ class IGT(ds.ControlDrivingSystem):
             # gen.setParam (unifus.GenParam.MultiplexerValue, 3);
 
             # Upload the sequence
-            self.gen.sendSequence(seq0.seq_num, pulse_train_seq)
+            self.gen.sendSequence(seq0.buffer_num, pulse_train_seq)
 
-            self.register_sent_sequence(seq0.seq_num, pulse_train_seq, n_pulse_train_rep,
+            self.register_sent_sequence(seq0.buffer_num, pulse_train_seq, n_pulse_train_rep,
                                         pulse_train_delay, phases)
 
         else:
@@ -586,7 +603,7 @@ class IGT(ds.ControlDrivingSystem):
         seq0 = sequences[0]
 
         if self.is_connected():
-            if self.is_sequence_sent(seq0.seq_num):
+            if self.is_sequence_sent(seq0.buffer_num):
                 try:
                     # Use unifus.ExecFlag.NONE if nothing special, or simply don't pass the
                     # exec_flags argument. Use '|' to combine multiple flags: flag1 | flag2 | flag3
@@ -630,7 +647,7 @@ class IGT(ds.ControlDrivingSystem):
                         elif seq0.pulse_dur >= measure_time_level + ramp_transient_t:  # [ms]:
                             exec_flags |= unifus.ExecFlag.MeasureTimings  # or NONE
 
-                    sent_seq_info = self.sent_seqs.get(seq0.seq_num, {})
+                    sent_seq_info = self.sent_seqs.get(seq0.buffer_num, {})
                     n_pulse_train_rep = sent_seq_info.get('n_pulse_train_rep')
                     pulse_train_delay = sent_seq_info.get('pulse_train_delay')
 
@@ -655,7 +672,7 @@ class IGT(ds.ControlDrivingSystem):
 
                     get_logger().info(f"Waiting for a total of {seq0.n_triggers} trigger(s)...")
 
-                    self.gen.prepareSequence(seq0.seq_num, n_pulse_train_rep, pulse_train_delay,
+                    self.gen.prepareSequence(seq0.buffer_num, n_pulse_train_rep, pulse_train_delay,
                                              exec_flags)
 
                     self.gen.startSequence()
@@ -750,7 +767,7 @@ class IGT(ds.ControlDrivingSystem):
         get_logger().info('Executing sequence...')
 
         if self.is_connected():
-            if self.is_sequence_sent(seq0.seq_num):
+            if self.is_sequence_sent(seq0.buffer_num):
                 try:
                     # Use unifus.ExecFlag.NONE if nothing special, or simply don't pass the
                     # exec_flags argument. Use '|' to combine multiple flags: flag1 | flag2 | flag3
@@ -794,8 +811,9 @@ class IGT(ds.ControlDrivingSystem):
                         elif seq0.pulse_dur >= measure_time_level + ramp_transient_t:  # [ms]:
                             exec_flags |= unifus.ExecFlag.MeasureTimings  # or NONE
 
-                    sent_seq_info = self.sent_seqs.get(seq0.seq_num, {})
-                    self.gen.prepareSequence(seq0.seq_num, sent_seq_info.get('n_pulse_train_rep'),
+                    sent_seq_info = self.sent_seqs.get(seq0.buffer_num, {})
+                    self.gen.prepareSequence(seq0.buffer_num,
+                                             sent_seq_info.get('n_pulse_train_rep'),
                                              sent_seq_info.get('pulse_train_delay'), exec_flags)
 
                     self.gen.startSequence()

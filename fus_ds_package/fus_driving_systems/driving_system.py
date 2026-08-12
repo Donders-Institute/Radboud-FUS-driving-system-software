@@ -62,6 +62,11 @@ class DrivingSystem:
         max_tran_slots (int): The number of transducers this driving system can drive
             simultaneously (see Sequence.add_slot()). Default 1 -- a driving system that
             doesn't declare a higher value is single-transducer-only.
+        max_buffers (int): The number of hardware buffers this driving system can hold a
+            sequence in at once (see Sequence.buffer_num) -- each buffer can be pre-loaded with
+            its own sequence ahead of time and triggered/executed independently. Default 1 --
+            a driving system that doesn't declare a higher value has no real buffer concept at
+            all (buffer_num is then only ever 0).
         is_active (Boolean): Indication if the driving system is used with the code.
     """
 
@@ -82,6 +87,7 @@ class DrivingSystem:
         self.native_power_params = None
         self.native_focus_params = None
         self.max_tran_slots = 1
+        self.max_buffers = 1
         self.is_active = True
 
     def set_ds_info(self, serial):
@@ -126,6 +132,8 @@ class DrivingSystem:
             get_logger(), config, section, 'Native focus parameters', '', True).split('\n')
         self.max_tran_slots = int(get_config_value(
             get_logger(), config, section, 'Max. transducer slots', 1))
+        self.max_buffers = int(get_config_value(
+            get_logger(), config, section, 'Max. buffers', 1))
         self.is_active = get_config_value(
             get_logger(), config, section, 'Active?', 'True') == 'True'
 
@@ -156,6 +164,7 @@ class DrivingSystem:
         native_focus_params = '\n '.join(self.native_focus_params)
         info += f"Driving system native focus parameter(s): {native_focus_params} \n "
         info += f"Driving system max. transducer slots: {self.max_tran_slots} \n "
+        info += f"Driving system max. buffers: {self.max_buffers} \n "
 
         return info
 

@@ -377,6 +377,53 @@ def test_configure_timing_exits_when_n_triggers_omitted_for_seq_trigger_option()
         seq.configure_timing(pulse_dur=10, trigger_option='TriggerOnePulseTrain')
 
 
+# --- buffer_num ---------------------------------------------------------------
+# Which of the driving system's hardware buffers this sequence targets -- only meaningful for a
+# driving system that actually has more than one (see DrivingSystem.max_buffers); a driving
+# system with none at all (max_buffers == 1, the default) only ever accepts buffer_num == 0.
+
+def test_buffer_num_defaults_to_zero():
+    seq = _bare_sequence()
+    seq._buffer_num = 0
+
+    assert seq.buffer_num == 0
+
+
+def test_buffer_num_setter_accepts_value_within_range():
+    seq = _bare_sequence()
+    seq._driving_sys = SimpleNamespace(serial='DS1', max_buffers=2)
+
+    seq.buffer_num = 1
+
+    assert seq.buffer_num == 1
+
+
+def test_buffer_num_setter_rejects_negative_value():
+    seq = _bare_sequence()
+    seq._driving_sys = SimpleNamespace(serial='DS1', max_buffers=2)
+
+    with pytest.raises(SystemExit):
+        seq.buffer_num = -1
+
+
+def test_buffer_num_setter_exits_when_at_or_above_max_buffers():
+    seq = _bare_sequence()
+    seq._driving_sys = SimpleNamespace(serial='DS1', max_buffers=2)
+
+    with pytest.raises(SystemExit):
+        seq.buffer_num = 2  # only 0 and 1 are valid when max_buffers == 2
+
+
+def test_buffer_num_setter_exits_for_any_nonzero_value_when_driving_system_has_no_buffers():
+    """max_buffers defaults to 1 for a driving system with no real buffer concept at all --
+    buffer_num can then only ever be 0."""
+    seq = _bare_sequence()
+    seq._driving_sys = SimpleNamespace(serial='DS1', max_buffers=1)
+
+    with pytest.raises(SystemExit):
+        seq.buffer_num = 1
+
+
 # --- driving_sys ------------------------------------------------------------
 # Read-only -- set once, at construction (see __init__), never changed afterward. Swapping which
 # physical driving system a Sequence targets mid-experiment isn't supported: construct a new

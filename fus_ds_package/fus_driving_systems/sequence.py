@@ -55,8 +55,12 @@ class Sequence():
     script is never in doubt about which access style applies to a given driving system.
 
     Attributes:
-        _seq_num (int): Number of sequence starting at zero. Currently only used to differentiate
-                        and send multiple sequences to the IGT system. Only 0 and 1 are possible.
+        _buffer_num (int): Which of the driving system's hardware buffers this sequence targets,
+                        starting at 0. Only used by IGT, to pre-load a sequence into a specific
+                        buffer ahead of time and send/trigger it independently later -- see
+                        DrivingSystem.max_buffers for how many buffers a given driving system
+                        actually has (only 0 is valid for a driving system with no real buffer
+                        concept at all, i.e. max_buffers == 1).
         _driving_sys (DrivingSystem): The driving system associated with the sequence.
         _trigger_option (str): chosen trigger option -- wait_for_trigger is derived from this,
                                not stored separately (see the wait_for_trigger property).
@@ -96,7 +100,7 @@ class Sequence():
 
         self._engineering_mode = engineering_mode
 
-        self._seq_num = 0
+        self._buffer_num = 0
 
         self._driving_sys = ds.DrivingSystem()
         self._driving_sys.set_ds_info(driving_sys_serial)
@@ -150,7 +154,7 @@ class Sequence():
         """
         info = ''
 
-        info += f"Sequence number/buffer (for IGT purposes): {self._seq_num} \n "
+        info += f"Buffer number (for IGT purposes): {self._buffer_num} \n "
         info += str(self._driving_sys)
 
         info += f"Wait for trigger: {self.wait_for_trigger} \n "
@@ -178,29 +182,40 @@ class Sequence():
         return info
 
     @property
-    def seq_num(self):
+    def buffer_num(self):
         """
-        Getter method for the sequence number.
+        Getter method for the buffer number.
 
         Returns:
-            seq_num: Number of sequence starting at zero. Currently only used to
-                           differentiate and send multiple sequences to the IGT system.
+            int: Which of the driving system's hardware buffers this sequence targets,
+                 starting at 0. See DrivingSystem.max_buffers for how many this driving system
+                 actually has.
         """
 
-        return self._seq_num
+        return self._buffer_num
 
-    @seq_num.setter
-    def seq_num(self, seq_num):
+    @buffer_num.setter
+    def buffer_num(self, buffer_num):
         """
-        Sets the sequence number.
+        Sets the buffer number.
 
         Parameters:
-            seq_num (int): Number of sequence starting at zero. Currently only used to
-                           differentiate and send multiple sequences to the IGT system.
+            buffer_num (int): Which of the driving system's hardware buffers this sequence
+                              targets, starting at 0. Must be within
+                              [0, driving_sys.max_buffers).
         """
 
-        validate_value(seq_num, 'Sequence number (seq_num)', True, True, False, False)
-        self._seq_num = seq_num
+        validate_value(buffer_num, 'Buffer number (buffer_num)', True, True, False, False)
+
+        if buffer_num >= self._driving_sys.max_buffers:
+            message = (f'Buffer number {buffer_num} is not valid for driving system ' +
+                       f'{self._driving_sys.serial} -- it has {self._driving_sys.max_buffers} ' +
+                       'buffer(s), so buffer_num must be between 0 and ' +
+                       f'{self._driving_sys.max_buffers - 1}.')
+            get_logger().critical(message)
+            sys.exit(message)
+
+        self._buffer_num = buffer_num
 
     @property
     def driving_sys(self):
