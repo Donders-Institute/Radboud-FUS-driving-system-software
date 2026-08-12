@@ -66,8 +66,6 @@ config['General']['Delay before reconnecting [s]'] = str(2)
 config['General']['Maximum reconnection attempts'] = str(5)
 config['General']['Package name'] = 'fus_driving_systems'
 config['General']['Speed of sound water [m/s]'] = str(1500)
-# DEPRECATED
-config['General']['Trigger option.seq'] = 'TriggerOnePulseTrain'
 
 # Logging
 config['Logging'] = {}
@@ -86,17 +84,17 @@ config['Logging']['Max log file size [MB]'] = str(10)
 # Trigger options
 TRIG_NONE = 'None'
 # One pulse train fires per external trigger received -- n_triggers says how many to expect.
-TRIG_SEQ = 'TriggerOnePulseTrain'
+TRIG_PULSE_TRAIN = 'TriggerOnePulseTrain'
 # One trigger fires the entire, already fully-timed protocol at once (equivalent to executing it
 # directly, just gated behind that one trigger).
-TRIG_PTR = 'TriggerWholeProtocol'
+TRIG_WHOLE_PROTOCOL = 'TriggerWholeProtocol'
 
 config['Trigger'] = {}
-config['Trigger']['Options'] = '\n'.join([TRIG_NONE, TRIG_SEQ, TRIG_PTR])
+config['Trigger']['Options'] = '\n'.join([TRIG_NONE, TRIG_PULSE_TRAIN, TRIG_WHOLE_PROTOCOL])
 config['Trigger']['Default option'] = TRIG_NONE
 config['Trigger']['Option.none'] = TRIG_NONE
-config['Trigger']['Option.seq'] = TRIG_SEQ
-config['Trigger']['Option.ptr'] = TRIG_PTR
+config['Trigger']['Option.pulse_train'] = TRIG_PULSE_TRAIN
+config['Trigger']['Option.whole_protocol'] = TRIG_WHOLE_PROTOCOL
 
 config['Trigger']['Default n_triggers'] = str(0)
 

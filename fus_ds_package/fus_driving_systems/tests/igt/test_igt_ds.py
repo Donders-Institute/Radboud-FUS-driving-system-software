@@ -1135,8 +1135,8 @@ class TestWaitForTrigger:
     def test_pulse_train_trigger_prepares_with_n_triggers_and_zero_delay(self, mocker,
                                                                          connected_instance,
                                                                          patch_config):
-        patch_config.set('Trigger', 'Option.seq', 'TriggerOnePulseTrain')
-        patch_config.set('Trigger', 'Option.ptr', 'TriggerWholeProtocol')
+        patch_config.set('Trigger', 'Option.pulse_train', 'TriggerOnePulseTrain')
+        patch_config.set('Trigger', 'Option.whole_protocol', 'TriggerWholeProtocol')
         connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0}}
         fake_protocol = SimpleNamespace(buffer_num=0, pulse_ramp_dur=0,
                                         pulse_ramp_shape='Rectangular - no ramping',
@@ -1156,8 +1156,8 @@ class TestWaitForTrigger:
         sets that flag. Note: MeasureChannels/MeasureBoards/MeasureTimings
         are not independent bits (3/2/1), so the resulting flags are
         compared for exact equality rather than checked with '&'."""
-        patch_config.set('Trigger', 'Option.seq', 'TriggerOnePulseTrain')
-        patch_config.set('Trigger', 'Option.ptr', 'TriggerWholeProtocol')
+        patch_config.set('Trigger', 'Option.pulse_train', 'TriggerOnePulseTrain')
+        patch_config.set('Trigger', 'Option.whole_protocol', 'TriggerWholeProtocol')
         connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0}}
         fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=5.0, pulse_ramp_dur=0,
                                         pulse_ramp_shape='Rectangular - no ramping',
@@ -1176,8 +1176,8 @@ class TestWaitForTrigger:
                                                                        patch_config):
         """Same as above, one threshold down: pulse_dur between the
         MeasureBoards (0.035 ms) and MeasureChannels (4.570 ms) defaults."""
-        patch_config.set('Trigger', 'Option.seq', 'TriggerOnePulseTrain')
-        patch_config.set('Trigger', 'Option.ptr', 'TriggerWholeProtocol')
+        patch_config.set('Trigger', 'Option.pulse_train', 'TriggerOnePulseTrain')
+        patch_config.set('Trigger', 'Option.whole_protocol', 'TriggerWholeProtocol')
         connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0}}
         fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=1.0, pulse_ramp_dur=0,
                                         pulse_ramp_shape='Rectangular - no ramping',
@@ -1196,8 +1196,8 @@ class TestWaitForTrigger:
                                                                        patch_config):
         """Same as above, lowest threshold: pulse_dur between the
         MeasureTimings (0.001 ms) and MeasureBoards (0.035 ms) defaults."""
-        patch_config.set('Trigger', 'Option.seq', 'TriggerOnePulseTrain')
-        patch_config.set('Trigger', 'Option.ptr', 'TriggerWholeProtocol')
+        patch_config.set('Trigger', 'Option.pulse_train', 'TriggerOnePulseTrain')
+        patch_config.set('Trigger', 'Option.whole_protocol', 'TriggerWholeProtocol')
         connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0}}
         fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=0.01, pulse_ramp_dur=0,
                                         pulse_ramp_shape='Rectangular - no ramping',
@@ -1212,11 +1212,11 @@ class TestWaitForTrigger:
                     unifus.ExecFlag.MeasureTimings)
         assert int(exec_flags) == int(expected)
 
-    def test_ptr_trigger_prepares_with_stored_repetition_and_delay(self, mocker,
-                                                                   connected_instance,
-                                                                   patch_config):
-        patch_config.set('Trigger', 'Option.seq', 'TriggerOnePulseTrain')
-        patch_config.set('Trigger', 'Option.ptr', 'TriggerWholeProtocol')
+    def test_whole_protocol_trigger_prepares_with_stored_repetition_and_delay(self, mocker,
+                                                                              connected_instance,
+                                                                              patch_config):
+        patch_config.set('Trigger', 'Option.pulse_train', 'TriggerOnePulseTrain')
+        patch_config.set('Trigger', 'Option.whole_protocol', 'TriggerWholeProtocol')
         connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0}}
         fake_protocol = SimpleNamespace(buffer_num=0, pulse_ramp_dur=0,
                                         pulse_ramp_shape='Rectangular - no ramping',
@@ -1228,8 +1228,8 @@ class TestWaitForTrigger:
         connected_instance.gen.prepareSequence.assert_called_once_with(0, 2, 5.0, mocker.ANY)
 
     def test_unknown_trigger_option_exits(self, connected_instance, patch_config):
-        patch_config.set('Trigger', 'Option.seq', 'TriggerOnePulseTrain')
-        patch_config.set('Trigger', 'Option.ptr', 'TriggerWholeProtocol')
+        patch_config.set('Trigger', 'Option.pulse_train', 'TriggerOnePulseTrain')
+        patch_config.set('Trigger', 'Option.whole_protocol', 'TriggerWholeProtocol')
         connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0}}
         fake_protocol = SimpleNamespace(buffer_num=0, pulse_ramp_dur=0,
                                         pulse_ramp_shape='Rectangular - no ramping',
@@ -1251,7 +1251,7 @@ class TestWaitForTrigger:
 
         with pytest.raises(SystemExit):
             # trigger_option 'None' does not match the real config's
-            # Option.seq/Option.ptr -> the recursive wait_for_trigger call
+            # Option.pulse_train/Option.whole_protocol -> the recursive wait_for_trigger call
             # (made with real, unmocked send_protocol-state) exits; we only
             # care that send_protocol was invoked first, i.e. before that.
             connected_instance.wait_for_trigger([fake_protocol], debug_info=False)
@@ -1278,8 +1278,8 @@ class TestWaitForTrigger:
         how the bug was originally found. Same bug shape existed in
         execute_protocol's identical reconnect branch, fixed there too.
         """
-        patch_config.set('Trigger', 'Option.seq', 'TriggerOnePulseTrain')
-        patch_config.set('Trigger', 'Option.ptr', 'TriggerWholeProtocol')
+        patch_config.set('Trigger', 'Option.pulse_train', 'TriggerOnePulseTrain')
+        patch_config.set('Trigger', 'Option.whole_protocol', 'TriggerWholeProtocol')
         instance = IGT(log_dir=str(tmp_path))
         instance.connected = False
 
@@ -1308,8 +1308,8 @@ class TestWaitForTrigger:
         """The broad 'except Exception: sys.exit' wrapper around the
         prepare/start calls -- any hardware-layer failure should surface
         as a SystemExit, not propagate raw."""
-        patch_config.set('Trigger', 'Option.seq', 'TriggerOnePulseTrain')
-        patch_config.set('Trigger', 'Option.ptr', 'TriggerWholeProtocol')
+        patch_config.set('Trigger', 'Option.pulse_train', 'TriggerOnePulseTrain')
+        patch_config.set('Trigger', 'Option.whole_protocol', 'TriggerWholeProtocol')
         connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0}}
         connected_instance.gen.prepareSequence.side_effect = RuntimeError('hardware fault')
         fake_protocol = SimpleNamespace(buffer_num=0, pulse_ramp_dur=0,

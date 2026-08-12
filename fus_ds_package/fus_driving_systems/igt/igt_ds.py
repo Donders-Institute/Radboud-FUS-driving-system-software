@@ -686,16 +686,18 @@ class IGT(ds.ControlDrivingSystem):
                     pulse_train_delay = sent_protocol_info.get('pulse_train_delay')
 
                     # Determining trigger flag
-                    seq_trigger = get_config_value(get_logger(), config, 'Trigger', 'Option.seq',
-                                                   'TriggerOnePulseTrain')
-                    ptr_trigger = get_config_value(get_logger(), config, 'Trigger', 'Option.ptr',
-                                                   'TriggerWholeProtocol')
-                    if protocol0.trigger_option == seq_trigger:
+                    pulse_train_trigger = get_config_value(get_logger(), config, 'Trigger',
+                                                           'Option.pulse_train',
+                                                           'TriggerOnePulseTrain')
+                    whole_protocol_trigger = get_config_value(get_logger(), config, 'Trigger',
+                                                              'Option.whole_protocol',
+                                                              'TriggerWholeProtocol')
+                    if protocol0.trigger_option == pulse_train_trigger:
                         exec_flags |= unifus.ExecFlag.TriggerOneSequence
                         n_pulse_train_rep = protocol0.n_triggers
                         pulse_train_delay = 0  # trigger will determine delay
 
-                    elif protocol0.trigger_option == ptr_trigger:
+                    elif protocol0.trigger_option == whole_protocol_trigger:
                         exec_flags |= unifus.ExecFlag.TriggerAllSequences
 
                     else:

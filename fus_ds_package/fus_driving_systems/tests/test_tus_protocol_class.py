@@ -223,8 +223,8 @@ def test_configure_timing_rejects_negative_pulse_ramp_dur():
         protocol.configure_timing(pulse_dur=10, pulse_ramp_dur=-1)
 
 
-def test_configure_timing_forces_single_trigger_for_ptr_option(patch_config):
-    patch_config.set('Trigger', 'option.ptr', 'TriggerWholeProtocol')
+def test_configure_timing_forces_single_trigger_for_whole_protocol_option(patch_config):
+    patch_config.set('Trigger', 'option.whole_protocol', 'TriggerWholeProtocol')
     protocol = _bare_protocol()
     protocol._timing_param = {}
     protocol._trigger_option = 'None'
@@ -236,7 +236,7 @@ def test_configure_timing_forces_single_trigger_for_ptr_option(patch_config):
 
 
 def test_configure_timing_leaves_n_triggers_untouched_for_the_none_option(patch_config):
-    patch_config.set('Trigger', 'option.ptr', 'TriggerWholeProtocol')
+    patch_config.set('Trigger', 'option.whole_protocol', 'TriggerWholeProtocol')
     protocol = _bare_protocol()
     protocol._timing_param = {}
     protocol._trigger_option = 'TriggerOnePulseTrain'
@@ -248,7 +248,7 @@ def test_configure_timing_leaves_n_triggers_untouched_for_the_none_option(patch_
 
 
 def test_configure_timing_sets_every_level_via_n_triggers(patch_config):
-    patch_config.set('Trigger', 'option.ptr', 'TriggerWholeProtocol')
+    patch_config.set('Trigger', 'option.whole_protocol', 'TriggerWholeProtocol')
     protocol = _bare_protocol()
     protocol._timing_param = {}
     protocol._trigger_option = 'None'
@@ -272,7 +272,7 @@ def test_configure_timing_sets_every_level_via_n_triggers(patch_config):
 
 
 def test_configure_timing_sets_every_level_via_duration(patch_config):
-    patch_config.set('Trigger', 'option.ptr', 'TriggerWholeProtocol')
+    patch_config.set('Trigger', 'option.whole_protocol', 'TriggerWholeProtocol')
     protocol = _bare_protocol()
     protocol._timing_param = {}
     protocol._trigger_option = 'None'
@@ -333,6 +333,7 @@ def test_configure_timing_pulse_train_rep_dur_alone_repeats_back_to_back():
 
 
 def test_configure_timing_exits_when_both_trigger_modes_given(patch_config):
+    patch_config.set('Trigger', 'option.pulse_train', 'TriggerOnePulseTrain')
     protocol = _bare_protocol()
     protocol._timing_param = {}
     protocol._trigger_option = 'None'
@@ -343,10 +344,12 @@ def test_configure_timing_exits_when_both_trigger_modes_given(patch_config):
                                   n_triggers=4, pulse_train_rep_int=200, pulse_train_rep_dur=2)
 
 
-def test_configure_timing_exits_when_n_triggers_given_for_non_seq_trigger_option():
+def test_configure_timing_exits_when_n_triggers_given_for_non_pulse_train_trigger_option(
+        patch_config):
     """n_triggers only applies when trigger_option is the "trigger per pulse train" option --
     giving it alongside any other trigger_option (the default, 'None', here) is a mismatch,
     not silently corrected."""
+    patch_config.set('Trigger', 'option.pulse_train', 'TriggerOnePulseTrain')
     protocol = _bare_protocol()
     protocol._timing_param = {}
 
@@ -354,9 +357,10 @@ def test_configure_timing_exits_when_n_triggers_given_for_non_seq_trigger_option
         protocol.configure_timing(pulse_dur=10, n_triggers=4)
 
 
-def test_configure_timing_exits_when_duration_given_for_seq_trigger_option(patch_config):
+def test_configure_timing_exits_when_duration_given_for_pulse_train_trigger_option(patch_config):
     """pulse_train_rep_int/pulse_train_rep_dur don't apply when trigger_option is the "trigger
     per pulse train" option -- give n_triggers instead."""
+    patch_config.set('Trigger', 'option.pulse_train', 'TriggerOnePulseTrain')
     protocol = _bare_protocol()
     protocol._timing_param = {}
     protocol._trigger_option = 'None'
@@ -366,10 +370,12 @@ def test_configure_timing_exits_when_duration_given_for_seq_trigger_option(patch
                                   pulse_train_rep_int=200, pulse_train_rep_dur=2)
 
 
-def test_configure_timing_exits_when_n_triggers_omitted_for_seq_trigger_option():
+def test_configure_timing_exits_when_n_triggers_omitted_for_pulse_train_trigger_option(
+        patch_config):
     """One pulse train fires per trigger under 'TriggerOnePulseTrain' -- the driving system
     genuinely needs to know in advance how many triggers to expect, so unlike every other
     parameter in this method, n_triggers has no sensible default to silently fall back to."""
+    patch_config.set('Trigger', 'option.pulse_train', 'TriggerOnePulseTrain')
     protocol = _bare_protocol()
     protocol._timing_param = {}
 

@@ -616,24 +616,25 @@ class TUSProtocol():
         rep_int_given = pulse_train_rep_int is not None
         rep_dur_given = pulse_train_rep_dur is not None
 
-        seq_trigger = get_config_value(get_logger(), config, 'Trigger', 'option.seq',
-                                       'TriggerOnePulseTrain')
-        if self._trigger_option == seq_trigger:
+        pulse_train_trigger = get_config_value(get_logger(), config, 'Trigger',
+                                               'option.pulse_train', 'TriggerOnePulseTrain')
+        if self._trigger_option == pulse_train_trigger:
             # Triggering per whole pulse train: n_triggers says how many times the trigger fires.
             # pulse_train_rep_int/pulse_train_rep_dur don't apply to this mode at all -- they
             # simply default to pulse_train_dur below, matching the "repeat once" default.
             if rep_int_given or rep_dur_given:
                 message = ("pulse_train_rep_int/pulse_train_rep_dur don't apply when " +
-                           f"trigger_option is '{seq_trigger}' -- give n_triggers instead.")
+                           f"trigger_option is '{pulse_train_trigger}' -- give n_triggers " +
+                           'instead.')
                 get_logger().critical(message)
                 sys.exit(message)
             # n_triggers is required here, unlike everywhere else in this method -- one pulse
             # train fires per trigger received, so the driving system genuinely needs to know in
             # advance how many triggers to expect; there is no sensible default to fall back to.
             if n_triggers is None:
-                message = (f"n_triggers is required when trigger_option is '{seq_trigger}' -- " +
-                           'it tells the driving system how many triggers to expect (one pulse ' +
-                           'train fires per trigger).')
+                message = ("n_triggers is required when trigger_option is " +
+                           f"'{pulse_train_trigger}' -- it tells the driving system how many " +
+                           'triggers to expect (one pulse train fires per trigger).')
                 get_logger().critical(message)
                 sys.exit(message)
             validate_value(n_triggers, 'Number of anticipated triggers (n_triggers)',
@@ -647,8 +648,9 @@ class TUSProtocol():
             # happen via pulse_train_rep_int/pulse_train_rep_dur instead; n_triggers doesn't
             # apply here.
             if n_triggers is not None:
-                message = (f"n_triggers only applies when trigger_option is '{seq_trigger}' " +
-                           '-- give pulse_train_rep_int/pulse_train_rep_dur instead.')
+                message = ("n_triggers only applies when trigger_option is " +
+                           f"'{pulse_train_trigger}' -- give pulse_train_rep_int/" +
+                           'pulse_train_rep_dur instead.')
                 get_logger().critical(message)
                 sys.exit(message)
 
@@ -667,9 +669,10 @@ class TUSProtocol():
             if pulse_train_rep_dur is None:
                 pulse_train_rep_dur = pulse_train_rep_int / 1e3
 
-            ptr_trigger = get_config_value(get_logger(), config, 'Trigger', 'option.ptr',
-                                           'TriggerWholeProtocol')
-            if self._trigger_option == ptr_trigger:
+            whole_protocol_trigger = get_config_value(get_logger(), config, 'Trigger',
+                                                      'option.whole_protocol',
+                                                      'TriggerWholeProtocol')
+            if self._trigger_option == whole_protocol_trigger:
                 # Purely for ControlDrivingSystem implementations' own logging of "how many
                 # triggers are expected" -- never used to decide anything on the hardware side
                 # for this trigger mode.
