@@ -10,9 +10,16 @@ disable=
     # switching to %-style lazy formatting is not planned.
     logging-not-lazy,
     logging-fstring-interpolation,
-    # Complexity is inherent to the current design of TUSProtocol and the
-    # driving-system classes. Deferred to the tracked "split tus_protocol.py"
-    # structural refactor rather than suppressed line-by-line.
+    # Complexity is inherent to this package's domain (driving-system config,
+    # protocol timing/power/focus logic) -- it shows up package-wide (calc_utils.py,
+    # driving_system.py, transducer.py, transducer_slot.py, tus_protocol.py, utils.py,
+    # igt_ds.py, igt/utils.py, igt/transducer_xyz.py), not just in one class. The
+    # TransducerSlot extraction already split out what could be split without
+    # fragmenting logic that benefits from staying in one place (e.g. configure_timing()'s
+    # single-call design, chosen specifically to avoid ordering-hazard bugs) -- it moved
+    # complexity into the new file rather than eliminating it. Disabled package-wide rather
+    # than suppressed line-by-line; revisit only where a concrete pain point (a bug, a
+    # hard-to-test path) points at a specific function, not against these thresholds alone.
     too-many-arguments,
     too-many-positional-arguments,
     too-many-locals,

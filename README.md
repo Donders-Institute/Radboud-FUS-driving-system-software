@@ -430,9 +430,9 @@ def send_protocol(self, protocol):
     """
     Translate and send ultrasound protocol to the driving system
     Args:
-        protocol: A TUSProtocol object containing, amongst other things, of:
-				the ultrasound protocol (focus, pulse duration, pulse rep. interval and etcetera)
-               			used equipment (driving system and transducer)
+        protocol: A TUSProtocol instance containing, amongst other things, of:
+				the timing/power/focus parameters (focus, pulse duration, pulse rep. interval
+				and etcetera) and the equipment used (driving system and transducer)
     """
     pass
 

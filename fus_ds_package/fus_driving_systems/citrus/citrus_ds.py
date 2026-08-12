@@ -88,9 +88,9 @@ class CITRUS(ds.ControlDrivingSystem):
         Validates and sends an ultrasound protocol to the CITRUS ultrasound driving system.
 
         Parameters:
-            protocol(Object): contains, amongst other things, of:
-                the ultrasound protocol (focus, pulse duration, pulse rep. interval and etcetera)
-                used equipment (driving system and transducer)
+            protocol(Object): a TUSProtocol instance containing, amongst other things:
+                the timing/power/focus parameters (focus, pulse duration, pulse rep. interval
+                and etcetera) and the equipment used (driving system and transducer)
         """
 
         get_logger().info('Validating protocol...')
