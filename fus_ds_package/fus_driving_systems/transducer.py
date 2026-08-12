@@ -81,7 +81,7 @@ class Transducer:
         """
         Sets the transducer based on the provided serial number.
 
-        Called by Sequence.transducer's setter and get_tran_list() -- both can be given a
+        Called by TransducerSlot.transducer's setter and get_tran_list() -- both can be given a
         serial that isn't actually in the configuration file (e.g. a typo). That is checked
         explicitly below, rather than relying on incidentally hitting one of the individual
         is_sys_exit=True fields further down and having to track down why that one field

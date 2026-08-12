@@ -54,7 +54,7 @@ class ControlDrivingSystem(ABC):
         # boolean to determine if gen is connected
         self.connected = False
 
-        self.sequence_sent = False
+        self.protocol_sent = False
 
         # generator object
         self.gen = None
@@ -70,20 +70,20 @@ class ControlDrivingSystem(ABC):
         """
 
     @abstractmethod
-    def send_sequence(self, sequence):
+    def send_protocol(self, protocol):
         """
-        Abstract method for sending an ultrasound sequence to the ultrasound driving system.
+        Abstract method for sending an ultrasound protocol to the ultrasound driving system.
 
         Parameters:
-            sequence(Object): contains, amongst other things, of:
+            protocol(Object): contains, amongst other things, of:
                 the ultrasound protocol (focus, pulse duration, pulse rep. interval and etcetera)
                 used equipment (driving system and transducer)
         """
 
     @abstractmethod
-    def execute_sequence(self):
+    def execute_protocol(self):
         """
-        Abstract method for executing the previously sent sequence.
+        Abstract method for executing the previously sent protocol.
         """
 
     @abstractmethod
@@ -102,22 +102,22 @@ class ControlDrivingSystem(ABC):
 
         return self.connected
 
-    def is_sequence_sent(self):
+    def is_protocol_sent(self):
         """
-        Checks whether a sequence has been sent to the ultrasound driving system.
+        Checks whether a protocol has been sent to the ultrasound driving system.
 
         Returns:
-            bool: True if a sequence has been sent, False otherwise.
+            bool: True if a protocol has been sent, False otherwise.
         """
 
-        return self.sequence_sent
+        return self.protocol_sent
 
-    def validate_sequence(self, sequence):
+    def validate_protocol(self, protocol):
         """
-        Validates if the sequence is within the expected ranges.
+        Validates if the protocol is within the expected ranges.
 
         Parameters:
-            sequence(Object): contains, amongst other things, of:
+            protocol(Object): contains, amongst other things, of:
                 the ultrasound protocol (focus, pulse duration, pulse rep. interval and etcetera)
                 used equipment (driving system and transducer)
 
@@ -127,48 +127,48 @@ class ControlDrivingSystem(ABC):
 
         error_messages = []
 
-        if sequence.pulse_rep_int == 0:
+        if protocol.pulse_rep_int == 0:
             error_messages.append("Pulse Repetition Interval [ms] is not allowed to be 0.")
         else:
-            n_pulses = sequence.pulse_train_dur/sequence.pulse_rep_int
+            n_pulses = protocol.pulse_train_dur/protocol.pulse_rep_int
             if not n_pulses.is_integer():
                 error_messages.append("Number of pulses within the pulse train is not a whole " +
                                       "number: " +
-                                      f"Pulse Train Duration of {sequence.pulse_train_dur} " +
+                                      f"Pulse Train Duration of {protocol.pulse_train_dur} " +
                                       "[ms] divided by Pulse Rep. Interval of " +
-                                      f"{sequence.pulse_rep_int} [ms] is {n_pulses:.2f}.")
+                                      f"{protocol.pulse_rep_int} [ms] is {n_pulses:.2f}.")
 
-        if sequence.pulse_train_rep_int == 0:
+        if protocol.pulse_train_rep_int == 0:
             error_messages.append("Pulse Train Repetition Interval [ms] is not allowed to be 0.")
         else:
-            n_pulse_trains = sequence.pulse_train_rep_dur/sequence.pulse_train_rep_int
+            n_pulse_trains = protocol.pulse_train_rep_dur/protocol.pulse_train_rep_int
             if not n_pulse_trains.is_integer():
                 error_messages.append(
                     "Number of pulse trains within the pulse train repetition is " +
                     "not a whole number: Pulse Train Repetition Duration of " +
-                    f"{sequence.pulse_train_rep_dur} [ms] divided by Pulse " +
+                    f"{protocol.pulse_train_rep_dur} [ms] divided by Pulse " +
                     "Train Repetition Interval of " +
-                    f"{sequence.pulse_train_rep_int} [ms] is {n_pulse_trains:.2f}.")
+                    f"{protocol.pulse_train_rep_int} [ms] is {n_pulse_trains:.2f}.")
 
-        if sequence.pulse_dur > sequence.pulse_rep_int:
+        if protocol.pulse_dur > protocol.pulse_rep_int:
             error_messages.append("Pulse Duration is not allowed to be higher than the Pulse " +
-                                  f"Repetition Interval: {sequence.pulse_dur} [ms] vs. " +
-                                  f"{sequence.pulse_rep_int} [ms], respectively.")
+                                  f"Repetition Interval: {protocol.pulse_dur} [ms] vs. " +
+                                  f"{protocol.pulse_rep_int} [ms], respectively.")
 
-        if sequence.pulse_rep_int > sequence.pulse_train_dur:
+        if protocol.pulse_rep_int > protocol.pulse_train_dur:
             error_messages.append("Pulse Repetiton Interval is not allowed to be higher than " +
-                                  f"the Pulse Train Duration: {sequence.pulse_rep_int} [ms] vs. " +
-                                  f"{sequence.pulse_train_dur} [ms], respectively.")
+                                  f"the Pulse Train Duration: {protocol.pulse_rep_int} [ms] vs. " +
+                                  f"{protocol.pulse_train_dur} [ms], respectively.")
 
-        if sequence.pulse_train_dur > sequence.pulse_train_rep_int:
+        if protocol.pulse_train_dur > protocol.pulse_train_rep_int:
             error_messages.append("Pulse Train Duration is not allowed to be higher than the " +
-                                  f"Pulse Train Repetition Interval: {sequence.pulse_train_dur} " +
-                                  f"[ms] vs. {sequence.pulse_train_rep_int} [ms], respectively.")
+                                  f"Pulse Train Repetition Interval: {protocol.pulse_train_dur} " +
+                                  f"[ms] vs. {protocol.pulse_train_rep_int} [ms], respectively.")
 
-        if sequence.pulse_train_rep_int > sequence.pulse_train_rep_dur:
+        if protocol.pulse_train_rep_int > protocol.pulse_train_rep_dur:
             error_messages.append("Pulse Train Repetition Interval is not allowed to be higher " +
                                   "than the Pulse Train Repetition Duration: " +
-                                  f" {sequence.pulse_train_rep_int} [ms] vs. " +
-                                  f"{sequence.pulse_train_rep_dur} [ms], respectively.")
+                                  f" {protocol.pulse_train_rep_int} [ms] vs. " +
+                                  f"{protocol.pulse_train_rep_dur} [ms], respectively.")
 
         return error_messages

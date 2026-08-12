@@ -10,8 +10,8 @@ disable=
     # switching to %-style lazy formatting is not planned.
     logging-not-lazy,
     logging-fstring-interpolation,
-    # Complexity is inherent to the current design of Sequence and the
-    # driving-system classes. Deferred to the tracked "split sequence.py"
+    # Complexity is inherent to the current design of TUSProtocol and the
+    # driving-system classes. Deferred to the tracked "split tus_protocol.py"
     # structural refactor rather than suppressed line-by-line.
     too-many-arguments,
     too-many-positional-arguments,

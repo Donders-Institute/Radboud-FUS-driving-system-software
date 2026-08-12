@@ -27,14 +27,14 @@ SOFTWARE.
 If you use this kit in your research or project, please refer to the 'How to Cite' section in the
 README.md file of https://github.com/Donders-Institute/Radboud-FUS-driving-system-software.
 
-Generic value-validation and piecewise-polynomial helpers shared by sequence.py and
+Generic value-validation and piecewise-polynomial helpers shared by tus_protocol.py and
 transducer_slot.py. Kept in their own module (rather than living in either of those two, or in
-utils.py) specifically to avoid a circular import: sequence.py constructs TransducerSlot
-instances, so transducer_slot.py can't import from sequence.py; utils.py is imported by
-logging_config.py, so this module can't route through get_logger() the way sequence.py's
+utils.py) specifically to avoid a circular import: tus_protocol.py constructs TransducerSlot
+instances, so transducer_slot.py can't import from tus_protocol.py; utils.py is imported by
+logging_config.py, so this module can't route through get_logger() the way tus_protocol.py's
 functions used to and still be importable from there without a cycle. This module calls
-get_logger() directly instead, same as sequence.py/transducer_slot.py themselves do -- it has no
-dependency on either of them.
+get_logger() directly instead, same as tus_protocol.py/transducer_slot.py themselves do -- it has
+no dependency on either of them.
 """
 
 # Basic packages

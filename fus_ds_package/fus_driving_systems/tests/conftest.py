@@ -19,7 +19,7 @@ import pytest
 from discovery import CONVERSION_DATA_SUBPATH, resolve_conversion_data_dir
 
 
-# Every consumer module (sequence.py, driving_system.py, transducer.py, the driving-system
+# Every consumer module (tus_protocol.py, driving_system.py, transducer.py, the driving-system
 # subclasses, igt/utils.py, igt/transducer_xyz.py) calls logging_config.get_logger() at each
 # log call site instead of importing 'logger' as a name, so none of them ever cache a
 # reference that could go stale. sync_logger() below mutates the shared logger's

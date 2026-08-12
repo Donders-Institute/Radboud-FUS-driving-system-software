@@ -2,14 +2,14 @@
 """
 Characterization tests for fus_driving_systems.transducer_slot.TransducerSlot.
 
-This is where all of Sequence's former power/focus test coverage moved to in Phase 3 (multi-
+This is where all of TUSProtocol's former power/focus test coverage moved to in Phase 3 (multi-
 transducer slots) -- the logic itself moved essentially verbatim, so most assertions are
 unchanged; only the calc methods' calling convention changed (explicit parameters and return
 values instead of implicit self._X reads/writes -- see the class docstring/plan for why).
 
 Every test here builds the instance with TransducerSlot.__new__(TransducerSlot) (bypassing
 __init__ entirely) and sets only the private attributes the method-under-test actually reads,
-same pattern as test_sequence_class.py.
+same pattern as test_tus_protocol_class.py.
 """
 import json
 from types import SimpleNamespace
@@ -1420,9 +1420,9 @@ def test_transducer_setter_loads_real_curves_when_combo_active(tmp_path, patch_c
 
 # --- update_transducer --------------------------------------------------------
 # Combines _set_transducer() + this slot's own per-slot element-count validation +
-# oper_freq/dephasing_degree + configure() -- used both by Sequence.add_slot() (a freshly
+# oper_freq/dephasing_degree + configure() -- used both by TUSProtocol.add_slot() (a freshly
 # constructed slot) and directly on an already-added slot to swap its transducer later, e.g.
-# sequence.slots[0].update_transducer(...). Unlike Sequence's own _validate_channel_count()
+# protocol.slots[0].update_transducer(...). Unlike TUSProtocol's own _validate_channel_count()
 # (the *aggregate* check across every slot, which needs the full slots list this method has no
 # way to see), the per-slot check here is self-contained -- and is enough on its own to keep the
 # aggregate within bounds too: if every existing slot already satisfies its own
@@ -1535,7 +1535,7 @@ def test_update_transducer_defaults_oper_freq_to_transducer_fund_freq_when_not_g
 
 
 # --- _set_focus / _set_power / configure --------------------------------------
-# configure() (used by Sequence.add_slot() to build a new slot, and equally usable directly on
+# configure() (used by TUSProtocol.add_slot() to build a new slot, and equally usable directly on
 # an already-added slot to update its focus/power later) just forwards to these two dispatchers,
 # in a fixed safe order (focus first, then power).
 

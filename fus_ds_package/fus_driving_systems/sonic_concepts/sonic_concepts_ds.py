@@ -66,8 +66,8 @@ class SonicConcepts(ds.ControlDrivingSystem):
 
         get_logger().info('Connecting...')
 
-        # When no connection, it is assumed that sent sequence isn't available (anymore)
-        self.sequence_sent = False
+        # When no connection, it is assumed that sent protocol isn't available (anymore)
+        self.protocol_sent = False
 
         self.gen = serial.Serial(connect_info, 115200, timeout=1)
         startup_message = self.gen.readline().decode("ascii").strip()
@@ -82,44 +82,44 @@ class SonicConcepts(ds.ControlDrivingSystem):
             self.connected = True
             get_logger().debug("Connection with driving system %s is established", startup_message)
 
-    def send_sequence(self, sequence):
+    def send_protocol(self, protocol):
         """
-        Sends an ultrasound sequence to the Sonic Concepts ultrasound driving system.
+        Sends an ultrasound protocol to the Sonic Concepts ultrasound driving system.
 
         Parameters:
-            sequence(Object): contains, amongst other things, of:
+            protocol(Object): contains, amongst other things, of:
                 the ultrasound protocol (focus, pulse duration, pulse rep. interval and etcetera)
                 used equipment (driving system and transducer)
         """
 
-        get_logger().info('Validating sequence...')
+        get_logger().info('Validating protocol...')
 
-        error_messages = self.validate_sequence(sequence)
+        error_messages = self.validate_protocol(protocol)
         if error_messages:
             for error in error_messages:
                 get_logger().critical(error)
-            sys.exit('(Multiple) error(s) found when validating sequence, see log file.')
+            sys.exit('(Multiple) error(s) found when validating protocol, see log file.')
 
-        get_logger().info('Sending sequence...')
+        get_logger().info('Sending protocol...')
 
         get_logger().debug(
-            'Sequence with the following parameters is send to the driving system: \n' +
-            ' %s', sequence)
+            'Protocol with the following parameters is send to the driving system: \n' +
+            ' %s', protocol)
 
         if self.is_connected():
 
             self._reset_parameters()
 
-            self._set_operating_freq(sequence.oper_freq)
-            self._set_focus(sequence.focus_wrt_exit_plane)
-            self._set_global_power(sequence.global_power)
-            self._set_burst_and_period(sequence.pulse_dur, sequence.pulse_rep_int)
-            self._set_timer(sequence.pulse_train_dur)
-            self._set_ramping(sequence.pulse_ramp_shape, sequence.pulse_ramp_dur)
+            self._set_operating_freq(protocol.oper_freq)
+            self._set_focus(protocol.focus_wrt_exit_plane)
+            self._set_global_power(protocol.global_power)
+            self._set_burst_and_period(protocol.pulse_dur, protocol.pulse_rep_int)
+            self._set_timer(protocol.pulse_train_dur)
+            self._set_ramping(protocol.pulse_ramp_shape, protocol.pulse_ramp_dur)
 
-            self.sequence_sent = True
+            self.protocol_sent = True
 
-            if sequence.wait_for_trigger:
+            if protocol.wait_for_trigger:
                 self._send_command('TRIGGERMODE=1\r\n')
 
         else:
@@ -127,18 +127,18 @@ class SonicConcepts(ds.ControlDrivingSystem):
             get_logger().error("Reconnecting with driving system...")
 
             # if no connection can be made, program stops preventing infinite loop
-            self.connect(sequence.driving_sys.connect_info)
-            self.send_sequence(sequence)
+            self.connect(protocol.driving_sys.connect_info)
+            self.send_protocol(protocol)
 
-    def execute_sequence(self, sequence):
+    def execute_protocol(self, protocol):
         """
-        Executes the previously sent sequence on the Sonic Concepts ultrasound driving system.
+        Executes the previously sent protocol on the Sonic Concepts ultrasound driving system.
         """
 
-        get_logger().info('Executing sequence...')
+        get_logger().info('Executing protocol...')
 
         if self.is_connected():
-            if self.is_sequence_sent():
+            if self.is_protocol_sent():
                 try:
                     cmd = 'START\r'
                     self.gen.write(cmd.encode('ascii'))
@@ -152,21 +152,21 @@ class SonicConcepts(ds.ControlDrivingSystem):
                     sys.exit(message)
             else:
                 get_logger().warning(
-                    'The sequence has to be sent first using send_sequence() before ' +
-                    'the driving system can execute a sequence.')
-                get_logger().warning('Sending sequence...')
+                    'The protocol has to be sent first using send_protocol() before ' +
+                    'the driving system can execute a protocol.')
+                get_logger().warning('Sending protocol...')
 
-                self.send_sequence(sequence)
-                self.execute_sequence(sequence)
+                self.send_protocol(protocol)
+                self.execute_protocol(protocol)
 
         else:
             get_logger().warning("No connection with driving system.")
             get_logger().warning("Reconnecting with driving system...")
 
             # if no connection can be made, program stops preventing infinite loop
-            self.connect(sequence.driving_sys.connect_info)
-            self.send_sequence(sequence)
-            self.execute_sequence(sequence)
+            self.connect(protocol.driving_sys.connect_info)
+            self.send_protocol(protocol)
+            self.execute_protocol(protocol)
 
     def disconnect(self):
         """

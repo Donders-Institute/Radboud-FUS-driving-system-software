@@ -45,17 +45,18 @@ from fus_driving_systems.utils import get_config_value
 class TransducerSlot:
     """
     Class representing a single transducer, and everything about how it's driven, within a
-    Sequence -- a Sequence holds one or more of these (one per physically connected transducer).
+    TUSProtocol -- a TUSProtocol holds one or more of these (one per physically connected
+    transducer).
 
-    Only ever constructed by Sequence.add_slot(), which requires the transducer serial, the
+    Only ever constructed by TUSProtocol.add_slot(), which requires the transducer serial, the
     chosen focus option/value, and the chosen power option/value all together -- a slot can
     never exist half-configured (transducer picked but focus/power not yet chosen), which is
     what used to make the order power/focus/transducer were set in matter.
 
     Attributes:
         driving_sys (DrivingSystem): The driving system this slot's transducer is connected to
-                                     (shared with the owning Sequence, not a copy).
-        _engineering_mode (bool): Whether Sequence(engineering_mode=True) was set.
+                                     (shared with the owning TUSProtocol, not a copy).
+        _engineering_mode (bool): Whether TUSProtocol(engineering_mode=True) was set.
         _transducer (Transducer): The transducer associated with this slot.
         _oper_freq (int): Operating frequency of this slot [kHz].
         _dephasing_degree (list(float)): The degree used to dephase n elements in one cycle.
@@ -94,13 +95,14 @@ class TransducerSlot:
     def __init__(self, driving_sys, engineering_mode=False):
         """
         Initializes a bare TransducerSlot. Not meant to be called directly by application code --
-        use Sequence.add_slot() instead, which finishes configuring it (transducer, focus, power)
-        before handing it back.
+        use TUSProtocol.add_slot() instead, which finishes configuring it (transducer, focus,
+        power) before handing it back.
 
         Parameters:
             driving_sys (DrivingSystem): The driving system this slot's transducer will be
-                                         connected to (the same object the owning Sequence holds).
-            engineering_mode (bool): Whether Sequence(engineering_mode=True) was set.
+                                         connected to (the same object the owning TUSProtocol
+                                         holds).
+            engineering_mode (bool): Whether TUSProtocol(engineering_mode=True) was set.
         """
 
         self.driving_sys = driving_sys
@@ -109,7 +111,7 @@ class TransducerSlot:
         # None, not a config-driven placeholder like it used to be here: every one of these is
         # always overwritten before it can ever be read -- either unconditionally, by the
         # transducer setter or configure() (both always run immediately after construction, see
-        # Sequence.add_slot()), or, for the power fields below, by whichever setter the chosen
+        # TUSProtocol.add_slot()), or, for the power fields below, by whichever setter the chosen
         # power_option actually dispatches to (its own siblings included -- see e.g. press's
         # setter zeroing _ampl/_volt/_global_power for the same "0 looks like a genuine value"
         # reason None is used here instead of 0).
@@ -272,7 +274,7 @@ class TransducerSlot:
         # default to the transducer's own min_foc specifically to serve SonoRover One's GUI, a
         # transducer dropdown auto-filling a focus display field -- SonoRover needs a rewrite
         # against this API regardless, so it should read Transducer.min_foc directly for that
-        # instead of depending on this setter). Nothing in FDS's own Sequence.add_slot() flow
+        # instead of depending on this setter). Nothing in FDS's own TUSProtocol.add_slot() flow
         # ever observes this intermediate state: configure() always sets the real focus right
         # after. On an already-configured slot, changing the transducer invalidates whatever
         # focus was chosen for the old one (different geometry) -- resetting to None makes that
@@ -305,16 +307,16 @@ class TransducerSlot:
         Assigns this slot's transducer, then (re-)applies focus and power -- required together
         with transducer_serial, since the new transducer's calibration curve and geometric
         range differ from any previous one's, so a focus/power value chosen before can't just be
-        assumed to still be correct. Used both by Sequence.add_slot() (right after constructing
+        assumed to still be correct. Used both by TUSProtocol.add_slot() (right after constructing
         a bare slot) and directly by application code to swap an already-added slot's transducer
-        later, e.g. sequence.slots[0].update_transducer(...).
+        later, e.g. protocol.slots[0].update_transducer(...).
 
         Parameters:
             transducer_serial (str): Serial number of the transducer. Must be compatible with
                                      this slot's driving system (see DrivingSystem.tran_comp).
-            focus_option (str): Which focus parameter to set -- see Sequence.add_slot().
+            focus_option (str): Which focus parameter to set -- see TUSProtocol.add_slot().
             focus_value (float): The focus value [mm] for focus_option.
-            power_option (str): Which power parameter to set -- see Sequence.add_slot().
+            power_option (str): Which power parameter to set -- see TUSProtocol.add_slot().
             power_value (float or list(float)): The power value for power_option.
             oper_freq (int): Operating frequency [kHz]. Defaults to the transducer's own
                              fundamental frequency when not given.
@@ -374,7 +376,7 @@ class TransducerSlot:
     def _requires_engineering_mode(self, section, option):
         """
         Determines whether setting the given power/focus option directly requires
-        Sequence(engineering_mode=True).
+        TUSProtocol(engineering_mode=True).
 
         Which options are engineering-only is an institutional safety policy, not a hardware
         property, so it's read from a config key ('Engineering-only options', under the given
@@ -396,7 +398,7 @@ class TransducerSlot:
     def _non_engineering_options(self, section):
         """
         Returns which of this driving system's power/focus options can be set right now,
-        without Sequence(engineering_mode=True) -- used to make an "engineering_mode required"
+        without TUSProtocol(engineering_mode=True) -- used to make an "engineering_mode required"
         error message actionable. A hardcoded suggested alternative could be wrong: it might not
         even be offered by this driving system, or a given institution could have configured it
         as engineering-only too (see _requires_engineering_mode()).
@@ -791,10 +793,10 @@ class TransducerSlot:
         """
         Sets this slot's focus and power together, in one call, always in the same safe order
         (focus first, then power -- compensation equations may need the just-updated focus to
-        convert power correctly). Used by Sequence.add_slot() to configure a brand new slot, and
+        convert power correctly). Used by TUSProtocol.add_slot() to configure a brand new slot, and
         equally usable directly on an already-added slot (self.slots[i].configure(...)) to
         change its focus/power later -- e.g. mid-experiment -- without constructing an entirely
-        new Sequence just for that.
+        new TUSProtocol just for that.
 
         Parameters:
             focus_option (str): Which focus parameter to set, e.g. one of self.get_focus_options()
@@ -1248,8 +1250,8 @@ class TransducerSlot:
         an active calibration now exists for that pair, reloads its conversion parameters.
 
         Called whenever either half of the pair could have changed: this slot's own transducer
-        setter, and Sequence.driving_sys's setter (once per existing slot, since driving_sys is
-        shared -- mutated in place -- across every slot of the same Sequence).
+        setter, and TUSProtocol.driving_sys's setter (once per existing slot, since driving_sys is
+        shared -- mutated in place -- across every slot of the same TUSProtocol).
         """
 
         combo_sign = get_config_value(get_logger(), config, 'Equipment', 'Combination sign', '~')

@@ -39,7 +39,7 @@ from fus_driving_systems import utils
 def _combo_files_exist(*rel_paths):
     """
     True only if every given calibration file actually exists on disk. Paths are resolved
-    relative to the fus_driving_systems package, matching how sequence.py's
+    relative to the fus_driving_systems package, matching how calc_utils.py's
     extract_and_define_pp() resolves the very same config values at runtime.
 
     Parameters:
@@ -87,7 +87,7 @@ config['Logging']['Max log file size [MB]'] = str(10)
 TRIG_NONE = 'None'
 # One pulse train fires per external trigger received -- n_triggers says how many to expect.
 TRIG_SEQ = 'TriggerOnePulseTrain'
-# One trigger fires the entire, already fully-timed sequence at once (equivalent to executing it
+# One trigger fires the entire, already fully-timed protocol at once (equivalent to executing it
 # directly, just gated behind that one trigger).
 TRIG_PTR = 'TriggerWholeProtocol'
 
@@ -112,7 +112,7 @@ config['Power']['Option.glob_pow'] = POW_GP
 config['Power']['Option.ampl'] = POW_AMPL
 config['Power']['Option.press'] = POW_PRESS
 config['Power']['Option.volt'] = POW_VOLT
-# Which power options require Sequence(engineering_mode=True) to set directly -- an
+# Which power options require TUSProtocol(engineering_mode=True) to set directly -- an
 # institutional safety policy, not a hardware property, so it's configurable rather than
 # hardcoded: a different institution using this package can list a different set here, or none.
 config['Power']['Engineering-only options'] = '\n'.join([POW_AMPL, POW_VOLT])

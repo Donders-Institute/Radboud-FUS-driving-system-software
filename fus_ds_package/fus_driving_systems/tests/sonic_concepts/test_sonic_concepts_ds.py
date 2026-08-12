@@ -18,7 +18,7 @@ def test_connect_establishes_connection_on_normal_response(mock_serial):
     instance.connect('COM3')
 
     assert instance.connected is True
-    assert instance.sequence_sent is False
+    assert instance.protocol_sent is False
 
 
 def test_connect_exits_on_e2_response(mock_serial):
@@ -256,7 +256,7 @@ def test_disconnect_closes_gen_and_marks_disconnected(connected_instance):
     assert connected_instance.connected is False
 
 
-def test_send_sequence_calls_setters_in_order_and_marks_sent(mocker, connected_instance):
+def test_send_protocol_calls_setters_in_order_and_marks_sent(mocker, connected_instance):
     manager = mocker.Mock()
     for name in ['_reset_parameters', '_set_operating_freq', '_set_focus',
                  '_set_global_power', '_set_burst_and_period', '_set_timer',
@@ -265,22 +265,22 @@ def test_send_sequence_calls_setters_in_order_and_marks_sent(mocker, connected_i
     manager.attach_mock(mocker.patch.object(connected_instance, '_send_command'),
                         '_send_command')
 
-    fake_sequence = mocker.Mock()
-    fake_sequence.wait_for_trigger = True
-    fake_sequence.oper_freq = 300
-    fake_sequence.focus_wrt_exit_plane = 50
-    fake_sequence.global_power = 2
-    fake_sequence.pulse_dur = 1
-    fake_sequence.pulse_rep_int = 2
-    fake_sequence.pulse_train_dur = 10
-    fake_sequence.pulse_train_rep_int = 10
-    fake_sequence.pulse_train_rep_dur = 10
-    fake_sequence.pulse_ramp_shape = 'Linear'
-    fake_sequence.pulse_ramp_dur = 1
+    fake_protocol = mocker.Mock()
+    fake_protocol.wait_for_trigger = True
+    fake_protocol.oper_freq = 300
+    fake_protocol.focus_wrt_exit_plane = 50
+    fake_protocol.global_power = 2
+    fake_protocol.pulse_dur = 1
+    fake_protocol.pulse_rep_int = 2
+    fake_protocol.pulse_train_dur = 10
+    fake_protocol.pulse_train_rep_int = 10
+    fake_protocol.pulse_train_rep_dur = 10
+    fake_protocol.pulse_ramp_shape = 'Linear'
+    fake_protocol.pulse_ramp_dur = 1
 
-    connected_instance.send_sequence(fake_sequence)
+    connected_instance.send_protocol(fake_protocol)
 
-    assert connected_instance.sequence_sent is True
+    assert connected_instance.protocol_sent is True
     assert manager.mock_calls == [
         mocker.call._reset_parameters(),
         mocker.call._set_operating_freq(300),
@@ -293,24 +293,24 @@ def test_send_sequence_calls_setters_in_order_and_marks_sent(mocker, connected_i
     ]
 
 
-def test_send_sequence_exits_when_validation_produces_errors(mocker, connected_instance):
-    """Regression test: send_sequence previously never called
-    validate_sequence at all, so a malformed sequence would silently be
+def test_send_protocol_exits_when_validation_produces_errors(mocker, connected_instance):
+    """Regression test: send_protocol previously never called
+    validate_protocol at all, so a malformed protocol would silently be
     accepted instead of failing loudly like IGT already does."""
     mocker.patch.object(connected_instance, '_reset_parameters')
 
-    fake_sequence = mocker.Mock()
-    fake_sequence.pulse_dur = 1
-    fake_sequence.pulse_rep_int = 2
-    fake_sequence.pulse_train_dur = 11  # not a whole multiple of pulse_rep_int
-    fake_sequence.pulse_train_rep_int = 10
-    fake_sequence.pulse_train_rep_dur = 10
+    fake_protocol = mocker.Mock()
+    fake_protocol.pulse_dur = 1
+    fake_protocol.pulse_rep_int = 2
+    fake_protocol.pulse_train_dur = 11  # not a whole multiple of pulse_rep_int
+    fake_protocol.pulse_train_rep_int = 10
+    fake_protocol.pulse_train_rep_dur = 10
 
     with pytest.raises(SystemExit):
-        connected_instance.send_sequence(fake_sequence)
+        connected_instance.send_protocol(fake_protocol)
 
 
-def test_send_sequence_reconnects_when_not_connected(mocker):
+def test_send_protocol_reconnects_when_not_connected(mocker):
     """Documents the reconnect-and-retry pattern shared with igt_ds.py:
     if not connected, connect() then retry the same call."""
     from fus_driving_systems.sonic_concepts.sonic_concepts_ds import SonicConcepts
@@ -325,58 +325,58 @@ def test_send_sequence_reconnects_when_not_connected(mocker):
                  '_set_ramping']:
         mocker.patch.object(instance, name)
 
-    fake_sequence = mocker.Mock()
-    fake_sequence.driving_sys.connect_info = 'COM7'
-    fake_sequence.wait_for_trigger = False
-    fake_sequence.pulse_dur = 1
-    fake_sequence.pulse_rep_int = 2
-    fake_sequence.pulse_train_dur = 10
-    fake_sequence.pulse_train_rep_int = 10
-    fake_sequence.pulse_train_rep_dur = 10
+    fake_protocol = mocker.Mock()
+    fake_protocol.driving_sys.connect_info = 'COM7'
+    fake_protocol.wait_for_trigger = False
+    fake_protocol.pulse_dur = 1
+    fake_protocol.pulse_rep_int = 2
+    fake_protocol.pulse_train_dur = 10
+    fake_protocol.pulse_train_rep_int = 10
+    fake_protocol.pulse_train_rep_dur = 10
 
-    instance.send_sequence(fake_sequence)
+    instance.send_protocol(fake_protocol)
 
     mock_connect.assert_called_once_with('COM7')
-    assert instance.sequence_sent is True
+    assert instance.protocol_sent is True
 
 
-def test_execute_sequence_writes_start_command_when_sequence_sent(connected_instance):
-    connected_instance.sequence_sent = True
+def test_execute_protocol_writes_start_command_when_protocol_sent(connected_instance):
+    connected_instance.protocol_sent = True
     connected_instance.gen.readline.return_value = b'OK\n'
 
-    connected_instance.execute_sequence(None)
+    connected_instance.execute_protocol(None)
 
     connected_instance.gen.write.assert_called_once_with(b'START\r')
 
 
-def test_execute_sequence_exits_on_exception(connected_instance):
-    connected_instance.sequence_sent = True
+def test_execute_protocol_exits_on_exception(connected_instance):
+    connected_instance.protocol_sent = True
     connected_instance.gen.write.side_effect = OSError('boom')
 
     with pytest.raises(SystemExit):
-        connected_instance.execute_sequence(None)
+        connected_instance.execute_protocol(None)
 
 
-def test_execute_sequence_sends_then_executes_when_not_yet_sent(mocker, connected_instance):
-    connected_instance.sequence_sent = False
+def test_execute_protocol_sends_then_executes_when_not_yet_sent(mocker, connected_instance):
+    connected_instance.protocol_sent = False
     connected_instance.gen.readline.return_value = b'OK\n'
 
-    def fake_send_sequence(seq):
-        connected_instance.sequence_sent = True
-    mock_send_sequence = mocker.patch.object(connected_instance, 'send_sequence',
-                                             side_effect=fake_send_sequence)
+    def fake_send_protocol(protocol):
+        connected_instance.protocol_sent = True
+    mock_send_protocol = mocker.patch.object(connected_instance, 'send_protocol',
+                                             side_effect=fake_send_protocol)
 
-    connected_instance.execute_sequence(mocker.Mock())
+    connected_instance.execute_protocol(mocker.Mock())
 
-    mock_send_sequence.assert_called_once()
+    mock_send_protocol.assert_called_once()
     connected_instance.gen.write.assert_called_once_with(b'START\r')
 
 
-def test_execute_sequence_reconnects_when_not_connected(mocker):
-    """execute_sequence() has its own reconnect-and-retry branch, separate
-    from send_sequence()'s (test_send_sequence_reconnects_when_not_connected
-    above) -- not connected here means connect() + send_sequence() +
-    execute_sequence() all get retried."""
+def test_execute_protocol_reconnects_when_not_connected(mocker):
+    """execute_protocol() has its own reconnect-and-retry branch, separate
+    from send_protocol()'s (test_send_protocol_reconnects_when_not_connected
+    above) -- not connected here means connect() + send_protocol() +
+    execute_protocol() all get retried."""
     from fus_driving_systems.sonic_concepts.sonic_concepts_ds import SonicConcepts
     instance = SonicConcepts()
     instance.connected = False
@@ -386,17 +386,17 @@ def test_execute_sequence_reconnects_when_not_connected(mocker):
     def fake_connect(connect_info):
         instance.connected = True
     mock_connect = mocker.patch.object(instance, 'connect', side_effect=fake_connect)
-    mock_send_sequence = mocker.patch.object(instance, 'send_sequence')
+    mock_send_protocol = mocker.patch.object(instance, 'send_protocol')
 
-    def fake_send_sequence(seq):
-        instance.sequence_sent = True
-    mock_send_sequence.side_effect = fake_send_sequence
+    def fake_send_protocol(protocol):
+        instance.protocol_sent = True
+    mock_send_protocol.side_effect = fake_send_protocol
 
-    fake_sequence = mocker.Mock()
-    fake_sequence.driving_sys.connect_info = 'COM7'
+    fake_protocol = mocker.Mock()
+    fake_protocol.driving_sys.connect_info = 'COM7'
 
-    instance.execute_sequence(fake_sequence)
+    instance.execute_protocol(fake_protocol)
 
     mock_connect.assert_called_once_with('COM7')
-    mock_send_sequence.assert_called_once_with(fake_sequence)
+    mock_send_protocol.assert_called_once_with(fake_protocol)
     instance.gen.write.assert_called_once_with(b'START\r')

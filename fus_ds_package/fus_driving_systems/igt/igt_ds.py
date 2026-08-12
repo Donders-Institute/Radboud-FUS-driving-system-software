@@ -43,7 +43,7 @@ import pandas as pd
 
 # Own packages
 from fus_driving_systems import control_driving_system as ds
-from fus_driving_systems.sequence import Sequence
+from fus_driving_systems.tus_protocol import TUSProtocol
 
 from fus_driving_systems.igt.utils import ExecListener
 from fus_driving_systems.igt import transducer_xyz
@@ -64,7 +64,7 @@ class IGT(ds.ControlDrivingSystem):
     Attributes:
         connected (bool): Indicates whether the system is connected.
         gen: Generator object.
-        sent_seq (dict): list with sent sequences
+        sent_protocols (dict): Sent protocols, keyed by buffer number.
         fus: FUSSystem object for the IGT ultrasound driving system.
         listener: ExecListener object for event listening.
         n_channels (int): Number of channels.
@@ -92,52 +92,53 @@ class IGT(ds.ControlDrivingSystem):
         if not is_crash_detection_enabled():
             enable_crash_detection(log_dir, log_dir)
 
-        self.sent_seqs = {}
+        self.sent_protocols = {}
         self.fus = None
         self.listener = None
         self.n_channels = 0
 
-    def is_sequence_sent(self, buffer_num):
+    def is_protocol_sent(self, buffer_num):
         """
-        Checks whether a sequence has been sent to the given hardware buffer.
+        Checks whether a protocol has been sent to the given hardware buffer.
 
         Parameters:
-            buffer_num (int): Which hardware buffer to check (see Sequence.buffer_num).
+            buffer_num (int): Which hardware buffer to check (see TUSProtocol.buffer_num).
 
         Returns:
-            bool: True if a sequence has been sent to that buffer, False otherwise.
+            bool: True if a protocol has been sent to that buffer, False otherwise.
         """
 
-        return buffer_num in self.sent_seqs
+        return buffer_num in self.sent_protocols
 
-    def register_sent_sequence(self, buffer_num, seq, n_pulse_train_rep, pulse_train_delay,
-                               phases=None):
+    def register_sent_protocol(self, buffer_num, pulse_train_seq, n_pulse_train_rep,
+                               pulse_train_delay, phases=None):
         """
-        Records the sent sequence under its buffer number in the sent sequence list.
-            buffer_num: which hardware buffer this sequence was sent to (see Sequence.buffer_num)
-            seq: list of pulses representing a pulse train
+        Records the sent protocol under its buffer number in the sent protocol list.
+            buffer_num: which hardware buffer this protocol was sent to (see
+                TUSProtocol.buffer_num)
+            pulse_train_seq: list of pulses representing a pulse train
             n_pulse_train_rep: number of executions of one pulse train
             pulse_train_delay: pulse train delay in miliseconds
             phases: phases in degrees to reach focal depth
-            total_sequence_duration_ms (float): Total duration of the sequence in milliseconds.
+            total_protocol_duration_ms (float): Total duration of the protocol in milliseconds.
         """
 
-        self.sent_seqs[buffer_num] = {}
-        self.sent_seqs[buffer_num]['seq'] = seq
-        self.sent_seqs[buffer_num]['n_pulse_train_rep'] = n_pulse_train_rep
-        self.sent_seqs[buffer_num]['pulse_train_delay'] = pulse_train_delay
-        self.sent_seqs[buffer_num]['phases'] = phases
+        self.sent_protocols[buffer_num] = {}
+        self.sent_protocols[buffer_num]['pulse_train_seq'] = pulse_train_seq
+        self.sent_protocols[buffer_num]['n_pulse_train_rep'] = n_pulse_train_rep
+        self.sent_protocols[buffer_num]['pulse_train_delay'] = pulse_train_delay
+        self.sent_protocols[buffer_num]['phases'] = phases
 
-        total_sequence_duration_ms = unifus.sequenceDurationMs(seq, n_pulse_train_rep,
+        total_protocol_duration_ms = unifus.sequenceDurationMs(pulse_train_seq, n_pulse_train_rep,
                                                                pulse_train_delay)
 
         wait_time_ms = float(get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
                                               'Wait time before responsive [ms]', 100))
-        self.sent_seqs[buffer_num]['total_sequence_duration_ms'] = (total_sequence_duration_ms +
-                                                                    wait_time_ms)
+        self.sent_protocols[buffer_num]['total_protocol_duration_ms'] = (
+            total_protocol_duration_ms + wait_time_ms)
 
-        get_logger().debug(f"Stored sequence in buffer {buffer_num}: " +
-                           f"{self.sent_seqs[buffer_num]}")
+        get_logger().debug(f"Stored protocol in buffer {buffer_num}: " +
+                           f"{self.sent_protocols[buffer_num]}")
 
     def connect(self, connect_info, log_dir=None, log_name=None, attempt=0):
         """
@@ -213,8 +214,8 @@ class IGT(ds.ControlDrivingSystem):
             log_name = get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
                                         'Default log filename prefix', 'standalone_igt')
 
-        # When no connection, it is assumed that all sent sequences aren't available (anymore)
-        self.sent_seqs = {}
+        # When no connection, it is assumed that all sent protocols aren't available (anymore)
+        self.sent_protocols = {}
         max_attempts = int(get_config_value(get_logger(), config, 'General',
                                             'Maximum reconnection attempts', 5))
 
@@ -302,12 +303,12 @@ class IGT(ds.ControlDrivingSystem):
             get_logger().critical(message)
             sys.exit(message)
 
-    def validate_sequence(self, sequence):
+    def validate_protocol(self, protocol):
         """
-        Validates if the sequence is within the expected ranges.
+        Validates if the protocol is within the expected ranges.
 
         Parameters:
-            sequence(Object): contains, amongst other things, of:
+            protocol(Object): contains, amongst other things, of:
                 the ultrasound protocol (focus, pulse duration, pulse rep. interval and etcetera)
                 used equipment (driving system and transducer)
 
@@ -315,17 +316,17 @@ class IGT(ds.ControlDrivingSystem):
             List: List of error messages.
         """
 
-        error_messages = super().validate_sequence(sequence)
+        error_messages = super().validate_protocol(protocol)
 
         min_pulse_dur = float(get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
                                                'Min. pulse duration [ms]', 0.001))
-        if sequence.pulse_dur < min_pulse_dur:  # [ms]:
+        if protocol.pulse_dur < min_pulse_dur:  # [ms]:
             error_messages.append('Pulse duration is not allowed to be smaller than 1 us.')
 
         min_pulse_rep_int = float(get_config_value(
             get_logger(), config, 'Equipment.Manufacturer.IGT',
             'Min. pulse rep. interval [ms]', 0.170))
-        if sequence.pulse_rep_int < min_pulse_rep_int:  # [ms]
+        if protocol.pulse_rep_int < min_pulse_rep_int:  # [ms]
             error_messages.append('Pulse repetition interval is not allowed to be smaller than' +
                                   ' 170 us.')
 
@@ -335,18 +336,18 @@ class IGT(ds.ControlDrivingSystem):
 
         rect_ramp = get_config_value(get_logger(), config, 'Ramp', 'Option.rect',
                                      'Rectangular - no ramping')
-        if sequence.pulse_ramp_dur > 0 and (sequence.pulse_ramp_shape != rect_ramp):
-            if sequence.pulse_ramp_dur > sequence.pulse_dur/2 - min_time_between_ramps/2:
+        if protocol.pulse_ramp_dur > 0 and (protocol.pulse_ramp_shape != rect_ramp):
+            if protocol.pulse_ramp_dur > protocol.pulse_dur/2 - min_time_between_ramps/2:
                 error_messages.append('When applying ramping, there needs to be at least ' +
                                       '70 us between ramping up and down')
-        for i, slot in enumerate(sequence.slots):
+        for i, slot in enumerate(protocol.slots):
             if slot.ampl is None:
                 error_messages.append(
                     f"Intensity parameter may be set incorrectly for transducer slot {i} " +
-                    f"(counting from 0, i.e. sequence.slots[{i}]; {slot.transducer.serial}). " +
+                    f"(counting from 0, i.e. protocol.slots[{i}]; {slot.transducer.serial}). " +
                     "Amplitude is None.")
 
-        n_pulses = sequence.pulse_train_dur/sequence.pulse_rep_int
+        n_pulses = protocol.pulse_train_dur/protocol.pulse_rep_int
         max_n_pulses = int(get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
                                             'Max. pulses in pulse train', 64))
         if n_pulses > max_n_pulses:
@@ -355,141 +356,143 @@ class IGT(ds.ControlDrivingSystem):
 
         return error_messages
 
-    def _assert_ready_to_send(self, sequence):
+    def _assert_ready_to_send(self, protocol):
         """
-        Authoritative gate, run once per sequence right before it's actually used: at least one
-        transducer slot must have been added (see Sequence.add_slot()), and the combined elements
-        across all of its slots must exactly match this driving system's available channels.
+        Authoritative gate, run once per protocol right before it's actually used: at least one
+        transducer slot must have been added (see TUSProtocol.add_slot()), and the combined
+        elements across all of its slots must exactly match this driving system's available
+        channels.
 
         add_slot() itself only fails fast on exceeding available_ch (see
-        Sequence._validate_channel_count()) -- it can't require an exact match, since a driving
-        system with more than one slot is legitimately "not done yet" after just the first
-        add_slot() call. This is the one place that must see the final, complete picture.
+        TUSProtocol._validate_channel_count()) -- it can't require an exact match, since a
+        driving system with more than one slot is legitimately "not done yet" after just the
+        first add_slot() call. This is the one place that must see the final, complete picture.
 
         Parameters:
-            sequence (Sequence): The sequence to check.
+            protocol (TUSProtocol): The protocol to check.
         """
 
-        if not sequence.slots:
-            message = ('No transducer slot configured on this sequence -- call ' +
-                       'sequence.add_slot(...) at least once before sending it.')
+        if not protocol.slots:
+            message = ('No transducer slot configured on this protocol -- call ' +
+                       'protocol.add_slot(...) at least once before sending it.')
             get_logger().critical(message)
             sys.exit(message)
 
-        total_elements = sum(slot.transducer.elements for slot in sequence.slots)
-        if total_elements != sequence.driving_sys.available_ch:
-            message = (f'Number of available channels ({sequence.driving_sys.available_ch}) ' +
-                       f'does not match the combined elements of the {len(sequence.slots)} ' +
+        total_elements = sum(slot.transducer.elements for slot in protocol.slots)
+        if total_elements != protocol.driving_sys.available_ch:
+            message = (f'Number of available channels ({protocol.driving_sys.available_ch}) ' +
+                       f'does not match the combined elements of the {len(protocol.slots)} ' +
                        f'transducer slot(s) ({total_elements}).')
             get_logger().critical(message)
             sys.exit(message)
 
-    def send_sequence(self, sequences, duration_ms=0):
+    def send_protocol(self, protocols, duration_ms=0):
         """
-        Validates and sends one or more ultrasound sequences to the IGT ultrasound driving
-        system. More than one sequence means they are interleaved: sent as one alternating group,
+        Validates and sends one or more ultrasound protocols to the IGT ultrasound driving
+        system. More than one protocol means they are interleaved: sent as one alternating group,
         fired in the order given, repeating for duration_ms. Ramping (pulse_ramp_shape/
         pulse_ramp_dur) is applied once for the whole interleaved group, taken from only the
-        first sequence given -- it's a generator-wide setting, not something each interleaved
-        sequence can configure independently, so every other sequence's own ramp settings are
+        first protocol given -- it's a generator-wide setting, not something each interleaved
+        protocol can configure independently, so every other protocol's own ramp settings are
         silently ignored.
 
-        When interleaving, each sequence contributes exactly one pulse per round of the
+        When interleaving, each protocol contributes exactly one pulse per round of the
         alternating group -- not a repeated pulse train of its own. pulse_dur/pulse_rep_int
-        still apply per sequence (pulse_rep_int decides how much of the shared round this
-        sequence's own pulse occupies, via its trailing delay), but pulse_train_dur/
+        still apply per protocol (pulse_rep_int decides how much of the shared round this
+        protocol's own pulse occupies, via its trailing delay), but pulse_train_dur/
         pulse_train_rep_int/pulse_train_rep_dur do not: there is currently no way for one
-        interleaved sequence to internally repeat its own pulse a number of times before handing
-        off to the next one. Only relevant with more than one sequence -- a single sequence still
+        interleaved protocol to internally repeat its own pulse a number of times before handing
+        off to the next one. Only relevant with more than one protocol -- a single protocol still
         gets its full pulse train via _define_pulse_train().
 
         Parameters:
-            sequences (Sequence or list(Sequence)): One sequence, or a list of sequences to
-                interleave. Each sequence contains, amongst other things:
+            protocols (TUSProtocol or list(TUSProtocol)): One protocol, or a list of protocols to
+                interleave. Each protocol contains, amongst other things:
                 the ultrasound protocol (focus, pulse duration, pulse rep. interval and etcetera)
                 used equipment (driving system and transducer slot(s))
-            duration_ms (float): Only used when interleaving (more than one sequence) -- total
+            duration_ms (float): Only used when interleaving (more than one protocol) -- total
                 duration [ms] the alternating group repeats for.
         """
 
-        if isinstance(sequences, Sequence):
-            sequences = [sequences]
+        if isinstance(protocols, TUSProtocol):
+            protocols = [protocols]
 
-        for sequence in sequences:
-            self._assert_ready_to_send(sequence)
+        for protocol in protocols:
+            self._assert_ready_to_send(protocol)
 
-        # Only sequences[0].buffer_num is ever actually read below (the whole interleaved group
-        # is sent to that one buffer, not one buffer per sequence) -- but a caller giving
+        # Only protocols[0].buffer_num is ever actually read below (the whole interleaved group
+        # is sent to that one buffer, not one buffer per protocol) -- but a caller giving
         # different buffer_num values across the group almost certainly means they mixed up
-        # sequences that were never meant to be interleaved together, so reject it explicitly
+        # protocols that were never meant to be interleaved together, so reject it explicitly
         # instead of silently going with whichever one happens to be first.
-        if len(sequences) > 1 and any(seq.buffer_num != sequences[0].buffer_num
-                                      for seq in sequences[1:]):
-            message = ('All sequences given to interleave must target the same buffer -- got ' +
-                       f'{[seq.buffer_num for seq in sequences]}.')
+        if len(protocols) > 1 and any(protocol.buffer_num != protocols[0].buffer_num
+                                      for protocol in protocols[1:]):
+            message = ('All protocols given to interleave must target the same buffer -- got ' +
+                       f'{[protocol.buffer_num for protocol in protocols]}.')
             get_logger().critical(message)
             sys.exit(message)
 
-        get_logger().info('Validating sequence...')
+        get_logger().info('Validating protocol...')
 
-        for seq in sequences:
+        for protocol in protocols:
             get_logger().debug(
-                'Sequence with the following parameters is validated before sending: \n ' +
-                '%s', seq)
+                'Protocol with the following parameters is validated before sending: \n ' +
+                '%s', protocol)
 
-            error_messages = self.validate_sequence(seq)
+            error_messages = self.validate_protocol(protocol)
 
             if error_messages:
                 for error in error_messages:
                     get_logger().critical(error)
-                sys.exit('(Multiple) error(s) found when validating sequence, see log file.')
+                sys.exit('(Multiple) error(s) found when validating protocol, see log file.')
 
-        get_logger().info('Sending sequence...')
+        get_logger().info('Sending protocol...')
         if self.is_connected():
 
-            pulses = [self._define_pulse_group(seq) for seq in sequences]
-            seq0 = sequences[0]
+            pulses = [self._define_pulse_group(protocol) for protocol in protocols]
+            protocol0 = protocols[0]
 
-            if len(sequences) == 1:
+            if len(protocols) == 1:
                 pulse, phases = pulses[0]
 
                 # define pulse train
-                pulse_train_seq, pulse_train_delay = self._define_pulse_train(seq0, pulse)
+                pulse_train_seq, pulse_train_delay = self._define_pulse_train(protocol0, pulse)
 
                 # Define pulse train repetition
                 # number of executions of one pulse train
-                n_pulse_train_rep = math.floor(seq0.pulse_train_rep_dur / seq0.pulse_train_rep_int)
+                n_pulse_train_rep = math.floor(
+                    protocol0.pulse_train_rep_dur / protocol0.pulse_train_rep_int)
             else:
                 get_logger().debug(
-                    f'{len(sequences)} sequences are sent, indicating they are interleaved.')
+                    f'{len(protocols)} protocols are sent, indicating they are interleaved.')
 
-                # One pulse per sequence, not a repeated pulse train per sequence -- unlike the
-                # N=1 branch above (_define_pulse_train()), each interleaved sequence's own
+                # One pulse per protocol, not a repeated pulse train per protocol -- unlike the
+                # N=1 branch above (_define_pulse_train()), each interleaved protocol's own
                 # pulse_train_dur/pulse_train_rep_int/pulse_train_rep_dur have no effect here
                 # (see this method's own docstring). Theoretically possible to support, but not
                 # yet designed: would need a real decision on what "interleaved pulse trains"
                 # (as opposed to interleaved single pulses) should actually mean here.
                 pulse_train_seq = [pulse for pulse, _ in pulses]
-                phases = [seq_phases for _, seq_phases in pulses]
+                phases = [protocol_phases for _, protocol_phases in pulses]
                 pulse_train_delay = 0
 
-                # One round of the alternating group takes as long as every sequence's own
-                # pulse_rep_int summed -- each sequence's pulse occupies that whole time slot
+                # One round of the alternating group takes as long as every protocol's own
+                # pulse_rep_int summed -- each protocol's pulse occupies that whole time slot
                 # (pulse_dur active, then its own trailing delay), not pulse_train_dur (which
                 # would describe a repeated train this pulse never actually fires here).
-                total_pulse_rep_int_ms = sum(seq.pulse_rep_int for seq in sequences)
+                total_pulse_rep_int_ms = sum(protocol.pulse_rep_int for protocol in protocols)
                 n_pulse_train_rep = math.floor(duration_ms / total_pulse_rep_int_ms)
 
-            # Apply ramping -- read from seq0 only. Ramping is set once on the generator as a
-            # whole (rising/falling PulseRamp), not per pulse train, so it's an all-or-nothing
-            # property of the entire interleaved group, not something each interleaved sequence
-            # can configure independently: seq0's pulse_ramp_shape/pulse_ramp_dur decide it for
-            # every sequence in this send_sequence() call, and any other sequence's own ramp
+            # Apply ramping -- read from protocol0 only. Ramping is set once on the generator as
+            # a whole (rising/falling PulseRamp), not per pulse train, so it's an all-or-nothing
+            # property of the entire interleaved group, not something each interleaved protocol
+            # can configure independently: protocol0's pulse_ramp_shape/pulse_ramp_dur decide it
+            # for every protocol in this send_protocol() call, and any other protocol's own ramp
             # settings are silently ignored.
             rect_ramp = get_config_value(get_logger(), config, 'Ramp', 'Option.rect',
                                          'Rectangular - no ramping')
-            if seq0.pulse_ramp_shape != rect_ramp:
-                self._apply_ramping(seq0)
+            if protocol0.pulse_ramp_shape != rect_ramp:
+                self._apply_ramping(protocol0)
             else:
                 self.gen.setPulseModulation([], 0, [], 0)  # disable any modulation
                 self.gen.setPulseRamp(unifus.PulseRamp.Rising, 0)
@@ -504,10 +507,10 @@ class IGT(ds.ControlDrivingSystem):
             # (optional) only for generator with a transducer multiplexer
             # gen.setParam (unifus.GenParam.MultiplexerValue, 3);
 
-            # Upload the sequence
-            self.gen.sendSequence(seq0.buffer_num, pulse_train_seq)
+            # Upload the protocol
+            self.gen.sendSequence(protocol0.buffer_num, pulse_train_seq)
 
-            self.register_sent_sequence(seq0.buffer_num, pulse_train_seq, n_pulse_train_rep,
+            self.register_sent_protocol(protocol0.buffer_num, pulse_train_seq, n_pulse_train_rep,
                                         pulse_train_delay, phases)
 
         else:
@@ -515,18 +518,18 @@ class IGT(ds.ControlDrivingSystem):
             get_logger().warning("Reconnecting with driving system...")
 
             # if no connection can be made, program stops preventing infinite loop
-            self.connect(sequences[0].driving_sys.connect_info)
-            self.send_sequence(sequences, duration_ms)
+            self.connect(protocols[0].driving_sys.connect_info)
+            self.send_protocol(protocols, duration_ms)
 
-    def _define_pulse_group(self, sequence):
+    def _define_pulse_group(self, protocol):
         """
-        Defines the combined pulse for every transducer slot of one sequence, concatenating each
+        Defines the combined pulse for every transducer slot of one protocol, concatenating each
         slot's own fully-expanded (per-element) amplitude/frequency arrays -- uniformly, whether
-        there's 1 slot or several. N is never hardcoded -- however many slots this sequence
+        there's 1 slot or several. N is never hardcoded -- however many slots this protocol
         actually has is how many this loops over.
 
         Parameters:
-            sequence (Sequence): The sequence object containing ultrasound parameters.
+            protocol (TUSProtocol): The protocol object containing ultrasound parameters.
 
         Returns:
             tuple: (unifus.Pulse, list) -- the defined pulse and its phases.
@@ -535,10 +538,10 @@ class IGT(ds.ControlDrivingSystem):
         pulse = unifus.Pulse(self.n_channels, 1, 1)  # n phases, n frequencies, n amplitudes
 
         # duration in ms, delay in ms
-        pulse.setDuration(sequence.pulse_dur,
-                          round(sequence.pulse_rep_int - sequence.pulse_dur, 1))
+        pulse.setDuration(protocol.pulse_dur,
+                          round(protocol.pulse_rep_int - protocol.pulse_dur, 1))
 
-        slots = sequence.slots
+        slots = protocol.slots
 
         # frequencies have to be set first before phases can be computed
         phases = []
@@ -551,7 +554,7 @@ class IGT(ds.ControlDrivingSystem):
                 sys.exit(message)
 
             # Every slot's own value is expanded to its own element count before concatenating
-            # -- applied uniformly, whether this sequence has 1 slot or several.
+            # -- applied uniformly, whether this protocol has 1 slot or several.
             tran_freq = [int(slot.oper_freq * 1e3)] * slot.transducer.elements
             if len(slot.ampl) == 1:
                 ampls = ampls + slot.ampl * slot.transducer.elements
@@ -584,10 +587,10 @@ class IGT(ds.ControlDrivingSystem):
 
         return pulse, phases
 
-    def _compute_exec_flags(self, sequences, debug_info):
+    def _compute_exec_flags(self, protocols, debug_info):
         """
-        Computes the base unifus.ExecFlag for executing or arming a previously sent sequence --
-        shared by wait_for_trigger() and execute_sequence(), which were previously byte-for-byte
+        Computes the base unifus.ExecFlag for executing or arming a previously sent protocol --
+        shared by wait_for_trigger() and execute_protocol(), which were previously byte-for-byte
         identical here (issue #51).
 
         When debug_info, adds a flag reflecting how measurable the group's pulses are
@@ -597,15 +600,15 @@ class IGT(ds.ControlDrivingSystem):
         MeasureTimings + board + channel measurements -- so this is really "pick the most
         detailed mode the pulse can support", each tier needing a progressively longer pulse.
         When interleaving, that has to be judged against the *shortest* pulse_dur across the
-        whole group, not an arbitrary sequence's: a mode chosen for a longer pulse elsewhere in
+        whole group, not an arbitrary protocol's: a mode chosen for a longer pulse elsewhere in
         the round could be more than the shortest one can actually support. Ramping, by
-        contrast, genuinely is a single whole-group setting (see send_sequence()'s own
-        docstring) -- so the extra ramp-transient time it needs is still read from sequences[0]
-        only, the same sequence whose ramp settings actually took effect for the whole group.
+        contrast, genuinely is a single whole-group setting (see send_protocol()'s own
+        docstring) -- so the extra ramp-transient time it needs is still read from protocols[0]
+        only, the same protocol whose ramp settings actually took effect for the whole group.
 
         Parameters:
-            sequences (list(Sequence)): Every sequence passed to send_sequence() (a single
-                sequence is still a length-1 list here).
+            protocols (list(TUSProtocol)): Every protocol passed to send_protocol() (a single
+                protocol is still a length-1 list here).
             debug_info (bool): Whether to compute and add the extra measurement-related flags.
 
         Returns:
@@ -617,13 +620,13 @@ class IGT(ds.ControlDrivingSystem):
                       unifus.ExecFlag.DisableMonitoringChannelCurrentOut)
 
         if debug_info:
-            seq0 = sequences[0]
-            min_pulse_dur = min(seq.pulse_dur for seq in sequences)
+            protocol0 = protocols[0]
+            min_pulse_dur = min(protocol.pulse_dur for protocol in protocols)
 
             ramp_transient_t = 0
             rect_ramp = get_config_value(get_logger(), config, 'Ramp', 'Option.rect',
                                          'Rectangular - no ramping')
-            if seq0.pulse_ramp_dur > 0 and seq0.pulse_ramp_shape != rect_ramp:
+            if protocol0.pulse_ramp_dur > 0 and protocol0.pulse_ramp_shape != rect_ramp:
                 ramp_transient_t = float(
                     get_config_value(
                         get_logger(), config, 'Equipment.Manufacturer.IGT',
@@ -652,59 +655,61 @@ class IGT(ds.ControlDrivingSystem):
 
         return exec_flags
 
-    def wait_for_trigger(self, sequences, duration_ms=0, debug_info=True):
+    def wait_for_trigger(self, protocols, duration_ms=0, debug_info=True):
         """
         Activates the listener on the IGT ultrasound driving system to wait for the trigger to
-        execute the previously sent sequence(s). When interleaving, the ramp-transient timing
-        this computes is taken from only the first sequence given, matching send_sequence()'s
-        own "ramping is a whole-group setting, not per interleaved sequence" behavior.
+        execute the previously sent protocol(s). When interleaving, the ramp-transient timing
+        this computes is taken from only the first protocol given, matching send_protocol()'s
+        own "ramping is a whole-group setting, not per interleaved protocol" behavior.
 
         Parameters:
-            sequences (Sequence or list(Sequence)): Same sequence(s) already passed to
-                send_sequence().
-            duration_ms (float): Same value already passed to send_sequence().
+            protocols (TUSProtocol or list(TUSProtocol)): Same protocol(s) already passed to
+                send_protocol().
+            duration_ms (float): Same value already passed to send_protocol().
             debug_info (bool): Whether to compute and set additional execution flags.
         """
 
-        if isinstance(sequences, Sequence):
-            sequences = [sequences]
-        seq0 = sequences[0]
+        if isinstance(protocols, TUSProtocol):
+            protocols = [protocols]
+        protocol0 = protocols[0]
 
         if self.is_connected():
-            if self.is_sequence_sent(seq0.buffer_num):
+            if self.is_protocol_sent(protocol0.buffer_num):
                 try:
                     # Use unifus.ExecFlag.NONE if nothing special, or simply don't pass the
                     # exec_flags argument. Use '|' to combine multiple flags: flag1 | flag2 | flag3
                     # To use trigger, add one of unifus::ExecFlag::Trigger*
-                    exec_flags = self._compute_exec_flags(sequences, debug_info)
+                    exec_flags = self._compute_exec_flags(protocols, debug_info)
 
-                    sent_seq_info = self.sent_seqs.get(seq0.buffer_num, {})
-                    n_pulse_train_rep = sent_seq_info.get('n_pulse_train_rep')
-                    pulse_train_delay = sent_seq_info.get('pulse_train_delay')
+                    sent_protocol_info = self.sent_protocols.get(protocol0.buffer_num, {})
+                    n_pulse_train_rep = sent_protocol_info.get('n_pulse_train_rep')
+                    pulse_train_delay = sent_protocol_info.get('pulse_train_delay')
 
                     # Determining trigger flag
                     seq_trigger = get_config_value(get_logger(), config, 'Trigger', 'Option.seq',
                                                    'TriggerOnePulseTrain')
                     ptr_trigger = get_config_value(get_logger(), config, 'Trigger', 'Option.ptr',
                                                    'TriggerWholeProtocol')
-                    if seq0.trigger_option == seq_trigger:
+                    if protocol0.trigger_option == seq_trigger:
                         exec_flags |= unifus.ExecFlag.TriggerOneSequence
-                        n_pulse_train_rep = seq0.n_triggers
+                        n_pulse_train_rep = protocol0.n_triggers
                         pulse_train_delay = 0  # trigger will determine delay
 
-                    elif seq0.trigger_option == ptr_trigger:
+                    elif protocol0.trigger_option == ptr_trigger:
                         exec_flags |= unifus.ExecFlag.TriggerAllSequences
 
                     else:
-                        message = (f'Trigger option {seq0.trigger_option} is not identical to ' +
-                                   f'implemented trigger options: {seq0.get_trigger_options()}.')
+                        message = (
+                            f'Trigger option {protocol0.trigger_option} is not identical to ' +
+                            f'implemented trigger options: {protocol0.get_trigger_options()}.')
                         get_logger().critical(message)
                         sys.exit(message)
 
-                    get_logger().info(f"Waiting for a total of {seq0.n_triggers} trigger(s)...")
+                    get_logger().info(
+                        f"Waiting for a total of {protocol0.n_triggers} trigger(s)...")
 
-                    self.gen.prepareSequence(seq0.buffer_num, n_pulse_train_rep, pulse_train_delay,
-                                             exec_flags)
+                    self.gen.prepareSequence(protocol0.buffer_num, n_pulse_train_rep,
+                                             pulse_train_delay, exec_flags)
 
                     self.gen.startSequence()
 
@@ -714,27 +719,27 @@ class IGT(ds.ControlDrivingSystem):
                     sys.exit(message)
             else:
                 get_logger().warning(
-                    'The sequence has to be sent first using send_sequence() before ' +
+                    'The protocol has to be sent first using send_protocol() before ' +
                     'the driving system can wait for a trigger.')
-                get_logger().warning('Sending sequence...')
+                get_logger().warning('Sending protocol...')
 
-                self.send_sequence(sequences, duration_ms)
-                self.wait_for_trigger(sequences, duration_ms, debug_info)
+                self.send_protocol(protocols, duration_ms)
+                self.wait_for_trigger(protocols, duration_ms, debug_info)
         else:
             get_logger().warning("No connection with driving system.")
             get_logger().warning("Reconnecting with driving system...")
 
             # if no connection can be made, program stops preventing infinite loop
-            self.connect(seq0.driving_sys.connect_info)
-            self.send_sequence(sequences, duration_ms)
-            self.wait_for_trigger(sequences, duration_ms, debug_info)
+            self.connect(protocol0.driving_sys.connect_info)
+            self.send_protocol(protocols, duration_ms)
+            self.wait_for_trigger(protocols, duration_ms, debug_info)
 
     def wait_for_trigger_result(self, timeout_s=5.0):
         """
-        Waits (blocking) for a previously armed triggered sequence to finish, and exits if the
+        Waits (blocking) for a previously armed triggered protocol to finish, and exits if the
         driving system reports its execution failed.
 
-        wait_for_trigger() only arms the sequence to fire on the external trigger and returns
+        wait_for_trigger() only arms the protocol to fire on the external trigger and returns
         immediately -- it does not wait for or observe the actual execution result (see GitHub
         issue #112). Call this once the external trigger is expected to have fired (or with a
         generous timeout) to check that the driving system actually reported success.
@@ -744,10 +749,10 @@ class IGT(ds.ControlDrivingSystem):
             seconds.
         """
 
-        self.listener.wait_sequence(timeout_s)
+        self.listener.wait_protocol(timeout_s)
 
         if self.listener.exec_error_code is not None:
-            message = ('Sequence execution failed on the driving system (error ' +
+            message = ('Protocol execution failed on the driving system (error ' +
                        f'code: {self.listener.exec_error_code}). No ultrasound was ' +
                        'emitted.')
             get_logger().critical(message)
@@ -771,23 +776,23 @@ class IGT(ds.ControlDrivingSystem):
 
         return self.listener.exec_error_code
 
-    def execute_sequence(self, sequences, duration_ms=0, debug_info=True):
+    def execute_protocol(self, protocols, duration_ms=0, debug_info=True):
         """
-        Executes the previously sent sequence(s) on the IGT ultrasound driving system. When
+        Executes the previously sent protocol(s) on the IGT ultrasound driving system. When
         interleaving, the ramp-transient timing this computes is taken from only the first
-        sequence given, matching send_sequence()'s own "ramping is a whole-group setting, not
-        per interleaved sequence" behavior.
+        protocol given, matching send_protocol()'s own "ramping is a whole-group setting, not
+        per interleaved protocol" behavior.
 
         Parameters:
-            sequences (Sequence or list(Sequence)): Same sequence(s) already passed to
-                send_sequence().
-            duration_ms (float): Same value already passed to send_sequence().
+            protocols (TUSProtocol or list(TUSProtocol)): Same protocol(s) already passed to
+                send_protocol().
+            duration_ms (float): Same value already passed to send_protocol().
             debug_info (bool): Whether to compute and set additional execution flags.
         """
 
-        if isinstance(sequences, Sequence):
-            sequences = [sequences]
-        seq0 = sequences[0]
+        if isinstance(protocols, TUSProtocol):
+            protocols = [protocols]
+        protocol0 = protocols[0]
 
         max_press = get_config_value(get_logger(), config, 'Power',
                                      'Maximum pressure allowed in free water [MPa]',
@@ -795,27 +800,28 @@ class IGT(ds.ControlDrivingSystem):
 
         get_logger().debug(f'Maximum allowed pressure is: {max_press} MPa')
 
-        get_logger().info('Executing sequence...')
+        get_logger().info('Executing protocol...')
 
         if self.is_connected():
-            if self.is_sequence_sent(seq0.buffer_num):
+            if self.is_protocol_sent(protocol0.buffer_num):
                 try:
                     # Use unifus.ExecFlag.NONE if nothing special, or simply don't pass the
                     # exec_flags argument. Use '|' to combine multiple flags: flag1 | flag2 | flag3
                     # To use trigger, add one of unifus::ExecFlag::Trigger*
-                    exec_flags = self._compute_exec_flags(sequences, debug_info)
+                    exec_flags = self._compute_exec_flags(protocols, debug_info)
 
-                    sent_seq_info = self.sent_seqs.get(seq0.buffer_num, {})
-                    self.gen.prepareSequence(seq0.buffer_num,
-                                             sent_seq_info.get('n_pulse_train_rep'),
-                                             sent_seq_info.get('pulse_train_delay'), exec_flags)
+                    sent_protocol_info = self.sent_protocols.get(protocol0.buffer_num, {})
+                    self.gen.prepareSequence(protocol0.buffer_num,
+                                             sent_protocol_info.get('n_pulse_train_rep'),
+                                             sent_protocol_info.get('pulse_train_delay'),
+                                             exec_flags)
 
                     self.gen.startSequence()
-                    self.listener.wait_sequence(sent_seq_info.get('total_sequence_duration_ms') /
-                                                1000.0)
+                    self.listener.wait_protocol(
+                        sent_protocol_info.get('total_protocol_duration_ms') / 1000.0)
 
                     if self.listener.exec_error_code is not None:
-                        message = ('Sequence execution failed on the driving system (error ' +
+                        message = ('Protocol execution failed on the driving system (error ' +
                                    f'code: {self.listener.exec_error_code}). Potentially no ' +
                                    'ultrasound emitted.')
                         get_logger().critical(message)
@@ -827,21 +833,21 @@ class IGT(ds.ControlDrivingSystem):
                     sys.exit(message)
             else:
                 get_logger().warning(
-                    'The sequence has to be sent first using send_sequence() before ' +
-                    'the driving system can execute a sequence.')
-                get_logger().warning('Sending sequence...')
+                    'The protocol has to be sent first using send_protocol() before ' +
+                    'the driving system can execute a protocol.')
+                get_logger().warning('Sending protocol...')
 
-                self.send_sequence(sequences, duration_ms)
-                self.execute_sequence(sequences, duration_ms, debug_info)
+                self.send_protocol(protocols, duration_ms)
+                self.execute_protocol(protocols, duration_ms, debug_info)
 
         else:
             get_logger().warning("No connection with driving system.")
             get_logger().warning("Reconnecting with driving system...")
 
             # if no connection can be made, program stops preventing infinite loop
-            self.connect(seq0.driving_sys.connect_info)
-            self.send_sequence(sequences, duration_ms)
-            self.execute_sequence(sequences, duration_ms, debug_info)
+            self.connect(protocol0.driving_sys.connect_info)
+            self.send_protocol(protocols, duration_ms)
+            self.execute_protocol(protocols, duration_ms, debug_info)
 
     def disconnect(self):
         """
@@ -869,31 +875,31 @@ class IGT(ds.ControlDrivingSystem):
                 get_logger().error("Failed to disconnect")
                 self.connected = True
 
-    def _define_pulse_train(self, sequence, pulse):
+    def _define_pulse_train(self, protocol, pulse):
         """
         Defines the pulse train for the IGT ultrasound driving system.
 
         Parameters:
-            sequence (Sequence): The sequence object containing ultrasound parameters.
+            protocol (TUSProtocol): The protocol object containing ultrasound parameters.
             pulse (unifus.Pulse): The defined pulse.
 
         Returns:
-            seq: list of pulses representing a pulse train
+            pulse_train_seq: list of pulses representing a pulse train
             pulse_train_delay: pulse train delay in miliseconds
 
         """
 
         # number of executions of one pulse train
-        n_pulse_train = math.floor(sequence.pulse_train_dur / sequence.pulse_rep_int)
+        n_pulse_train = math.floor(protocol.pulse_train_dur / protocol.pulse_rep_int)
 
-        # Define a complete sequence
-        seq = []
-        seq += n_pulse_train * [pulse]
+        # Define a complete pulse train
+        pulse_train_seq = []
+        pulse_train_seq += n_pulse_train * [pulse]
 
         # milliseconds between pulse trains
-        pulse_train_delay = sequence.pulse_train_rep_int - sequence.pulse_train_dur
+        pulse_train_delay = protocol.pulse_train_rep_int - protocol.pulse_train_dur
 
-        return seq, pulse_train_delay
+        return pulse_train_seq, pulse_train_delay
 
     def _set_phases(self, pulse, focus, steer_info, natural_foc, dephasing_degree):
         """
@@ -996,12 +1002,12 @@ class IGT(ds.ControlDrivingSystem):
 
         return phases
 
-    def _apply_ramping(self, sequence):
+    def _apply_ramping(self, protocol):
         """
         Applies ramping on the IGT ultrasound driving system.
 
         Parameters:
-            sequence (Sequence): The sequence object containing ultrasound parameters.
+            protocol (TUSProtocol): The protocol object containing ultrasound parameters.
         """
 
         # Use best temporal resolution for pulse ramping [ms]
@@ -1012,13 +1018,13 @@ class IGT(ds.ControlDrivingSystem):
         max_ramp_steps = float(get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
                                                 'Max. amount of ramping steps', 1023))
 
-        ramp_n_steps = int(sequence.pulse_ramp_dur/min_ramp_temp_res)
+        ramp_n_steps = int(protocol.pulse_ramp_dur/min_ramp_temp_res)
         if ramp_n_steps > max_ramp_steps:
-            min_ramp_temp_res = sequence.pulse_ramp_dur/max_ramp_steps
+            min_ramp_temp_res = protocol.pulse_ramp_dur/max_ramp_steps
 
         # Note: ramp up and ramp down order are the other way around
         # ramp up descends, ramp down ascends
-        ampl_ramp = self._get_ramping_amplitude(sequence, min_ramp_temp_res)
+        ampl_ramp = self._get_ramping_amplitude(protocol, min_ramp_temp_res)
 
         # Execution with pulse modulation (automatically disable ramps if any)
         # Values are attenuation in percent of the full Pulse amplitude.
@@ -1034,13 +1040,13 @@ class IGT(ds.ControlDrivingSystem):
             ramp_up, min_ramp_temp_res,  # beginning
             ramp_down, min_ramp_temp_res)  # end
 
-    def _get_ramping_amplitude(self, sequence, pulse_ramp_temp_res):
+    def _get_ramping_amplitude(self, protocol, pulse_ramp_temp_res):
         """
         Gets the ramping array that has to be applied to the amplitude for the IGT ultrasound
         driving system.
 
         Parameters:
-            sequence (Sequence): The sequence object containing ultrasound parameters.
+            protocol (TUSProtocol): The protocol object containing ultrasound parameters.
             pulse_ramp_temp_res (float): temporal resolution for pulse ramping [ms].
 
         Returns:
@@ -1049,14 +1055,14 @@ class IGT(ds.ControlDrivingSystem):
 
         lin_ramp = get_config_value(get_logger(), config, 'Ramp', 'Option.lin', 'Linear')
         tuk_ramp = get_config_value(get_logger(), config, 'Ramp', 'Option.tuk', 'Tukey')
-        if sequence.pulse_ramp_shape == lin_ramp:  # Linear ramping
+        if protocol.pulse_ramp_shape == lin_ramp:  # Linear ramping
             # amount of points where ramping is applied
-            n_points = math.floor(sequence.pulse_ramp_dur/pulse_ramp_temp_res)
+            n_points = math.floor(protocol.pulse_ramp_dur/pulse_ramp_temp_res)
             ampl_ramp = np.linspace(0, 1, n_points)
 
-        elif sequence.pulse_ramp_shape == tuk_ramp:  # Tukey ramping
+        elif protocol.pulse_ramp_shape == tuk_ramp:  # Tukey ramping
             # amount of points where ramping is applied
-            n_points = math.floor(sequence.pulse_ramp_dur/pulse_ramp_temp_res)
+            n_points = math.floor(protocol.pulse_ramp_dur/pulse_ramp_temp_res)
             alpha = 1
             x = np.linspace(0, alpha/2, n_points)
             ampl_ramp = np.zeros(n_points)

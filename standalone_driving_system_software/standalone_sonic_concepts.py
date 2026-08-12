@@ -51,10 +51,10 @@ logger = initialize_logger(log_dir, filename)
 # connect with the driving system
 ##############################################################################
 
-# Connecting doesn't require a sequence to exist yet. In practice, you typically connect once
-# when your experiment starts, then build/adapt sequences iteratively as it progresses -- so
+# Connecting doesn't require a protocol to exist yet. In practice, you typically connect once
+# when your experiment starts, then build/adapt protocols iteratively as it progresses -- so
 # look up the driving system's connection info directly via DrivingSystem, rather than through
-# a Sequence.
+# a TUSProtocol.
 
 from fus_driving_systems import driving_system
 from fus_driving_systems.sonic_concepts import sonic_concepts_ds
@@ -75,21 +75,22 @@ sc_ds.connect(ds_info.connect_info)
 sc_ds.check_tran_sel()
 
 ##############################################################################
-# create a sequence for a SC driving system
-# a sequence can be created in advance and a new sequence can be defined
+# create a protocol for a SC driving system
+# a protocol can be created in advance and a new protocol can be defined
 # later on in the code
 ##############################################################################
 
-from fus_driving_systems import sequence, transducer
+from fus_driving_systems import tus_protocol, transducer
 
 # equipment: same driving system already used to connect() above
-seq = sequence.Sequence(ds_info.serial)
+protocol = tus_protocol.TUSProtocol(ds_info.serial)
 
-# send_sequence()/execute_sequence() automatically reconnect using seq.driving_sys.connect_info if
-# the connection ever drops -- propagate this machine's actual COM port onto the sequence's own
-# driving system too (ds_info above is a separate object), so that automatic reconnect uses the
-# right port instead of falling back to whatever ds_config.ini happens to default to.
-seq.driving_sys.connect_info = ds_info.connect_info
+# send_protocol()/execute_protocol() automatically reconnect using
+# protocol.driving_sys.connect_info if the connection ever drops -- propagate this machine's
+# actual COM port onto the protocol's own driving system too (ds_info above is a separate
+# object), so that automatic reconnect uses the right port instead of falling back to whatever
+# ds_config.ini happens to default to.
+protocol.driving_sys.connect_info = ds_info.connect_info
 
 # add_slot() fully configures one transducer -- serial, focus, and power all at once (no
 # partial/half-configured slot). This driving system currently supports only one transducer slot
@@ -98,8 +99,8 @@ seq.driving_sys.connect_info = ds_info.connect_info
 # to check available transducers: print(transducer.get_tran_serials())
 # choose one transducer from that list as input
 # to check available focus/power options for this driving system (no need to add a slot first):
-# print(seq.get_focus_options()) / print(seq.get_power_options())
-slot = seq.add_slot(
+# print(protocol.get_focus_options()) / print(protocol.get_power_options())
+slot = protocol.add_slot(
     'CTX-500-026',
     'Focus wrt exit plane [mm]', 40,  # [mm], focal depth
     'Global power [mW]', 2.5,  # [W], global power. NOTE: DIFFERENT THAN IGT
@@ -114,12 +115,12 @@ slot = seq.add_slot(
 # it's the only way to set any of them (pulse_dur, pulse_rep_int, pulse_ramp_shape, ...,
 # trigger_option, n_triggers all have getters only), precisely because they cascade/interact
 # with each other and are prone to ordering hazards if set individually and out of order.
-seq.configure_timing(
+protocol.configure_timing(
     # ## pulse ## #
     pulse_dur=10,  # [ms], pulse duration
 
     # pulse ramping
-    # to check available ramp shapes: print(seq.get_ramp_shapes())
+    # to check available ramp shapes: print(protocol.get_ramp_shapes())
     # choose one ramp shape from that list as input
     pulse_ramp_shape='Rectangular - no ramping',
     # ramping up and ramping down duration are equal and are equal to ramp duration
@@ -135,48 +136,49 @@ seq.configure_timing(
     # wait_for_trigger is derived from trigger_option -- there is no separate flag to set. Use
     # 'None' (this template's default) to not use a trigger at all; 'TriggerOnePulseTrain' to fire
     # one pulse train per trigger received; 'TriggerWholeProtocol' to fire the entire, already
-    # fully-timed sequence at once with a single trigger (equivalent to executing it directly,
+    # fully-timed protocol at once with a single trigger (equivalent to executing it directly,
     # just gated behind that one trigger). To check available trigger options:
-    # print(seq.get_trigger_options())
+    # print(protocol.get_trigger_options())
     trigger_option='None',
     # trigger_option='TriggerOnePulseTrain',
     # trigger_option='TriggerWholeProtocol'
 )
 
-# to get a summary of your entered sequence: print(seq)
-logger.info(f'The following sequence is used: {seq}')
+# to get a summary of your entered protocol: print(protocol)
+logger.info(f'The following protocol is used: {protocol}')
 
 ##############################################################################
-# send and execute the sequence
+# send and execute the protocol
 ##############################################################################
 
-# sending your first sequence, and executing it when appropriate, can be done when initializing
-# your experiment. When appropriate, execute your sequence by implementing
-# 'execute_sequence()' into your code.
+# sending your first protocol, and executing it when appropriate, can be done when initializing
+# your experiment. When appropriate, execute your protocol by implementing
+# 'execute_protocol()' into your code.
 
-# when you want to change your sequence in the middle of your experimental code, create a new
-# sequence as above (the driving system is already connected, see above) and send the new
-# sequence: 'send_sequence()'. When appropriate, execute your sequence by implementing
-# 'execute_sequence()' into your code.
+# when you want to change your protocol in the middle of your experimental code, create a new
+# protocol as above (the driving system is already connected, see above) and send the new
+# protocol: 'send_protocol()'. When appropriate, execute your protocol by implementing
+# 'execute_protocol()' into your code.
 
 # It is important to place your experimental code into a try-finally block, so if your code is
 # stopped abruptly, the driving system will be disconnected. Otherwise, there is a change that it
-# keeps on firing ultrasound sequences.
+# keeps on firing ultrasound protocols.
 
 try:
-    # If wait_for_trigger is true, only the sequence is sent and will be executed by the external trigger
-    if seq.wait_for_trigger:
-        sc_ds.send_sequence(seq)  # currently, triggermode is set to 1. Triggermode of 2 is not supported yet.
+    # If wait_for_trigger is true, only the protocol is sent and will be executed by the external trigger
+    if protocol.wait_for_trigger:
+        # currently, triggermode is set to 1. Triggermode of 2 is not supported yet.
+        sc_ds.send_protocol(protocol)
 
-    # If wait_for_trigger is false, the sequence is sent and can be executed directly using the execute_sequence() function
+    # If wait_for_trigger is false, the protocol is sent and can be executed directly using the execute_protocol() function
     else:
-        sc_ds.send_sequence(seq)
-        sc_ds.execute_sequence(seq)
+        sc_ds.send_protocol(protocol)
+        sc_ds.execute_protocol(protocol)
 
 finally:
-    # When the sequence is executed using execute_sequence(), the system will be disconnected automatically,
+    # When the protocol is executed using execute_protocol(), the system will be disconnected automatically,
     # In the case your code is stopped abruptly, the driving system will be disconnected. Otherwise, there
-    # is a change that it keeps on firing ultrasound sequences.
+    # is a change that it keeps on firing ultrasound protocols.
     # When using the external trigger, disconnect the driving system yourself.
-    if not seq.wait_for_trigger:
+    if not protocol.wait_for_trigger:
         sc_ds.disconnect()

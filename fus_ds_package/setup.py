@@ -41,5 +41,6 @@ setup(name='fus_driving_systems',
                                             'igt/config/sonic_concepts_transducers/*',
                                             'igt/config/conversion_data/*',
                                             'igt/config/*.json', 'igt/*.pyd']},
-      py_modules=['driving_system', 'transducer', 'control_driving_system', 'sequence', 'utils'],
+      py_modules=['driving_system', 'transducer', 'control_driving_system', 'tus_protocol',
+                  'utils'],
       zip_safe=False)

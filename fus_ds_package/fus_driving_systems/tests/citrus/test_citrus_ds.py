@@ -4,7 +4,7 @@ Tests for fus_driving_systems.citrus.citrus_ds.CITRUS.
 
 connect() instantiates serial.Serial() inline with no injection seam, so
 connect() tests go through the mock_serial fixture (patches the class).
-execute_sequence()/disconnect() don't need connect() at all -- they just
+execute_protocol()/disconnect() don't need connect() at all -- they just
 read/write whatever object sits in self.ser_bitsi, so those tests assign a
 plain mocker.Mock() directly, which is simpler than patching the constructor.
 """
@@ -15,7 +15,7 @@ import pytest
 from fus_driving_systems.citrus.citrus_ds import CITRUS
 
 
-def _valid_sequence(**overrides):
+def _valid_protocol(**overrides):
     values = dict(
         pulse_dur=1,
         pulse_rep_int=2,
@@ -42,43 +42,43 @@ def test_connect_configures_and_opens_serial_port(mock_serial):
     assert citrus.connected is True
 
 
-def test_execute_sequence_writes_expected_trigger_byte(mocker):
+def test_execute_protocol_writes_expected_trigger_byte(mocker):
     citrus = CITRUS()
     citrus.ser_bitsi = mocker.Mock()
     mocker.patch("fus_driving_systems.citrus.citrus_ds.time.sleep")
 
-    citrus.execute_sequence(mocker.Mock())
+    citrus.execute_protocol(mocker.Mock())
 
     citrus.ser_bitsi.write.assert_called_once_with(b'\x20')
     citrus.ser_bitsi.flush.assert_called_once()
 
 
-def test_execute_sequence_sleeps_after_triggering(mocker):
+def test_execute_protocol_sleeps_after_triggering(mocker):
     citrus = CITRUS()
     citrus.ser_bitsi = mocker.Mock()
     mock_sleep = mocker.patch("fus_driving_systems.citrus.citrus_ds.time.sleep")
 
-    citrus.execute_sequence(mocker.Mock())
+    citrus.execute_protocol(mocker.Mock())
 
     mock_sleep.assert_called_once_with(0.7)
 
 
-def test_send_sequence_does_not_raise():
-    """send_sequence's own hardware-facing logic is currently a stub (just
-    logs), but it now validates the sequence first (see
-    test_send_sequence_exits_when_validation_produces_errors below)."""
+def test_send_protocol_does_not_raise():
+    """send_protocol's own hardware-facing logic is currently a stub (just
+    logs), but it now validates the protocol first (see
+    test_send_protocol_exits_when_validation_produces_errors below)."""
     citrus = CITRUS()
-    citrus.send_sequence(_valid_sequence())  # must not raise
+    citrus.send_protocol(_valid_protocol())  # must not raise
 
 
-def test_send_sequence_exits_when_validation_produces_errors():
-    """Regression test: send_sequence previously never called
-    validate_sequence at all, so a malformed sequence would silently be
+def test_send_protocol_exits_when_validation_produces_errors():
+    """Regression test: send_protocol previously never called
+    validate_protocol at all, so a malformed protocol would silently be
     accepted instead of failing loudly like IGT/SonicConcepts already do."""
     citrus = CITRUS()
 
     with pytest.raises(SystemExit):
-        citrus.send_sequence(_valid_sequence(pulse_train_dur=11))
+        citrus.send_protocol(_valid_protocol(pulse_train_dur=11))
 
 
 def test_disconnect_closes_serial_port_and_marks_disconnected(mocker):

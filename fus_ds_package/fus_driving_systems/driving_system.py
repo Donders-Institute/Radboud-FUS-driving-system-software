@@ -60,11 +60,11 @@ class DrivingSystem:
             genuinely accepts more than one power representation directly can list several.
         native_focus_params (List[str]): Same idea as native_power_params, for focus.
         max_tran_slots (int): The number of transducers this driving system can drive
-            simultaneously (see Sequence.add_slot()). Default 1 -- a driving system that
+            simultaneously (see TUSProtocol.add_slot()). Default 1 -- a driving system that
             doesn't declare a higher value is single-transducer-only.
         max_buffers (int): The number of hardware buffers this driving system can hold a
-            sequence in at once (see Sequence.buffer_num) -- each buffer can be pre-loaded with
-            its own sequence ahead of time and triggered/executed independently. Default 1 --
+            protocol in at once (see TUSProtocol.buffer_num) -- each buffer can be pre-loaded
+            with its own protocol ahead of time and triggered/executed independently. Default 1 --
             a driving system that doesn't declare a higher value has no real buffer concept at
             all (buffer_num is then only ever 0).
         is_active (Boolean): Indication if the driving system is used with the code.
@@ -94,7 +94,7 @@ class DrivingSystem:
         """
         Sets the driving system based on the provided serial number.
 
-        Called by Sequence.driving_sys's setter and get_ds_list() -- both can be given a
+        Called by TUSProtocol.driving_sys's setter and get_ds_list() -- both can be given a
         serial that isn't actually in the configuration file (e.g. a typo). That is checked
         explicitly below, rather than relying on incidentally hitting one of the individual
         is_sys_exit=True fields further down and having to track down why that one field

@@ -309,7 +309,7 @@ def test_sync_logger_mutates_in_place_instead_of_rebinding(tmp_path):
     see -- it kept pointing at whatever it bound before. Now sync_logger() copies the host
     logger's handlers/level/propagate onto the existing logger object in place instead.
 
-    Every consumer module (sequence.py, driving_system.py, transducer.py, the driving-system
+    Every consumer module (tus_protocol.py, driving_system.py, transducer.py, the driving-system
     subclasses, igt/utils.py, igt/transducer_xyz.py) was itself refactored to call
     get_logger() at each log call site instead of caching the logger object, which
     structurally removes the stale-binding risk for those modules regardless of what

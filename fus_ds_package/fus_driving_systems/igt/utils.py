@@ -50,9 +50,9 @@ class ExecListener(unifus.FUSListener):
         self._running = False
         self.pulse_results = []
         self.exec_result = None
-        # Set by onSequenceResult() when a sequence execution fails; unifus.FUSListener's
+        # Set by onSequenceResult() when a protocol execution fails; unifus.FUSListener's
         # callbacks cannot propagate exceptions to Python (see its docstring), so this is read
-        # back and acted on (sys.exit()) by the caller on the main thread, after wait_sequence()
+        # back and acted on (sys.exit()) by the caller on the main thread, after wait_protocol()
         # returns, rather than raised here.
         self.exec_error_code = None
         # for mechanics
@@ -156,9 +156,9 @@ class ExecListener(unifus.FUSListener):
             if time.time() > max_wait:
                 return False
 
-    def wait_sequence(self, timeout=5.0):
+    def wait_protocol(self, timeout=5.0):
         """
-            Wait until the current ultrasound sequence is finished, or specified timeout in
+            Wait until the current ultrasound protocol is finished, or specified timeout in
             seconds.
         """
         max_wait = time.time() + timeout

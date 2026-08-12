@@ -8,14 +8,14 @@ patching unifus.FUSSystem (connect()'s sole hardware-touching seam) or the
 specific instance (self.gen/self.fus/self.listener, via connected_instance)
 downstream of a connection.
 
-Phase 3 note: send_sequence()/wait_for_trigger()/execute_sequence() now take a
-`sequences` argument -- a single Sequence, or a list of Sequence objects to
-interleave -- rather than positional seq1/seq2/seq3/seq4. Only a real
-fus_driving_systems.sequence.Sequence instance auto-wraps into a single-element list
+Phase 3 note: send_protocol()/wait_for_trigger()/execute_protocol() now take a
+`protocols` argument -- a single TUSProtocol, or a list of TUSProtocol objects to
+interleave -- rather than positional protocol1/protocol2/protocol3/protocol4. Only a real
+fus_driving_systems.tus_protocol.TUSProtocol instance auto-wraps into a single-element list
 (isinstance check); the SimpleNamespace stand-ins used throughout this file are not
-Sequence instances, so tests must pass them already wrapped in a list. Every sequence
+TUSProtocol instances, so tests must pass them already wrapped in a list. Every protocol
 (whether real or faked) must also carry `.slots` (non-empty) and `.driving_sys.available_ch`
-matching the slots' combined element count -- send_sequence()'s new _assert_ready_to_send()
+matching the slots' combined element count -- send_protocol()'s new _assert_ready_to_send()
 gate checks this before anything else.
 """
 import math
@@ -37,7 +37,7 @@ def _slot(elements=1, ampl=_UNSET, serial='TRAN-A', **overrides):
     """A minimal stand-in for a TransducerSlot, for tests that only need enough shape to
     satisfy _assert_ready_to_send()/_define_pulse_group() without any real power/focus
     calculation. ampl defaults to [50.0] when not given -- pass ampl=None explicitly to
-    exercise the "amplitude not set" case. serial defaults to 'TRAN-A' -- validate_sequence()'s
+    exercise the "amplitude not set" case. serial defaults to 'TRAN-A' -- validate_protocol()'s
     "amplitude is None" error names the transducer it's about, so tests checking that need a
     distinguishable serial per slot."""
     values = dict(ampl=[50.0] if ampl is _UNSET else ampl,
@@ -47,8 +47,8 @@ def _slot(elements=1, ampl=_UNSET, serial='TRAN-A', **overrides):
 
 
 def _ready(*slots):
-    """Returns the two kwargs (slots=..., driving_sys=...) every sequence needs to pass
-    send_sequence()'s _assert_ready_to_send() gate -- available_ch set to match the given
+    """Returns the two kwargs (slots=..., driving_sys=...) every protocol needs to pass
+    send_protocol()'s _assert_ready_to_send() gate -- available_ch set to match the given
     slots' combined element count exactly."""
     total = sum(s.transducer.elements for s in slots)
     return {'slots': list(slots), 'driving_sys': SimpleNamespace(available_ch=total)}
@@ -63,7 +63,7 @@ class TestInit:
     def test_init_sets_default_attributes(self, tmp_path):
         instance = IGT(log_dir=str(tmp_path))
 
-        assert instance.sent_seqs == {}
+        assert instance.sent_protocols == {}
         assert instance.fus is None
         assert instance.listener is None
         assert instance.n_channels == 0
@@ -103,42 +103,42 @@ class TestInit:
 
 
 # ---------------------------------------------------------------------------
-# is_sequence_sent() / register_sent_sequence()
+# is_protocol_sent() / register_sent_protocol()
 # ---------------------------------------------------------------------------
 
-class TestIsSequenceSent:
-    """Note: IGT.is_sequence_sent(buffer_num) takes a required buffer_num arg,
-    shadowing ControlDrivingSystem.is_sequence_sent() (no args) with an
+class TestIsProtocolSent:
+    """Note: IGT.is_protocol_sent(buffer_num) takes a required buffer_num arg,
+    shadowing ControlDrivingSystem.is_protocol_sent() (no args) with an
     incompatible signature -- not a live bug (igt_ds.py always calls its
     own override with buffer_num; SonicConcepts calls the base no-arg version
     on its own instances), but worth knowing if this is ever called
     polymorphically without knowing the concrete driving-system type."""
 
     def test_returns_true_when_buffer_num_registered(self, igt_instance):
-        igt_instance.sent_seqs[0] = {'seq': []}
+        igt_instance.sent_protocols[0] = {'pulse_train_seq': []}
 
-        assert igt_instance.is_sequence_sent(0) is True
+        assert igt_instance.is_protocol_sent(0) is True
 
     def test_returns_false_when_buffer_num_not_registered(self, igt_instance):
-        assert igt_instance.is_sequence_sent(0) is False
+        assert igt_instance.is_protocol_sent(0) is False
 
 
-class TestRegisterSentSequence:
+class TestRegisterSentProtocol:
 
-    def test_stores_sequence_details_and_total_duration(self, igt_instance, mocker, patch_config):
+    def test_stores_protocol_details_and_total_duration(self, igt_instance, mocker, patch_config):
         patch_config.set('Equipment.Manufacturer.IGT', 'Wait time before responsive [ms]', '50')
         mocker.patch('fus_driving_systems.igt.igt_ds.unifus.sequenceDurationMs',
                      return_value=200.0)
 
-        igt_instance.register_sent_sequence(0, seq=['pulse'], n_pulse_train_rep=3,
+        igt_instance.register_sent_protocol(0, pulse_train_seq=['pulse'], n_pulse_train_rep=3,
                                             pulse_train_delay=5.0, phases=[10.0, 20.0])
 
-        stored = igt_instance.sent_seqs[0]
-        assert stored['seq'] == ['pulse']
+        stored = igt_instance.sent_protocols[0]
+        assert stored['pulse_train_seq'] == ['pulse']
         assert stored['n_pulse_train_rep'] == 3
         assert stored['pulse_train_delay'] == 5.0
         assert stored['phases'] == [10.0, 20.0]
-        assert stored['total_sequence_duration_ms'] == pytest.approx(250.0)  # 200 + 50
+        assert stored['total_protocol_duration_ms'] == pytest.approx(250.0)  # 200 + 50
 
 
 # ---------------------------------------------------------------------------
@@ -324,10 +324,10 @@ class TestConnect:
 
 
 # ---------------------------------------------------------------------------
-# validate_sequence
+# validate_protocol
 # ---------------------------------------------------------------------------
 
-def _valid_sequence(**overrides):
+def _valid_protocol(**overrides):
     values = dict(
         pulse_dur=1.0,
         pulse_rep_int=2.0,
@@ -342,12 +342,12 @@ def _valid_sequence(**overrides):
     return SimpleNamespace(**values)
 
 
-class TestValidateSequence:
+class TestValidateProtocol:
 
-    def test_valid_sequence_has_no_errors(self, igt_instance, patch_config):
+    def test_valid_protocol_has_no_errors(self, igt_instance, patch_config):
         patch_config.set('Ramp', 'Option.rect', 'Rectangular - no ramping')
 
-        errors = igt_instance.validate_sequence(_valid_sequence())
+        errors = igt_instance.validate_protocol(_valid_protocol())
 
         assert errors == []
 
@@ -355,7 +355,7 @@ class TestValidateSequence:
         patch_config.set('Ramp', 'Option.rect', 'Rectangular - no ramping')
         patch_config.set('Equipment.Manufacturer.IGT', 'Min. pulse duration [ms]', '0.5')
 
-        errors = igt_instance.validate_sequence(_valid_sequence(pulse_dur=0.1,
+        errors = igt_instance.validate_protocol(_valid_protocol(pulse_dur=0.1,
                                                                 pulse_rep_int=1.0))
 
         assert any('Pulse duration' in e for e in errors)
@@ -364,7 +364,7 @@ class TestValidateSequence:
         patch_config.set('Ramp', 'Option.rect', 'Rectangular - no ramping')
         patch_config.set('Equipment.Manufacturer.IGT', 'Min. pulse rep. interval [ms]', '1.0')
 
-        errors = igt_instance.validate_sequence(_valid_sequence(pulse_dur=0.05,
+        errors = igt_instance.validate_protocol(_valid_protocol(pulse_dur=0.05,
                                                                 pulse_rep_int=0.1,
                                                                 pulse_train_dur=1.0,
                                                                 pulse_train_rep_int=1.0,
@@ -378,7 +378,7 @@ class TestValidateSequence:
         patch_config.set('Equipment.Manufacturer.IGT',
                          'Min. time in between ramping up and down [ms]', '0.1')
 
-        errors = igt_instance.validate_sequence(_valid_sequence(
+        errors = igt_instance.validate_protocol(_valid_protocol(
             pulse_dur=1.0, pulse_rep_int=1.0, pulse_ramp_dur=0.6, pulse_ramp_shape='Linear'))
 
         assert any('ramping' in e for e in errors)
@@ -386,21 +386,21 @@ class TestValidateSequence:
     def test_amplitude_none_is_flagged(self, igt_instance, patch_config):
         patch_config.set('Ramp', 'Option.rect', 'Rectangular - no ramping')
 
-        errors = igt_instance.validate_sequence(_valid_sequence(slots=[_slot(ampl=None)]))
+        errors = igt_instance.validate_protocol(_valid_protocol(slots=[_slot(ampl=None)]))
 
         assert any('Amplitude is None' in e for e in errors)
 
     def test_amplitude_none_is_flagged_for_any_slot(self, igt_instance, patch_config):
-        """Every slot is checked, not just the first -- a multi-transducer sequence with a
+        """Every slot is checked, not just the first -- a multi-transducer protocol with a
         problem on its second slot must not go unnoticed, and the message must identify which
-        slot (index and transducer serial) so a multi-transducer sequence's error is actionable
-        rather than just "some slot, somewhere". The index is 0-based (matching sequence.slots'
+        slot (index and transducer serial) so a multi-transducer protocol's error is actionable
+        rather than just "some slot, somewhere". The index is 0-based (matching protocol.slots'
         own indexing), so the message spells that out explicitly -- otherwise "slot 1" could
         read as "the first slot" to someone not thinking in 0-based terms, when it actually means
         the second one."""
         patch_config.set('Ramp', 'Option.rect', 'Rectangular - no ramping')
 
-        errors = igt_instance.validate_sequence(_valid_sequence(
+        errors = igt_instance.validate_protocol(_valid_protocol(
             slots=[_slot(serial='TRAN-A', ampl=[50.0]), _slot(serial='TRAN-B', ampl=None)]))
 
         assert any('slot 1 (counting from 0' in e and 'TRAN-B' in e for e in errors)
@@ -410,7 +410,7 @@ class TestValidateSequence:
         patch_config.set('Ramp', 'Option.rect', 'Rectangular - no ramping')
         patch_config.set('Equipment.Manufacturer.IGT', 'Max. pulses in pulse train', '4')
 
-        errors = igt_instance.validate_sequence(_valid_sequence(
+        errors = igt_instance.validate_protocol(_valid_protocol(
             pulse_dur=1.0, pulse_rep_int=1.0, pulse_train_dur=10.0,
             pulse_train_rep_int=10.0, pulse_train_rep_dur=10.0))
 
@@ -426,18 +426,18 @@ class TestGetRampingAmplitude:
     def test_linear_ramp_is_evenly_spaced_from_zero_to_one(self, igt_instance, patch_config):
         patch_config.set('Ramp', 'Option.lin', 'Linear')
         patch_config.set('Ramp', 'Option.tuk', 'Tukey')
-        sequence = SimpleNamespace(pulse_ramp_shape='Linear', pulse_ramp_dur=10.0)
+        protocol = SimpleNamespace(pulse_ramp_shape='Linear', pulse_ramp_dur=10.0)
 
-        ampl_ramp = igt_instance._get_ramping_amplitude(sequence, pulse_ramp_temp_res=2.0)
+        ampl_ramp = igt_instance._get_ramping_amplitude(protocol, pulse_ramp_temp_res=2.0)
 
         assert ampl_ramp == pytest.approx(np.linspace(0, 1, 5))
 
     def test_tukey_ramp_starts_at_zero_and_ends_at_one(self, igt_instance, patch_config):
         patch_config.set('Ramp', 'Option.lin', 'Linear')
         patch_config.set('Ramp', 'Option.tuk', 'Tukey')
-        sequence = SimpleNamespace(pulse_ramp_shape='Tukey', pulse_ramp_dur=10.0)
+        protocol = SimpleNamespace(pulse_ramp_shape='Tukey', pulse_ramp_dur=10.0)
 
-        ampl_ramp = igt_instance._get_ramping_amplitude(sequence, pulse_ramp_temp_res=2.0)
+        ampl_ramp = igt_instance._get_ramping_amplitude(protocol, pulse_ramp_temp_res=2.0)
 
         assert len(ampl_ramp) == 5
         assert ampl_ramp[0] == pytest.approx(0.0, abs=1e-9)
@@ -457,9 +457,9 @@ class TestApplyRamping:
         patch_config.set('Equipment.Manufacturer.IGT', 'Max. amount of ramping steps', '1023')
         patch_config.set('Ramp', 'Option.lin', 'Linear')
         patch_config.set('Ramp', 'Option.tuk', 'Tukey')
-        sequence = SimpleNamespace(pulse_ramp_shape='Linear', pulse_ramp_dur=10.0)
+        protocol = SimpleNamespace(pulse_ramp_shape='Linear', pulse_ramp_dur=10.0)
 
-        connected_instance._apply_ramping(sequence)
+        connected_instance._apply_ramping(protocol)
 
         connected_instance.gen.setPulseModulation.assert_called_once()
         ramp_up, up_res, ramp_down, down_res = \
@@ -478,9 +478,9 @@ class TestApplyRamping:
         patch_config.set('Ramp', 'Option.tuk', 'Tukey')
         # ramp_n_steps = pulse_ramp_dur / min_res = 10 / 0.1 = 100 > max_steps (10)
         # -> min_ramp_temp_res gets recomputed as pulse_ramp_dur / max_steps = 1.0
-        sequence = SimpleNamespace(pulse_ramp_shape='Linear', pulse_ramp_dur=10.0)
+        protocol = SimpleNamespace(pulse_ramp_shape='Linear', pulse_ramp_dur=10.0)
 
-        connected_instance._apply_ramping(sequence)
+        connected_instance._apply_ramping(protocol)
 
         _, up_res, _, down_res = connected_instance.gen.setPulseModulation.call_args[0]
         assert up_res == pytest.approx(1.0)
@@ -495,22 +495,22 @@ class TestDefinePulseTrain:
 
     def test_builds_pulse_train_list_and_computes_delay(self, igt_instance):
         pulse = object()
-        sequence = SimpleNamespace(pulse_train_dur=10.0, pulse_rep_int=2.0,
+        protocol = SimpleNamespace(pulse_train_dur=10.0, pulse_rep_int=2.0,
                                    pulse_train_rep_int=15.0)
 
-        seq, pulse_train_delay = igt_instance._define_pulse_train(sequence, pulse)
+        pulse_train_seq, pulse_train_delay = igt_instance._define_pulse_train(protocol, pulse)
 
-        assert seq == [pulse] * 5
+        assert pulse_train_seq == [pulse] * 5
         assert pulse_train_delay == pytest.approx(5.0)
 
     def test_floors_partial_pulses(self, igt_instance):
         pulse = object()
-        sequence = SimpleNamespace(pulse_train_dur=9.0, pulse_rep_int=2.0,
+        protocol = SimpleNamespace(pulse_train_dur=9.0, pulse_rep_int=2.0,
                                    pulse_train_rep_int=9.0)
 
-        seq, pulse_train_delay = igt_instance._define_pulse_train(sequence, pulse)
+        pulse_train_seq, pulse_train_delay = igt_instance._define_pulse_train(protocol, pulse)
 
-        assert len(seq) == math.floor(9.0 / 2.0)  # 4, not 4.5
+        assert len(pulse_train_seq) == math.floor(9.0 / 2.0)  # 4, not 4.5
         assert pulse_train_delay == pytest.approx(0.0)
 
 
@@ -527,9 +527,9 @@ class TestDefinePulseGroupSingleSlot:
         fake_transducer = SimpleNamespace(elements=2, steer_info='dummy.ini', natural_foc=0)
         slot = SimpleNamespace(oper_freq=250, ampl=[50, 60], dephasing_degree=[10.0, 20.0],
                                transducer=fake_transducer, focus_wrt_mid_bowl=50)
-        sequence = SimpleNamespace(pulse_dur=1.0, pulse_rep_int=2.0, slots=[slot])
+        protocol = SimpleNamespace(pulse_dur=1.0, pulse_rep_int=2.0, slots=[slot])
 
-        pulse, phases = connected_instance._define_pulse_group(sequence)
+        pulse, phases = connected_instance._define_pulse_group(protocol)
 
         assert phases == [10.0, 20.0]
         assert pulse.frequencyCount() == 2
@@ -545,14 +545,14 @@ class TestDefinePulseGroupSingleSlot:
     def test_expands_length_1_amplitude_to_every_channel_rather_than_leaving_it_uniform(
             self, connected_instance):
         """A single slot's length-1 ampl is expanded to its transducer's own element count,
-        same as any other slot regardless of how many are in the sequence."""
+        same as any other slot regardless of how many are in the protocol."""
         connected_instance.n_channels = 10
         fake_transducer = SimpleNamespace(elements=10, steer_info='dummy.ini', natural_foc=0)
         slot = SimpleNamespace(oper_freq=250, ampl=[50], dephasing_degree=[0.0] * 10,
                                transducer=fake_transducer, focus_wrt_mid_bowl=50)
-        sequence = SimpleNamespace(pulse_dur=1.0, pulse_rep_int=2.0, slots=[slot])
+        protocol = SimpleNamespace(pulse_dur=1.0, pulse_rep_int=2.0, slots=[slot])
 
-        pulse, _ = connected_instance._define_pulse_group(sequence)
+        pulse, _ = connected_instance._define_pulse_group(protocol)
 
         assert pulse.amplitudeCount() == 10
         assert pulse.frequencyCount() == 10
@@ -564,10 +564,10 @@ class TestDefinePulseGroupSingleSlot:
         connected_instance.n_channels = 2
         slot = SimpleNamespace(oper_freq=250, ampl=None, dephasing_degree=None,
                                transducer=SimpleNamespace(elements=2))
-        sequence = SimpleNamespace(pulse_dur=1.0, pulse_rep_int=2.0, slots=[slot])
+        protocol = SimpleNamespace(pulse_dur=1.0, pulse_rep_int=2.0, slots=[slot])
 
         with pytest.raises(SystemExit):
-            connected_instance._define_pulse_group(sequence)
+            connected_instance._define_pulse_group(protocol)
 
     def test_computes_phases_via_real_transducer_ini_definition(self, connected_instance):
         """End-to-end (no mocking): _set_phases resolves the bundled real
@@ -583,9 +583,9 @@ class TestDefinePulseGroupSingleSlot:
         )
         slot = SimpleNamespace(oper_freq=300, ampl=[50] * 10, dephasing_degree=None,
                                transducer=fake_transducer, focus_wrt_mid_bowl=75)
-        sequence = SimpleNamespace(pulse_dur=1.0, pulse_rep_int=2.0, slots=[slot])
+        protocol = SimpleNamespace(pulse_dur=1.0, pulse_rep_int=2.0, slots=[slot])
 
-        pulse, phases = connected_instance._define_pulse_group(sequence)
+        pulse, phases = connected_instance._define_pulse_group(protocol)
 
         assert len(phases) == 10
         assert pulse.phaseCount() == 10
@@ -677,9 +677,9 @@ class TestDefinePulseGroupMultiSlot:
                                 transducer=tran1, focus_wrt_mid_bowl=50)
         slot2 = SimpleNamespace(oper_freq=300, ampl=[60, 70], dephasing_degree=[3.0, 4.0],
                                 transducer=tran2, focus_wrt_mid_bowl=50)
-        sequence = SimpleNamespace(pulse_dur=1.0, pulse_rep_int=2.0, slots=[slot1, slot2])
+        protocol = SimpleNamespace(pulse_dur=1.0, pulse_rep_int=2.0, slots=[slot1, slot2])
 
-        pulse, phases = connected_instance._define_pulse_group(sequence)
+        pulse, phases = connected_instance._define_pulse_group(protocol)
 
         assert phases == [1.0, 2.0, 3.0, 4.0]
         assert [pulse.amplitude(i) for i in range(4)] == [50, 50, 60, 70]
@@ -702,9 +702,9 @@ class TestDefinePulseGroupMultiSlot:
             SimpleNamespace(oper_freq=300, ampl=[30], dephasing_degree=[9.0],
                             transducer=SimpleNamespace(elements=1), focus_wrt_mid_bowl=50),
         ]
-        sequence = SimpleNamespace(pulse_dur=1.0, pulse_rep_int=2.0, slots=slots)
+        protocol = SimpleNamespace(pulse_dur=1.0, pulse_rep_int=2.0, slots=slots)
 
-        pulse, phases = connected_instance._define_pulse_group(sequence)
+        pulse, phases = connected_instance._define_pulse_group(protocol)
 
         assert [pulse.amplitude(i) for i in range(3)] == [10, 20, 30]
         assert [pulse.frequency(i) for i in range(3)] == [100_000, 200_000, 300_000]
@@ -712,15 +712,15 @@ class TestDefinePulseGroupMultiSlot:
 
 
 # ---------------------------------------------------------------------------
-# send_sequence
+# send_protocol
 # ---------------------------------------------------------------------------
 
-class TestSendSequence:
+class TestSendProtocol:
 
     def test_defines_pulse_registers_and_sends_when_connected(self, mocker, connected_instance,
                                                               patch_config):
         patch_config.set('Ramp', 'Option.rect', 'Rectangular - no ramping')
-        mocker.patch.object(connected_instance, 'validate_sequence', return_value=[])
+        mocker.patch.object(connected_instance, 'validate_protocol', return_value=[])
         fake_pulse = mocker.Mock()
         mocker.patch.object(connected_instance, '_define_pulse_group',
                             return_value=(fake_pulse, [1.0, 2.0]))
@@ -729,26 +729,26 @@ class TestSendSequence:
         mocker.patch('fus_driving_systems.igt.igt_ds.unifus.sequenceDurationMs',
                      return_value=100.0)
 
-        fake_sequence = SimpleNamespace(
+        fake_protocol = SimpleNamespace(
             buffer_num=0, pulse_train_rep_dur=20, pulse_train_rep_int=10,
             pulse_ramp_shape='Rectangular - no ramping', **_ready(_slot()))
 
-        connected_instance.send_sequence([fake_sequence])
+        connected_instance.send_protocol([fake_protocol])
 
         connected_instance.gen.sendSequence.assert_called_once_with(0, [fake_pulse, fake_pulse])
-        assert connected_instance.is_sequence_sent(0) is True
+        assert connected_instance.is_protocol_sent(0) is True
 
-    def test_accepts_a_single_sequence_without_a_list(self, mocker, connected_instance,
+    def test_accepts_a_single_protocol_without_a_list(self, mocker, connected_instance,
                                                       patch_config):
-        """A bare Sequence (checked via isinstance, so this only kicks in for the real class --
+        """A bare TUSProtocol (checked via isinstance, so this only kicks in for the real class --
         SimpleNamespace stand-ins elsewhere in this file always need an explicit list) is
         auto-wrapped into a single-element list -- convenience for the overwhelmingly common
-        single-sequence case. Built via __new__ (bypassing __init__'s config-driven defaults),
-        same pattern as test_sequence_class.py's _bare_sequence()."""
-        from fus_driving_systems.sequence import Sequence
+        single-protocol case. Built via __new__ (bypassing __init__'s config-driven defaults),
+        same pattern as test_tus_protocol_class.py's _bare_protocol()."""
+        from fus_driving_systems.tus_protocol import TUSProtocol
 
         patch_config.set('Ramp', 'Option.rect', 'Rectangular - no ramping')
-        mocker.patch.object(connected_instance, 'validate_sequence', return_value=[])
+        mocker.patch.object(connected_instance, 'validate_protocol', return_value=[])
         fake_pulse = mocker.Mock()
         mocker.patch.object(connected_instance, '_define_pulse_group',
                             return_value=(fake_pulse, [1.0]))
@@ -757,13 +757,13 @@ class TestSendSequence:
         mocker.patch('fus_driving_systems.igt.igt_ds.unifus.sequenceDurationMs',
                      return_value=100.0)
 
-        real_sequence = Sequence.__new__(Sequence)
-        real_sequence._buffer_num = 1
-        # __str__ (invoked lazily by send_sequence()'s own debug log call) also reads these.
+        real_protocol = TUSProtocol.__new__(TUSProtocol)
+        real_protocol._buffer_num = 1
+        # __str__ (invoked lazily by send_protocol()'s own debug log call) also reads these.
         # wait_for_trigger is derived from _trigger_option, not stored separately.
-        real_sequence._trigger_option = 'None'
-        real_sequence._n_triggers = 0
-        real_sequence._timing_param = {
+        real_protocol._trigger_option = 'None'
+        real_protocol._n_triggers = 0
+        real_protocol._timing_param = {
             'pulse_dur': 1.0,
             'pulse_rep_int': 2.0,
             'pulse_ramp_shape': 'Rectangular - no ramping',
@@ -773,37 +773,37 @@ class TestSendSequence:
             'pulse_train_rep_dur': 20,
         }
         ready = _ready(_slot())
-        real_sequence._slots = ready['slots']
-        real_sequence._driving_sys = ready['driving_sys']
+        real_protocol._slots = ready['slots']
+        real_protocol._driving_sys = ready['driving_sys']
 
-        connected_instance.send_sequence(real_sequence)  # NOT wrapped in a list
+        connected_instance.send_protocol(real_protocol)  # NOT wrapped in a list
 
         connected_instance.gen.sendSequence.assert_called_once_with(1, [fake_pulse])
 
     def test_exits_when_no_slots_configured(self, connected_instance):
-        """A sequence that never had add_slot() called on it must be rejected with a clear
+        """A protocol that never had add_slot() called on it must be rejected with a clear
         message, not fail confusingly deep inside pulse construction."""
-        fake_sequence = SimpleNamespace(buffer_num=0, slots=[],
+        fake_protocol = SimpleNamespace(buffer_num=0, slots=[],
                                         driving_sys=SimpleNamespace(available_ch=1))
 
         with pytest.raises(SystemExit, match='add_slot'):
-            connected_instance.send_sequence([fake_sequence])
+            connected_instance.send_protocol([fake_protocol])
 
     def test_exits_when_slot_elements_do_not_match_available_channels(self, connected_instance):
-        fake_sequence = SimpleNamespace(
+        fake_protocol = SimpleNamespace(
             buffer_num=0, slots=[_slot(elements=2)],
             driving_sys=SimpleNamespace(available_ch=10))
 
         with pytest.raises(SystemExit):
-            connected_instance.send_sequence([fake_sequence])
+            connected_instance.send_protocol([fake_protocol])
 
     def test_exits_when_validation_produces_errors(self, mocker, connected_instance):
-        mocker.patch.object(connected_instance, 'validate_sequence',
+        mocker.patch.object(connected_instance, 'validate_protocol',
                             return_value=['something is wrong'])
-        fake_sequence = SimpleNamespace(buffer_num=0, **_ready(_slot()))
+        fake_protocol = SimpleNamespace(buffer_num=0, **_ready(_slot()))
 
         with pytest.raises(SystemExit):
-            connected_instance.send_sequence([fake_sequence])
+            connected_instance.send_protocol([fake_protocol])
 
     def test_reconnects_and_retries_when_not_connected(self, mocker, tmp_path):
         instance = IGT(log_dir=str(tmp_path))
@@ -813,76 +813,76 @@ class TestSendSequence:
             instance.connected = True
             instance.gen = mocker.Mock()
         mock_connect = mocker.patch.object(instance, 'connect', side_effect=fake_connect)
-        mocker.patch.object(instance, 'validate_sequence', return_value=[])
+        mocker.patch.object(instance, 'validate_protocol', return_value=[])
         mocker.patch.object(instance, '_define_pulse_group', return_value=(mocker.Mock(), [1.0]))
         mocker.patch.object(instance, '_define_pulse_train',
                             return_value=([mocker.Mock()], 5.0))
         mocker.patch('fus_driving_systems.igt.igt_ds.unifus.sequenceDurationMs',
                      return_value=100.0)
 
-        fake_sequence = SimpleNamespace(
+        fake_protocol = SimpleNamespace(
             buffer_num=0,
             driving_sys=SimpleNamespace(connect_info='igt/config/gen_test.json', available_ch=1),
             slots=[_slot()], pulse_train_rep_dur=20, pulse_train_rep_int=10,
             pulse_ramp_shape='Rectangular - no ramping')
 
-        instance.send_sequence([fake_sequence])
+        instance.send_protocol([fake_protocol])
 
         mock_connect.assert_called_once_with('igt/config/gen_test.json')
-        assert instance.is_sequence_sent(0) is True
+        assert instance.is_protocol_sent(0) is True
 
-    def test_interleaves_two_sequences_with_combined_pulse_train(self, mocker, connected_instance,
+    def test_interleaves_two_protocols_with_combined_pulse_train(self, mocker, connected_instance,
                                                                  patch_config):
-        """More than one sequence means they're interleaved: n_pulse_train_rep is computed from
-        duration_ms and the sum of both sequences' pulse_rep_int -- the time slot each
-        sequence's own single pulse (pulse_dur active, then its own trailing delay) occupies in
+        """More than one protocol means they're interleaved: n_pulse_train_rep is computed from
+        duration_ms and the sum of both protocols' pulse_rep_int -- the time slot each
+        protocol's own single pulse (pulse_dur active, then its own trailing delay) occupies in
         one round of the alternating group, not pulse_train_dur (which would describe a
         repeated train this pulse never fires here) or either one's own pulse_train_rep_dur/int.
         pulse_train_dur is deliberately set to something very different from pulse_rep_int on
-        both sequences below, so this test would fail loudly if the wrong one were summed
-        instead. _define_pulse_group is called once per sequence."""
+        both protocols below, so this test would fail loudly if the wrong one were summed
+        instead. _define_pulse_group is called once per protocol."""
         patch_config.set('Ramp', 'Option.rect', 'Rectangular - no ramping')
-        mocker.patch.object(connected_instance, 'validate_sequence', return_value=[])
+        mocker.patch.object(connected_instance, 'validate_protocol', return_value=[])
         fake_pulse1, fake_pulse2 = mocker.Mock(), mocker.Mock()
         mocker.patch.object(connected_instance, '_define_pulse_group',
                             side_effect=[(fake_pulse1, [1.0]), (fake_pulse2, [2.0])])
         mocker.patch('fus_driving_systems.igt.igt_ds.unifus.sequenceDurationMs',
                      return_value=100.0)
 
-        # send_sequence() requires every interleaved sequence to target the same buffer (see
-        # test_exits_when_interleaved_sequences_target_different_buffers below) -- both use
+        # send_protocol() requires every interleaved protocol to target the same buffer (see
+        # test_exits_when_interleaved_protocols_target_different_buffers below) -- both use
         # buffer_num=0 here, matching this file's usual convention of using 0 unless a test is
         # specifically about buffer selection.
-        seq1 = SimpleNamespace(buffer_num=0, pulse_rep_int=10, pulse_train_dur=999,
-                               pulse_ramp_shape='Rectangular - no ramping', **_ready(_slot()))
-        seq2 = SimpleNamespace(buffer_num=0, pulse_rep_int=15, pulse_train_dur=999,
-                               **_ready(_slot()))
+        protocol1 = SimpleNamespace(buffer_num=0, pulse_rep_int=10, pulse_train_dur=999,
+                                    pulse_ramp_shape='Rectangular - no ramping', **_ready(_slot()))
+        protocol2 = SimpleNamespace(buffer_num=0, pulse_rep_int=15, pulse_train_dur=999,
+                                    **_ready(_slot()))
 
-        connected_instance.send_sequence([seq1, seq2], duration_ms=100)
+        connected_instance.send_protocol([protocol1, protocol2], duration_ms=100)
 
-        # n_pulse_train_rep = floor(duration_ms / (seq1.pulse_rep_int + seq2.pulse_rep_int))
-        #                    = floor(100 / (10 + 15)) = 4
+        # n_pulse_train_rep = floor(duration_ms / (protocol1.pulse_rep_int +
+        #                                           protocol2.pulse_rep_int)) = floor(100/25) = 4
         connected_instance.gen.sendSequence.assert_called_once_with(0, [fake_pulse1, fake_pulse2])
-        stored = connected_instance.sent_seqs[0]
+        stored = connected_instance.sent_protocols[0]
         assert stored['n_pulse_train_rep'] == 4
         assert stored['pulse_train_delay'] == 0
         assert stored['phases'] == [[1.0], [2.0]]
 
-    def test_interleaves_three_sequences_without_any_hardcoded_pair_assumption(
+    def test_interleaves_three_protocols_without_any_hardcoded_pair_assumption(
             self, mocker, connected_instance, patch_config):
-        """N is never hardcoded to 2 for interleaving either -- a 3rd sequence falls out of the
+        """N is never hardcoded to 2 for interleaving either -- a 3rd protocol falls out of the
         same loop for free."""
         patch_config.set('Ramp', 'Option.rect', 'Rectangular - no ramping')
-        mocker.patch.object(connected_instance, 'validate_sequence', return_value=[])
+        mocker.patch.object(connected_instance, 'validate_protocol', return_value=[])
         pulses = [mocker.Mock(), mocker.Mock(), mocker.Mock()]
         mocker.patch.object(connected_instance, '_define_pulse_group',
                             side_effect=[(p, [float(i)]) for i, p in enumerate(pulses)])
         mocker.patch('fus_driving_systems.igt.igt_ds.unifus.sequenceDurationMs',
                      return_value=100.0)
 
-        # Every interleaved sequence must target the same buffer -- see the two-sequence test
+        # Every interleaved protocol must target the same buffer -- see the two-protocol test
         # above.
-        sequences = [
+        protocols = [
             SimpleNamespace(buffer_num=0, pulse_rep_int=10, pulse_train_dur=999,
                             pulse_ramp_shape='Rectangular - no ramping', **_ready(_slot())),
             SimpleNamespace(buffer_num=0, pulse_rep_int=10, pulse_train_dur=999,
@@ -891,36 +891,36 @@ class TestSendSequence:
                             **_ready(_slot())),
         ]
 
-        connected_instance.send_sequence(sequences, duration_ms=90)
+        connected_instance.send_protocol(protocols, duration_ms=90)
 
         connected_instance.gen.sendSequence.assert_called_once_with(0, pulses)
         # n_pulse_train_rep = floor(90 / (10+10+10)) = 3
-        assert connected_instance.sent_seqs[0]['n_pulse_train_rep'] == 3
+        assert connected_instance.sent_protocols[0]['n_pulse_train_rep'] == 3
 
-    def test_exits_when_interleaved_sequences_target_different_buffers(
+    def test_exits_when_interleaved_protocols_target_different_buffers(
             self, mocker, connected_instance, patch_config):
-        """Only sequences[0].buffer_num is ever actually read once interleaving is under way
-        (the whole group is sent to that one buffer, not one buffer per sequence), but a caller
+        """Only protocols[0].buffer_num is ever actually read once interleaving is under way
+        (the whole group is sent to that one buffer, not one buffer per protocol), but a caller
         giving different buffer_num values across the group almost certainly means they mixed up
-        sequences that were never meant to be interleaved together -- reject it explicitly."""
+        protocols that were never meant to be interleaved together -- reject it explicitly."""
         patch_config.set('Ramp', 'Option.rect', 'Rectangular - no ramping')
-        mocker.patch.object(connected_instance, 'validate_sequence', return_value=[])
-        seq1 = SimpleNamespace(buffer_num=0, pulse_rep_int=10, pulse_train_dur=999,
-                               pulse_ramp_shape='Rectangular - no ramping', **_ready(_slot()))
-        seq2 = SimpleNamespace(buffer_num=1, pulse_rep_int=15, pulse_train_dur=999,
-                               **_ready(_slot()))
+        mocker.patch.object(connected_instance, 'validate_protocol', return_value=[])
+        protocol1 = SimpleNamespace(buffer_num=0, pulse_rep_int=10, pulse_train_dur=999,
+                                    pulse_ramp_shape='Rectangular - no ramping', **_ready(_slot()))
+        protocol2 = SimpleNamespace(buffer_num=1, pulse_rep_int=15, pulse_train_dur=999,
+                                    **_ready(_slot()))
 
         with pytest.raises(SystemExit):
-            connected_instance.send_sequence([seq1, seq2], duration_ms=100)
+            connected_instance.send_protocol([protocol1, protocol2], duration_ms=100)
 
     def test_applies_ramping_when_ramp_shape_is_not_rectangular(self, mocker, connected_instance,
                                                                 patch_config):
         """Only the rectangular/no-ramping branch was exercised elsewhere
         (via gen.setPulseModulation/setPulseRamp); this confirms
-        send_sequence actually routes to _apply_ramping (already tested in
+        send_protocol actually routes to _apply_ramping (already tested in
         isolation above) for any other ramp shape."""
         patch_config.set('Ramp', 'Option.rect', 'Rectangular - no ramping')
-        mocker.patch.object(connected_instance, 'validate_sequence', return_value=[])
+        mocker.patch.object(connected_instance, 'validate_protocol', return_value=[])
         fake_pulse = mocker.Mock()
         mocker.patch.object(connected_instance, '_define_pulse_group',
                             return_value=(fake_pulse, [1.0]))
@@ -930,45 +930,45 @@ class TestSendSequence:
         mocker.patch('fus_driving_systems.igt.igt_ds.unifus.sequenceDurationMs',
                      return_value=100.0)
 
-        fake_sequence = SimpleNamespace(buffer_num=0, pulse_train_rep_dur=20,
+        fake_protocol = SimpleNamespace(buffer_num=0, pulse_train_rep_dur=20,
                                         pulse_train_rep_int=10, pulse_ramp_shape='Linear',
                                         **_ready(_slot()))
 
-        connected_instance.send_sequence([fake_sequence])
+        connected_instance.send_protocol([fake_protocol])
 
-        mock_apply_ramping.assert_called_once_with(fake_sequence)
+        mock_apply_ramping.assert_called_once_with(fake_protocol)
         connected_instance.gen.setPulseModulation.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
-# execute_sequence
+# execute_protocol
 # ---------------------------------------------------------------------------
 
-class TestExecuteSequence:
+class TestExecuteProtocol:
 
-    def test_starts_sequence_and_waits_when_already_sent(self, mocker, connected_instance):
-        connected_instance.sent_seqs = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
-                                            'total_sequence_duration_ms': 500.0}}
-        fake_sequence = SimpleNamespace(buffer_num=0, pulse_dur=0.5, pulse_ramp_dur=0,
+    def test_starts_protocol_and_waits_when_already_sent(self, mocker, connected_instance):
+        connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
+                                                 'total_protocol_duration_ms': 500.0}}
+        fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=0.5, pulse_ramp_dur=0,
                                         pulse_ramp_shape='Rectangular - no ramping')
 
-        connected_instance.execute_sequence([fake_sequence], debug_info=False)
+        connected_instance.execute_protocol([fake_protocol], debug_info=False)
 
         connected_instance.gen.prepareSequence.assert_called_once_with(0, 2, 5.0, mocker.ANY)
         connected_instance.gen.startSequence.assert_called_once()
-        connected_instance.listener.wait_sequence.assert_called_once_with(0.5)
+        connected_instance.listener.wait_protocol.assert_called_once_with(0.5)
 
     def test_debug_info_true_sets_measure_channels_flag_for_long_pulse(self, connected_instance):
         """debug_info=True (the default) computes extra exec_flags based on
         pulse_dur, mirroring TestWaitForTrigger's identical coverage of
-        this same logic. execute_sequence has no trigger_option flag
+        this same logic. execute_protocol has no trigger_option flag
         addition, so no extra flag needs to be added to `expected` here."""
-        connected_instance.sent_seqs = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
-                                            'total_sequence_duration_ms': 500.0}}
-        fake_sequence = SimpleNamespace(buffer_num=0, pulse_dur=5.0, pulse_ramp_dur=0,
+        connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
+                                                 'total_protocol_duration_ms': 500.0}}
+        fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=5.0, pulse_ramp_dur=0,
                                         pulse_ramp_shape='Rectangular - no ramping')
 
-        connected_instance.execute_sequence([fake_sequence], debug_info=True)
+        connected_instance.execute_protocol([fake_protocol], debug_info=True)
 
         exec_flags = connected_instance.gen.prepareSequence.call_args.args[3]
         expected = (unifus.ExecFlag.DisableMonitoringChannelCombiner |
@@ -980,17 +980,17 @@ class TestExecuteSequence:
             self, connected_instance):
         """MeasureChannels/MeasureBoards/MeasureTimings is 'the most detailed mode the pulse can
         support' -- a strict superset hierarchy, not independent bits (see the test above).
-        When interleaving, the flag must be conservative enough for every sequence's own pulse,
-        not just the first one's -- fake_seq1's pulse_dur (5.0) alone would qualify for
-        MeasureChannels, but fake_seq2's (0.01) only supports MeasureTimings, so the group as a
-        whole must not exceed what the shortest pulse can handle."""
-        connected_instance.sent_seqs = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
-                                            'total_sequence_duration_ms': 500.0}}
-        fake_seq1 = SimpleNamespace(buffer_num=0, pulse_dur=5.0, pulse_ramp_dur=0,
-                                    pulse_ramp_shape='Rectangular - no ramping')
-        fake_seq2 = SimpleNamespace(pulse_dur=0.01)
+        When interleaving, the flag must be conservative enough for every protocol's own pulse,
+        not just the first one's -- fake_protocol1's pulse_dur (5.0) alone would qualify for
+        MeasureChannels, but fake_protocol2's (0.01) only supports MeasureTimings, so the group
+        as a whole must not exceed what the shortest pulse can handle."""
+        connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
+                                                 'total_protocol_duration_ms': 500.0}}
+        fake_protocol1 = SimpleNamespace(buffer_num=0, pulse_dur=5.0, pulse_ramp_dur=0,
+                                         pulse_ramp_shape='Rectangular - no ramping')
+        fake_protocol2 = SimpleNamespace(pulse_dur=0.01)
 
-        connected_instance.execute_sequence([fake_seq1, fake_seq2], debug_info=True)
+        connected_instance.execute_protocol([fake_protocol1, fake_protocol2], debug_info=True)
 
         exec_flags = connected_instance.gen.prepareSequence.call_args.args[3]
         expected = (unifus.ExecFlag.DisableMonitoringChannelCombiner |
@@ -1001,12 +1001,12 @@ class TestExecuteSequence:
     def test_debug_info_true_sets_measure_boards_flag_for_medium_pulse(self, connected_instance):
         """Same as above, one threshold down: pulse_dur between the
         MeasureBoards (0.035 ms) and MeasureChannels (4.570 ms) defaults."""
-        connected_instance.sent_seqs = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
-                                            'total_sequence_duration_ms': 500.0}}
-        fake_sequence = SimpleNamespace(buffer_num=0, pulse_dur=1.0, pulse_ramp_dur=0,
+        connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
+                                                 'total_protocol_duration_ms': 500.0}}
+        fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=1.0, pulse_ramp_dur=0,
                                         pulse_ramp_shape='Rectangular - no ramping')
 
-        connected_instance.execute_sequence([fake_sequence], debug_info=True)
+        connected_instance.execute_protocol([fake_protocol], debug_info=True)
 
         exec_flags = connected_instance.gen.prepareSequence.call_args.args[3]
         expected = (unifus.ExecFlag.DisableMonitoringChannelCombiner |
@@ -1017,12 +1017,12 @@ class TestExecuteSequence:
     def test_debug_info_true_sets_measure_timings_flag_for_short_pulse(self, connected_instance):
         """Same as above, lowest threshold: pulse_dur between the
         MeasureTimings (0.001 ms) and MeasureBoards (0.035 ms) defaults."""
-        connected_instance.sent_seqs = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
-                                            'total_sequence_duration_ms': 500.0}}
-        fake_sequence = SimpleNamespace(buffer_num=0, pulse_dur=0.01, pulse_ramp_dur=0,
+        connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
+                                                 'total_protocol_duration_ms': 500.0}}
+        fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=0.01, pulse_ramp_dur=0,
                                         pulse_ramp_shape='Rectangular - no ramping')
 
-        connected_instance.execute_sequence([fake_sequence], debug_info=True)
+        connected_instance.execute_protocol([fake_protocol], debug_info=True)
 
         exec_flags = connected_instance.gen.prepareSequence.call_args.args[3]
         expected = (unifus.ExecFlag.DisableMonitoringChannelCombiner |
@@ -1030,28 +1030,28 @@ class TestExecuteSequence:
                     unifus.ExecFlag.MeasureTimings)
         assert int(exec_flags) == int(expected)
 
-    def test_sends_sequence_first_when_not_yet_sent(self, mocker, connected_instance):
-        mock_send = mocker.patch.object(connected_instance, 'send_sequence')
+    def test_sends_protocol_first_when_not_yet_sent(self, mocker, connected_instance):
+        mock_send = mocker.patch.object(connected_instance, 'send_protocol')
 
         def fake_send(*args, **kwargs):
-            connected_instance.sent_seqs[0] = {
+            connected_instance.sent_protocols[0] = {
                 'n_pulse_train_rep': 1, 'pulse_train_delay': 0.0,
-                'total_sequence_duration_ms': 10.0}
+                'total_protocol_duration_ms': 10.0}
         mock_send.side_effect = fake_send
 
-        fake_sequence = SimpleNamespace(buffer_num=0)
+        fake_protocol = SimpleNamespace(buffer_num=0)
 
-        connected_instance.execute_sequence([fake_sequence], debug_info=False)
+        connected_instance.execute_protocol([fake_protocol], debug_info=False)
 
         mock_send.assert_called_once()
         connected_instance.gen.startSequence.assert_called_once()
 
     def test_reconnects_sends_and_executes_when_not_connected(self, mocker, tmp_path):
-        """Mirrors TestSendSequence's reconnect test -- execute_sequence
+        """Mirrors TestSendProtocol's reconnect test -- execute_protocol
         has the identical 'not connected -> connect(), then retry' shape.
 
         Regression test: the retry call used to not forward debug_info, so
-        it always reconnected-and-retried with the True default. fake_sequence
+        it always reconnected-and-retried with the True default. fake_protocol
         deliberately has no pulse_dur/pulse_ramp_dur/pulse_ramp_shape: if
         debug_info ever silently reverts to True again, this test fails with
         an AttributeError instead of passing (see TestWaitForTrigger's
@@ -1066,15 +1066,15 @@ class TestExecuteSequence:
             instance.listener.exec_error_code = None
         mock_connect = mocker.patch.object(instance, 'connect', side_effect=fake_connect)
 
-        def fake_send_sequence(*args, **kwargs):
-            instance.sent_seqs[0] = {'n_pulse_train_rep': 1, 'pulse_train_delay': 0.0,
-                                     'total_sequence_duration_ms': 10.0}
-        mock_send = mocker.patch.object(instance, 'send_sequence', side_effect=fake_send_sequence)
+        def fake_send_protocol(*args, **kwargs):
+            instance.sent_protocols[0] = {'n_pulse_train_rep': 1, 'pulse_train_delay': 0.0,
+                                          'total_protocol_duration_ms': 10.0}
+        mock_send = mocker.patch.object(instance, 'send_protocol', side_effect=fake_send_protocol)
 
-        fake_sequence = SimpleNamespace(
+        fake_protocol = SimpleNamespace(
             buffer_num=0, driving_sys=SimpleNamespace(connect_info='igt/config/gen_test.json'))
 
-        instance.execute_sequence([fake_sequence], debug_info=False)
+        instance.execute_protocol([fake_protocol], debug_info=False)
 
         mock_connect.assert_called_once_with('igt/config/gen_test.json')
         mock_send.assert_called_once()
@@ -1084,46 +1084,46 @@ class TestExecuteSequence:
         """The broad 'except Exception: sys.exit' wrapper around the
         prepare/start/wait calls -- any hardware-layer failure should
         surface as a SystemExit, not propagate raw."""
-        connected_instance.sent_seqs = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
-                                            'total_sequence_duration_ms': 500.0}}
+        connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
+                                                 'total_protocol_duration_ms': 500.0}}
         connected_instance.gen.prepareSequence.side_effect = RuntimeError('hardware fault')
-        fake_sequence = SimpleNamespace(buffer_num=0, pulse_dur=0.5, pulse_ramp_dur=0,
+        fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=0.5, pulse_ramp_dur=0,
                                         pulse_ramp_shape='Rectangular - no ramping')
 
         with pytest.raises(SystemExit):
-            connected_instance.execute_sequence([fake_sequence], debug_info=False)
+            connected_instance.execute_protocol([fake_protocol], debug_info=False)
 
-    def test_exits_when_listener_reports_sequence_execution_error(self, connected_instance):
+    def test_exits_when_listener_reports_protocol_execution_error(self, connected_instance):
         """GitHub issue #112: unifus.FUSListener's onSequenceResult callback used to only log
-        the error (see igt/utils.py's ExecListener) -- execute_sequence() itself never noticed,
+        the error (see igt/utils.py's ExecListener) -- execute_protocol() itself never noticed,
         so the program silently continued as if ultrasound had actually been emitted.
 
         unifus.FUSListener's own docstring states exceptions raised inside its callbacks are
         not propagated to Python, so sys.exit() cannot live inside onSequenceResult itself --
-        it has to be raised here, in execute_sequence(), after wait_sequence() returns on the
+        it has to be raised here, in execute_protocol(), after wait_protocol() returns on the
         calling thread. ExecListener.onSequenceResult() stores the failure on
         self.exec_error_code (a plain attribute set, unaffected by that restriction); this
-        checks that execute_sequence() then acts on it."""
-        connected_instance.sent_seqs = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
-                                            'total_sequence_duration_ms': 500.0}}
+        checks that execute_protocol() then acts on it."""
+        connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
+                                                 'total_protocol_duration_ms': 500.0}}
         connected_instance.listener.exec_error_code = 2863311530
-        fake_sequence = SimpleNamespace(buffer_num=0, pulse_dur=0.5, pulse_ramp_dur=0,
+        fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=0.5, pulse_ramp_dur=0,
                                         pulse_ramp_shape='Rectangular - no ramping')
 
         with pytest.raises(SystemExit):
-            connected_instance.execute_sequence([fake_sequence], debug_info=False)
+            connected_instance.execute_protocol([fake_protocol], debug_info=False)
 
     def test_does_not_exit_when_listener_reports_no_error(self, connected_instance):
         """Mirrors the test above: a successful execution (exec_error_code left at None by
         ExecListener.onSequenceResult()) must not raise."""
-        connected_instance.sent_seqs = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
-                                            'total_sequence_duration_ms': 500.0}}
-        fake_sequence = SimpleNamespace(buffer_num=0, pulse_dur=0.5, pulse_ramp_dur=0,
+        connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
+                                                 'total_protocol_duration_ms': 500.0}}
+        fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=0.5, pulse_ramp_dur=0,
                                         pulse_ramp_shape='Rectangular - no ramping')
 
-        connected_instance.execute_sequence([fake_sequence], debug_info=False)  # must not raise
+        connected_instance.execute_protocol([fake_protocol], debug_info=False)  # must not raise
 
-        connected_instance.listener.wait_sequence.assert_called_once()
+        connected_instance.listener.wait_protocol.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -1132,17 +1132,17 @@ class TestExecuteSequence:
 
 class TestWaitForTrigger:
 
-    def test_sequence_trigger_prepares_with_n_triggers_and_zero_delay(self, mocker,
-                                                                      connected_instance,
-                                                                      patch_config):
+    def test_pulse_train_trigger_prepares_with_n_triggers_and_zero_delay(self, mocker,
+                                                                         connected_instance,
+                                                                         patch_config):
         patch_config.set('Trigger', 'Option.seq', 'TriggerOnePulseTrain')
         patch_config.set('Trigger', 'Option.ptr', 'TriggerWholeProtocol')
-        connected_instance.sent_seqs = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0}}
-        fake_sequence = SimpleNamespace(buffer_num=0, pulse_ramp_dur=0,
+        connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0}}
+        fake_protocol = SimpleNamespace(buffer_num=0, pulse_ramp_dur=0,
                                         pulse_ramp_shape='Rectangular - no ramping',
                                         trigger_option='TriggerOnePulseTrain', n_triggers=3)
 
-        connected_instance.wait_for_trigger([fake_sequence], debug_info=False)
+        connected_instance.wait_for_trigger([fake_protocol], debug_info=False)
 
         connected_instance.gen.prepareSequence.assert_called_once_with(0, 3, 0, mocker.ANY)
         connected_instance.gen.startSequence.assert_called_once()
@@ -1158,12 +1158,12 @@ class TestWaitForTrigger:
         compared for exact equality rather than checked with '&'."""
         patch_config.set('Trigger', 'Option.seq', 'TriggerOnePulseTrain')
         patch_config.set('Trigger', 'Option.ptr', 'TriggerWholeProtocol')
-        connected_instance.sent_seqs = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0}}
-        fake_sequence = SimpleNamespace(buffer_num=0, pulse_dur=5.0, pulse_ramp_dur=0,
+        connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0}}
+        fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=5.0, pulse_ramp_dur=0,
                                         pulse_ramp_shape='Rectangular - no ramping',
                                         trigger_option='TriggerOnePulseTrain', n_triggers=3)
 
-        connected_instance.wait_for_trigger([fake_sequence], debug_info=True)
+        connected_instance.wait_for_trigger([fake_protocol], debug_info=True)
 
         exec_flags = connected_instance.gen.prepareSequence.call_args.args[3]
         expected = (unifus.ExecFlag.DisableMonitoringChannelCombiner |
@@ -1178,12 +1178,12 @@ class TestWaitForTrigger:
         MeasureBoards (0.035 ms) and MeasureChannels (4.570 ms) defaults."""
         patch_config.set('Trigger', 'Option.seq', 'TriggerOnePulseTrain')
         patch_config.set('Trigger', 'Option.ptr', 'TriggerWholeProtocol')
-        connected_instance.sent_seqs = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0}}
-        fake_sequence = SimpleNamespace(buffer_num=0, pulse_dur=1.0, pulse_ramp_dur=0,
+        connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0}}
+        fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=1.0, pulse_ramp_dur=0,
                                         pulse_ramp_shape='Rectangular - no ramping',
                                         trigger_option='TriggerOnePulseTrain', n_triggers=3)
 
-        connected_instance.wait_for_trigger([fake_sequence], debug_info=True)
+        connected_instance.wait_for_trigger([fake_protocol], debug_info=True)
 
         exec_flags = connected_instance.gen.prepareSequence.call_args.args[3]
         expected = (unifus.ExecFlag.DisableMonitoringChannelCombiner |
@@ -1198,12 +1198,12 @@ class TestWaitForTrigger:
         MeasureTimings (0.001 ms) and MeasureBoards (0.035 ms) defaults."""
         patch_config.set('Trigger', 'Option.seq', 'TriggerOnePulseTrain')
         patch_config.set('Trigger', 'Option.ptr', 'TriggerWholeProtocol')
-        connected_instance.sent_seqs = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0}}
-        fake_sequence = SimpleNamespace(buffer_num=0, pulse_dur=0.01, pulse_ramp_dur=0,
+        connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0}}
+        fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=0.01, pulse_ramp_dur=0,
                                         pulse_ramp_shape='Rectangular - no ramping',
                                         trigger_option='TriggerOnePulseTrain', n_triggers=3)
 
-        connected_instance.wait_for_trigger([fake_sequence], debug_info=True)
+        connected_instance.wait_for_trigger([fake_protocol], debug_info=True)
 
         exec_flags = connected_instance.gen.prepareSequence.call_args.args[3]
         expected = (unifus.ExecFlag.DisableMonitoringChannelCombiner |
@@ -1217,65 +1217,66 @@ class TestWaitForTrigger:
                                                                    patch_config):
         patch_config.set('Trigger', 'Option.seq', 'TriggerOnePulseTrain')
         patch_config.set('Trigger', 'Option.ptr', 'TriggerWholeProtocol')
-        connected_instance.sent_seqs = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0}}
-        fake_sequence = SimpleNamespace(buffer_num=0, pulse_ramp_dur=0,
+        connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0}}
+        fake_protocol = SimpleNamespace(buffer_num=0, pulse_ramp_dur=0,
                                         pulse_ramp_shape='Rectangular - no ramping',
                                         trigger_option='TriggerWholeProtocol',
                                         n_triggers=0)
 
-        connected_instance.wait_for_trigger([fake_sequence], debug_info=False)
+        connected_instance.wait_for_trigger([fake_protocol], debug_info=False)
 
         connected_instance.gen.prepareSequence.assert_called_once_with(0, 2, 5.0, mocker.ANY)
 
     def test_unknown_trigger_option_exits(self, connected_instance, patch_config):
         patch_config.set('Trigger', 'Option.seq', 'TriggerOnePulseTrain')
         patch_config.set('Trigger', 'Option.ptr', 'TriggerWholeProtocol')
-        connected_instance.sent_seqs = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0}}
-        fake_sequence = SimpleNamespace(buffer_num=0, pulse_ramp_dur=0,
+        connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0}}
+        fake_protocol = SimpleNamespace(buffer_num=0, pulse_ramp_dur=0,
                                         pulse_ramp_shape='Rectangular - no ramping',
                                         trigger_option='Bogus',
                                         get_trigger_options=lambda: [])
 
         with pytest.raises(SystemExit):
-            connected_instance.wait_for_trigger([fake_sequence], debug_info=False)
+            connected_instance.wait_for_trigger([fake_protocol], debug_info=False)
 
-    def test_sends_sequence_first_when_not_yet_sent(self, mocker, connected_instance):
-        mock_send = mocker.patch.object(connected_instance, 'send_sequence')
+    def test_sends_protocol_first_when_not_yet_sent(self, mocker, connected_instance):
+        mock_send = mocker.patch.object(connected_instance, 'send_protocol')
 
         def fake_send(*args, **kwargs):
-            connected_instance.sent_seqs[0] = {'n_pulse_train_rep': 1, 'pulse_train_delay': 0.0}
+            connected_instance.sent_protocols[0] = {
+                'n_pulse_train_rep': 1, 'pulse_train_delay': 0.0}
         mock_send.side_effect = fake_send
 
-        fake_sequence = SimpleNamespace(buffer_num=0, trigger_option='None', n_triggers=0)
+        fake_protocol = SimpleNamespace(buffer_num=0, trigger_option='None', n_triggers=0)
 
         with pytest.raises(SystemExit):
             # trigger_option 'None' does not match the real config's
             # Option.seq/Option.ptr -> the recursive wait_for_trigger call
-            # (made with real, unmocked send_sequence-state) exits; we only
-            # care that send_sequence was invoked first, i.e. before that.
-            connected_instance.wait_for_trigger([fake_sequence], debug_info=False)
+            # (made with real, unmocked send_protocol-state) exits; we only
+            # care that send_protocol was invoked first, i.e. before that.
+            connected_instance.wait_for_trigger([fake_protocol], debug_info=False)
 
         mock_send.assert_called_once()
 
     def test_reconnects_sends_and_waits_when_not_connected(self, mocker, tmp_path, patch_config):
         """
-        Mirrors execute_sequence's reconnect test -- wait_for_trigger has
+        Mirrors execute_protocol's reconnect test -- wait_for_trigger has
         the identical 'not connected -> connect(), then retry' shape.
 
         Regression test: the retry call in this branch used to be
-        `self.wait_for_trigger(seq1, seq2, seq3, seq4, duration_ms)` --
+        `self.wait_for_trigger(protocol1, protocol2, protocol3, protocol4, duration_ms)` --
         debug_info was NOT forwarded, so the retry always used debug_info's
         default (True) regardless of what the original caller passed. This
         was discovered because passing debug_info=False here (as every
-        other test in this class does, with a minimal fake_sequence) still
+        other test in this class does, with a minimal fake_protocol) still
         required a full `pulse_dur` attribute below -- the retry's
         debug_info=True path read it even though the caller asked for
         debug_info=False. Fixed by forwarding debug_info on the retry call.
-        fake_sequence deliberately has no pulse_dur/pulse_ramp_dur/
+        fake_protocol deliberately has no pulse_dur/pulse_ramp_dur/
         pulse_ramp_shape: if debug_info ever silently reverts to True again,
         this test fails with an AttributeError instead of passing, same as
         how the bug was originally found. Same bug shape existed in
-        execute_sequence's identical reconnect branch, fixed there too.
+        execute_protocol's identical reconnect branch, fixed there too.
         """
         patch_config.set('Trigger', 'Option.seq', 'TriggerOnePulseTrain')
         patch_config.set('Trigger', 'Option.ptr', 'TriggerWholeProtocol')
@@ -1289,15 +1290,15 @@ class TestWaitForTrigger:
             instance.listener.exec_error_code = None
         mock_connect = mocker.patch.object(instance, 'connect', side_effect=fake_connect)
 
-        def fake_send_sequence(*args, **kwargs):
-            instance.sent_seqs[0] = {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0}
-        mock_send = mocker.patch.object(instance, 'send_sequence', side_effect=fake_send_sequence)
+        def fake_send_protocol(*args, **kwargs):
+            instance.sent_protocols[0] = {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0}
+        mock_send = mocker.patch.object(instance, 'send_protocol', side_effect=fake_send_protocol)
 
-        fake_sequence = SimpleNamespace(
+        fake_protocol = SimpleNamespace(
             buffer_num=0, driving_sys=SimpleNamespace(connect_info='igt/config/gen_test.json'),
             trigger_option='TriggerOnePulseTrain', n_triggers=3)
 
-        instance.wait_for_trigger([fake_sequence], debug_info=False)
+        instance.wait_for_trigger([fake_protocol], debug_info=False)
 
         mock_connect.assert_called_once_with('igt/config/gen_test.json')
         mock_send.assert_called_once()
@@ -1309,14 +1310,14 @@ class TestWaitForTrigger:
         as a SystemExit, not propagate raw."""
         patch_config.set('Trigger', 'Option.seq', 'TriggerOnePulseTrain')
         patch_config.set('Trigger', 'Option.ptr', 'TriggerWholeProtocol')
-        connected_instance.sent_seqs = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0}}
+        connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0}}
         connected_instance.gen.prepareSequence.side_effect = RuntimeError('hardware fault')
-        fake_sequence = SimpleNamespace(buffer_num=0, pulse_ramp_dur=0,
+        fake_protocol = SimpleNamespace(buffer_num=0, pulse_ramp_dur=0,
                                         pulse_ramp_shape='Rectangular - no ramping',
                                         trigger_option='TriggerOnePulseTrain', n_triggers=3)
 
         with pytest.raises(SystemExit):
-            connected_instance.wait_for_trigger([fake_sequence], debug_info=False)
+            connected_instance.wait_for_trigger([fake_protocol], debug_info=False)
 
 
 # ---------------------------------------------------------------------------
@@ -1324,24 +1325,24 @@ class TestWaitForTrigger:
 # ---------------------------------------------------------------------------
 
 class TestWaitForTriggerResult:
-    """GitHub issue #112: unlike execute_sequence(), wait_for_trigger() only arms the sequence
+    """GitHub issue #112: unlike execute_protocol(), wait_for_trigger() only arms the protocol
     to fire on the external trigger and returns immediately -- it never waits for or observes
     the actual (eventual, externally-triggered) execution result. wait_for_trigger_result() is
     the method a caller invokes separately, once the external trigger is expected to have
     fired, to block until completion and check the listener's exec_error_code."""
 
-    def test_exits_when_listener_reports_sequence_execution_error(self, connected_instance):
+    def test_exits_when_listener_reports_protocol_execution_error(self, connected_instance):
         connected_instance.listener.exec_error_code = 2863311530
 
         with pytest.raises(SystemExit):
             connected_instance.wait_for_trigger_result()
 
-        connected_instance.listener.wait_sequence.assert_called_once_with(5.0)
+        connected_instance.listener.wait_protocol.assert_called_once_with(5.0)
 
     def test_does_not_exit_when_listener_reports_no_error(self, connected_instance):
         connected_instance.wait_for_trigger_result(timeout_s=10.0)  # must not raise
 
-        connected_instance.listener.wait_sequence.assert_called_once_with(10.0)
+        connected_instance.listener.wait_protocol.assert_called_once_with(10.0)
 
 
 # ---------------------------------------------------------------------------
@@ -1363,13 +1364,13 @@ class TestHasExecutionError:
         assert connected_instance.has_execution_error() is None
 
     def test_does_not_block_or_exit(self, connected_instance):
-        """Unlike wait_for_trigger_result(), this must never call wait_sequence() or raise --
+        """Unlike wait_for_trigger_result(), this must never call wait_protocol() or raise --
         it is a pure, immediate getter."""
         connected_instance.listener.exec_error_code = 2863311530
 
         connected_instance.has_execution_error()  # must not raise
 
-        connected_instance.listener.wait_sequence.assert_not_called()
+        connected_instance.listener.wait_protocol.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -1378,7 +1379,7 @@ class TestHasExecutionError:
 
 class TestDisconnect:
 
-    def test_stops_sequence_and_marks_disconnected(self, mocker, connected_instance):
+    def test_stops_protocol_and_marks_disconnected(self, mocker, connected_instance):
         mocker.patch("fus_driving_systems.igt.igt_ds.time.sleep")
         connected_instance.fus.isConnected.return_value = False
 

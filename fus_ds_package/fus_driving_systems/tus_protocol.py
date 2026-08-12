@@ -41,34 +41,35 @@ from fus_driving_systems.config.logging_config import get_logger
 from fus_driving_systems.utils import get_config_value
 
 
-class Sequence():
+class TUSProtocol():
     """
-    Class representing an ultrasound sequence.
+    Class representing a TUS (transcranial ultrasound) protocol.
 
     Everything genuinely per-transducer (transducer, focus, power, operating frequency,
-    dephasing) lives on one or more TransducerSlot objects instead of directly on Sequence --
-    see self.slots/self.add_slot(). A Sequence always has an explicit driving system (no
+    dephasing) lives on one or more TransducerSlot objects instead of directly on TUSProtocol --
+    see self.slots/self.add_slot(). A TUSProtocol always has an explicit driving system (no
     config-fallback default: the caller must say which one) and starts with zero slots; call
     add_slot() at least once before sending it anywhere. There is no single-slot delegation on
-    Sequence itself (no seq.press/seq.transducer/etc.) -- every per-transducer attribute is
-    always addressed via seq.slots[i].<attribute>, whether there's one slot or several, so a
-    script is never in doubt about which access style applies to a given driving system.
+    TUSProtocol itself (no protocol.press/protocol.transducer/etc.) -- every per-transducer
+    attribute is always addressed via protocol.slots[i].<attribute>, whether there's one slot or
+    several, so a script is never in doubt about which access style applies to a given driving
+    system.
 
     Attributes:
-        _buffer_num (int): Which of the driving system's hardware buffers this sequence targets,
-                        starting at 0. Only used by IGT, to pre-load a sequence into a specific
+        _buffer_num (int): Which of the driving system's hardware buffers this protocol targets,
+                        starting at 0. Only used by IGT, to pre-load a protocol into a specific
                         buffer ahead of time and send/trigger it independently later -- see
                         DrivingSystem.max_buffers for how many buffers a given driving system
                         actually has (only 0 is valid for a driving system with no real buffer
                         concept at all, i.e. max_buffers == 1).
-        _driving_sys (DrivingSystem): The driving system associated with the sequence.
+        _driving_sys (DrivingSystem): The driving system associated with the protocol.
         _trigger_option (str): chosen trigger option -- wait_for_trigger is derived from this,
                                not stored separately (see the wait_for_trigger property).
         _n_triggers (int): number of times a trigger will be sent.
-        _slots (list(TransducerSlot)): The transducer slot(s) of this sequence -- see add_slot().
+        _slots (list(TransducerSlot)): The transducer slot(s) of this protocol -- see add_slot().
         _timing_param (dict.):
-            _pulse_dur (float): Pulse duration of the sequence [ms].
-            _pulse_rep_int (float): Pulse repetition interval of the sequence [ms].
+            _pulse_dur (float): Pulse duration of the protocol [ms].
+            _pulse_rep_int (float): Pulse repetition interval of the protocol [ms].
             _pulse_ramp_shape (str): Shape of the ramping for the pulse.
             _pulse_ramp_dur (float): Ramp duration for the pulse [ms].
             _pulse_train_dur (float): Pulse train duration [ms].
@@ -76,7 +77,7 @@ class Sequence():
             _pulse_train_rep_dur (float): Pulse train repetition duration [ms].
 
     Methods:
-        info(): Returns a formatted string containing information about the sequence.
+        info(): Returns a formatted string containing information about the protocol.
         get_ds_serials(): Returns a list of serial numbers for available driving systems.
         get_tran_serials(): Returns a list of serial numbers for available transducers.
         getters (attribute name without _) for above attributes. Every _timing_param field, plus
@@ -87,10 +88,10 @@ class Sequence():
 
     def __init__(self, driving_sys_serial, engineering_mode=False):
         """
-        Initializes a Sequence object with default values and loads configuration settings.
+        Initializes a TUSProtocol object with default values and loads configuration settings.
 
         Parameters:
-            driving_sys_serial (str): Serial number of the driving system this sequence is for.
+            driving_sys_serial (str): Serial number of the driving system this protocol is for.
                                       Required -- there is no config-fallback default, since
                                       that default only ever existed to pre-fill a GUI dropdown
                                       (SonoRover One), not to pick silently for a script.
@@ -114,7 +115,7 @@ class Sequence():
         self._n_triggers = int(get_config_value(
             get_logger(), config, 'Trigger', 'Default n_triggers', 0))
 
-        # Transducer slot(s) -- see add_slot(). Call it at least once before using this sequence.
+        # Transducer slot(s) -- see add_slot(). Call it at least once before using this protocol.
         self._slots = []
 
         back_up_ramp_shape = get_config_value(get_logger(), config, 'Ramp', 'Options',
@@ -147,10 +148,10 @@ class Sequence():
 
     def __str__(self):
         """
-        Returns a formatted string containing information about the sequence.
+        Returns a formatted string containing information about the protocol.
 
         Returns:
-            str: Formatted information about the sequence.
+            str: Formatted information about the protocol.
         """
         info = ''
 
@@ -187,7 +188,7 @@ class Sequence():
         Getter method for the buffer number.
 
         Returns:
-            int: Which of the driving system's hardware buffers this sequence targets,
+            int: Which of the driving system's hardware buffers this protocol targets,
                  starting at 0. See DrivingSystem.max_buffers for how many this driving system
                  actually has.
         """
@@ -200,7 +201,7 @@ class Sequence():
         Sets the buffer number.
 
         Parameters:
-            buffer_num (int): Which of the driving system's hardware buffers this sequence
+            buffer_num (int): Which of the driving system's hardware buffers this protocol
                               targets, starting at 0. Must be within
                               [0, driving_sys.max_buffers).
         """
@@ -221,15 +222,15 @@ class Sequence():
     def driving_sys(self):
         """
         Getter method for the driving system. Read-only -- set once, at construction, and never
-        changed afterward. Swapping which physical driving system a Sequence targets mid-
+        changed afterward. Swapping which physical driving system a TUSProtocol targets mid-
         experiment isn't a realistic scenario (it would mean swapping the actual connected
         hardware), and reusing existing slots' focus/power values against a different driving
         system's calibration curves is risky even if it were: the same numeric value can mean a
         very different actual physical output once its calibration is a different pair
-        entirely. Construct a new Sequence and re-add_slot() every transducer instead.
+        entirely. Construct a new TUSProtocol and re-add_slot() every transducer instead.
 
         Returns:
-            DrivingSystem: The driving system associated with the sequence.
+            DrivingSystem: The driving system associated with the protocol.
         """
 
         return self._driving_sys
@@ -282,10 +283,10 @@ class Sequence():
     @property
     def slots(self):
         """
-        Getter method for this sequence's transducer slot(s).
+        Getter method for this protocol's transducer slot(s).
 
         Returns:
-            list(TransducerSlot): The transducer slot(s) of this sequence, in the order they
+            list(TransducerSlot): The transducer slot(s) of this protocol, in the order they
             were added.
         """
 
@@ -293,7 +294,7 @@ class Sequence():
 
     def get_power_options(self):
         """
-        Returns a list of power options available for this sequence's driving system --
+        Returns a list of power options available for this protocol's driving system --
         available before any slot has been added yet, since add_slot() itself needs a valid
         power_option to call. Same list as any already-added slot's own get_power_options() (see
         TransducerSlot.get_power_options()), since it's simply forwarded from the same
@@ -308,7 +309,7 @@ class Sequence():
 
     def get_focus_options(self):
         """
-        Returns a list of focus options available for this sequence's driving system --
+        Returns a list of focus options available for this protocol's driving system --
         available before any slot has been added yet, since add_slot() itself needs a valid
         focus_option to call. Same list as any already-added slot's own get_focus_options() (see
         TransducerSlot.get_focus_options()), since it's simply forwarded from the same
@@ -336,21 +337,21 @@ class Sequence():
         afterward -- only offered as kwargs for convenience.
 
         To swap an already-added slot's transducer for a different one later, call
-        seq.slots[slot_index].update_transducer(...) directly -- same required arguments as
+        protocol.slots[slot_index].update_transducer(...) directly -- same required arguments as
         here, since the new transducer's calibration curve/geometric range differ from the old
         one's, so old focus/power numbers can't just be assumed to still be correct.
 
         Parameters:
             transducer_serial (str): Serial number of the transducer for this slot. Must be
-                                     compatible with this sequence's driving system (see
+                                     compatible with this protocol's driving system (see
                                      DrivingSystem.tran_comp).
             focus_option (str): Which focus parameter to set, e.g. one of self.get_focus_options()
-                                (as offered by this sequence's driving system, see
+                                (as offered by this protocol's driving system, see
                                 DrivingSystem.focus_options) -- 'Focus wrt exit plane [mm]' or
                                 'Focus wrt mid bowl [mm]'.
             focus_value (float): The focus value [mm] for focus_option.
             power_option (str): Which power parameter to set, e.g. one of self.get_power_options()
-                                (as offered by this sequence's driving system, see
+                                (as offered by this protocol's driving system, see
                                 DrivingSystem.power_options) -- 'Global power [mW]', 'Max.
                                 pressure in free water [MPa]', 'Voltage [V]' or 'Amplitude [%]'.
             power_value (float or list(float)): The power value for power_option.
@@ -384,7 +385,7 @@ class Sequence():
         system's available channels -- deliberately not an exact-equality check here, since
         add_slot() may still be called again for a driving system with more than one slot
         (DrivingSystem.max_tran_slots > 1). Exact equality is enforced once, authoritatively, at
-        actual send-time (see ControlDrivingSystem implementations' send_sequence()), which is
+        actual send-time (see ControlDrivingSystem implementations' send_protocol()), which is
         also where "at least one slot must exist" is enforced.
         """
 
@@ -526,7 +527,7 @@ class Sequence():
         required (not optional) for this option specifically, and pulse_train_rep_int/
         pulse_train_rep_dur don't apply at all. Every other trigger_option -- 'None' (no trigger
         at all) or 'TriggerWholeProtocol' (one trigger fires the entire, already
-        fully-timed sequence at once, equivalent to executing it directly but gated behind a
+        fully-timed protocol at once, equivalent to executing it directly but gated behind a
         single external trigger) alike -- uses pulse_train_rep_int/pulse_train_rep_dur instead;
         n_triggers isn't valid here and is instead forced to 1 for
         'TriggerWholeProtocol' specifically (exactly one trigger is what that option

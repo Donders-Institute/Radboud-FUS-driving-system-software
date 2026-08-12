@@ -66,7 +66,7 @@ def test_sync_config_merges_in_place_and_propagates_to_earlier_consumers(isolate
     application, which already has its own config loaded and wants ours to pick up its
     overrides. It used to rebind config.py's own 'config_info' name to a new object, which
     every module that already did 'from ...config import config_info as config' at its own
-    import time (driving_system.py, transducer.py, sequence.py, the hardware subpackages)
+    import time (driving_system.py, transducer.py, tus_protocol.py, the hardware subpackages)
     would never see -- the rebind didn't reach them. Now it merges the incoming config into the
     existing config_info object in place (config_info.update(...), same as
     read_additional_config()), so already-bound consumers see the update regardless of import

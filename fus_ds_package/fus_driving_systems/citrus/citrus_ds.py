@@ -83,34 +83,34 @@ class CITRUS(ds.ControlDrivingSystem):
 
         self.connected = True
 
-    def send_sequence(self, seq):
+    def send_protocol(self, protocol):
         """
-        Validates and sends an ultrasound sequence to the CITRUS ultrasound driving system.
+        Validates and sends an ultrasound protocol to the CITRUS ultrasound driving system.
 
         Parameters:
-            sequence(Object): contains, amongst other things, of:
+            protocol(Object): contains, amongst other things, of:
                 the ultrasound protocol (focus, pulse duration, pulse rep. interval and etcetera)
                 used equipment (driving system and transducer)
         """
 
-        get_logger().info('Validating sequence...')
+        get_logger().info('Validating protocol...')
 
-        error_messages = self.validate_sequence(seq)
+        error_messages = self.validate_protocol(protocol)
         if error_messages:
             for error in error_messages:
                 get_logger().critical(error)
-            sys.exit('(Multiple) error(s) found when validating sequence, see log file.')
+            sys.exit('(Multiple) error(s) found when validating protocol, see log file.')
 
-        get_logger().info('Sending sequence...')
+        get_logger().info('Sending protocol...')
 
-    def execute_sequence(self, seq):
+    def execute_protocol(self, protocol):
         """
-        Executes the previously sent sequence on the CITRUS ultrasound driving system.
+        Executes the previously sent protocol on the CITRUS ultrasound driving system.
         """
 
-        get_logger().info('Executing sequence...')
+        get_logger().info('Executing protocol...')
 
-        # Stimulation onset (send starting trigger to execute sequence)
+        # Stimulation onset (send starting trigger to execute protocol)
         binary = '00100000'  # 32
         decimal_number = int(binary, 2)
         byte_value = bytes([decimal_number])

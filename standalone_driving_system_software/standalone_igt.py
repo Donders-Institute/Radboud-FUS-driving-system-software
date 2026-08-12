@@ -58,10 +58,10 @@ logger = initialize_logger(log_dir, filename)
 # connect with the driving system
 ##############################################################################
 
-# Connecting doesn't require a sequence to exist yet. In practice, you typically connect once
-# when your experiment starts, then build/adapt sequences iteratively as it progresses -- so
+# Connecting doesn't require a protocol to exist yet. In practice, you typically connect once
+# when your experiment starts, then build/adapt protocols iteratively as it progresses -- so
 # look up the driving system's connection info directly via DrivingSystem, rather than through
-# a Sequence.
+# a TUSProtocol.
 
 from fus_driving_systems import driving_system
 from fus_driving_systems.igt import igt_ds
@@ -74,7 +74,7 @@ ds_info.set_ds_info('IGT-32-ch_comb_2x10-ch')
 igt_driving_sys = igt_ds.IGT(log_dir)
 
 # connect() is a no-op (besides logging) if already connected, so calling it again later in
-# your experiment (e.g. before sending a new sequence) won't tear down and recreate the
+# your experiment (e.g. before sending a new protocol) won't tear down and recreate the
 # connection unnecessarily.
 igt_driving_sys.connect(ds_info.connect_info, log_dir, filename)
 
@@ -82,15 +82,15 @@ igt_driving_sys.connect(ds_info.connect_info, log_dir, filename)
 # print(igt_driving_sys.is_connected())
 
 ##############################################################################
-# create a sequence for an IGT driving system
-# a sequence can be created in advance and a new sequence can be defined
+# create a protocol for an IGT driving system
+# a protocol can be created in advance and a new protocol can be defined
 # later on in the code
 ##############################################################################
 
-from fus_driving_systems import sequence, transducer
+from fus_driving_systems import tus_protocol, transducer
 
 # equipment: same driving system already used to connect() above
-seq1 = sequence.Sequence(ds_info.serial)
+protocol = tus_protocol.TUSProtocol(ds_info.serial)
 
 # Each add_slot() call fully configures one transducer -- serial, focus, and power all at once
 # (no partial/half-configured slot, and no separate available-channels check needed: that's
@@ -99,13 +99,13 @@ seq1 = sequence.Sequence(ds_info.serial)
 # there is no equivalent lookup for valid VALUES. Pick sensible numbers yourself (add_slot()
 # validates them once given, e.g. focus against the transducer's own min/max range).
 # to check available options for this driving system (no need to add a slot first):
-# print(seq1.get_focus_options()) / print(seq1.get_power_options())
+# print(protocol.get_focus_options()) / print(protocol.get_power_options())
 FOCUS_OPTION = 'Focus wrt exit plane [mm]'  # or 'Focus wrt mid bowl [mm]'
 POWER_OPTION = 'Max. pressure in free water [MPa]'  # or 'Global power [mW]'/'Voltage [V]'/'Amplitude [%]'
 
 # to check available transducers: print(transducer.get_tran_serials())
 # choose one transducer from that list as input
-slot1 = seq1.add_slot(
+slot1 = protocol.add_slot(
     'IS_PCD15287_01001',
     FOCUS_OPTION, 80,  # [mm], focal depth w.r.t. the exit plane and FWHM middle
     POWER_OPTION, 0.3,  # [MPa], maximum pressure in free water. NOTE: DIFFERENT THAN SC
@@ -124,7 +124,7 @@ slot1 = seq1.add_slot(
 # entirely if you only have one transducer connected.
 # to check available transducers: print(transducer.get_tran_serials())
 # choose one transducer from that list as input
-slot2 = seq1.add_slot(
+slot2 = protocol.add_slot(
     'IS_PCD15287_01002',
     FOCUS_OPTION, 80,  # [mm], focal depth w.r.t. the exit plane and FWHM middle
     POWER_OPTION, 0.3,  # [MPa], maximum pressure in free water. NOTE: DIFFERENT THAN SC
@@ -147,12 +147,12 @@ slot2 = seq1.add_slot(
 # level above it, so calling them one by one in the wrong order can silently overwrite an
 # earlier one (e.g. setting pulse_train_dur before pulse_dur). Passing everything to
 # configure_timing() at once avoids relying on any particular calling order.
-seq1.configure_timing(
+protocol.configure_timing(
     # ## pulse ## #
     pulse_dur=10,  # [ms], pulse duration
 
     # pulse ramping
-    # to check available ramp shapes: print(seq1.get_ramp_shapes())
+    # to check available ramp shapes: print(protocol.get_ramp_shapes())
     # choose one ramp shape from that list as input
     pulse_ramp_shape='Rectangular - no ramping',
     # ramping up and ramping down duration are equal and are equal to ramp duration
@@ -166,12 +166,12 @@ seq1.configure_timing(
     pulse_train_dur=200,  # [ms], pulse train duration
 
     # wait_for_trigger is derived from trigger_option -- there is no separate flag to set. Use
-    # 'None' (this template's default) to not use a trigger at all; 'TriggerOnePulseTrain' to fire one
-    # pulse train per trigger received (you must also give n_triggers below -- how many triggers
-    # to expect); 'TriggerWholeProtocol' to fire the entire, already fully-timed
-    # sequence at once with a single trigger (equivalent to executing it directly, just gated
+    # 'None' (this template's default) to not use a trigger at all; 'TriggerOnePulseTrain' to
+    # fire one pulse train per trigger received (you must also give n_triggers below -- how many
+    # triggers to expect); 'TriggerWholeProtocol' to fire the entire, already fully-timed
+    # protocol at once with a single trigger (equivalent to executing it directly, just gated
     # behind that one trigger). To check available trigger options:
-    # print(seq1.get_trigger_options())
+    # print(protocol.get_trigger_options())
     trigger_option='None',
     # trigger_option='TriggerOnePulseTrain',
     # trigger_option='TriggerWholeProtocol'
@@ -189,30 +189,30 @@ seq1.configure_timing(
     pulse_train_rep_dur=2,  # [s], pulse train repetition duration, NOTE: DIFFERENT THAN SC
 )
 
-# to get a summary of your entered sequence: print(seq1)
+# to get a summary of your entered protocol: print(protocol)
 
 ##############################################################################
-# send and execute the sequence
+# send and execute the protocol
 ##############################################################################
 
-# sending your first sequence, and executing it when appropriate, can be done when initializing
-# your experiment. When appropriate, execute your sequence by implementing 'execute_sequence()'
+# sending your first protocol, and executing it when appropriate, can be done when initializing
+# your experiment. When appropriate, execute your protocol by implementing 'execute_protocol()'
 # into your code or by using the external trigger.
 
-# when you want to change your sequence in the middle of your experimental code, create a new
-# sequence as above (the driving system is already connected, see above) and send the new
-# sequence: 'send_sequence()'. When appropriate, execute your sequence by implementing
-# 'execute_sequence()' into your code or by using the external trigger.
+# when you want to change your protocol in the middle of your experimental code, create a new
+# protocol as above (the driving system is already connected, see above) and send the new
+# protocol: 'send_protocol()'. When appropriate, execute your protocol by implementing
+# 'execute_protocol()' into your code or by using the external trigger.
 
 try:
-    igt_driving_sys.send_sequence(seq1)
+    igt_driving_sys.send_protocol(protocol)
 
-    # If wait_for_trigger is true, only the sequence is sent and will be executed by the external
+    # If wait_for_trigger is true, only the protocol is sent and will be executed by the external
     # trigger
-    if seq1.wait_for_trigger:
-        igt_driving_sys.wait_for_trigger(seq1)
+    if protocol.wait_for_trigger:
+        igt_driving_sys.wait_for_trigger(protocol)
 
-        # wait_for_trigger() above only arms the sequence to fire on the external trigger and
+        # wait_for_trigger() above only arms the protocol to fire on the external trigger and
         # returns immediately -- it does NOT wait for, or check, the actual execution result.
         # The driving system only reports success/failure once the triggered execution is
         # actually finished, which can happen at an unpredictable moment later (whenever your
@@ -221,7 +221,7 @@ try:
         # Call wait_for_trigger_result() once you expect the trigger to have fired (or with a
         # generous timeout covering your full protocol) to block until completion and exit if
         # the driving system reports the execution failed. Adjust the timeout below to match
-        # how long your triggered sequence is expected to take.
+        # how long your triggered protocol is expected to take.
         #
         # Note: an execution error is always logged immediately when it happens (regardless of
         # when you call this), but your code will only actively react to it (via sys.exit())
@@ -238,28 +238,28 @@ try:
         #     <do other work / short sleep>
         #
         # Note: has_execution_error() only tells you whether an error has occurred so far --
-        # not whether the sequence has finished. Your own loop condition (e.g. "still waiting
-        # on the scanner") isn't necessarily tied to the sequence's actual completion, so
-        # disconnecting right after such a loop can cut off a still-running sequence. If you
+        # not whether the protocol has finished. Your own loop condition (e.g. "still waiting
+        # on the scanner") isn't necessarily tied to the protocol's actual completion, so
+        # disconnecting right after such a loop can cut off a still-running protocol. If you
         # use this pattern instead of wait_for_trigger_result(), make sure you have your own
-        # way of confirming the sequence actually finished (e.g. also call
+        # way of confirming the protocol actually finished (e.g. also call
         # wait_for_trigger_result() once you expect it to have) before disconnecting.
         igt_driving_sys.wait_for_trigger_result(timeout_s=5.0)
 
-    # If wait_for_trigger is false, the sequence is sent and can be executed directly using the
-    # execute_sequence() function
+    # If wait_for_trigger is false, the protocol is sent and can be executed directly using the
+    # execute_protocol() function
     else:
-        igt_driving_sys.execute_sequence(seq1)
+        igt_driving_sys.execute_protocol(protocol)
 
 finally:
-    # By the time we reach here, the sequence has actually finished executing either way:
-    # execute_sequence() only returns once it's done, and wait_for_trigger_result() above
+    # By the time we reach here, the protocol has actually finished executing either way:
+    # execute_protocol() only returns once it's done, and wait_for_trigger_result() above
     # blocks until the triggered execution completes (or its timeout expires). So it's always
     # safe to disconnect here -- if your code stops abruptly before this point instead (like
     # a kernel death/crash), make sure to disconnect the driving system yourself, otherwise it
-    # may keep firing ultrasound sequences.
+    # may keep firing ultrasound protocols.
     #
     # If you replaced wait_for_trigger_result() above with your own has_execution_error()
-    # polling loop, this is only safe once you've confirmed the sequence actually finished --
+    # polling loop, this is only safe once you've confirmed the protocol actually finished --
     # see the note above.
     igt_driving_sys.disconnect()

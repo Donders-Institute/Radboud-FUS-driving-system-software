@@ -57,10 +57,10 @@ logger = initialize_logger(log_dir, filename)
 # connect with the driving system
 ##############################################################################
 
-# Connecting doesn't require a sequence to exist yet. In practice, you typically connect once
-# when your experiment starts, then build/adapt sequences iteratively as it progresses -- so
+# Connecting doesn't require a protocol to exist yet. In practice, you typically connect once
+# when your experiment starts, then build/adapt protocols iteratively as it progresses -- so
 # look up the driving system's connection info directly via DrivingSystem, rather than through
-# a Sequence.
+# a TUSProtocol.
 
 from fus_driving_systems import driving_system
 from fus_driving_systems.igt import igt_ds
@@ -73,7 +73,7 @@ ds_info.set_ds_info('IGT-32-ch_comb_2x10-ch')
 igt_driving_sys = igt_ds.IGT(log_dir)
 
 # connect() is a no-op (besides logging) if already connected, so calling it again later in
-# your experiment (e.g. before sending a new sequence) won't tear down and recreate the
+# your experiment (e.g. before sending a new protocol) won't tear down and recreate the
 # connection unnecessarily.
 igt_driving_sys.connect(ds_info.connect_info, log_dir, filename)
 
@@ -81,51 +81,51 @@ igt_driving_sys.connect(ds_info.connect_info, log_dir, filename)
 # print(igt_driving_sys.is_connected())
 
 ##############################################################################
-# first sequence collection
+# first protocol
 ##############################################################################
 
-from sequences import sequence_1_10_ch
+from sequences import tus_protocol_1_10_ch
 
-seq_a = sequence_1_10_ch.create_sequence(logger)
+protocol_a = tus_protocol_1_10_ch.create_protocol(logger)
 
 ##############################################################################
-# second sequence collection
+# second protocol
 ##############################################################################
 
-from sequences import sequence_17_26_ch
+from sequences import tus_protocol_17_26_ch
 
-seq_b = sequence_17_26_ch.create_sequence(logger)
+protocol_b = tus_protocol_17_26_ch.create_protocol(logger)
 
 total_duration_ms = 80000  # [ms]
 
 ##############################################################################
-# send and execute the sequence
+# send and execute the protocol
 ##############################################################################
 
-# sending your first sequence, and executing it when appropriate, can be done when initializing
-# your experiment. When appropriate, execute your sequence by implementing 'execute_sequence()'
+# sending your first protocol, and executing it when appropriate, can be done when initializing
+# your experiment. When appropriate, execute your protocol by implementing 'execute_protocol()'
 # into your code or by using the external trigger.
 
-# when you want to change your sequence in the middle of your experimental code, create a new
-# sequence as above (the driving system is already connected, see above) and send the new
-# sequence: 'send_sequence()'. When appropriate, execute your sequence by implementing
-# 'execute_sequence()' into your code or by using the external trigger.
+# when you want to change your protocol in the middle of your experimental code, create a new
+# protocol as above (the driving system is already connected, see above) and send the new
+# protocol: 'send_protocol()'. When appropriate, execute your protocol by implementing
+# 'execute_protocol()' into your code or by using the external trigger.
 
 try:
     # Ramping (pulse_ramp_shape/pulse_ramp_dur) is a whole-group setting for the generator, not
-    # something each interleaved sequence configures independently -- send_sequence() reads it
-    # from only the first sequence given (seq_a here), and silently ignores seq_b's own ramp
-    # settings. Both sequence scripts happen to set the same values below, which is why this
+    # something each interleaved protocol configures independently -- send_protocol() reads it
+    # from only the first protocol given (protocol_a here), and silently ignores protocol_b's own
+    # ramp settings. Both protocol scripts happen to set the same values below, which is why this
     # doesn't currently produce a visible discrepancy -- but if you ever give them different
-    # ramp settings, only seq_a's will actually take effect.
-    igt_driving_sys.send_sequence([seq_a, seq_b], total_duration_ms)
+    # ramp settings, only protocol_a's will actually take effect.
+    igt_driving_sys.send_protocol([protocol_a, protocol_b], total_duration_ms)
 
-    #igt_driving_sys.execute_sequence([seq_a, seq_b], total_duration_ms)
+    #igt_driving_sys.execute_protocol([protocol_a, protocol_b], total_duration_ms)
 
     # or even better wait for trigger
-    igt_driving_sys.wait_for_trigger([seq_a, seq_b], total_duration_ms)
+    igt_driving_sys.wait_for_trigger([protocol_a, protocol_b], total_duration_ms)
 
-    # wait_for_trigger() above only arms the sequence to fire on the external trigger and
+    # wait_for_trigger() above only arms the protocol to fire on the external trigger and
     # returns immediately -- it does NOT wait for, or check, the actual execution result. The
     # driving system only reports success/failure once the triggered execution is actually
     # finished, which can happen at an unpredictable moment later (whenever your external
@@ -151,23 +151,23 @@ try:
     #     <do other work / short sleep>
     #
     # Note: has_execution_error() only tells you whether an error has occurred so far -- not
-    # whether the sequence has finished. Your own loop condition (e.g. "still waiting on the
-    # scanner") isn't necessarily tied to the sequence's actual completion, so disconnecting
-    # right after such a loop can cut off a still-running sequence. If you use this pattern
+    # whether the protocol has finished. Your own loop condition (e.g. "still waiting on the
+    # scanner") isn't necessarily tied to the protocol's actual completion, so disconnecting
+    # right after such a loop can cut off a still-running protocol. If you use this pattern
     # instead of wait_for_trigger_result(), make sure you have your own way of confirming the
-    # sequence actually finished (e.g. also call wait_for_trigger_result() once you expect it
+    # protocol actually finished (e.g. also call wait_for_trigger_result() once you expect it
     # to have) before disconnecting.
     igt_driving_sys.wait_for_trigger_result(timeout_s=total_duration_ms / 1000.0)
 
 finally:
-    # By the time we reach here, the sequence has actually finished executing either way:
-    # execute_sequence() only returns once it's done, and wait_for_trigger_result() above
+    # By the time we reach here, the protocol has actually finished executing either way:
+    # execute_protocol() only returns once it's done, and wait_for_trigger_result() above
     # blocks until the triggered execution completes (or its timeout expires). So it's always
     # safe to disconnect here -- if your code stops abruptly before this point instead (like
     # a kernel death/crash), make sure to disconnect the driving system yourself, otherwise it
-    # may keep firing ultrasound sequences.
+    # may keep firing ultrasound protocols.
     #
     # If you replaced wait_for_trigger_result() above with your own has_execution_error()
-    # polling loop, this is only safe once you've confirmed the sequence actually finished --
+    # polling loop, this is only safe once you've confirmed the protocol actually finished --
     # see the note above.
     igt_driving_sys.disconnect()

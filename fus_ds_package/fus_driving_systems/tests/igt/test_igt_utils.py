@@ -142,8 +142,8 @@ class TestSequenceCallbacks:
 
     def test_on_sequence_result_stores_error_code_on_error(self):
         """GitHub issue #112: onSequenceResult() used to only log the error, with nothing
-        callers could check afterwards -- igt_ds.py's execute_sequence() now reads this
-        attribute (on the calling thread, after wait_sequence() returns) and sys.exit()s,
+        callers could check afterwards -- igt_ds.py's execute_protocol() now reads this
+        attribute (on the calling thread, after wait_protocol() returns) and sys.exit()s,
         since unifus.FUSListener's own docstring says exceptions raised inside its callbacks
         are not propagated to Python (so sys.exit() cannot live in the callback itself)."""
         listener = ExecListener()
@@ -228,17 +228,17 @@ class TestWaitMethods:
 
         assert listener.wait_connection(timeout=0.05) is False
 
-    def test_wait_sequence_returns_none_immediately_when_not_running(self):
+    def test_wait_protocol_returns_none_immediately_when_not_running(self):
         listener = ExecListener()
         assert listener._running is False
 
-        assert listener.wait_sequence(timeout=5.0) is None
+        assert listener.wait_protocol(timeout=5.0) is None
 
-    def test_wait_sequence_returns_false_on_timeout(self):
+    def test_wait_protocol_returns_false_on_timeout(self):
         listener = ExecListener()
         listener._running = True  # never resolves
 
-        assert listener.wait_sequence(timeout=0.01) is False
+        assert listener.wait_protocol(timeout=0.01) is False
 
     def test_wait_origins_returns_none_immediately_when_not_finding_origin(self):
         listener = ExecListener()
