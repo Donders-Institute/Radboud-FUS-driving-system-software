@@ -584,6 +584,74 @@ class IGT(ds.ControlDrivingSystem):
 
         return pulse, phases
 
+    def _compute_exec_flags(self, sequences, debug_info):
+        """
+        Computes the base unifus.ExecFlag for executing or arming a previously sent sequence --
+        shared by wait_for_trigger() and execute_sequence(), which were previously byte-for-byte
+        identical here (issue #51).
+
+        When debug_info, adds a flag reflecting how measurable the group's pulses are
+        (MeasureChannels/MeasureBoards/MeasureTimings, depending on configured thresholds).
+        Per unifus.ExecFlag's own docs, these three are a strict superset hierarchy, not
+        independent bits -- MeasureChannels = MeasureBoards + channel measurements =
+        MeasureTimings + board + channel measurements -- so this is really "pick the most
+        detailed mode the pulse can support", each tier needing a progressively longer pulse.
+        When interleaving, that has to be judged against the *shortest* pulse_dur across the
+        whole group, not an arbitrary sequence's: a mode chosen for a longer pulse elsewhere in
+        the round could be more than the shortest one can actually support. Ramping, by
+        contrast, genuinely is a single whole-group setting (see send_sequence()'s own
+        docstring) -- so the extra ramp-transient time it needs is still read from sequences[0]
+        only, the same sequence whose ramp settings actually took effect for the whole group.
+
+        Parameters:
+            sequences (list(Sequence)): Every sequence passed to send_sequence() (a single
+                sequence is still a length-1 list here).
+            debug_info (bool): Whether to compute and add the extra measurement-related flags.
+
+        Returns:
+            unifus.ExecFlag: The computed flags.
+        """
+
+        # Flags to disable checking the current limit
+        exec_flags = (unifus.ExecFlag.DisableMonitoringChannelCombiner |
+                      unifus.ExecFlag.DisableMonitoringChannelCurrentOut)
+
+        if debug_info:
+            seq0 = sequences[0]
+            min_pulse_dur = min(seq.pulse_dur for seq in sequences)
+
+            ramp_transient_t = 0
+            rect_ramp = get_config_value(get_logger(), config, 'Ramp', 'Option.rect',
+                                         'Rectangular - no ramping')
+            if seq0.pulse_ramp_dur > 0 and seq0.pulse_ramp_shape != rect_ramp:
+                ramp_transient_t = float(
+                    get_config_value(
+                        get_logger(), config, 'Equipment.Manufacturer.IGT',
+                        'Min. time in between ramping up and down [ms]', 0.070))  # [ms]
+
+            measure_ch_level = float(
+                get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
+                                 'Pulse dur. flag level MeasureChannels [ms]', 4.570))
+
+            measure_boards_level = float(
+                get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
+                                 'Pulse dur. flag level MeasureBoards [ms]', 0.035))
+
+            measure_time_level = float(
+                get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
+                                 'Pulse dur. flag level MeasureTimings [ms]', 0.001))
+
+            if min_pulse_dur > measure_ch_level + ramp_transient_t:  # [ms]
+                exec_flags |= unifus.ExecFlag.MeasureChannels
+
+            elif min_pulse_dur >= measure_boards_level + ramp_transient_t:  # [ms]
+                exec_flags |= unifus.ExecFlag.MeasureBoards
+
+            elif min_pulse_dur >= measure_time_level + ramp_transient_t:  # [ms]:
+                exec_flags |= unifus.ExecFlag.MeasureTimings  # or NONE
+
+        return exec_flags
+
     def wait_for_trigger(self, sequences, duration_ms=0, debug_info=True):
         """
         Activates the listener on the IGT ultrasound driving system to wait for the trigger to
@@ -608,44 +676,7 @@ class IGT(ds.ControlDrivingSystem):
                     # Use unifus.ExecFlag.NONE if nothing special, or simply don't pass the
                     # exec_flags argument. Use '|' to combine multiple flags: flag1 | flag2 | flag3
                     # To use trigger, add one of unifus::ExecFlag::Trigger*
-                    # Flags to disable checking the current limit
-                    exec_flags = (unifus.ExecFlag.DisableMonitoringChannelCombiner |
-                                  unifus.ExecFlag.DisableMonitoringChannelCurrentOut)
-
-                    if debug_info:
-                        ramp_transient_t = 0
-                        rect_ramp = get_config_value(get_logger(), config, 'Ramp', 'Option.rect',
-                                                     'Rectangular - no ramping')
-                        # seq0 only -- ramping is a whole-group setting for send_sequence(), not
-                        # something each interleaved sequence configures independently (see its
-                        # own docstring), so this timing must be based on the same sequence that
-                        # actually decided it.
-                        if seq0.pulse_ramp_dur > 0 and (seq0.pulse_ramp_shape != rect_ramp):
-                            ramp_transient_t = float(
-                                get_config_value(
-                                    get_logger(), config, 'Equipment.Manufacturer.IGT',
-                                    'Min. time in between ramping up and down [ms]',
-                                    0.070))  # [ms]
-
-                        measure_ch_level = float(
-                            get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
-                                             'Pulse dur. flag level MeasureChannels [ms]', 4.570))
-
-                        measure_boards_level = float(
-                            get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
-                                             'Pulse dur. flag level MeasureBoards [ms]', 0.035))
-
-                        measure_time_level = float(
-                            get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
-                                             'Pulse dur. flag level MeasureTimings [ms]', 0.001))
-                        if seq0.pulse_dur > measure_ch_level + ramp_transient_t:  # [ms]
-                            exec_flags |= unifus.ExecFlag.MeasureChannels
-
-                        elif seq0.pulse_dur >= measure_boards_level + ramp_transient_t:  # [ms]
-                            exec_flags |= unifus.ExecFlag.MeasureBoards
-
-                        elif seq0.pulse_dur >= measure_time_level + ramp_transient_t:  # [ms]:
-                            exec_flags |= unifus.ExecFlag.MeasureTimings  # or NONE
+                    exec_flags = self._compute_exec_flags(sequences, debug_info)
 
                     sent_seq_info = self.sent_seqs.get(seq0.buffer_num, {})
                     n_pulse_train_rep = sent_seq_info.get('n_pulse_train_rep')
@@ -772,44 +803,7 @@ class IGT(ds.ControlDrivingSystem):
                     # Use unifus.ExecFlag.NONE if nothing special, or simply don't pass the
                     # exec_flags argument. Use '|' to combine multiple flags: flag1 | flag2 | flag3
                     # To use trigger, add one of unifus::ExecFlag::Trigger*
-                    # Flags to disable checking the current limit
-                    exec_flags = (unifus.ExecFlag.DisableMonitoringChannelCombiner |
-                                  unifus.ExecFlag.DisableMonitoringChannelCurrentOut)
-
-                    if debug_info:
-                        ramp_transient_t = 0
-                        rect_ramp = get_config_value(get_logger(), config, 'Ramp', 'Option.rect',
-                                                     'Rectangular - no ramping')
-                        # seq1 only -- ramping is a whole-group setting for send_sequence(), not
-                        # something each interleaved sequence configures independently (see its
-                        # own docstring), so this timing must be based on the same sequence that
-                        # actually decided it.
-                        if seq0.pulse_ramp_dur > 0 and seq0.pulse_ramp_shape != rect_ramp:
-                            ramp_transient_t = float(
-                                get_config_value(
-                                    get_logger(), config, 'Equipment.Manufacturer.IGT',
-                                    'Min. time in between ramping up and down [ms]',
-                                    0.070))  # [ms]
-
-                        measure_ch_level = float(
-                            get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
-                                             'Pulse dur. flag level MeasureChannels [ms]', 4.570))
-
-                        measure_boards_level = float(
-                            get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
-                                             'Pulse dur. flag level MeasureBoards [ms]', 0.035))
-
-                        measure_time_level = float(
-                            get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
-                                             'Pulse dur. flag level MeasureTimings [ms]', 0.001))
-                        if seq0.pulse_dur > measure_ch_level + ramp_transient_t:  # [ms]
-                            exec_flags |= unifus.ExecFlag.MeasureChannels
-
-                        elif seq0.pulse_dur >= measure_boards_level + ramp_transient_t:  # [ms]
-                            exec_flags |= unifus.ExecFlag.MeasureBoards
-
-                        elif seq0.pulse_dur >= measure_time_level + ramp_transient_t:  # [ms]:
-                            exec_flags |= unifus.ExecFlag.MeasureTimings  # or NONE
+                    exec_flags = self._compute_exec_flags(sequences, debug_info)
 
                     sent_seq_info = self.sent_seqs.get(seq0.buffer_num, {})
                     self.gen.prepareSequence(seq0.buffer_num,

@@ -976,6 +976,28 @@ class TestExecuteSequence:
                     unifus.ExecFlag.MeasureChannels)
         assert int(exec_flags) == int(expected)
 
+    def test_measure_flag_uses_shortest_pulse_dur_across_an_interleaved_group(
+            self, connected_instance):
+        """MeasureChannels/MeasureBoards/MeasureTimings is 'the most detailed mode the pulse can
+        support' -- a strict superset hierarchy, not independent bits (see the test above).
+        When interleaving, the flag must be conservative enough for every sequence's own pulse,
+        not just the first one's -- fake_seq1's pulse_dur (5.0) alone would qualify for
+        MeasureChannels, but fake_seq2's (0.01) only supports MeasureTimings, so the group as a
+        whole must not exceed what the shortest pulse can handle."""
+        connected_instance.sent_seqs = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
+                                            'total_sequence_duration_ms': 500.0}}
+        fake_seq1 = SimpleNamespace(buffer_num=0, pulse_dur=5.0, pulse_ramp_dur=0,
+                                    pulse_ramp_shape='Rectangular - no ramping')
+        fake_seq2 = SimpleNamespace(pulse_dur=0.01)
+
+        connected_instance.execute_sequence([fake_seq1, fake_seq2], debug_info=True)
+
+        exec_flags = connected_instance.gen.prepareSequence.call_args.args[3]
+        expected = (unifus.ExecFlag.DisableMonitoringChannelCombiner |
+                    unifus.ExecFlag.DisableMonitoringChannelCurrentOut |
+                    unifus.ExecFlag.MeasureTimings)
+        assert int(exec_flags) == int(expected)
+
     def test_debug_info_true_sets_measure_boards_flag_for_medium_pulse(self, connected_instance):
         """Same as above, one threshold down: pulse_dur between the
         MeasureBoards (0.035 ms) and MeasureChannels (4.570 ms) defaults."""
