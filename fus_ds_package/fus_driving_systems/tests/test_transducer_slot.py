@@ -146,10 +146,10 @@ def test_calc_ampl_clamps_to_100_and_exits_when_calculated_above_100():
 
 
 def test_calc_ampl_clamps_to_0_without_exiting_when_calculated_below_0():
-    """calc_ampl < 0 (but still within the pp's domain) is clamped to 0%, and the returned
-    'press' is corrected to what's actually achievable at that clamped amplitude -- unlike the
-    >100 case, this is not treated as an error. Correcting volt for this same case is left to
-    the caller (every caller already recomputes volt from the returned ampl unconditionally)."""
+    """calc_ampl < 0 (but still within the pp's domain) is clamped to 0%, and 'press' is kept
+    exactly as given rather than re-derived through the curve's own inverse -- unlike the >100
+    case, this is not treated as an error. Correcting volt for this same case is left to the
+    caller (every caller already recomputes volt from the returned ampl unconditionally)."""
     slot = _bare_slot()
     slot._conv_param = {
         # pp(x) = x - 50, so an in-range x can still yield a negative y
@@ -159,13 +159,32 @@ def test_calc_ampl_clamps_to_0_without_exiting_when_calculated_below_0():
     result = slot._calc_ampl(20e-6, 1.0)  # x_value = 20 -> calc_ampl = 20 - 50 = -30 < 0
 
     assert result['ampl'] == [0]
-    assert result['press'] == pytest.approx(5e-5)
+    assert result['press'] == 20e-6  # kept exactly as given, not re-derived
+
+
+def test_calc_ampl_keeps_press_at_exactly_zero_when_curve_dips_negative_at_zero():
+    """The specific case that originally motivated the fix above: a press of exactly 0 must
+    come back as press=0 too, not some small non-zero artifact from re-deriving it through the
+    curve's own imprecision near the origin -- press is already guaranteed non-negative before
+    this method is ever called (see press's own setter's validate_value(..., check_pos=True,
+    ...)), so there is no "genuinely wrong request" case here for keeping it as-is to mask."""
+    slot = _bare_slot()
+    slot._conv_param = {
+        # pp(x) = x - 5, so even x=0 (the domain's own minimum) yields a negative y --
+        # mirrors a real calibration curve that doesn't pass exactly through the origin.
+        'power_curve_pp': PPoly(c=[[1.0], [-5.0]], x=[0.0, 100.0], extrapolate=False),
+    }
+
+    result = slot._calc_ampl(0, 1.0)  # x_value = 0 -> calc_ampl = 0 - 5 = -5 < 0
+
+    assert result['ampl'] == [0]
+    assert result['press'] == 0
 
 
 # --- _calc_ampl_using_volt -------------------------------------------------
-# Mirrors _calc_ampl but keyed off volt instead of press, and is NOT
-# symmetric with it: below-range here just clamps to 0% and moves on (no
-# exit), while _calc_ampl's below-range case above always exits.
+# Mirrors _calc_ampl exactly, keyed off volt instead of press: a voltage outside
+# volt_curve_pp's own domain always exits (above and below alike), while an in-range voltage
+# whose curve-fit result spills slightly past 0/100 is clamped (100 -> exit, 0 -> proceed).
 
 def test_calc_ampl_using_volt_rounds_normal_in_range_value():
     slot = _bare_slot()
@@ -176,27 +195,52 @@ def test_calc_ampl_using_volt_rounds_normal_in_range_value():
     assert ampl == [50.0]
 
 
-def test_calc_ampl_using_volt_clamps_to_0_without_exiting_when_below_range():
+def test_calc_ampl_using_volt_exits_when_volt_is_below_pp_range():
     slot = _bare_slot()
     slot._conv_param = {'volt_curve_pp': _identity_pp(-10.0, 200.0)}
 
-    ampl = slot._calc_ampl_using_volt([-20], 1.0)  # below the pp's min of -10
+    with pytest.raises(SystemExit):
+        slot._calc_ampl_using_volt([-20], 1.0)  # below the pp's min of -10
 
-    assert ampl == [0.0]
+
+def test_calc_ampl_using_volt_exits_when_volt_is_above_pp_range():
+    slot = _bare_slot()
+    slot._conv_param = {'volt_curve_pp': _identity_pp(-10.0, 200.0)}
+
+    with pytest.raises(SystemExit):
+        slot._calc_ampl_using_volt([300], 1.0)  # above the pp's max of 200
 
 
-def test_calc_ampl_using_volt_clamps_to_100_and_exits_when_above_range():
-    """Mirrors test_calc_ampl_clamps_to_100_and_exits_when_calculated_above_100 -- nothing to
-    clear here either, since this is a pure function; the caller (volt's setter) resets its own
-    self._ampl to None before calling, for the same reason."""
+def test_calc_ampl_using_volt_clamps_to_100_and_exits_when_calculated_above_100():
+    """Mirrors test_calc_ampl_clamps_to_100_and_exits_when_calculated_above_100 -- an in-range
+    voltage whose curve-fit result exceeds 100%, not a voltage outside the curve's own domain
+    (that's the above_range case above, which now exits before ever reaching this check).
+    Nothing to clear here either, since this is a pure function; the caller (volt's setter)
+    resets its own self._ampl to None before calling, for the same reason."""
     slot = _bare_slot()
     slot._conv_param = {
-        'volt_curve_pp': _identity_pp(-10.0, 200.0),
+        # pp(x) = x + 50, so an in-range x can still yield a >100 y
+        'volt_curve_pp': PPoly(c=[[1.0], [50.0]], x=[0.0, 100.0], extrapolate=False),
         'power_curve_pp': _identity_pp(-10.0, 1000.0),
     }
 
     with pytest.raises(SystemExit):
-        slot._calc_ampl_using_volt([300], 1.0)  # above the pp's max of 200
+        slot._calc_ampl_using_volt([60], 1.0)  # in range -> calc_ampl = 60 + 50 = 110 > 100
+
+
+def test_calc_ampl_using_volt_clamps_to_0_without_exiting_when_calculated_below_0():
+    """Mirrors test_calc_ampl_clamps_to_0_without_exiting_when_calculated_below_0 -- an in-range
+    voltage whose curve-fit result dips slightly below 0%, not a voltage outside the curve's own
+    domain (that's the below_range case above, which now exits before ever reaching this check)."""
+    slot = _bare_slot()
+    slot._conv_param = {
+        # pp(x) = x - 50, so an in-range x can still yield a negative y
+        'volt_curve_pp': PPoly(c=[[1.0], [-50.0]], x=[0.0, 100.0], extrapolate=False),
+    }
+
+    ampl = slot._calc_ampl_using_volt([20], 1.0)  # in range -> calc_ampl = 20 - 50 = -30 < 0
+
+    assert ampl == [0.0]
 
 
 # --- _calc_press -----------------------------------------------------------
@@ -607,16 +651,16 @@ def test_volt_setter_exits_when_derived_press_exceeds_configured_max(patch_confi
         power_options=['Voltage [V]'], native_power_params=['Amplitude [%]'], available_ch=1)
     slot._ds_tran_combo = 'combo1'
     slot._conv_param = {
-        # identity pp -> volt=2_000_000 converts straight to ampl=2_000_000
-        'volt_curve_pp': _identity_pp(-10.0, 1e7),
-        # identity pp -> find_x_for_y_in_pp(ampl=2_000_000) finds x = 2_000_000, so
-        # press_mpa = 2_000_000 * 1e-6 / eq_factor(1.0) = 2.0 MPa, above the 1.4 MPa max.
-        'power_curve_pp': _identity_pp(-10.0, 1e7),
+        # identity pp -> volt=50 converts straight to a legitimate ampl=50
+        'volt_curve_pp': _identity_pp(-10.0, 200.0),
+        # pp(x) = x * 1e-5 -> find_x_for_y_in_pp(ampl=50) finds x = 5_000_000, so
+        # press_mpa = 5_000_000 * 1e-6 / eq_factor(1.0) = 5.0 MPa, above the 1.4 MPa max.
+        'power_curve_pp': PPoly(c=[[1e-5], [0.0]], x=[0.0, 1e8], extrapolate=False),
     }
     slot._eq_factor = 1.0
 
     with pytest.raises(SystemExit):
-        slot._set_volt(2_000_000)
+        slot._set_volt(50)
 
     assert slot._press is None
     assert slot._volt is None

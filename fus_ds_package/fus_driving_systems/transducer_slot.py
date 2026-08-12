@@ -1395,9 +1395,10 @@ class TransducerSlot:
             eq_factor (float): Equalization factor [-] for the current focal depth.
 
         Returns:
-            dict: 'ampl' (list(float)), plus 'press' (float, corrected to what's actually
-            achievable if the requested value had to be clamped to 0%), 'input_press_mpa',
-            'eq_press_mpa', and 'calculated_ampl' (all logging-only accessory fields).
+            dict: 'ampl' (list(float)), plus 'press' (float, unchanged from the given value even
+            when ampl had to be clamped to 0% -- see the calc_ampl < 0 branch below for why),
+            'input_press_mpa', 'eq_press_mpa', and 'calculated_ampl' (all logging-only accessory
+            fields).
         """
 
         press_pa = press * 1e6  # convert to Pa
@@ -1413,8 +1414,18 @@ class TransducerSlot:
         if range_status in ("above_range", "below_range"):
             x_min_mpa = self._conv_param['power_curve_pp'].x[0] / 1e6
             x_max_mpa = self._conv_param['power_curve_pp'].x[-1] / 1e6
-            message = (f'Equalized pressure of {eq_press_mpa} [MPa] is outside of pp ' +
-                       f'limits ({x_min_mpa:.2f} - {x_max_mpa:.2f} [MPa]). Change input value.')
+            # Converted back to press-MPa (dividing the curve's own Pa-based limits by
+            # eq_factor) -- the user sets press, not the internal "equalized pressure" this
+            # curve is actually fit against, so the bounds shown must be in the units they
+            # actually control. These bounds are specific to the current focal depth (eq_factor
+            # is derived from it) -- they shift if focus changes.
+            press_min = x_min_mpa / eq_factor
+            press_max = x_max_mpa / eq_factor
+            message = (
+                f'Maximum pressure in free water of {input_press_mpa} [MPa] is outside of ' +
+                'the calibration curve\'s range at the current focal depth (equalization ' +
+                f'factor {eq_factor:.4f}) -- must be between {press_min:.2f} and ' +
+                f'{press_max:.2f} [MPa] for this chosen focal depth. Change input value.')
             get_logger().critical(message)
             sys.exit(message)
 
@@ -1438,10 +1449,16 @@ class TransducerSlot:
                 f'Calculated amplitude of {calc_ampl:.2f} is below 0%, so cut off ' +
                 'the amplitude at 0%.')
             ampl = [0]
-            # The originally-requested pressure is out of the curve's usable range -- correct
-            # press to what's actually achievable at the clamped 0% amplitude instead of
-            # leaving it at the rejected request.
-            press = self._calc_press(ampl, eq_factor)
+            # press is validated non-negative before this method is ever called (see press's
+            # own setter), and the domain check above already exits for anything genuinely
+            # outside the curve's range -- so reaching this branch at all means press was
+            # already a legitimate request, just close enough to this curve's own effective
+            # floor that its fit dips slightly negative there. Keep press exactly as given
+            # rather than re-deriving it through an independent inverse lookup
+            # (_calc_press -> find_x_for_y_in_pp), which is subject to the exact same curve-fit
+            # imprecision approached from the other direction -- e.g. a genuine press=0 request
+            # would otherwise come back as some small non-zero "corrected" value purely from
+            # that round-trip, even though 0 was already the right answer.
         else:
             ampl = [round(float(calc_ampl), 2)]
 
@@ -1470,7 +1487,19 @@ class TransducerSlot:
         for v in volt:
             calc_ampl, range_status = safe_evaluate_pp(self._conv_param['volt_curve_pp'], v)
 
-            if range_status == "above_range":
+            if range_status in ("above_range", "below_range"):
+                # A voltage outside the calibration curve's own domain -- same treatment as
+                # _calc_ampl()'s domain check, not the calc_ampl > 100/< 0 clamps below (those
+                # are for an in-range voltage whose curve-fit result happens to spill slightly
+                # past 0/100, not for a voltage the curve was never fit to describe at all).
+                x_min = self._conv_param['volt_curve_pp'].x[0]
+                x_max = self._conv_param['volt_curve_pp'].x[-1]
+                message = (f'Voltage of {v} [V] is outside of pp limits ({x_min:.2f} - ' +
+                           f'{x_max:.2f} [V]). Change input value.')
+                get_logger().critical(message)
+                sys.exit(message)
+
+            if calc_ampl > 100:
                 # Provisional values, computed purely to describe the rejected request in the
                 # message below -- this request is being rejected outright.
                 press_for_msg = self._calc_press([100], eq_factor)
@@ -1483,13 +1512,12 @@ class TransducerSlot:
 
                 get_logger().critical(message)
                 sys.exit(message)
-            elif range_status == "below_range":
-                get_logger().debug((
-                    'Calculated amplitude below 0%, so cut off the amplitude at 0% ' +
-                    'and recalculate the pressure.'))
-                calc_ampl = 0
 
-            calc_ampl = max(calc_ampl, 0)
+            if calc_ampl < 0:
+                get_logger().debug(
+                    f'Calculated amplitude of {calc_ampl:.2f} is below 0%, so cut off ' +
+                    'the amplitude at 0%.')
+                calc_ampl = 0
 
             ampl.append(round(float(calc_ampl), 2))
 
