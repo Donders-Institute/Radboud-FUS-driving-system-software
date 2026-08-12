@@ -43,14 +43,9 @@ def test_calc_eq_factor_evaluates_pp_at_focus_wrt_exit_plane():
 
 def test_calc_eq_factor_exits_when_focus_is_not_numeric():
     """
-    The except ValueError branch is only reachable when focus_wrt_exit_plane
-    can't be converted to a float at all (e.g. a string) -- verified
-    directly against scipy: PPoly.__call__ with extrapolate=False returns
-    NaN for an out-of-range NUMERIC value rather than raising. So an
-    out-of-range (but numeric) focus does NOT hit this except block at all;
-    it silently produces a NaN eq_factor and continues. That gap is noted
-    separately (see the plan's findings list) -- this test only documents
-    the one input shape that actually does raise.
+    A non-numeric focus_wrt_exit_plane (e.g. a string) raises TypeError inside
+    safe_evaluate_pp's own range comparison ('<' unsupported between str and float) -- caught
+    and turned into a clean sys.exit(), same as the out-of-range case below.
     """
     slot = _bare_slot()
     slot._conv_param = {'eq_curve_pp': _identity_pp(0.0, 10.0)}
@@ -62,6 +57,18 @@ def test_calc_eq_factor_exits_when_focus_is_not_numeric():
 
     with pytest.raises(SystemExit):
         slot._calc_eq_factor('not-a-number')
+
+
+def test_calc_eq_factor_exits_when_focus_is_out_of_range():
+    """Fixes a previously-undetected gap (issue #93): PPoly.__call__ with extrapolate=False
+    returns NaN for an out-of-range numeric value rather than raising -- the old bare call plus
+    `except ValueError` never actually caught this, so eq_factor silently became NaN. Now uses
+    safe_evaluate_pp to detect the out-of-range case explicitly and exit."""
+    slot = _bare_slot()
+    slot._conv_param = {'eq_curve_pp': _identity_pp(0.0, 10.0)}
+
+    with pytest.raises(SystemExit):
+        slot._calc_eq_factor(50)  # outside the curve's [0, 10] domain
 
 
 # --- _calc_volt --------------------------------------------------------
@@ -953,6 +960,53 @@ def test_focus_wrt_exit_plane_setter_with_known_combo_uses_focus_curve_and_recal
     assert float(slot._eq_factor) == pytest.approx(20.0)  # eq_curve_pp(20) via identity
 
 
+def test_focus_wrt_exit_plane_setter_exits_when_out_of_curve_range_and_not_native(
+        patch_config):
+    """Mid bowl is native here (exit plane isn't) -- mid bowl is what's actually sent to
+    hardware, so a focus value outside focus_curve_pp's own domain must exit rather than
+    silently produce an inaccurate value. Uses a transducer min/max range (0-200) deliberately
+    WIDER than the curve's own domain (0-50), so the old, now-removed transducer-range check
+    would have wrongly let this through -- confirming the fix asks focus_curve_pp itself, not
+    a possibly-mismatched proxy (see issue #93)."""
+    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
+    slot = _bare_slot()
+    slot.driving_sys = SimpleNamespace(
+        focus_options=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'],
+        native_focus_params=['Focus wrt mid bowl [mm]'])
+    slot._transducer = SimpleNamespace(min_foc=0, max_foc=200, exit_plane_dist=5, name='tran')
+    slot._ds_tran_combo = 'combo1'
+    slot._conv_param = {
+        'focus_curve_pp': _identity_pp(0.0, 50.0),
+        'eq_curve_pp': _identity_pp(0.0, 200.0),
+    }
+
+    with pytest.raises(SystemExit):
+        slot._set_focus_wrt_exit_plane(70)  # within transducer range, outside curve's [0, 50]
+
+
+def test_focus_wrt_exit_plane_setter_falls_back_when_out_of_curve_range_and_native(
+        patch_config):
+    """Same out-of-curve-range scenario as above, but with exit plane itself native (mid bowl
+    is then purely informational, never sent to hardware) -- falling back to the geometric
+    approximation is safe here, so the setter logs a warning and proceeds rather than raising."""
+    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
+    slot = _bare_slot()
+    slot.driving_sys = SimpleNamespace(
+        focus_options=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'],
+        native_focus_params=['Focus wrt exit plane [mm]'])
+    slot._transducer = SimpleNamespace(min_foc=0, max_foc=200, exit_plane_dist=5, name='tran')
+    slot._ds_tran_combo = 'combo1'
+    slot._chosen_power = None
+    slot._conv_param = {
+        'focus_curve_pp': _identity_pp(0.0, 50.0),
+        'eq_curve_pp': _identity_pp(0.0, 200.0),
+    }
+
+    slot._set_focus_wrt_exit_plane(70)  # within transducer range, outside curve's [0, 50]
+
+    assert slot.focus_wrt_mid_bowl == 75  # fallback: focus + exit_plane_dist
+
+
 def test_focus_wrt_exit_plane_setter_updates_eq_factor_but_never_touches_ampl_or_volt(
         patch_config):
     """_calc_eq_factor() must run whenever the combo is active -- it's an input _set_power()
@@ -990,6 +1044,7 @@ def test_focus_wrt_exit_plane_setter_exits_when_out_of_transducer_range():
         focus_options=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'],
         native_focus_params=['Focus wrt exit plane [mm]'])
     slot._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
+    slot._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
 
     with pytest.raises(SystemExit):
         slot._set_focus_wrt_exit_plane(200)
@@ -1133,23 +1188,39 @@ def test_focus_wrt_mid_bowl_setter_with_known_combo_finds_x_via_pp_and_recalcula
     assert float(slot._eq_factor) == pytest.approx(20.0)
 
 
-def test_focus_wrt_mid_bowl_setter_falls_back_when_x_not_found(patch_config):
+def test_focus_wrt_mid_bowl_setter_exits_when_x_not_found_and_not_native(patch_config):
     """When find_x_for_y_in_pp can't find an x value for the target focus_wrt_mid_bowl (target
-    outside the focus_curve_pp's y-range) despite an active calibration, the setter logs a
-    warning and falls back to focus - exit_plane_dist rather than raising -- characterizing
-    CURRENT behavior, not endorsing it as correct: this fallback isn't guarded by native-ness
-    the way the other, combo-not-active-at-all fallback a few lines above it is (that one is
-    only reachable when mid bowl IS native, by construction). Here, exit plane is the native
-    parameter (see native_focus_params below) -- so this silently hands hardware an imprecise
-    geometric approximation of the parameter it actually needs to be accurate, with only a
-    warning logged, not a sys.exit(). Known, deferred gap (Phase 2 review's point 5, carried
-    into Phase 3 verbatim, not fixed there either) -- see the plan's own notes."""
+    outside the focus_curve_pp's y-range) despite an active calibration, AND mid bowl is not
+    native (exit plane is, see native_focus_params below) -- exit plane is what's actually sent
+    to hardware here, so an imprecise geometric approximation of it is not an acceptable
+    fallback."""
     patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
     slot = _bare_slot()
     slot._engineering_mode = True
     slot.driving_sys = SimpleNamespace(
         focus_options=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'],
         native_focus_params=['Focus wrt exit plane [mm]'])
+    slot._transducer = SimpleNamespace(min_foc=-100, max_foc=1000, exit_plane_dist=5, name='tran')
+    slot._ds_tran_combo = 'combo1'
+    slot._conv_param = {
+        'focus_curve_pp': _identity_pp(0.0, 100.0),
+        'eq_curve_pp': _identity_pp(-1000.0, 1000.0),
+    }
+
+    with pytest.raises(SystemExit):
+        slot._set_focus_wrt_mid_bowl(500)  # outside focus_curve_pp's [0, 100] y-range -> not found
+
+
+def test_focus_wrt_mid_bowl_setter_falls_back_when_x_not_found_and_native(patch_config):
+    """Same not-found scenario as above, but with mid bowl itself native (exit plane is then
+    purely informational, never sent to hardware) -- falling back to the geometric approximation
+    is safe here, so the setter logs a warning and proceeds rather than raising."""
+    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
+    slot = _bare_slot()
+    slot._engineering_mode = True
+    slot.driving_sys = SimpleNamespace(
+        focus_options=['Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]'],
+        native_focus_params=['Focus wrt mid bowl [mm]'])
     slot._transducer = SimpleNamespace(min_foc=-100, max_foc=1000, exit_plane_dist=5, name='tran')
     slot._ds_tran_combo = 'combo1'
     slot._conv_param = {
@@ -1571,6 +1642,58 @@ def test_update_conv_param_populates_all_four_curves_and_updates_transducer_rang
     assert slot.transducer.max_foc == 100.0
 
     assert slot._eq_factor == 'untouched'
+
+
+def test_update_conv_param_warns_when_focus_curve_domain_exceeds_eq_curve_domain(
+        tmp_path, patch_config, caplog):
+    """focus_curve_pp and eq_curve_pp share the same x-axis (focus wrt exit plane) -- if their
+    domains don't match, min_foc/max_foc (sourced from eq_curve_pp alone, see issue #93) may not
+    accurately bound focus_curve_pp's own valid range. Doesn't affect correctness (every curve
+    evaluation checks its own domain independently via safe_evaluate_pp), but likely signals a
+    calibration-data problem worth flagging early."""
+    slot = _bare_slot()
+    slot._ds_tran_combo = 'combo1'
+    slot._transducer = SimpleNamespace(min_foc=0, max_foc=0)
+
+    eq_file = _write_identity_fit_json(tmp_path, 'eq.json', 0.0, 50.0)
+    focus_file = _write_identity_fit_json(tmp_path, 'focus.json', 0.0, 100.0)  # wider than eq
+    power_file = _write_identity_fit_json(tmp_path, 'power.json', -10.0, 1000.0)
+    volt_file = _write_identity_fit_json(tmp_path, 'volt.json', -10.0, 200.0)
+
+    section = 'Equipment.Combination.combo1'
+    patch_config.set(section, 'EqualizationCurveFit json file', eq_file)
+    patch_config.set(section, 'FocusCurveFit json file', focus_file)
+    patch_config.set(section, 'PowerCurveFit json file', power_file)
+    patch_config.set(section, 'VoltageCurveFit json file', volt_file)
+
+    with caplog.at_level('WARNING'):
+        slot._update_conv_param()
+
+    assert 'extends beyond the equalization curve' in caplog.text
+
+
+def test_update_conv_param_does_not_warn_when_focus_curve_domain_matches_eq_curve_domain(
+        tmp_path, patch_config, caplog):
+    """Mirrors the mismatch test above -- identical domains, no warning."""
+    slot = _bare_slot()
+    slot._ds_tran_combo = 'combo1'
+    slot._transducer = SimpleNamespace(min_foc=0, max_foc=0)
+
+    eq_file = _write_identity_fit_json(tmp_path, 'eq.json', 0.0, 100.0)
+    focus_file = _write_identity_fit_json(tmp_path, 'focus.json', 0.0, 100.0)
+    power_file = _write_identity_fit_json(tmp_path, 'power.json', -10.0, 1000.0)
+    volt_file = _write_identity_fit_json(tmp_path, 'volt.json', -10.0, 200.0)
+
+    section = 'Equipment.Combination.combo1'
+    patch_config.set(section, 'EqualizationCurveFit json file', eq_file)
+    patch_config.set(section, 'FocusCurveFit json file', focus_file)
+    patch_config.set(section, 'PowerCurveFit json file', power_file)
+    patch_config.set(section, 'VoltageCurveFit json file', volt_file)
+
+    with caplog.at_level('WARNING'):
+        slot._update_conv_param()
+
+    assert 'extends beyond the equalization curve' not in caplog.text
 
 
 # --- __str__ -----------------------------------------------------------------

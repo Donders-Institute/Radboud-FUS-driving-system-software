@@ -945,18 +945,52 @@ class TransducerSlot:
             validate_value(focus, 'Focus wrt exit plane [mm] (focus_wrt_exit_plane)',
                            True, True, False, False)
 
-            # Check if focus is within range if compensation equations are not applicable
-            if focus < self._transducer.min_foc or focus > self._transducer.max_foc:
-                message = (f'Focus wrt exit plane of {focus} [mm] is not within the set ' +
-                           f'focus range of {self._transducer.min_foc} and ' +
-                           f'{self._transducer.max_foc} [mm] of transducer ' +
-                           f'{self._transducer.name}.')
-                get_logger().critical(message)
-                sys.exit(message)
-
             if self._combo_is_active():
-                self._focus_wrt_mid_bowl = self._conv_param['focus_curve_pp'](focus)
+                # Ask focus_curve_pp itself whether this value is within its calibrated range,
+                # rather than proxying via self._transducer.min_foc/max_foc -- those are
+                # overwritten from eq_curve_pp's breaks (see _update_conv_param()), a different
+                # curve. The two happen to have identical domains for every combo shipped today,
+                # but nothing enforces that, so ask the curve that's actually about to be
+                # evaluated (see issue #93).
+                calc_mid_bowl, range_status = safe_evaluate_pp(
+                    self._conv_param['focus_curve_pp'], focus)
+
+                if range_status != 'in_range':
+                    if focus_option not in self.driving_sys.native_focus_params:
+                        # Mid bowl is native here -- it's what's actually sent to hardware, so
+                        # an imprecise geometric approximation for it is not an acceptable
+                        # fallback (unlike the native case below, where mid bowl is purely
+                        # informational and never sent anywhere).
+                        x_min = self._conv_param['focus_curve_pp'].x[0]
+                        x_max = self._conv_param['focus_curve_pp'].x[-1]
+                        message = (
+                            f'Focus wrt exit plane of {focus} [mm] is outside of the active ' +
+                            f"calibration curve's limits ({x_min:.2f} - {x_max:.2f} [mm]), " +
+                            f'and {focus_option} is not native for {self._ds_tran_combo} -- ' +
+                            'there is no way to accurately produce ' +
+                            f'{self.driving_sys.native_focus_params} from this focus value.')
+                        get_logger().critical(message)
+                        sys.exit(message)
+
+                    get_logger().warning(
+                        f'Focus wrt exit plane of {focus} [mm] is outside of the active ' +
+                        'calibration curve\'s range. Focus wrt mid bowl will be calculated ' +
+                        f'based on exit plane distance of {self._transducer.exit_plane_dist} ' +
+                        '[mm].')
+                    calc_mid_bowl = focus + self._transducer.exit_plane_dist
+
+                self._focus_wrt_mid_bowl = calc_mid_bowl
             else:
+                # Check if focus is within the transducer's own physical range -- no curve to
+                # consult here.
+                if focus < self._transducer.min_foc or focus > self._transducer.max_foc:
+                    message = (f'Focus wrt exit plane of {focus} [mm] is not within the set ' +
+                               f'focus range of {self._transducer.min_foc} and ' +
+                               f'{self._transducer.max_foc} [mm] of transducer ' +
+                               f'{self._transducer.name}.')
+                    get_logger().critical(message)
+                    sys.exit(message)
+
                 # Native and no curve available -- fall back to the simple, always-valid
                 # geometric offset (only reached when native, since non-native + inactive
                 # exits above).
@@ -1052,6 +1086,20 @@ class TransducerSlot:
                     get_logger().debug(
                         f"Verification: pp({self._focus_wrt_exit_plane}) = {calc_y}")
                 else:
+                    if focus_option not in self.driving_sys.native_focus_params:
+                        # Mid bowl is not native here -- exit plane is what's actually native
+                        # and would be sent to hardware, so an imprecise geometric approximation
+                        # for it is not an acceptable fallback (unlike the native case below,
+                        # where exit plane is purely informational and never sent anywhere).
+                        message = (
+                            f'Could not find an x value for y = {target_y_value} in the ' +
+                            'active calibration curve, and ' +
+                            f'{focus_option} is not native for {self._ds_tran_combo} -- ' +
+                            'there is no way to accurately produce ' +
+                            f'{self.driving_sys.native_focus_params} from this focus value.')
+                        get_logger().critical(message)
+                        sys.exit(message)
+
                     get_logger().warning(
                         f"Could not find an x value for y = {target_y_value}. " +
                         'Focus wrt exit plane will be calculated based on ' +
@@ -1217,6 +1265,15 @@ class TransducerSlot:
         _set_transducer() -- which always resets focus to None right before this runs, so
         eq_factor is never computed here; _set_focus()'s own setters do that once configure()
         provides a real focus value moments later.
+
+        min_foc/max_foc are deliberately sourced from the equalization curve alone, not e.g. the
+        intersection of every curve's own domain -- that would make which curve ends up as the
+        binding constraint vary per transducer, turning min_foc/max_foc into a moving target
+        instead of one predictable thing. Every actual curve evaluation is independently
+        range-checked against its own domain anyway (see safe_evaluate_pp usages elsewhere in
+        this class), so nothing relies on eq_curve_pp's domain being an accurate stand-in for any
+        other curve's. The warning below only exists to flag likely-bad calibration data early
+        (see issue #93), not to guard correctness.
         """
 
         section_name = 'Equipment.Combination.' + self._ds_tran_combo
@@ -1234,9 +1291,10 @@ class TransducerSlot:
                                                 'VoltageCurveFit json file', None, True)
 
         eq_pp, eq_breaks = extract_and_define_pp(self.eq_curve_file, return_breaks=True)
+        focus_pp = extract_and_define_pp(self.focus_curve_file)
 
         self._conv_param = {
-            "focus_curve_pp": extract_and_define_pp(self.focus_curve_file),
+            "focus_curve_pp": focus_pp,
             "power_curve_pp": extract_and_define_pp(self.power_curve_file),
             "eq_curve_pp": eq_pp,
             "volt_curve_pp": extract_and_define_pp(self.volt_curve_file),
@@ -1244,6 +1302,21 @@ class TransducerSlot:
 
         self.transducer.min_foc = min(eq_breaks)
         self.transducer.max_foc = max(eq_breaks)
+
+        # focus_curve_pp shares the same x-axis (focus wrt exit plane) as eq_curve_pp -- the only
+        # other curve that does (power_curve_pp/volt_curve_pp are on a different axis entirely,
+        # not comparable here). A mismatch doesn't produce a wrong result anywhere (every curve
+        # evaluation checks its own domain independently), but it likely means this combo's
+        # calibration data has a real problem worth looking at.
+        focus_min, focus_max = focus_pp.x[0], focus_pp.x[-1]
+        if focus_min < self.transducer.min_foc or focus_max > self.transducer.max_foc:
+            get_logger().warning(
+                f"focus_curve_pp's domain ({focus_min:.2f} - {focus_max:.2f} [mm]) for " +
+                f"{self._ds_tran_combo} extends beyond the equalization curve's own domain " +
+                f"({self.transducer.min_foc:.2f} - {self.transducer.max_foc:.2f} [mm]) that " +
+                "min_foc/max_foc are derived from -- some focus_wrt_exit_plane values may be " +
+                "accepted by one curve and rejected by the other. Check this combo's " +
+                "calibration data.")
 
     def _calc_eq_factor(self, focus_wrt_exit_plane):
         """
@@ -1257,13 +1330,28 @@ class TransducerSlot:
         """
 
         try:
-            return self._conv_param['eq_curve_pp'](focus_wrt_exit_plane)
-        except ValueError as e:
-            message = (f'{e} \n Focus wrt exit plane of {focus_wrt_exit_plane} mm is not ' +
-                       f'within the limits of {self.transducer.min_foc} and ' +
-                       f'{self.transducer.max_foc} [mm].')
+            eq_factor, range_status = safe_evaluate_pp(
+                self._conv_param['eq_curve_pp'], focus_wrt_exit_plane)
+        except (TypeError, ValueError) as e:
+            # safe_evaluate_pp's own range comparison is what actually raises here (a string,
+            # for instance, can't be compared with '<') -- pp(x_value) itself would silently
+            # return NaN rather than raise (extrapolate=False), so this is reachable only for a
+            # focus_wrt_exit_plane that isn't numeric at all, never for a merely out-of-range one.
+            message = (f'{e} \n Focus wrt exit plane of {focus_wrt_exit_plane} is not a valid ' +
+                       'numeric value.')
             get_logger().critical(message)
             sys.exit(message)
+
+        if range_status != 'in_range':
+            x_min = self._conv_param['eq_curve_pp'].x[0]
+            x_max = self._conv_param['eq_curve_pp'].x[-1]
+            message = (
+                f'Focus wrt exit plane of {focus_wrt_exit_plane} [mm] is outside of the ' +
+                f"active calibration curve's limits ({x_min:.2f} - {x_max:.2f} [mm]).")
+            get_logger().critical(message)
+            sys.exit(message)
+
+        return eq_factor
 
     def _calc_volt(self, ampl):
         """

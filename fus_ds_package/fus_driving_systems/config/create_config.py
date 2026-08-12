@@ -31,6 +31,7 @@ README.md file of https://github.com/Donders-Institute/Radboud-FUS-driving-syste
 import configparser
 import importlib.resources
 import os
+import re
 
 from fus_driving_systems import utils
 
@@ -1495,6 +1496,20 @@ MAX_PRESSURE_WARNING = (
 )
 generated_contents = generated_contents.replace(
     MAX_PRESSURE_LINE, MAX_PRESSURE_WARNING + MAX_PRESSURE_LINE)
+
+# Same idea for min. focus/max. focus, but these two keys appear once per transducer (each with
+# its own value) rather than once globally, so a plain string .replace() can't target every
+# occurrence -- use a regex instead. One comment above min. focus already covers max. focus too,
+# since the two are always written directly adjacent to each other.
+MIN_FOCUS_NOTE = (
+    '; Only used as-is when no calibration is active for this transducer/driving-system pair --\n'
+    "; once one is, both are silently overwritten (not merely defaulted) by the equalization\n"
+    '; curve\'s own breaks (see TransducerSlot._update_conv_param() / README.md).\n'
+)
+generated_contents = re.sub(
+    r'^min\. focus = .*$',
+    lambda match: MIN_FOCUS_NOTE + match.group(0),
+    generated_contents, flags=re.MULTILINE)
 
 with open(CONFIG_FILE, 'w', encoding='utf-8') as configfile:
     configfile.write(generated_contents)

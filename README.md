@@ -572,8 +572,8 @@ The transducer identifier must match one of the identifiers defined in the '[Equ
 - **fund. freq.**: Fundamental frequency in kHz
 - **natural focus**: Radius of curvature in millimeters
 - **exit plane - first element dist.**: Distance between radiating surface and exit plane in millimeters
-- **min. focus**: Minimum allowed focus with respect to exit plane in millimeters
-- **max. focus**: Maximum allowed focus with respect to exit plane in millimeters
+- **min. focus**: Minimum allowed focus with respect to exit plane in millimeters. Only used as-is when there's no active `Equipment.Combination.*` calibration for this transducer/driving-system pair -- once one is active, this value is overwritten (not merely defaulted) with the equalization curve's own minimum break, so the configured value becomes irrelevant.
+- **max. focus**: Maximum allowed focus with respect to exit plane in millimeters. Same overwrite behavior as *min. focus* above, once a calibration is active.
 - **steer information**: Path to steering information file if applicable
 - **active?**: Whether this transducer is active and available for use
 
