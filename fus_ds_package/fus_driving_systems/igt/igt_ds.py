@@ -386,15 +386,37 @@ class IGT(ds.ControlDrivingSystem):
             get_logger().critical(message)
             sys.exit(message)
 
-    def send_protocol(self, protocols, duration_ms=0):
+    def _assert_duration_given_when_interleaving(self, protocols,
+                                                 total_alternating_duration_ms):
+        """
+        total_alternating_duration_ms has no sensible default when interleaving -- unlike a
+        single protocol (which gets its own repetition count from its own pulse_train_rep_dur/
+        pulse_train_rep_int), the alternating group as a whole has no such value to fall back to,
+        and silently treating a missing/zero duration as "0 repetitions" would be a confusing
+        no-op rather than a clear error.
+
+        Parameters:
+            protocols (list(TUSProtocol)): The protocols about to be sent/waited on/executed.
+            total_alternating_duration_ms (float or None): The value the caller actually gave.
+        """
+
+        if len(protocols) > 1 and (total_alternating_duration_ms is None or
+                                   total_alternating_duration_ms <= 0):
+            message = ('total_alternating_duration_ms is required (and must be greater than 0) ' +
+                       'when interleaving more than one protocol.')
+            get_logger().critical(message)
+            sys.exit(message)
+
+    def send_protocol(self, protocols, total_alternating_duration_ms=None):
         """
         Validates and sends one or more ultrasound protocols to the IGT ultrasound driving
         system. More than one protocol means they are interleaved: sent as one alternating group,
-        fired in the order given, repeating for duration_ms. Ramping (pulse_ramp_shape/
-        pulse_ramp_dur) is applied once for the whole interleaved group, taken from only the
-        first protocol given -- it's a generator-wide setting, not something each interleaved
-        protocol can configure independently, so every other protocol's own ramp settings are
-        silently ignored.
+        fired in the order given, repeating for total_alternating_duration_ms. Ramping
+        (pulse_ramp_shape/pulse_ramp_dur) is applied once for the whole interleaved group, taken
+        from only the first protocol given -- it's a generator-wide setting, not something each
+        interleaved protocol can configure independently, so every protocol given must declare
+        the same ramping (enforced below) even though only the first one's value is actually
+        used.
 
         When interleaving, each protocol contributes exactly one pulse per round of the
         alternating group -- not a repeated pulse train of its own. pulse_dur/pulse_rep_int
@@ -407,15 +429,19 @@ class IGT(ds.ControlDrivingSystem):
 
         Parameters:
             protocols (TUSProtocol or list(TUSProtocol)): One protocol, or a list of protocols to
-                interleave. Each protocol contains, amongst other things:
-                the ultrasound protocol (focus, pulse duration, pulse rep. interval and etcetera)
-                used equipment (driving system and transducer slot(s))
-            duration_ms (float): Only used when interleaving (more than one protocol) -- total
-                duration [ms] the alternating group repeats for.
+                interleave. Each protocol is a TUSProtocol instance containing, amongst other
+                things, the timing/power/focus parameters (focus, pulse duration, pulse rep.
+                interval and etcetera) and the equipment used (driving system and transducer
+                slot(s)).
+            total_alternating_duration_ms (float): Required (must be > 0) when interleaving more
+                than one protocol -- total duration [ms] the alternating group repeats for.
+                Unused, and safe to leave at its default, for a single protocol.
         """
 
         if isinstance(protocols, TUSProtocol):
             protocols = [protocols]
+
+        self._assert_duration_given_when_interleaving(protocols, total_alternating_duration_ms)
 
         for protocol in protocols:
             self._assert_ready_to_send(protocol)
@@ -429,6 +455,23 @@ class IGT(ds.ControlDrivingSystem):
                                       for protocol in protocols[1:]):
             message = ('All protocols given to interleave must target the same buffer -- got ' +
                        f'{[protocol.buffer_num for protocol in protocols]}.')
+            get_logger().critical(message)
+            sys.exit(message)
+
+        # Only protocols[0].pulse_ramp_shape/pulse_ramp_dur are ever actually applied to the
+        # generator below (ramping is a whole-group setting, not something each interleaved
+        # protocol configures independently -- see this method's own docstring) -- but a caller
+        # giving different ramp settings across the group almost certainly means they expected
+        # every protocol's own ramping to take effect, so reject it explicitly instead of
+        # silently going with whichever one happens to be first.
+        if len(protocols) > 1 and any(
+                (protocol.pulse_ramp_shape, protocol.pulse_ramp_dur)
+                != (protocols[0].pulse_ramp_shape, protocols[0].pulse_ramp_dur)
+                for protocol in protocols[1:]):
+            ramp_settings = [(protocol.pulse_ramp_shape, protocol.pulse_ramp_dur)
+                             for protocol in protocols]
+            message = ('All protocols given to interleave must use the same ramping -- got ' +
+                       f'{ramp_settings}.')
             get_logger().critical(message)
             sys.exit(message)
 
@@ -464,7 +507,8 @@ class IGT(ds.ControlDrivingSystem):
                     protocol0.pulse_train_rep_dur / protocol0.pulse_train_rep_int)
             else:
                 get_logger().debug(
-                    f'{len(protocols)} protocols are sent, indicating they are interleaved.')
+                    f'Interleaving {len(protocols)} protocols -- each contributes one pulse '
+                    'train per round.')
 
                 # One pulse per protocol, not a repeated pulse train per protocol -- unlike the
                 # N=1 branch above (_define_pulse_train()), each interleaved protocol's own
@@ -481,14 +525,15 @@ class IGT(ds.ControlDrivingSystem):
                 # (pulse_dur active, then its own trailing delay), not pulse_train_dur (which
                 # would describe a repeated train this pulse never actually fires here).
                 total_pulse_rep_int_ms = sum(protocol.pulse_rep_int for protocol in protocols)
-                n_pulse_train_rep = math.floor(duration_ms / total_pulse_rep_int_ms)
+                n_pulse_train_rep = math.floor(
+                    total_alternating_duration_ms / total_pulse_rep_int_ms)
 
             # Apply ramping -- read from protocol0 only. Ramping is set once on the generator as
             # a whole (rising/falling PulseRamp), not per pulse train, so it's an all-or-nothing
             # property of the entire interleaved group, not something each interleaved protocol
             # can configure independently: protocol0's pulse_ramp_shape/pulse_ramp_dur decide it
-            # for every protocol in this send_protocol() call, and any other protocol's own ramp
-            # settings are silently ignored.
+            # for every protocol in this send_protocol() call (every other protocol is already
+            # guaranteed to declare the same values, enforced above).
             rect_ramp = get_config_value(get_logger(), config, 'Ramp', 'Option.rect',
                                          'Rectangular - no ramping')
             if protocol0.pulse_ramp_shape != rect_ramp:
@@ -519,7 +564,7 @@ class IGT(ds.ControlDrivingSystem):
 
             # if no connection can be made, program stops preventing infinite loop
             self.connect(protocols[0].driving_sys.connect_info)
-            self.send_protocol(protocols, duration_ms)
+            self.send_protocol(protocols, total_alternating_duration_ms)
 
     def _define_pulse_group(self, protocol):
         """
@@ -655,17 +700,26 @@ class IGT(ds.ControlDrivingSystem):
 
         return exec_flags
 
-    def wait_for_trigger(self, protocols, duration_ms=0, debug_info=True):
+    def wait_for_trigger(self, protocols, total_alternating_duration_ms=None, debug_info=True):
         """
         Activates the listener on the IGT ultrasound driving system to wait for the trigger to
         execute the previously sent protocol(s). When interleaving, the ramp-transient timing
         this computes is taken from only the first protocol given, matching send_protocol()'s
-        own "ramping is a whole-group setting, not per interleaved protocol" behavior.
+        own "ramping is a whole-group setting, not per interleaved protocol" behavior. The same
+        is true for trigger_option/n_triggers below -- every protocol given must declare the
+        same trigger configuration (enforced below) even though only the first one's value is
+        actually used.
+
+        Exits with a clear message if send_protocol() hasn't been called for this buffer yet --
+        unlike a dropped connection (which reconnects and resends automatically, since that's an
+        external failure rather than a caller mistake), this method never sends on the caller's
+        behalf.
 
         Parameters:
             protocols (TUSProtocol or list(TUSProtocol)): Same protocol(s) already passed to
                 send_protocol().
-            duration_ms (float): Same value already passed to send_protocol().
+            total_alternating_duration_ms (float): Same value already passed to send_protocol()
+                -- required (must be > 0) when interleaving more than one protocol.
             debug_info (bool): Whether to compute and set additional execution flags.
         """
 
@@ -673,68 +727,92 @@ class IGT(ds.ControlDrivingSystem):
             protocols = [protocols]
         protocol0 = protocols[0]
 
+        self._assert_duration_given_when_interleaving(protocols, total_alternating_duration_ms)
+
+        # Only protocol0.trigger_option/n_triggers are ever actually read below -- a caller
+        # giving different trigger settings across the group almost certainly expected every
+        # protocol's own trigger configuration to take effect, so reject it explicitly instead
+        # of silently going with whichever one happens to be first.
+        if len(protocols) > 1 and any(
+                (protocol.trigger_option, protocol.n_triggers)
+                != (protocol0.trigger_option, protocol0.n_triggers)
+                for protocol in protocols[1:]):
+            trigger_settings = [(protocol.trigger_option, protocol.n_triggers)
+                                for protocol in protocols]
+            message = ('All protocols given to interleave must use the same trigger ' +
+                       f'configuration -- got {trigger_settings}.')
+            get_logger().critical(message)
+            sys.exit(message)
+
+        # Checked regardless of connection state, and before it: a protocol that was never sent
+        # is a caller mistake either way (never connected at all, or connected but forgot to
+        # call send_protocol()) -- not something to silently paper over here, especially since
+        # doing so would rely on total_alternating_duration_ms still matching whatever the
+        # caller actually intended to send, which nothing here can verify. Only once a protocol
+        # is known to have been sent successfully at least once does losing the connection
+        # afterward count as an external failure worth automatically recovering from (below).
+        if not self.is_protocol_sent(protocol0.buffer_num):
+            message = (f'No protocol has been sent to buffer {protocol0.buffer_num} yet -- ' +
+                       'call send_protocol() before wait_for_trigger().')
+            get_logger().critical(message)
+            sys.exit(message)
+
         if self.is_connected():
-            if self.is_protocol_sent(protocol0.buffer_num):
-                try:
-                    # Use unifus.ExecFlag.NONE if nothing special, or simply don't pass the
-                    # exec_flags argument. Use '|' to combine multiple flags: flag1 | flag2 | flag3
-                    # To use trigger, add one of unifus::ExecFlag::Trigger*
-                    exec_flags = self._compute_exec_flags(protocols, debug_info)
+            try:
+                # Use unifus.ExecFlag.NONE if nothing special, or simply don't pass the
+                # exec_flags argument. Use '|' to combine multiple flags: flag1 | flag2 | flag3
+                # To use trigger, add one of unifus::ExecFlag::Trigger*
+                exec_flags = self._compute_exec_flags(protocols, debug_info)
 
-                    sent_protocol_info = self.sent_protocols.get(protocol0.buffer_num, {})
-                    n_pulse_train_rep = sent_protocol_info.get('n_pulse_train_rep')
-                    pulse_train_delay = sent_protocol_info.get('pulse_train_delay')
+                sent_protocol_info = self.sent_protocols.get(protocol0.buffer_num, {})
+                n_pulse_train_rep = sent_protocol_info.get('n_pulse_train_rep')
+                pulse_train_delay = sent_protocol_info.get('pulse_train_delay')
 
-                    # Determining trigger flag
-                    pulse_train_trigger = get_config_value(get_logger(), config, 'Trigger',
-                                                           'Option.pulse_train',
-                                                           'TriggerOnePulseTrain')
-                    whole_protocol_trigger = get_config_value(get_logger(), config, 'Trigger',
-                                                              'Option.whole_protocol',
-                                                              'TriggerWholeProtocol')
-                    if protocol0.trigger_option == pulse_train_trigger:
-                        exec_flags |= unifus.ExecFlag.TriggerOneSequence
-                        n_pulse_train_rep = protocol0.n_triggers
-                        pulse_train_delay = 0  # trigger will determine delay
+                # Determining trigger flag
+                pulse_train_trigger = get_config_value(get_logger(), config, 'Trigger',
+                                                       'Option.pulse_train',
+                                                       'TriggerOnePulseTrain')
+                whole_protocol_trigger = get_config_value(get_logger(), config, 'Trigger',
+                                                          'Option.whole_protocol',
+                                                          'TriggerWholeProtocol')
+                if protocol0.trigger_option == pulse_train_trigger:
+                    exec_flags |= unifus.ExecFlag.TriggerOneSequence
+                    n_pulse_train_rep = protocol0.n_triggers
+                    pulse_train_delay = 0  # trigger will determine delay
 
-                    elif protocol0.trigger_option == whole_protocol_trigger:
-                        exec_flags |= unifus.ExecFlag.TriggerAllSequences
+                elif protocol0.trigger_option == whole_protocol_trigger:
+                    exec_flags |= unifus.ExecFlag.TriggerAllSequences
 
-                    else:
-                        message = (
-                            f'Trigger option {protocol0.trigger_option} is not identical to ' +
-                            f'implemented trigger options: {protocol0.get_trigger_options()}.')
-                        get_logger().critical(message)
-                        sys.exit(message)
-
-                    get_logger().info(
-                        f"Waiting for a total of {protocol0.n_triggers} trigger(s)...")
-
-                    self.gen.prepareSequence(protocol0.buffer_num, n_pulse_train_rep,
-                                             pulse_train_delay, exec_flags)
-
-                    self.gen.startSequence()
-
-                except Exception as why:
-                    message = f"Exception: {why}"
+                else:
+                    message = (
+                        f'Trigger option {protocol0.trigger_option} is not identical to ' +
+                        f'implemented trigger options: {protocol0.get_trigger_options()}.')
                     get_logger().critical(message)
                     sys.exit(message)
-            else:
-                get_logger().warning(
-                    'The protocol has to be sent first using send_protocol() before ' +
-                    'the driving system can wait for a trigger.')
-                get_logger().warning('Sending protocol...')
 
-                self.send_protocol(protocols, duration_ms)
-                self.wait_for_trigger(protocols, duration_ms, debug_info)
+                get_logger().info(
+                    f"Waiting for a total of {protocol0.n_triggers} trigger(s)...")
+
+                self.gen.prepareSequence(protocol0.buffer_num, n_pulse_train_rep,
+                                         pulse_train_delay, exec_flags)
+
+                self.gen.startSequence()
+
+            except Exception as why:
+                message = f"Exception: {why}"
+                get_logger().critical(message)
+                sys.exit(message)
         else:
+            # Reached only once a protocol is confirmed sent (above) -- reconnecting and
+            # resending here is recovering the driving system's own state after losing the
+            # connection, not guessing at values for a first-time send.
             get_logger().warning("No connection with driving system.")
             get_logger().warning("Reconnecting with driving system...")
 
             # if no connection can be made, program stops preventing infinite loop
             self.connect(protocol0.driving_sys.connect_info)
-            self.send_protocol(protocols, duration_ms)
-            self.wait_for_trigger(protocols, duration_ms, debug_info)
+            self.send_protocol(protocols, total_alternating_duration_ms)
+            self.wait_for_trigger(protocols, total_alternating_duration_ms, debug_info)
 
     def wait_for_trigger_result(self, timeout_s=5.0):
         """
@@ -778,23 +856,31 @@ class IGT(ds.ControlDrivingSystem):
 
         return self.listener.exec_error_code
 
-    def execute_protocol(self, protocols, duration_ms=0, debug_info=True):
+    def execute_protocol(self, protocols, total_alternating_duration_ms=None, debug_info=True):
         """
         Executes the previously sent protocol(s) on the IGT ultrasound driving system. When
         interleaving, the ramp-transient timing this computes is taken from only the first
         protocol given, matching send_protocol()'s own "ramping is a whole-group setting, not
         per interleaved protocol" behavior.
 
+        Exits with a clear message if send_protocol() hasn't been called for this buffer yet --
+        unlike a dropped connection (which reconnects and resends automatically, since that's an
+        external failure rather than a caller mistake), this method never sends on the caller's
+        behalf.
+
         Parameters:
             protocols (TUSProtocol or list(TUSProtocol)): Same protocol(s) already passed to
                 send_protocol().
-            duration_ms (float): Same value already passed to send_protocol().
+            total_alternating_duration_ms (float): Same value already passed to send_protocol()
+                -- required (must be > 0) when interleaving more than one protocol.
             debug_info (bool): Whether to compute and set additional execution flags.
         """
 
         if isinstance(protocols, TUSProtocol):
             protocols = [protocols]
         protocol0 = protocols[0]
+
+        self._assert_duration_given_when_interleaving(protocols, total_alternating_duration_ms)
 
         max_press = get_config_value(get_logger(), config, 'Power',
                                      'Maximum pressure allowed in free water [MPa]',
@@ -804,52 +890,59 @@ class IGT(ds.ControlDrivingSystem):
 
         get_logger().info('Executing protocol...')
 
+        # Checked regardless of connection state, and before it: a protocol that was never sent
+        # is a caller mistake either way (never connected at all, or connected but forgot to
+        # call send_protocol()) -- not something to silently paper over here, especially since
+        # doing so would rely on total_alternating_duration_ms still matching whatever the
+        # caller actually intended to send, which nothing here can verify. Only once a protocol
+        # is known to have been sent successfully at least once does losing the connection
+        # afterward count as an external failure worth automatically recovering from (below).
+        if not self.is_protocol_sent(protocol0.buffer_num):
+            message = (f'No protocol has been sent to buffer {protocol0.buffer_num} yet -- ' +
+                       'call send_protocol() before execute_protocol().')
+            get_logger().critical(message)
+            sys.exit(message)
+
         if self.is_connected():
-            if self.is_protocol_sent(protocol0.buffer_num):
-                try:
-                    # Use unifus.ExecFlag.NONE if nothing special, or simply don't pass the
-                    # exec_flags argument. Use '|' to combine multiple flags: flag1 | flag2 | flag3
-                    # To use trigger, add one of unifus::ExecFlag::Trigger*
-                    exec_flags = self._compute_exec_flags(protocols, debug_info)
+            try:
+                # Use unifus.ExecFlag.NONE if nothing special, or simply don't pass the
+                # exec_flags argument. Use '|' to combine multiple flags: flag1 | flag2 | flag3
+                # To use trigger, add one of unifus::ExecFlag::Trigger*
+                exec_flags = self._compute_exec_flags(protocols, debug_info)
 
-                    sent_protocol_info = self.sent_protocols.get(protocol0.buffer_num, {})
-                    self.gen.prepareSequence(protocol0.buffer_num,
-                                             sent_protocol_info.get('n_pulse_train_rep'),
-                                             sent_protocol_info.get('pulse_train_delay'),
-                                             exec_flags)
+                sent_protocol_info = self.sent_protocols.get(protocol0.buffer_num, {})
+                self.gen.prepareSequence(protocol0.buffer_num,
+                                         sent_protocol_info.get('n_pulse_train_rep'),
+                                         sent_protocol_info.get('pulse_train_delay'),
+                                         exec_flags)
 
-                    self.gen.startSequence()
-                    self.listener.wait_protocol(
-                        sent_protocol_info.get('total_protocol_duration_ms') / 1000.0)
+                self.gen.startSequence()
+                self.listener.wait_protocol(
+                    sent_protocol_info.get('total_protocol_duration_ms') / 1000.0)
 
-                    if self.listener.exec_error_code is not None:
-                        message = ('Protocol execution failed on the driving system (error ' +
-                                   f'code: {self.listener.exec_error_code}). Potentially no ' +
-                                   'ultrasound emitted.')
-                        get_logger().critical(message)
-                        sys.exit(message)
-
-                except Exception as why:
-                    message = f"Exception: {why}"
+                if self.listener.exec_error_code is not None:
+                    message = ('Protocol execution failed on the driving system (error ' +
+                               f'code: {self.listener.exec_error_code}). Potentially no ' +
+                               'ultrasound emitted.')
                     get_logger().critical(message)
                     sys.exit(message)
-            else:
-                get_logger().warning(
-                    'The protocol has to be sent first using send_protocol() before ' +
-                    'the driving system can execute a protocol.')
-                get_logger().warning('Sending protocol...')
 
-                self.send_protocol(protocols, duration_ms)
-                self.execute_protocol(protocols, duration_ms, debug_info)
+            except Exception as why:
+                message = f"Exception: {why}"
+                get_logger().critical(message)
+                sys.exit(message)
 
         else:
+            # Reached only once a protocol is confirmed sent (above) -- reconnecting and
+            # resending here is recovering the driving system's own state after losing the
+            # connection, not guessing at values for a first-time send.
             get_logger().warning("No connection with driving system.")
             get_logger().warning("Reconnecting with driving system...")
 
             # if no connection can be made, program stops preventing infinite loop
             self.connect(protocol0.driving_sys.connect_info)
-            self.send_protocol(protocols, duration_ms)
-            self.execute_protocol(protocols, duration_ms, debug_info)
+            self.send_protocol(protocols, total_alternating_duration_ms)
+            self.execute_protocol(protocols, total_alternating_duration_ms, debug_info)
 
     def disconnect(self):
         """

@@ -834,7 +834,8 @@ class TestSendProtocol:
     def test_interleaves_two_protocols_with_combined_pulse_train(self, mocker, connected_instance,
                                                                  patch_config):
         """More than one protocol means they're interleaved: n_pulse_train_rep is computed from
-        duration_ms and the sum of both protocols' pulse_rep_int -- the time slot each
+        total_alternating_duration_ms and the sum of both protocols' pulse_rep_int -- the time
+        slot each
         protocol's own single pulse (pulse_dur active, then its own trailing delay) occupies in
         one round of the alternating group, not pulse_train_dur (which would describe a
         repeated train this pulse never fires here) or either one's own pulse_train_rep_dur/int.
@@ -854,14 +855,17 @@ class TestSendProtocol:
         # buffer_num=0 here, matching this file's usual convention of using 0 unless a test is
         # specifically about buffer selection.
         protocol1 = SimpleNamespace(buffer_num=0, pulse_rep_int=10, pulse_train_dur=999,
-                                    pulse_ramp_shape='Rectangular - no ramping', **_ready(_slot()))
+                                    pulse_ramp_shape='Rectangular - no ramping', pulse_ramp_dur=0,
+                                    **_ready(_slot()))
         protocol2 = SimpleNamespace(buffer_num=0, pulse_rep_int=15, pulse_train_dur=999,
+                                    pulse_ramp_shape='Rectangular - no ramping', pulse_ramp_dur=0,
                                     **_ready(_slot()))
 
-        connected_instance.send_protocol([protocol1, protocol2], duration_ms=100)
+        connected_instance.send_protocol([protocol1, protocol2], total_alternating_duration_ms=100)
 
-        # n_pulse_train_rep = floor(duration_ms / (protocol1.pulse_rep_int +
-        #                                           protocol2.pulse_rep_int)) = floor(100/25) = 4
+        # n_pulse_train_rep = floor(total_alternating_duration_ms / (protocol1.pulse_rep_int +
+        #                                                            protocol2.pulse_rep_int))
+        #                    = floor(100/25) = 4
         connected_instance.gen.sendSequence.assert_called_once_with(0, [fake_pulse1, fake_pulse2])
         stored = connected_instance.sent_protocols[0]
         assert stored['n_pulse_train_rep'] == 4
@@ -884,14 +888,17 @@ class TestSendProtocol:
         # above.
         protocols = [
             SimpleNamespace(buffer_num=0, pulse_rep_int=10, pulse_train_dur=999,
-                            pulse_ramp_shape='Rectangular - no ramping', **_ready(_slot())),
-            SimpleNamespace(buffer_num=0, pulse_rep_int=10, pulse_train_dur=999,
+                            pulse_ramp_shape='Rectangular - no ramping', pulse_ramp_dur=0,
                             **_ready(_slot())),
             SimpleNamespace(buffer_num=0, pulse_rep_int=10, pulse_train_dur=999,
+                            pulse_ramp_shape='Rectangular - no ramping', pulse_ramp_dur=0,
+                            **_ready(_slot())),
+            SimpleNamespace(buffer_num=0, pulse_rep_int=10, pulse_train_dur=999,
+                            pulse_ramp_shape='Rectangular - no ramping', pulse_ramp_dur=0,
                             **_ready(_slot())),
         ]
 
-        connected_instance.send_protocol(protocols, duration_ms=90)
+        connected_instance.send_protocol(protocols, total_alternating_duration_ms=90)
 
         connected_instance.gen.sendSequence.assert_called_once_with(0, pulses)
         # n_pulse_train_rep = floor(90 / (10+10+10)) = 3
@@ -911,7 +918,64 @@ class TestSendProtocol:
                                     **_ready(_slot()))
 
         with pytest.raises(SystemExit):
-            connected_instance.send_protocol([protocol1, protocol2], duration_ms=100)
+            connected_instance.send_protocol([protocol1, protocol2],
+                                             total_alternating_duration_ms=100)
+
+    def test_exits_when_interleaved_protocols_have_different_ramping(
+            self, mocker, connected_instance, patch_config):
+        """Only protocol0's pulse_ramp_shape/pulse_ramp_dur are ever actually applied to the
+        generator once interleaving is under way (see this method's own docstring), but a caller
+        giving different ramp settings across the group almost certainly expected every
+        protocol's own ramping to take effect -- reject it explicitly, mirroring the buffer_num
+        mismatch check above."""
+        patch_config.set('Ramp', 'Option.rect', 'Rectangular - no ramping')
+        mocker.patch.object(connected_instance, 'validate_protocol', return_value=[])
+        protocol1 = SimpleNamespace(buffer_num=0, pulse_rep_int=10, pulse_train_dur=999,
+                                    pulse_ramp_shape='Rectangular - no ramping', pulse_ramp_dur=0,
+                                    **_ready(_slot()))
+        protocol2 = SimpleNamespace(buffer_num=0, pulse_rep_int=15, pulse_train_dur=999,
+                                    pulse_ramp_shape='Tukey', pulse_ramp_dur=5,
+                                    **_ready(_slot()))
+
+        with pytest.raises(SystemExit):
+            connected_instance.send_protocol([protocol1, protocol2],
+                                             total_alternating_duration_ms=100)
+
+    def test_exits_when_total_alternating_duration_ms_omitted_for_interleaved_protocols(
+            self, mocker, connected_instance, patch_config):
+        """Unlike a single protocol (which gets its own repetition count from its own
+        pulse_train_rep_dur/pulse_train_rep_int), the interleaved group as a whole has no
+        fallback for how long to keep alternating -- omitting it (leaving the default None) must
+        not silently compute 0 repetitions."""
+        patch_config.set('Ramp', 'Option.rect', 'Rectangular - no ramping')
+        mocker.patch.object(connected_instance, 'validate_protocol', return_value=[])
+        protocol1 = SimpleNamespace(buffer_num=0, pulse_rep_int=10, pulse_train_dur=999,
+                                    pulse_ramp_shape='Rectangular - no ramping', pulse_ramp_dur=0,
+                                    **_ready(_slot()))
+        protocol2 = SimpleNamespace(buffer_num=0, pulse_rep_int=15, pulse_train_dur=999,
+                                    pulse_ramp_shape='Rectangular - no ramping', pulse_ramp_dur=0,
+                                    **_ready(_slot()))
+
+        with pytest.raises(SystemExit):
+            connected_instance.send_protocol([protocol1, protocol2])
+
+    def test_exits_when_total_alternating_duration_ms_is_negative_for_interleaved_protocols(
+            self, mocker, connected_instance, patch_config):
+        """A negative value is just as meaningless as omitting it (leaving None) or passing 0 --
+        none of them describe a real span of time to keep alternating for -- so it must be
+        rejected the same way, not silently accepted because it happens to be truthy."""
+        patch_config.set('Ramp', 'Option.rect', 'Rectangular - no ramping')
+        mocker.patch.object(connected_instance, 'validate_protocol', return_value=[])
+        protocol1 = SimpleNamespace(buffer_num=0, pulse_rep_int=10, pulse_train_dur=999,
+                                    pulse_ramp_shape='Rectangular - no ramping', pulse_ramp_dur=0,
+                                    **_ready(_slot()))
+        protocol2 = SimpleNamespace(buffer_num=0, pulse_rep_int=15, pulse_train_dur=999,
+                                    pulse_ramp_shape='Rectangular - no ramping', pulse_ramp_dur=0,
+                                    **_ready(_slot()))
+
+        with pytest.raises(SystemExit):
+            connected_instance.send_protocol([protocol1, protocol2],
+                                             total_alternating_duration_ms=-100)
 
     def test_applies_ramping_when_ramp_shape_is_not_rectangular(self, mocker, connected_instance,
                                                                 patch_config):
@@ -945,6 +1009,19 @@ class TestSendProtocol:
 # ---------------------------------------------------------------------------
 
 class TestExecuteProtocol:
+
+    def test_exits_when_total_alternating_duration_ms_omitted_for_interleaved_protocols(
+            self, connected_instance):
+        """Unlike a single protocol (which gets its own repetition count from its own
+        pulse_train_rep_dur/pulse_train_rep_int), the interleaved group as a whole has no
+        fallback for how long to keep alternating -- omitting it (leaving the default None) must
+        not silently proceed."""
+        fake_protocol1 = SimpleNamespace(buffer_num=0)
+        fake_protocol2 = SimpleNamespace(buffer_num=0)
+
+        with pytest.raises(SystemExit):
+            connected_instance.execute_protocol([fake_protocol1, fake_protocol2],
+                                                debug_info=False)
 
     def test_starts_protocol_and_waits_when_already_sent(self, mocker, connected_instance):
         connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
@@ -990,7 +1067,8 @@ class TestExecuteProtocol:
                                          pulse_ramp_shape='Rectangular - no ramping')
         fake_protocol2 = SimpleNamespace(pulse_dur=0.01)
 
-        connected_instance.execute_protocol([fake_protocol1, fake_protocol2], debug_info=True)
+        connected_instance.execute_protocol([fake_protocol1, fake_protocol2],
+                                            total_alternating_duration_ms=100, debug_info=True)
 
         exec_flags = connected_instance.gen.prepareSequence.call_args.args[3]
         expected = (unifus.ExecFlag.DisableMonitoringChannelCombiner |
@@ -1030,25 +1108,37 @@ class TestExecuteProtocol:
                     unifus.ExecFlag.MeasureTimings)
         assert int(exec_flags) == int(expected)
 
-    def test_sends_protocol_first_when_not_yet_sent(self, mocker, connected_instance):
-        mock_send = mocker.patch.object(connected_instance, 'send_protocol')
+    @pytest.mark.parametrize('connected', [True, False])
+    def test_exits_when_never_sent_regardless_of_connection_state(self, mocker, tmp_path,
+                                                                  connected):
+        """A protocol that was never sent is a caller mistake either way -- is_protocol_sent()
+        is checked before is_connected() (see the source), so neither the 'already connected'
+        happy path nor the 'not connected' reconnect-and-resend path is ever reached; connection
+        state plays no role in this decision, hence testing both here rather than splitting
+        into two near-identical tests that would actually exercise the same line."""
+        instance = IGT(log_dir=str(tmp_path))
+        instance.connected = connected
+        mock_connect = mocker.patch.object(instance, 'connect')
+        mock_send = mocker.patch.object(instance, 'send_protocol')
 
-        def fake_send(*args, **kwargs):
-            connected_instance.sent_protocols[0] = {
-                'n_pulse_train_rep': 1, 'pulse_train_delay': 0.0,
-                'total_protocol_duration_ms': 10.0}
-        mock_send.side_effect = fake_send
+        fake_protocol = SimpleNamespace(
+            buffer_num=0, driving_sys=SimpleNamespace(connect_info='igt/config/gen_test.json'))
 
-        fake_protocol = SimpleNamespace(buffer_num=0)
+        with pytest.raises(SystemExit):
+            instance.execute_protocol([fake_protocol], debug_info=False)
 
-        connected_instance.execute_protocol([fake_protocol], debug_info=False)
-
-        mock_send.assert_called_once()
-        connected_instance.gen.startSequence.assert_called_once()
+        mock_connect.assert_not_called()
+        mock_send.assert_not_called()
 
     def test_reconnects_sends_and_executes_when_not_connected(self, mocker, tmp_path):
         """Mirrors TestSendProtocol's reconnect test -- execute_protocol
         has the identical 'not connected -> connect(), then retry' shape.
+
+        This reconnect-and-resend path is only reached once a protocol is already known to
+        have been sent (buffer 0 pre-populated in sent_protocols below) -- it recovers a
+        dropped connection after a real send, it doesn't fill in for a caller who never sent
+        anything at all (see test_exits_when_not_yet_sent for that case, which must not
+        reconnect or send).
 
         Regression test: the retry call used to not forward debug_info, so
         it always reconnected-and-retried with the True default. fake_protocol
@@ -1058,6 +1148,8 @@ class TestExecuteProtocol:
         identical regression test for how this bug was originally found)."""
         instance = IGT(log_dir=str(tmp_path))
         instance.connected = False
+        instance.sent_protocols[0] = {'n_pulse_train_rep': 1, 'pulse_train_delay': 0.0,
+                                      'total_protocol_duration_ms': 10.0}
 
         def fake_connect(connect_info):
             instance.connected = True
@@ -1146,6 +1238,37 @@ class TestWaitForTrigger:
 
         connected_instance.gen.prepareSequence.assert_called_once_with(0, 3, 0, mocker.ANY)
         connected_instance.gen.startSequence.assert_called_once()
+
+    def test_exits_when_interleaved_protocols_have_different_trigger_configuration(
+            self, patch_config, connected_instance):
+        """Only protocol0.trigger_option/n_triggers are ever actually read once interleaving is
+        under way (see this method's own docstring), but a caller giving different trigger
+        settings across the group almost certainly expected every protocol's own trigger
+        configuration to take effect -- reject it explicitly, mirroring send_protocol()'s
+        ramping/buffer_num mismatch checks."""
+        patch_config.set('Trigger', 'Option.pulse_train', 'TriggerOnePulseTrain')
+        patch_config.set('Trigger', 'Option.whole_protocol', 'TriggerWholeProtocol')
+        fake_protocol1 = SimpleNamespace(buffer_num=0, trigger_option='TriggerOnePulseTrain',
+                                         n_triggers=3)
+        fake_protocol2 = SimpleNamespace(buffer_num=0, trigger_option='TriggerWholeProtocol',
+                                         n_triggers=0)
+
+        with pytest.raises(SystemExit):
+            connected_instance.wait_for_trigger([fake_protocol1, fake_protocol2],
+                                                debug_info=False)
+
+    def test_exits_when_total_alternating_duration_ms_omitted_for_interleaved_protocols(
+            self, connected_instance):
+        """Unlike a single protocol (which gets its own repetition count from its own
+        pulse_train_rep_dur/pulse_train_rep_int), the interleaved group as a whole has no
+        fallback for how long to keep alternating -- omitting it (leaving the default None) must
+        not silently proceed."""
+        fake_protocol1 = SimpleNamespace(buffer_num=0)
+        fake_protocol2 = SimpleNamespace(buffer_num=0)
+
+        with pytest.raises(SystemExit):
+            connected_instance.wait_for_trigger([fake_protocol1, fake_protocol2],
+                                                debug_info=False)
 
     def test_debug_info_true_sets_measure_channels_flag_for_long_pulse(self, connected_instance,
                                                                        patch_config):
@@ -1239,24 +1362,28 @@ class TestWaitForTrigger:
         with pytest.raises(SystemExit):
             connected_instance.wait_for_trigger([fake_protocol], debug_info=False)
 
-    def test_sends_protocol_first_when_not_yet_sent(self, mocker, connected_instance):
-        mock_send = mocker.patch.object(connected_instance, 'send_protocol')
+    @pytest.mark.parametrize('connected', [True, False])
+    def test_exits_when_never_sent_regardless_of_connection_state(self, mocker, tmp_path,
+                                                                  connected):
+        """A protocol that was never sent is a caller mistake either way -- is_protocol_sent()
+        is checked before is_connected() (see the source), so neither the 'already connected'
+        happy path nor the 'not connected' reconnect-and-resend path is ever reached; connection
+        state plays no role in this decision, hence testing both here rather than splitting
+        into two near-identical tests that would actually exercise the same line."""
+        instance = IGT(log_dir=str(tmp_path))
+        instance.connected = connected
+        mock_connect = mocker.patch.object(instance, 'connect')
+        mock_send = mocker.patch.object(instance, 'send_protocol')
 
-        def fake_send(*args, **kwargs):
-            connected_instance.sent_protocols[0] = {
-                'n_pulse_train_rep': 1, 'pulse_train_delay': 0.0}
-        mock_send.side_effect = fake_send
-
-        fake_protocol = SimpleNamespace(buffer_num=0, trigger_option='None', n_triggers=0)
+        fake_protocol = SimpleNamespace(
+            buffer_num=0, driving_sys=SimpleNamespace(connect_info='igt/config/gen_test.json'),
+            trigger_option='None', n_triggers=0)
 
         with pytest.raises(SystemExit):
-            # trigger_option 'None' does not match the real config's
-            # Option.pulse_train/Option.whole_protocol -> the recursive wait_for_trigger call
-            # (made with real, unmocked send_protocol-state) exits; we only
-            # care that send_protocol was invoked first, i.e. before that.
-            connected_instance.wait_for_trigger([fake_protocol], debug_info=False)
+            instance.wait_for_trigger([fake_protocol], debug_info=False)
 
-        mock_send.assert_called_once()
+        mock_connect.assert_not_called()
+        mock_send.assert_not_called()
 
     def test_reconnects_sends_and_waits_when_not_connected(self, mocker, tmp_path, patch_config):
         """
@@ -1282,6 +1409,11 @@ class TestWaitForTrigger:
         patch_config.set('Trigger', 'Option.whole_protocol', 'TriggerWholeProtocol')
         instance = IGT(log_dir=str(tmp_path))
         instance.connected = False
+        # This reconnect-and-resend path is only reached once a protocol is already known to
+        # have been sent (pre-populated here) -- it recovers a dropped connection after a real
+        # send, it doesn't fill in for a caller who never sent anything at all (see
+        # test_exits_when_not_yet_sent for that case, which must not reconnect or send).
+        instance.sent_protocols[0] = {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0}
 
         def fake_connect(connect_info):
             instance.connected = True

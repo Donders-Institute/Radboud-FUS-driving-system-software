@@ -28,7 +28,19 @@ If you use this kit in your research or project, please refer to the 'How to Cit
 README.md file of https://github.com/Donders-Institute/Radboud-FUS-driving-system-software.
 """
 
-# IGT example
+# IGT example: two protocols interleaved as one alternating group -- transducer A fires its
+# pulse, then transducer B fires its pulse, then A again, and so on, for the whole duration
+# below. This is "pulse train interleaving": each round still counts as one pulse train per
+# transducer (a pulse plus its own off-time), just alternating instead of each transducer
+# repeating its own full pulse train back-to-back before handing off to the other.
+#
+# This is NOT the only way to alternate between two transducers -- if your experiment instead
+# fires transducer A's complete pulse train repetition, then reconfigures and fires transducer
+# B's complete pulse train repetition (with real time in between, e.g. to reposition/re-plan),
+# you don't need any of this: just call send_protocol()/execute_protocol() twice in a row, once
+# per transducer, exactly like standalone_igt.py does. See
+# standalone_igt_switch_active_transducer.py for that pattern.
+#
 # Note: you can click on each parameter to get more information
 
 ##############################################################################
@@ -38,7 +50,7 @@ README.md file of https://github.com/Donders-Institute/Radboud-FUS-driving-syste
 from fus_driving_systems.config.logging_config import initialize_logger
 
 log_dir = "C:\\Temp"
-filename = "standalone_igt"
+filename = "standalone_igt_alternating_single_pulse_train"
 logger = initialize_logger(log_dir, filename)
 
 # This creates a timestamped session folder inside log_dir for this FDS log, and also enables
@@ -62,7 +74,8 @@ logger = initialize_logger(log_dir, filename)
 # look up the driving system's connection info directly via DrivingSystem, rather than through
 # a TUSProtocol.
 
-from fus_driving_systems import driving_system
+from fus_driving_systems import driving_system, transducer
+from fus_driving_systems import tus_protocol
 from fus_driving_systems.igt import igt_ds
 
 # to check available driving systems: print(driving_system.get_ds_serials())
@@ -81,49 +94,103 @@ igt_driving_sys.connect(ds_info.connect_info, log_dir, filename)
 # print(igt_driving_sys.is_connected())
 
 ##############################################################################
-# first protocol
+# define both protocols
 ##############################################################################
 
-from sequences import tus_protocol_1_10_ch
+# When interleaving, each protocol contributes exactly one pulse per round of the alternating
+# group -- not a repeated pulse train of its own. pulse_dur/pulse_rep_int are what matter here
+# (pulse_rep_int decides how much of the shared round this protocol's own pulse occupies); every
+# other timing parameter (pulse_train_dur, pulse_train_rep_int, pulse_train_rep_dur) has no
+# effect in this mode and is left unset below, so it falls back to its own default rather than
+# being set to a value that's silently ignored.
 
-protocol_a = tus_protocol_1_10_ch.create_protocol(logger)
+# to check available options for this driving system (no need to add a slot first):
+# print(protocol.get_focus_options()) / print(protocol.get_power_options())
+FOCUS_OPTION = 'Focus wrt exit plane [mm]'
+POWER_OPTION = 'Max. pressure in free water [MPa]'
+
+# Both protocols below use the same two, physically connected transducers -- defined once here
+# and reused for both, so a change to which transducer is used doesn't need to be repeated (and
+# can't accidentally drift apart between the two protocols).
+# to check available transducers: print(transducer.get_tran_serials())
+# choose transducers from that list as input
+TRANSDUCER_1 = 'IS_PCD15287_01001'
+TRANSDUCER_2 = 'IS_PCD15287_01002'
+
+# Ramping and the trigger configuration are both whole-group settings for the generator, not
+# something each interleaved protocol configures independently -- send_protocol()/
+# wait_for_trigger() below only ever read them from the first protocol given (protocol_a), and
+# exit with a clear error if the interleaved protocols don't all declare the same values.
+# Defined once here and reused for both protocols so they can never accidentally drift apart.
+RAMP_SHAPE = 'Tukey'
+RAMP_DUR = 5  # [ms], with at least 70 us between ramping up and down
+TRIGGER_OPTION = 'TriggerWholeProtocol'
+
+protocol_a = tus_protocol.TUSProtocol('IGT-32-ch_comb_2x10-ch')
+slot_a1 = protocol_a.add_slot(
+    TRANSDUCER_1,
+    FOCUS_OPTION, 40,  # [mm], focal depth w.r.t. the exit plane and FWHM middle
+    POWER_OPTION, 0.5,  # [MPa], maximum pressure in free water. NOTE: DIFFERENT THAN SC
+    oper_freq=300,  # [kHz], operating frequency
+)
+slot_a2 = protocol_a.add_slot(
+    TRANSDUCER_2,
+    FOCUS_OPTION, 80,  # [mm], focal depth w.r.t. the exit plane and FWHM middle
+    POWER_OPTION, 0,  # [MPa], maximum pressure in free water. NOTE: DIFFERENT THAN SC
+    oper_freq=300,  # [kHz], operating frequency
+)
+protocol_a.configure_timing(
+    pulse_dur=45,  # [ms], pulse duration
+    pulse_ramp_shape=RAMP_SHAPE,
+    pulse_ramp_dur=RAMP_DUR,
+    pulse_rep_int=100,  # [ms], pulse repetition interval
+    trigger_option=TRIGGER_OPTION,
+)
+
+# Ramping and trigger_option must match protocol_a's exactly (send_protocol()/wait_for_trigger()
+# enforce this) -- reusing the same RAMP_SHAPE/RAMP_DUR/TRIGGER_OPTION constants above, rather
+# than repeating the values, makes that impossible to get wrong by accident.
+protocol_b = tus_protocol.TUSProtocol('IGT-32-ch_comb_2x10-ch')
+slot_b1 = protocol_b.add_slot(
+    TRANSDUCER_1,
+    FOCUS_OPTION, 40,  # [mm], focal depth w.r.t. the exit plane and FWHM middle
+    POWER_OPTION, 0,  # [MPa], maximum pressure in free water. NOTE: DIFFERENT THAN SC
+    oper_freq=300,  # [kHz], operating frequency
+)
+slot_b2 = protocol_b.add_slot(
+    TRANSDUCER_2,
+    FOCUS_OPTION, 80,  # [mm], focal depth w.r.t. the exit plane and FWHM middle
+    POWER_OPTION, 0.5,  # [MPa], maximum pressure in free water. NOTE: DIFFERENT THAN SC
+    oper_freq=300,  # [kHz], operating frequency
+)
+protocol_b.configure_timing(
+    pulse_dur=45,  # [ms], pulse duration
+    pulse_ramp_shape=RAMP_SHAPE,
+    pulse_ramp_dur=RAMP_DUR,
+    pulse_rep_int=100,  # [ms], pulse repetition interval
+    trigger_option=TRIGGER_OPTION,
+)
+
+# How long the alternating group as a whole keeps repeating [ms]. Required whenever more than
+# one protocol is given -- there's no per-protocol fallback for this (unlike a single protocol,
+# which derives its own repetition count from its own pulse_train_rep_dur/pulse_train_rep_int).
+total_alternating_duration_ms = 80000
 
 ##############################################################################
-# second protocol
+# send and execute the protocols
 ##############################################################################
 
-from sequences import tus_protocol_17_26_ch
-
-protocol_b = tus_protocol_17_26_ch.create_protocol(logger)
-
-total_duration_ms = 80000  # [ms]
-
-##############################################################################
-# send and execute the protocol
-##############################################################################
-
-# sending your first protocol, and executing it when appropriate, can be done when initializing
-# your experiment. When appropriate, execute your protocol by implementing 'execute_protocol()'
-# into your code or by using the external trigger.
-
-# when you want to change your protocol in the middle of your experimental code, create a new
-# protocol as above (the driving system is already connected, see above) and send the new
-# protocol: 'send_protocol()'. When appropriate, execute your protocol by implementing
+# sending the interleaved group, and executing it when appropriate, can be done when
+# initializing your experiment. When appropriate, execute it by implementing
 # 'execute_protocol()' into your code or by using the external trigger.
 
 try:
-    # Ramping (pulse_ramp_shape/pulse_ramp_dur) is a whole-group setting for the generator, not
-    # something each interleaved protocol configures independently -- send_protocol() reads it
-    # from only the first protocol given (protocol_a here), and silently ignores protocol_b's own
-    # ramp settings. Both protocol scripts happen to set the same values below, which is why this
-    # doesn't currently produce a visible discrepancy -- but if you ever give them different
-    # ramp settings, only protocol_a's will actually take effect.
-    igt_driving_sys.send_protocol([protocol_a, protocol_b], total_duration_ms)
+    igt_driving_sys.send_protocol([protocol_a, protocol_b], total_alternating_duration_ms)
 
-    #igt_driving_sys.execute_protocol([protocol_a, protocol_b], total_duration_ms)
+    #igt_driving_sys.execute_protocol([protocol_a, protocol_b], total_alternating_duration_ms)
 
     # or even better wait for trigger
-    igt_driving_sys.wait_for_trigger([protocol_a, protocol_b], total_duration_ms)
+    igt_driving_sys.wait_for_trigger([protocol_a, protocol_b], total_alternating_duration_ms)
 
     # wait_for_trigger() above only arms the protocol to fire on the external trigger and
     # returns immediately -- it does NOT wait for, or check, the actual execution result. The
@@ -157,7 +224,7 @@ try:
     # instead of wait_for_trigger_result(), make sure you have your own way of confirming the
     # protocol actually finished (e.g. also call wait_for_trigger_result() once you expect it
     # to have) before disconnecting.
-    igt_driving_sys.wait_for_trigger_result(timeout_s=total_duration_ms / 1000.0)
+    igt_driving_sys.wait_for_trigger_result(timeout_s=total_alternating_duration_ms / 1000.0)
 
 finally:
     # By the time we reach here, the protocol has actually finished executing either way:
