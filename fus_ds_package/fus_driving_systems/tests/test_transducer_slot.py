@@ -71,65 +71,66 @@ def test_calc_eq_factor_exits_when_focus_is_out_of_range():
         slot._calc_eq_factor(50)  # outside the curve's [0, 10] domain
 
 
-# --- _calc_volt --------------------------------------------------------
+# --- _convert_ampl_to_volt --------------------------------------------------------
 
-def test_calc_volt_finds_x_for_each_amplitude():
+def test_convert_ampl_to_volt_finds_x_for_each_amplitude():
     slot = _bare_slot()
     slot._conv_param = {'volt_curve_pp': _identity_pp(-10.0, 200.0)}
 
-    volt = slot._calc_volt([20, 80])
+    volt = slot._convert_ampl_to_volt([20, 80])
 
     assert volt == pytest.approx([20.0, 80.0])
 
 
-def test_calc_volt_records_none_when_amplitude_out_of_range():
-    """BUGFIX: when no x can be found for a given amplitude, _calc_volt does not raise -- it
-    records None for that entry, not 0 (0 would look like a genuine, calculated voltage to any
-    later read of self._volt, when really no value could be found at all)."""
+def test_convert_ampl_to_volt_records_none_when_amplitude_out_of_range():
+    """BUGFIX: when no x can be found for a given amplitude, _convert_ampl_to_volt does not
+    raise -- it records None for that entry, not 0 (0 would look like a genuine, calculated
+    voltage to any later read of self._volt, when really no value could be found at all)."""
     slot = _bare_slot()
     slot._conv_param = {'volt_curve_pp': _identity_pp(-10.0, 200.0)}
 
-    volt = slot._calc_volt([999])  # above the pp's range
+    volt = slot._convert_ampl_to_volt([999])  # above the pp's range
 
     assert volt == [None]
 
 
-# --- _calc_ampl ----------------------------------------------------------
+# --- _convert_press_to_ampl ----------------------------------------------------------
 # calc_ampl = power_curve_pp(press[Pa] * eq_factor). Three outcomes when
 # in range: normal (0-100 inclusive), clamped to 100 (exits), clamped to 0
 # (does not exit). x_value outside the pp's domain entirely exits too.
-# _calc_ampl no longer reads/writes self._X -- it takes press/eq_factor as
+# _convert_press_to_ampl no longer reads/writes self._X -- it takes press/eq_factor as
 # explicit parameters and returns a dict of results, so these tests check
 # the returned dict directly rather than instance state.
 
-def test_calc_ampl_rounds_normal_in_range_value():
+def test_convert_press_to_ampl_rounds_normal_in_range_value():
     slot = _bare_slot()
     slot._conv_param = {'power_curve_pp': _identity_pp(-10.0, 1000.0)}
 
-    result = slot._calc_ampl(50e-6, 1.0)  # MPa -> press_pa = 50, x_value = 50 * eq_factor = 50
+    # MPa -> press_pa = 50, x_value = 50 * eq_factor = 50
+    result = slot._convert_press_to_ampl(50e-6, 1.0)
 
     assert result['ampl'] == [50.0]
     assert result['input_press_mpa'] == 50e-6
     assert result['eq_press_mpa'] == pytest.approx(50e-6)
 
 
-def test_calc_ampl_exits_when_x_value_above_pp_range():
+def test_convert_press_to_ampl_exits_when_x_value_above_pp_range():
     slot = _bare_slot()
     slot._conv_param = {'power_curve_pp': _identity_pp(-10.0, 1000.0)}
 
     with pytest.raises(SystemExit):
-        slot._calc_ampl(2000e-6, 1.0)  # x_value = 2000, above the pp's max of 1000
+        slot._convert_press_to_ampl(2000e-6, 1.0)  # x_value = 2000, above the pp's max of 1000
 
 
-def test_calc_ampl_exits_when_x_value_below_pp_range():
+def test_convert_press_to_ampl_exits_when_x_value_below_pp_range():
     slot = _bare_slot()
     slot._conv_param = {'power_curve_pp': _identity_pp(-10.0, 1000.0)}
 
     with pytest.raises(SystemExit):
-        slot._calc_ampl(-20e-6, 1.0)  # x_value = -20, below the pp's min of -10
+        slot._convert_press_to_ampl(-20e-6, 1.0)  # x_value = -20, below the pp's min of -10
 
 
-def test_calc_ampl_clamps_to_100_and_exits_when_calculated_above_100():
+def test_convert_press_to_ampl_clamps_to_100_and_exits_when_calculated_above_100():
     """calc_ampl > 100 (but still within the pp's domain) is clamped to 100% just long enough
     to compute the press/volt shown in the error message, then the method exits without
     returning anything -- unlike the pre-Phase-3 self-mutating version, there is no self._ampl
@@ -142,10 +143,10 @@ def test_calc_ampl_clamps_to_100_and_exits_when_calculated_above_100():
     }
 
     with pytest.raises(SystemExit):
-        slot._calc_ampl(150e-6, 1.0)  # x_value = 150 -> calc_ampl = 150 > 100
+        slot._convert_press_to_ampl(150e-6, 1.0)  # x_value = 150 -> calc_ampl = 150 > 100
 
 
-def test_calc_ampl_clamps_to_0_without_exiting_when_calculated_below_0():
+def test_convert_press_to_ampl_clamps_to_0_without_exiting_when_calculated_below_0():
     """calc_ampl < 0 (but still within the pp's domain) is clamped to 0%, and 'press' is kept
     exactly as given rather than re-derived through the curve's own inverse -- unlike the >100
     case, this is not treated as an error. Correcting volt for this same case is left to the
@@ -156,13 +157,14 @@ def test_calc_ampl_clamps_to_0_without_exiting_when_calculated_below_0():
         'power_curve_pp': PPoly(c=[[1.0], [-50.0]], x=[0.0, 100.0], extrapolate=False),
     }
 
-    result = slot._calc_ampl(20e-6, 1.0)  # x_value = 20 -> calc_ampl = 20 - 50 = -30 < 0
+    # x_value = 20 -> calc_ampl = 20 - 50 = -30 < 0
+    result = slot._convert_press_to_ampl(20e-6, 1.0)
 
     assert result['ampl'] == [0]
     assert result['press'] == 20e-6  # kept exactly as given, not re-derived
 
 
-def test_calc_ampl_keeps_press_at_exactly_zero_when_curve_dips_negative_at_zero():
+def test_convert_press_to_ampl_keeps_press_at_exactly_zero_when_curve_dips_negative_at_zero():
     """The specific case that originally motivated the fix above: a press of exactly 0 must
     come back as press=0 too, not some small non-zero artifact from re-deriving it through the
     curve's own imprecision near the origin -- press is already guaranteed non-negative before
@@ -175,45 +177,46 @@ def test_calc_ampl_keeps_press_at_exactly_zero_when_curve_dips_negative_at_zero(
         'power_curve_pp': PPoly(c=[[1.0], [-5.0]], x=[0.0, 100.0], extrapolate=False),
     }
 
-    result = slot._calc_ampl(0, 1.0)  # x_value = 0 -> calc_ampl = 0 - 5 = -5 < 0
+    result = slot._convert_press_to_ampl(0, 1.0)  # x_value = 0 -> calc_ampl = 0 - 5 = -5 < 0
 
     assert result['ampl'] == [0]
     assert result['press'] == 0
 
 
-# --- _calc_ampl_using_volt -------------------------------------------------
-# Mirrors _calc_ampl exactly, keyed off volt instead of press: a voltage outside
+# --- _convert_volt_to_ampl -------------------------------------------------
+# Mirrors _convert_press_to_ampl exactly, keyed off volt instead of press: a voltage outside
 # volt_curve_pp's own domain always exits (above and below alike), while an in-range voltage
 # whose curve-fit result spills slightly past 0/100 is clamped (100 -> exit, 0 -> proceed).
 
-def test_calc_ampl_using_volt_rounds_normal_in_range_value():
+def test_convert_volt_to_ampl_rounds_normal_in_range_value():
     slot = _bare_slot()
     slot._conv_param = {'volt_curve_pp': _identity_pp(-10.0, 200.0)}
 
-    ampl = slot._calc_ampl_using_volt([50], 1.0)
+    ampl = slot._convert_volt_to_ampl([50], 1.0)
 
     assert ampl == [50.0]
 
 
-def test_calc_ampl_using_volt_exits_when_volt_is_below_pp_range():
+def test_convert_volt_to_ampl_exits_when_volt_is_below_pp_range():
     slot = _bare_slot()
     slot._conv_param = {'volt_curve_pp': _identity_pp(-10.0, 200.0)}
 
     with pytest.raises(SystemExit):
-        slot._calc_ampl_using_volt([-20], 1.0)  # below the pp's min of -10
+        slot._convert_volt_to_ampl([-20], 1.0)  # below the pp's min of -10
 
 
-def test_calc_ampl_using_volt_exits_when_volt_is_above_pp_range():
+def test_convert_volt_to_ampl_exits_when_volt_is_above_pp_range():
     slot = _bare_slot()
     slot._conv_param = {'volt_curve_pp': _identity_pp(-10.0, 200.0)}
 
     with pytest.raises(SystemExit):
-        slot._calc_ampl_using_volt([300], 1.0)  # above the pp's max of 200
+        slot._convert_volt_to_ampl([300], 1.0)  # above the pp's max of 200
 
 
-def test_calc_ampl_using_volt_clamps_to_100_and_exits_when_calculated_above_100():
-    """Mirrors test_calc_ampl_clamps_to_100_and_exits_when_calculated_above_100 -- an in-range
-    voltage whose curve-fit result exceeds 100%, not a voltage outside the curve's own domain
+def test_convert_volt_to_ampl_clamps_to_100_and_exits_when_calculated_above_100():
+    """Mirrors test_convert_press_to_ampl_clamps_to_100_and_exits_when_calculated_above_100 --
+    an in-range voltage whose curve-fit result exceeds 100%, not a voltage outside the curve's
+    own domain
     (that's the above_range case above, which now exits before ever reaching this check).
     Nothing to clear here either, since this is a pure function; the caller (volt's setter)
     resets its own self._ampl to None before calling, for the same reason."""
@@ -225,64 +228,65 @@ def test_calc_ampl_using_volt_clamps_to_100_and_exits_when_calculated_above_100(
     }
 
     with pytest.raises(SystemExit):
-        slot._calc_ampl_using_volt([60], 1.0)  # in range -> calc_ampl = 60 + 50 = 110 > 100
+        slot._convert_volt_to_ampl([60], 1.0)  # in range -> calc_ampl = 60 + 50 = 110 > 100
 
 
-def test_calc_ampl_using_volt_clamps_to_0_without_exiting_when_calculated_below_0():
-    """Mirrors test_calc_ampl_clamps_to_0_without_exiting_when_calculated_below_0 -- an in-range
-    voltage whose curve-fit result dips slightly below 0%, not a voltage outside the curve's own
-    domain (that's the below_range case above, which now exits before ever reaching this check)."""
+def test_convert_volt_to_ampl_clamps_to_0_without_exiting_when_calculated_below_0():
+    """Mirrors test_convert_press_to_ampl_clamps_to_0_without_exiting_when_calculated_below_0 --
+    an in-range voltage whose curve-fit result dips slightly below 0%, not a voltage outside the
+    curve's own domain (that's the below_range case above, which now exits before ever reaching
+    this check)."""
     slot = _bare_slot()
     slot._conv_param = {
         # pp(x) = x - 50, so an in-range x can still yield a negative y
         'volt_curve_pp': PPoly(c=[[1.0], [-50.0]], x=[0.0, 100.0], extrapolate=False),
     }
 
-    ampl = slot._calc_ampl_using_volt([20], 1.0)  # in range -> calc_ampl = 20 - 50 = -30 < 0
+    ampl = slot._convert_volt_to_ampl([20], 1.0)  # in range -> calc_ampl = 20 - 50 = -30 < 0
 
     assert ampl == [0.0]
 
 
-# --- _calc_press -----------------------------------------------------------
-# Inverse of _calc_ampl: finds the pressure that reproduces the given
+# --- _convert_ampl_to_press -----------------------------------------------------------
+# Inverse of _convert_press_to_ampl: finds the pressure that reproduces the given
 # amplitude, then enforces the configured max free-water pressure.
 
-def test_calc_press_computes_pressure_within_limit(patch_config):
+def test_convert_ampl_to_press_computes_pressure_within_limit(patch_config):
     patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '10')
     slot = _bare_slot()
     slot._conv_param = {'power_curve_pp': _identity_pp(-10.0, 1000.0)}
 
-    press = slot._calc_press([50], 1.0)
+    press = slot._convert_ampl_to_press([50], 1.0)
 
     assert press == pytest.approx(5e-5)
 
 
-def test_calc_press_exits_when_result_exceeds_configured_max(patch_config):
+def test_convert_ampl_to_press_exits_when_result_exceeds_configured_max(patch_config):
     patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '1')
     slot = _bare_slot()
     slot._conv_param = {'power_curve_pp': _identity_pp(-10.0, 1000.0)}
 
     with pytest.raises(SystemExit):
-        slot._calc_press([50], 1e-5)  # inflates press_mpa well above the 1 MPa limit
+        slot._convert_ampl_to_press([50], 1e-5)  # inflates press_mpa well above the 1 MPa limit
 
 
-def test_calc_press_returns_none_when_amplitude_out_of_range():
+def test_convert_ampl_to_press_returns_none_when_amplitude_out_of_range():
     """Characterizes the fallback: when no x can be found for the target
-    amplitude, _calc_press does not raise -- it returns None."""
+    amplitude, _convert_ampl_to_press does not raise -- it returns None."""
     slot = _bare_slot()
     slot._conv_param = {'power_curve_pp': _identity_pp(-10.0, 1000.0)}
 
-    press = slot._calc_press([9999], 1.0)  # above the pp's monotonic range
+    press = slot._convert_ampl_to_press([9999], 1.0)  # above the pp's monotonic range
     assert press is None
 
 
-def test_calc_press_exits_when_given_more_than_one_amplitude_value():
+def test_convert_ampl_to_press_exits_when_given_more_than_one_amplitude_value():
     """A multi-channel amplitude array has no one pressure that represents it -- rejected
     outright rather than silently deriving a value from just the first entry."""
     slot = _bare_slot()
 
     with pytest.raises(SystemExit, match='2 entries'):
-        slot._calc_press([50, 60], 1.0)
+        slot._convert_ampl_to_press([50, 60], 1.0)
 
 
 # --- _non_engineering_options -------------------------------------------------
@@ -381,6 +385,37 @@ def test_global_power_setter_sets_value_when_option_available(patch_config):
     assert slot._volt is None
 
 
+def test_global_power_setter_clears_stale_press_diagnostics_from_a_previous_power_option(
+        patch_config):
+    """Regression test: _input_press_mpa/_eq_press_mpa/_calculated_ampl are only ever populated
+    by press's own setter (as a side effect of _convert_press_to_ampl()) -- _reset_power_fields()
+    used to leave them untouched, so switching to a different power option afterward left them
+    describing the previous, no-longer-active press value instead of being cleared like every
+    other power field."""
+    patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '10')
+    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
+    patch_config.set('Power', 'Option.glob_pow', 'Global power [mW]')
+    slot = _bare_slot()
+    slot.driving_sys = SimpleNamespace(
+        power_options=['Max. pressure in free water [MPa]', 'Global power [mW]'],
+        native_power_params=['Amplitude [%]'])
+    slot._ds_tran_combo = 'combo1'
+    slot._conv_param = {
+        'power_curve_pp': _identity_pp(-10.0, 1000.0),
+        'volt_curve_pp': _identity_pp(-10.0, 200.0),
+    }
+    slot._eq_factor = 1.0
+
+    slot._set_press(50e-6)
+    assert slot.input_press_mpa is not None  # sanity check: the setter did populate it
+
+    slot._set_global_power(5)
+
+    assert slot.input_press_mpa is None
+    assert slot.eq_press_mpa is None
+    assert slot.calculated_ampl is None
+
+
 def test_global_power_setter_exits_when_option_unavailable(patch_config):
     patch_config.set('Power', 'Option.glob_pow', 'Global power [mW]')
     slot = _bare_slot()
@@ -460,8 +495,9 @@ def test_press_setter_with_known_combo_triggers_conversion(patch_config):
 
     slot._set_press(50e-6)  # MPa -> press_pa = 50, x_value = 50 * eq_factor = 50
 
-    # press setter stores the raw input value directly -- _calc_ampl/_calc_volt
-    # are only triggered for logging purposes here, not to overwrite _press.
+    # press setter stores the raw input value directly -- _convert_press_to_ampl/
+    # _convert_ampl_to_volt are only triggered for logging purposes here, not to overwrite
+    # _press.
     assert slot._press == 50e-6
     assert slot._ampl == [50.0]
     assert slot._volt == pytest.approx([50.0])
@@ -517,11 +553,12 @@ def test_press_setter_reports_missing_calibration_before_value_specific_errors(p
 
 
 def test_press_setter_exits_and_clears_ampl_when_calculated_amplitude_exceeds_100(patch_config):
-    """_calc_ampl() itself no longer has any self._ampl to clear on this exit (it's a pure
-    function now) -- the setter resets self._ampl to None before calling it, so this end-to-end
+    """_convert_press_to_ampl() itself no longer has any self._ampl to clear on this exit (it's
+    a pure function now) -- the setter resets self._ampl to None before calling it, so this
+    end-to-end
     guarantee (a rejected request never leaves a stale, valid-looking amplitude behind) survives
     the Phase 3 refactor even though the low-level unit test for it moved to a plain return-value
-    check (see test_calc_ampl_clamps_to_100_and_exits_when_calculated_above_100)."""
+    check (see test_convert_press_to_ampl_clamps_to_100_and_exits_when_calculated_above_100)."""
     patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '10')
     patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
     slot = _bare_slot()
@@ -543,7 +580,7 @@ def test_press_setter_exits_and_clears_ampl_when_calculated_amplitude_exceeds_10
 
 # --- volt ----------------------------------------------------------------
 # Same shape as press, plus: requires engineering_mode, accepts scalar or
-# list, and only calls _calc_press() (in addition to _calc_ampl_using_volt())
+# list, and only calls _convert_ampl_to_press() (in addition to _convert_volt_to_ampl())
 # when exactly one value was given.
 
 def test_volt_setter_raises_when_engineering_mode_disabled(patch_config):
@@ -602,7 +639,7 @@ def test_volt_setter_with_known_combo_triggers_conversion(patch_config):
     }
     slot._eq_factor = 1.0
 
-    slot._set_volt(50)  # single value -> _calc_ampl_using_volt() then _calc_press()
+    slot._set_volt(50)  # single value -> _convert_volt_to_ampl() then _convert_ampl_to_press()
 
     assert slot._volt == [50]
     assert slot._ampl == [50.0]
@@ -610,10 +647,11 @@ def test_volt_setter_with_known_combo_triggers_conversion(patch_config):
 
 
 def test_volt_setter_logging_only_press_failure_does_not_raise(patch_config):
-    """_calc_press() is called here purely to log a derived pressure value -- the real value
-    being sent to hardware (voltage/amplitude) was already set independently above. If the
-    power curve's domain doesn't cover the resulting amplitude, _calc_press() returns None,
-    which must not crash the debug log line right after (see format_or_unavailable)."""
+    """_convert_ampl_to_press() is called here purely to log a derived pressure value -- the
+    real value being sent to hardware (voltage/amplitude) was already set independently above.
+    If the power curve's domain doesn't cover the resulting amplitude,
+    _convert_ampl_to_press() returns None, which must not crash the debug log line right after
+    (see format_or_unavailable)."""
     patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
     slot = _bare_slot()
     slot._engineering_mode = True
@@ -623,7 +661,7 @@ def test_volt_setter_logging_only_press_failure_does_not_raise(patch_config):
     slot._conv_param = {
         'volt_curve_pp': _identity_pp(-10.0, 200.0),
         # power_curve_pp's domain doesn't cover the resulting amplitude (50) --
-        # find_x_for_y_in_pp() inside _calc_press() won't find a match.
+        # find_x_for_y_in_pp() inside _convert_ampl_to_press() won't find a match.
         'power_curve_pp': _identity_pp(80.0, 1000.0),
     }
     slot._eq_factor = 1.0
@@ -638,8 +676,9 @@ def test_volt_setter_logging_only_press_failure_does_not_raise(patch_config):
 def test_volt_setter_exits_when_derived_press_exceeds_configured_max(patch_config):
     """CONFIRMED INTENDED (not a bug): amplitude is what's actually sent to hardware here
     (voltage is converted to it above), but exceeding the configured safe pressure limit is a
-    deliberate safety checkpoint for the engineer, so _calc_press()'s max-pressure-exceeded
-    sys.exit() is intentionally left free to propagate. The whole voltage request is rejected
+    deliberate safety checkpoint for the engineer, so
+    _convert_ampl_to_press()'s max-pressure-exceeded sys.exit() is intentionally left free to
+    propagate. The whole voltage request is rejected
     in that case, so the just-assigned _volt (and its derived _ampl) are also cleared back to
     None -- otherwise they'd still look like a valid, current result even though the request as
     a whole was refused."""
@@ -668,9 +707,9 @@ def test_volt_setter_exits_when_derived_press_exceeds_configured_max(patch_confi
 
 
 def test_volt_setter_with_multiple_values_skips_press_calculation(patch_config):
-    """When more than one voltage is given, _calc_press() is deliberately not called (pressure
-    cannot be derived from a per-element voltage array) -- self._press stays at the None every
-    power setter resets it to upfront, rather than being computed."""
+    """When more than one voltage is given, _convert_ampl_to_press() is deliberately not called
+    (pressure cannot be derived from a per-element voltage array) -- self._press stays at the
+    None every power setter resets it to upfront, rather than being computed."""
     patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
     slot = _bare_slot()
     slot._engineering_mode = True
@@ -726,7 +765,7 @@ def test_volt_setter_exits_when_combo_unknown_but_required():
 
 def test_volt_setter_exits_and_clears_ampl_when_calculated_amplitude_exceeds_100(patch_config):
     """Mirrors test_press_setter_exits_and_clears_ampl_when_calculated_amplitude_exceeds_100 --
-    _calc_ampl_using_volt()'s own internal >100% exit no longer has a self._ampl to clear
+    _convert_volt_to_ampl()'s own internal >100% exit no longer has a self._ampl to clear
     either; volt's setter resets it to None before calling, for the same reason."""
     patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
     slot = _bare_slot()
@@ -810,7 +849,7 @@ def test_ampl_setter_with_known_combo_triggers_conversion(patch_config):
     }
     slot._eq_factor = 1.0
 
-    slot._set_ampl(50)  # single value -> _calc_volt() then _calc_press()
+    slot._set_ampl(50)  # single value -> _convert_ampl_to_volt() then _convert_ampl_to_press()
 
     assert slot._ampl == [50]
     assert slot._volt == pytest.approx([50.0])
@@ -820,7 +859,7 @@ def test_ampl_setter_with_known_combo_triggers_conversion(patch_config):
 def test_ampl_setter_logging_only_press_failure_does_not_raise(patch_config):
     """Same shape as test_volt_setter_logging_only_press_failure_does_not_raise, reached via
     ampl's setter instead -- the power curve's domain doesn't cover the set amplitude, so
-    _calc_press() returns None, which must not crash the debug log line right after."""
+    _convert_ampl_to_press() returns None, which must not crash the debug log line right after."""
     patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
     slot = _bare_slot()
     slot._engineering_mode = True
@@ -844,7 +883,7 @@ def test_ampl_setter_exits_when_derived_press_exceeds_configured_max(patch_confi
     """CONFIRMED INTENDED (not a bug): even though amplitude is what's actually sent to
     hardware here (the derived pressure is otherwise only for the log line), exceeding the
     configured safe pressure limit is a deliberate safety checkpoint for the engineer, not
-    merely a logging concern -- _calc_press()'s max-pressure-exceeded sys.exit() is
+    merely a logging concern -- _convert_ampl_to_press()'s max-pressure-exceeded sys.exit() is
     intentionally left free to propagate through this setter rather than being caught.
     The whole amplitude request is rejected in that case, so the just-assigned _ampl (and its
     derived _volt) are also cleared back to None -- otherwise they'd still look like a valid,
@@ -914,11 +953,11 @@ def test_ampl_and_volt_setters_both_work_without_calibration_when_both_are_nativ
 
     slot._set_ampl(50)
     assert slot._ampl == [50]
-    assert slot._volt is None  # _calc_volt() skipped -- combo not active
+    assert slot._volt is None  # _convert_ampl_to_volt() skipped -- combo not active
 
     slot._set_volt(60)
     assert slot._volt == [60]
-    assert slot._ampl is None  # _calc_ampl_using_volt() skipped -- combo not active
+    assert slot._ampl is None  # _convert_volt_to_ampl() skipped -- combo not active
 
 
 # --- focus_wrt_exit_plane ----------------------------------------------------
@@ -1070,8 +1109,9 @@ def test_focus_wrt_exit_plane_setter_updates_eq_factor_but_never_touches_ampl_or
         'focus_curve_pp': _identity_pp(0.0, 100.0),
         'eq_curve_pp': _identity_pp(0.0, 100.0),
     }
-    # Sentinels (not None -- that could also be a genuine _calc_* error-path result): must
-    # survive untouched, proving _calc_ampl()/_calc_volt() are never even attempted here.
+    # Sentinels (not None -- that could also be a genuine _convert_* error-path result): must
+    # survive untouched, proving _convert_press_to_ampl()/_convert_ampl_to_volt() are never
+    # even attempted here.
     slot._ampl = 'untouched'
     slot._volt = 'untouched'
 
@@ -1309,8 +1349,9 @@ def test_focus_wrt_mid_bowl_setter_updates_eq_factor_but_never_touches_ampl_or_v
         'focus_curve_pp': _identity_pp(0.0, 100.0),
         'eq_curve_pp': _identity_pp(0.0, 100.0),
     }
-    # Sentinels (not None -- that could also be a genuine _calc_* error-path result): must
-    # survive untouched, proving _calc_ampl()/_calc_volt() are never even attempted here.
+    # Sentinels (not None -- that could also be a genuine _convert_* error-path result): must
+    # survive untouched, proving _convert_press_to_ampl()/_convert_ampl_to_volt() are never
+    # even attempted here.
     slot._ampl = 'untouched'
     slot._volt = 'untouched'
 

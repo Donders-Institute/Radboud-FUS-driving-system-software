@@ -449,12 +449,21 @@ class TransducerSlot:
         Sets every parameter that determines the intensity to None -- 0 would look like a
         genuine, computed value for a power option that isn't even active right now. Shared by
         all four power setters so a future addition to this set only needs updating here.
+
+        Also resets _input_press_mpa/_eq_press_mpa/_calculated_ampl -- the logging-only fields
+        _convert_press_to_ampl() populates as a side effect of press's setter specifically. Only
+        that one setter ever assigns them, so without this reset they'd survive untouched across
+        a later switch to a different power option, still describing the previous press value
+        rather than the driving system's actual, currently active choice.
         """
 
         self._global_power = None
         self._press = None
         self._volt = None
         self._ampl = None
+        self._input_press_mpa = None
+        self._eq_press_mpa = None
+        self._calculated_ampl = None
 
     def _set_global_power(self, global_power):
         """
@@ -550,16 +559,17 @@ class TransducerSlot:
             self._chosen_power = power_option
 
             if self._combo_is_active():
-                # self._ampl is already None from the top of this setter -- if _calc_ampl()
-                # raises below, it stays that way rather than some stale value from before.
-                result = self._calc_ampl(self._press, self._eq_factor)
+                # self._ampl is already None from the top of this setter -- if
+                # _convert_press_to_ampl() raises below, it stays that way rather than some
+                # stale value from before.
+                result = self._convert_press_to_ampl(self._press, self._eq_factor)
                 self._ampl = result['ampl']
                 self._press = result['press']
                 self._input_press_mpa = result['input_press_mpa']
                 self._eq_press_mpa = result['eq_press_mpa']
                 self._calculated_ampl = result['calculated_ampl']
 
-                self._volt = self._calc_volt(self._ampl)
+                self._volt = self._convert_ampl_to_volt(self._ampl)
 
                 get_logger().debug('New maximum pressure in free water value of ' +
                                    f'{self._press:.2f} [MPa] results in a voltage of ' +
@@ -639,9 +649,9 @@ class TransducerSlot:
 
             if self._combo_is_active():
                 # self._ampl is already None from the top of this setter -- if
-                # _calc_ampl_using_volt() raises below, it stays that way rather than some stale
+                # _convert_volt_to_ampl() raises below, it stays that way rather than some stale
                 # value from before.
-                self._ampl = self._calc_ampl_using_volt(self._volt, self._eq_factor)
+                self._ampl = self._convert_volt_to_ampl(self._volt, self._eq_factor)
 
                 # self._ampl/self._volt are always lists (even for a single value) -- format
                 # them as such rather than special-casing the single-entry case.
@@ -649,15 +659,15 @@ class TransducerSlot:
                 round_volt = [f'{x:.2f}' for x in self._volt]
 
                 if n_entries == 1:
-                    # _calc_ampl_using_volt() above always converts toward amplitude
+                    # _convert_volt_to_ampl() above always converts toward amplitude
                     # specifically, not necessarily this driving system's native power
                     # parameter in general, so this pressure is only derived for the log
                     # line below -- EXCEPT its
-                    # max-pressure-exceeded check (inside _calc_press) is a deliberate
+                    # max-pressure-exceeded check (inside _convert_ampl_to_press) is a deliberate
                     # exception to that: exceeding the configured safe limit is a safety
                     # decision for the engineer, not merely a logging concern, so it's
                     # intentionally left free to sys.exit() here same as anywhere else.
-                    self._press = self._calc_press_for_logging(
+                    self._press = self._convert_ampl_to_press_for_logging(
                         self._ampl, self._eq_factor, '_volt', '_ampl')
 
                     get_logger().debug(
@@ -749,12 +759,12 @@ class TransducerSlot:
 
             if self._combo_is_active():
                 # Convert amplitude to voltage for logging
-                self._volt = self._calc_volt(self._ampl)
+                self._volt = self._convert_ampl_to_volt(self._ampl)
 
                 # self._ampl/self._volt are always lists (even for a single value) -- format
                 # them as such rather than special-casing the single-entry case.
                 round_ampl = [f'{x:.2f}' for x in self._ampl]
-                # self._calc_volt() above can leave a None entry (calibration doesn't
+                # self._convert_ampl_to_volt() above can leave a None entry (calibration doesn't
                 # cover this amplitude) -- this call is logging-only regardless (nothing
                 # downstream currently sends self._volt to hardware), so a missing voltage
                 # here only degrades the log message, never raises.
@@ -762,12 +772,12 @@ class TransducerSlot:
 
                 if n_entries == 1:
                     # Convert amplitude to pressure for logging -- EXCEPT
-                    # _calc_press()'s own max-pressure-exceeded check is a deliberate
+                    # _convert_ampl_to_press()'s own max-pressure-exceeded check is a deliberate
                     # exception to "logging-only": exceeding the configured safe limit
                     # is a safety decision for the engineer, not merely a logging
                     # concern, so it's intentionally left free to sys.exit() here same
                     # as anywhere else.
-                    self._press = self._calc_press_for_logging(
+                    self._press = self._convert_ampl_to_press_for_logging(
                         self._ampl, self._eq_factor, '_ampl', '_volt')
 
                     get_logger().debug(
@@ -1355,9 +1365,9 @@ class TransducerSlot:
 
         return eq_factor
 
-    def _calc_volt(self, ampl):
+    def _convert_ampl_to_volt(self, ampl):
         """
-        Calculate amplitude [%] vs. voltage [V] equation for the given amplitude values.
+        Convert amplitude [%] to voltage [V] for the given amplitude values.
 
         Parameters:
             ampl (list(float)): Amplitude [%] entries to convert.
@@ -1388,9 +1398,9 @@ class TransducerSlot:
 
         return volt
 
-    def _calc_ampl(self, press, eq_factor):
+    def _convert_press_to_ampl(self, press, eq_factor):
         """
-        Calculate pressure [Pa] vs. amplitude [%] equation for the given pressure.
+        Convert maximum pressure in free water to amplitude [%] for the given pressure value.
 
         Parameters:
             press (float): Maximum pressure in free water [MPa].
@@ -1436,8 +1446,8 @@ class TransducerSlot:
             # Provisional values, computed purely to describe the rejected request in the
             # message below -- this request is being rejected outright, so unlike the <0 case,
             # nothing here is kept.
-            press_for_msg = self._calc_press(clamped_ampl, eq_factor)
-            volt_for_msg = self._calc_volt(clamped_ampl)
+            press_for_msg = self._convert_ampl_to_press(clamped_ampl, eq_factor)
+            volt_for_msg = self._convert_ampl_to_volt(clamped_ampl)
 
             message = (f'Calculated amplitude of {calc_ampl:.2f} exceeds 100%. A pressure ' +
                        f'of {format_or_unavailable(press_for_msg)} [MPa] and/or a voltage ' +
@@ -1457,10 +1467,10 @@ class TransducerSlot:
             # already a legitimate request, just close enough to this curve's own effective
             # floor that its fit dips slightly negative there. Keep press exactly as given
             # rather than re-deriving it through an independent inverse lookup
-            # (_calc_press -> find_x_for_y_in_pp), which is subject to the exact same curve-fit
-            # imprecision approached from the other direction -- e.g. a genuine press=0 request
-            # would otherwise come back as some small non-zero "corrected" value purely from
-            # that round-trip, even though 0 was already the right answer.
+            # (_convert_ampl_to_press -> find_x_for_y_in_pp), which is subject to the exact same
+            # curve-fit imprecision approached from the other direction -- e.g. a genuine
+            # press=0 request would otherwise come back as some small non-zero "corrected"
+            # value purely from that round-trip, even though 0 was already the right answer.
         else:
             ampl = [round(float(calc_ampl), 2)]
 
@@ -1472,9 +1482,9 @@ class TransducerSlot:
             'calculated_ampl': calculated_ampl,
             }
 
-    def _calc_ampl_using_volt(self, volt, eq_factor):
+    def _convert_volt_to_ampl(self, volt, eq_factor):
         """
-        Calculate voltage [V] vs. amplitude [%] equation for the given voltage values.
+        Convert voltage [V] to amplitude [%] for the given voltage values.
 
         Parameters:
             volt (list(float)): Voltage [V] entries to convert.
@@ -1491,9 +1501,10 @@ class TransducerSlot:
 
             if range_status in ("above_range", "below_range"):
                 # A voltage outside the calibration curve's own domain -- same treatment as
-                # _calc_ampl()'s domain check, not the calc_ampl > 100/< 0 clamps below (those
-                # are for an in-range voltage whose curve-fit result happens to spill slightly
-                # past 0/100, not for a voltage the curve was never fit to describe at all).
+                # _convert_press_to_ampl()'s domain check, not the calc_ampl > 100/< 0 clamps
+                # below (those are for an in-range voltage whose curve-fit result happens to
+                # spill slightly past 0/100, not for a voltage the curve was never fit to
+                # describe at all).
                 x_min = self._conv_param['volt_curve_pp'].x[0]
                 x_max = self._conv_param['volt_curve_pp'].x[-1]
                 message = (f'Voltage of {v} [V] is outside of pp limits ({x_min:.2f} - ' +
@@ -1504,8 +1515,8 @@ class TransducerSlot:
             if calc_ampl > 100:
                 # Provisional values, computed purely to describe the rejected request in the
                 # message below -- this request is being rejected outright.
-                press_for_msg = self._calc_press([100], eq_factor)
-                volt_for_msg = self._calc_volt([100])
+                press_for_msg = self._convert_ampl_to_press([100], eq_factor)
+                volt_for_msg = self._convert_ampl_to_volt([100])
 
                 message = ('Calculated amplitude exceeds 100%. A pressure of ' +
                            f'{format_or_unavailable(press_for_msg)} [MPa] and/or a voltage of ' +
@@ -1525,11 +1536,11 @@ class TransducerSlot:
 
         return ampl
 
-    def _calc_press(self, ampl, eq_factor):
+    def _convert_ampl_to_press(self, ampl, eq_factor):
         """
-        Calculate pressure [Pa] vs. amplitude [%] equation for the given amplitude. Only
-        meaningful for a single value: a multi-channel amplitude array has no one pressure that
-        represents it, so this rejects more than one entry outright rather than silently
+        Convert amplitude [%] to maximum pressure in free water for the given amplitude value.
+        Only meaningful for a single value: a multi-channel amplitude array has no one pressure
+        that represents it, so this rejects more than one entry outright rather than silently
         deriving a value from just the first and ignoring the rest.
 
         Parameters:
@@ -1542,7 +1553,7 @@ class TransducerSlot:
         """
 
         if len(ampl) != 1:
-            message = ('_calc_press() only produces a meaningful result for a single ' +
+            message = ('_convert_ampl_to_press() only produces a meaningful result for a single ' +
                        f'amplitude value -- got {len(ampl)} entries, which has no one ' +
                        'pressure that represents the whole array.')
             get_logger().critical(message)
@@ -1575,17 +1586,17 @@ class TransducerSlot:
         get_logger().error(f"Could not find a pressure value for amplitude = {target_y_value}")
         return None
 
-    def _calc_press_for_logging(self, ampl, eq_factor, *sibling_fields):
+    def _convert_ampl_to_press_for_logging(self, ampl, eq_factor, *sibling_fields):
         """
-        Calls _calc_press() purely to produce a log line (the value actually sent to hardware
-        was already determined independently by the caller). If the derived pressure exceeds
-        the configured maximum, _calc_press() exits -- the whole request is being rejected in
-        that case, so self._press (every caller assigns this method's return value to it) and
-        `sibling_fields` (e.g. '_volt', '_ampl') are all cleared to None too, so none of them
-        look like a valid, current result afterwards, before the exit is re-raised. This
-        clearing used to happen inside _calc_press() itself (an upfront self._press = None
-        reset) -- now that it's a pure function with no self._press of its own to protect, this
-        wrapper is what has to guarantee it instead.
+        Calls _convert_ampl_to_press() purely to produce a log line (the value actually sent to
+        hardware was already determined independently by the caller). If the derived pressure
+        exceeds the configured maximum, _convert_ampl_to_press() exits -- the whole request is
+        being rejected in that case, so self._press (every caller assigns this method's return
+        value to it) and `sibling_fields` (e.g. '_volt', '_ampl') are all cleared to None too, so
+        none of them look like a valid, current result afterwards, before the exit is re-raised.
+        This clearing used to happen inside _convert_ampl_to_press() itself (an upfront
+        self._press = None reset) -- now that it's a pure function with no self._press of its
+        own to protect, this wrapper is what has to guarantee it instead.
 
         Parameters:
             ampl (list(float)): Amplitude [%] to derive the pressure from.
@@ -1593,11 +1604,11 @@ class TransducerSlot:
             sibling_fields (str): Names of self's attributes to clear to None on exit.
 
         Returns:
-            float or None: See _calc_press().
+            float or None: See _convert_ampl_to_press().
         """
 
         try:
-            return self._calc_press(ampl, eq_factor)
+            return self._convert_ampl_to_press(ampl, eq_factor)
         except SystemExit:
             self._press = None
             for field in sibling_fields:
