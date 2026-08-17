@@ -29,6 +29,7 @@ README.md file of https://github.com/Donders-Institute/Radboud-FUS-driving-syste
 """
 
 # Basic packages
+import hashlib
 import sys
 
 import yaml
@@ -150,21 +151,95 @@ def _configure_timing(protocol, timing_def, protocol_index):
     )
 
 
-def load_protocol(yaml_path, engineering_mode=False):
+def _compute_file_hash(raw_bytes):
+    """Returns raw_bytes' SHA-256 hex digest."""
+
+    return hashlib.sha256(raw_bytes).hexdigest()
+
+
+def _hash_sidecar_path(yaml_path):
+    """Returns the sidecar hash-file path for yaml_path -- '<yaml_path>.sha256'."""
+
+    return f'{yaml_path}.sha256'
+
+
+def _verify_hash(yaml_path, raw_bytes, require_hash):
+    """Protection against an accidental edit to yaml_path: if a sidecar '<yaml_path>.sha256'
+    file exists (written by approve_protocol()), its hash must match yaml_path's current
+    content, or this exits. If no sidecar exists, this exits only when require_hash -- otherwise
+    it silently does nothing, since hash protection is opt-in by default, per protocol file."""
+
+    sidecar_path = _hash_sidecar_path(yaml_path)
+    try:
+        with open(sidecar_path, 'r', encoding='utf-8') as f:
+            expected_hash = f.read().split()[0]
+    except FileNotFoundError:
+        if require_hash:
+            message = (f'{yaml_path} has not been approved yet ({sidecar_path} is missing), but '
+                       f'this script requires an approved protocol (require_hash=True). Run: '
+                       f'python -m fus_driving_systems.approve_protocol {yaml_path}')
+            get_logger().critical(message)
+            sys.exit(message)
+        return
+
+    actual_hash = _compute_file_hash(raw_bytes)
+    if actual_hash != expected_hash:
+        message = (f'{yaml_path} does not match its approved hash ({sidecar_path}) -- it has '
+                   f'been edited since it was last approved. If this edit is intentional, '
+                   f'review it, then run: python -m fus_driving_systems.approve_protocol '
+                   f'{yaml_path}')
+        get_logger().critical(message)
+        sys.exit(message)
+
+
+def approve_protocol(yaml_path):
+    """
+    Computes yaml_path's current SHA-256 hash and writes it to a sidecar '<yaml_path>.sha256'
+    file (sha256sum-compatible format), so load_protocol() will detect any future edit to the
+    file. This is the only way that sidecar is ever written -- load_protocol() never writes one
+    itself. Hash protection is opt-in by default: a protocol file with no sidecar is loaded
+    without any check at all, unless the calling script passes require_hash=True to
+    load_protocol().
+
+    Parameters:
+        yaml_path (str): Path to the YAML protocol-definition file to approve.
+    """
+
+    with open(yaml_path, 'rb') as f:
+        raw_bytes = f.read()
+
+    sidecar_path = _hash_sidecar_path(yaml_path)
+    with open(sidecar_path, 'w', encoding='utf-8') as f:
+        f.write(f'{_compute_file_hash(raw_bytes)}  {yaml_path}\n')
+
+    get_logger().info(f'Approved {yaml_path} -- wrote {sidecar_path}.')
+
+
+def load_protocol(yaml_path, engineering_mode=False, require_hash=False):
     """
     Parses a YAML protocol-definition file into ready-to-use TUSProtocol object(s).
 
-    engineering_mode is deliberately a Python-level parameter here, not a YAML field -- it must
-    be set by editing the calling script, never the YAML file a researcher edits.
+    engineering_mode and require_hash are deliberately Python-level parameters here, not YAML
+    fields -- both must be set by editing the calling script, never the YAML file a researcher
+    edits (a researcher could otherwise turn off a safeguard simply by editing the file it's
+    meant to protect).
 
     Semantic validation (unknown driving-system/transducer serial, invalid focus/power/trigger
     option, out-of-range timing value) is not duplicated here -- TUSProtocol/add_slot()/
     configure_timing() already exit with a clear message for all of these. This function only
     validates the file's own structure: required keys present, no typo'd/unknown keys.
 
+    If yaml_path has a sidecar '<yaml_path>.sha256' file (written by approve_protocol()), this
+    exits when yaml_path's content no longer matches it -- protection against an accidental
+    edit. A protocol file with no sidecar is loaded without any check at all, unless
+    require_hash is True, in which case a missing sidecar exits too (e.g. it was never approved,
+    or the sidecar was lost/not copied alongside the file).
+
     Parameters:
         yaml_path (str): Path to the YAML protocol-definition file.
         engineering_mode (bool): Passed straight to every TUSProtocol this file describes.
+        require_hash (bool): If True, yaml_path must have a matching, approved '.sha256'
+            sidecar -- a missing sidecar exits, instead of silently loading unchecked.
 
     Returns:
         tuple(list(TUSProtocol), float or None): The protocol(s) described by the file, and
@@ -172,9 +247,18 @@ def load_protocol(yaml_path, engineering_mode=False):
     """
 
     try:
-        with open(yaml_path, 'r', encoding='utf-8') as f:
-            data = yaml.safe_load(f)
-    except (OSError, yaml.YAMLError) as e:
+        with open(yaml_path, 'rb') as f:
+            raw_bytes = f.read()
+    except OSError as e:
+        message = f'Could not read protocol file {yaml_path}: {e}'
+        get_logger().critical(message)
+        sys.exit(message)
+
+    _verify_hash(yaml_path, raw_bytes, require_hash)
+
+    try:
+        data = yaml.safe_load(raw_bytes)
+    except yaml.YAMLError as e:
         message = f'Could not read protocol file {yaml_path}: {e}'
         get_logger().critical(message)
         sys.exit(message)

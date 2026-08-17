@@ -9,9 +9,11 @@ everything semantic (unknown serials, invalid options, out-of-range values) with
 sys.exit() messages; these tests confirm load_protocol() delegates to those unchanged, and only
 adds its own validation for the YAML file's own structure (required keys, unknown/typo'd keys).
 """
+import hashlib
+
 import pytest
 
-from fus_driving_systems.protocol_loader import load_protocol
+from fus_driving_systems.protocol_loader import approve_protocol, load_protocol
 
 DS_SERIAL = 'IGT-32-ch_comb_2x10-ch'
 TRANSDUCER_1 = 'IS_PCD15287_01001'
@@ -415,3 +417,102 @@ protocols:
             load_protocol(path)
 
         assert 'engineering_mode' in str(exc_info.value).lower()
+
+
+class TestHashProtection:
+    """Hash/sidecar protection is opt-in by default -- a sidecar '<path>.sha256' only ever
+    exists if approve_protocol() was explicitly run on that file. require_hash=True (tested
+    separately below) is the one way a calling script can insist a sidecar must exist."""
+
+    def test_loads_normally_with_no_sidecar_present(self, tmp_path):
+        path = _write_yaml(tmp_path, _single_protocol_yaml())
+
+        protocols, _ = load_protocol(path)
+
+        assert len(protocols) == 1
+
+    def test_loads_normally_when_sidecar_hash_matches(self, tmp_path):
+        path = _write_yaml(tmp_path, _single_protocol_yaml())
+        approve_protocol(path)
+
+        protocols, _ = load_protocol(path)
+
+        assert len(protocols) == 1
+
+    def test_exits_when_file_edited_after_approval(self, tmp_path):
+        path = _write_yaml(tmp_path, _single_protocol_yaml())
+        approve_protocol(path)
+
+        # Simulate an accidental edit after approval -- change the focal depth.
+        edited = _single_protocol_yaml().replace('focus_value: 40', 'focus_value: 41')
+        _write_yaml(tmp_path, edited)
+
+        with pytest.raises(SystemExit) as exc_info:
+            load_protocol(path)
+
+        assert path in str(exc_info.value)
+        assert 'approve_protocol' in str(exc_info.value)
+
+    def test_approve_protocol_writes_sidecar_matching_real_sha256sum_format(self, tmp_path):
+        path = _write_yaml(tmp_path, _single_protocol_yaml())
+
+        approve_protocol(path)
+
+        with open(path, 'rb') as f:
+            expected_hash = hashlib.sha256(f.read()).hexdigest()
+        sidecar_path = f'{path}.sha256'
+        with open(sidecar_path, 'r', encoding='utf-8') as f:
+            sidecar_contents = f.read()
+
+        assert sidecar_contents == f'{expected_hash}  {path}\n'
+
+    def test_approve_then_edit_then_reapprove_then_load_succeeds(self, tmp_path):
+        """The realistic workflow: approve, make a legitimate edit, re-approve, load again --
+        must not exit, since the sidecar now reflects the current, intentional content."""
+        path = _write_yaml(tmp_path, _single_protocol_yaml())
+        approve_protocol(path)
+
+        edited = _single_protocol_yaml().replace('focus_value: 40', 'focus_value: 41')
+        _write_yaml(tmp_path, edited)
+        approve_protocol(path)
+
+        protocols, _ = load_protocol(path)
+
+        assert protocols[0].slots[0].focus_wrt_exit_plane == 41
+
+
+class TestRequireHash:
+    """require_hash=True is a Python-level parameter a calling script sets to insist a protocol
+    file must already be approved -- unlike the default (opt-in only when a sidecar happens to
+    exist), a missing sidecar itself becomes an error."""
+
+    def test_exits_when_require_hash_true_and_no_sidecar_present(self, tmp_path):
+        path = _write_yaml(tmp_path, _single_protocol_yaml())
+
+        with pytest.raises(SystemExit) as exc_info:
+            load_protocol(path, require_hash=True)
+
+        assert path in str(exc_info.value)
+        assert 'approve_protocol' in str(exc_info.value)
+
+    def test_loads_normally_when_require_hash_true_and_sidecar_matches(self, tmp_path):
+        path = _write_yaml(tmp_path, _single_protocol_yaml())
+        approve_protocol(path)
+
+        protocols, _ = load_protocol(path, require_hash=True)
+
+        assert len(protocols) == 1
+
+    def test_exits_when_require_hash_true_and_sidecar_mismatched(self, tmp_path):
+        """A stale (mismatched) sidecar is still reported as an edited-since-approval mismatch,
+        not as if no sidecar existed at all -- require_hash doesn't change that message."""
+        path = _write_yaml(tmp_path, _single_protocol_yaml())
+        approve_protocol(path)
+
+        edited = _single_protocol_yaml().replace('focus_value: 40', 'focus_value: 41')
+        _write_yaml(tmp_path, edited)
+
+        with pytest.raises(SystemExit) as exc_info:
+            load_protocol(path, require_hash=True)
+
+        assert 'edited since it was last approved' in str(exc_info.value)

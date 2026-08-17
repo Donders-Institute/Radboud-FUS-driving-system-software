@@ -500,6 +500,17 @@ When a file's `protocols` list has more than one entry (interleaving several pro
 
 See [example_protocols/](example_protocols) for a `protocol.yaml`/`standalone_yaml.py` pair in most scenario folders, alongside that scenario's `standalone_plain.py` (the full, manually-written Python equivalent).
 
+**Optional: protect a protocol file against accidental edits.** Once you're happy with a `protocol.yaml`, you can run `python -m fus_driving_systems.approve_protocol path/to/protocol.yaml` to write a sidecar `path/to/protocol.yaml.sha256` file next to it, recording its current SHA-256 hash. From then on, `load_protocol()` will refuse to load that file (with a clear `sys.exit()`) if its content ever changes without also re-running `approve_protocol` on it -- catching an accidental edit before it silently changes what gets sent to a driving system. This is opt-in by default: a protocol file with no `.sha256` sidecar is loaded without any check at all, and `load_protocol()` itself never creates or updates one -- `approve_protocol()` is the only way to do that, so it always reflects a deliberate decision that the current content is correct.
+
+If you want a specific script to refuse to run against an unapproved protocol at all (rather than silently loading it unchecked whenever no sidecar happens to exist), pass `require_hash=True` to `load_protocol()`. This is a Python-level parameter, set directly in your own script, next to `engineering_mode`.
+
+```python
+protocols, total_alternating_duration_ms = load_protocol(
+    'protocol.yaml',
+    require_hash=True,  # exits if protocol.yaml.sha256 is missing or doesn't match
+)
+```
+
 To use your new equipment with custom serial numbers for driving systems and transducers, you'll need to update the configuration file. You can either modify the [ds_config.ini](fus_ds_package/fus_driving_systems/config/ds_config.ini) file directly or modify and regenerate it using the provided [create_config.py](fus_ds_package/fus_driving_systems/config/create_config.py) script. How and what to modify is explained in the next step.
 
 ### Step 4: Update the Configuration File

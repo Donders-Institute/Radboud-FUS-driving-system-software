@@ -43,7 +43,9 @@ logger = initialize_logger(log_dir, filename)
 from fus_driving_systems.igt import igt_ds
 from fus_driving_systems.protocol_loader import load_protocol
 
-protocols, _ = load_protocol('protocol.yaml')
+# require_hash=False (the default) -- set to True once you have a real protocol.yaml you don't
+# want accidentally changed; see README.md's "Load a protocol from a YAML file" section.
+protocols, _ = load_protocol('protocol.yaml', require_hash=False)
 protocol = protocols[0]
 slot1, slot2 = protocol.slots
 

@@ -47,7 +47,10 @@ from fus_driving_systems.protocol_loader import load_protocol
 
 # total_alternating_duration_ms (load_protocol()'s second return value) is only relevant when
 # interleaving more than one protocol -- ignored here (a single protocol).
-protocols, _ = load_protocol('wait_for_trigger.yaml')
+#
+# require_hash=False (the default) -- set to True once you have a real wait_for_trigger.yaml you
+# don't want accidentally changed; see README.md's "Load a protocol from a YAML file" section.
+protocols, _ = load_protocol('wait_for_trigger.yaml', require_hash=False)
 
 # The driving system serial only needs to live in wait_for_trigger.yaml -- load_protocol()
 # already resolved it into a real DrivingSystem, reachable via the protocol's own driving_sys.

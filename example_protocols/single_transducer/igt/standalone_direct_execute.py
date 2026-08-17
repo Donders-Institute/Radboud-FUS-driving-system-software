@@ -50,7 +50,10 @@ from fus_driving_systems.protocol_loader import load_protocol
 # total_alternating_duration_ms (load_protocol()'s second return value) is only relevant when
 # interleaving more than one protocol -- ignored here (a single protocol), so there's nothing to
 # read or pass on to send_protocol()/execute_protocol() below.
-protocols, _ = load_protocol('direct_execute.yaml')
+#
+# require_hash=False (the default) -- set to True once you have a real direct_execute.yaml you
+# don't want accidentally changed; see README.md's "Load a protocol from a YAML file" section.
+protocols, _ = load_protocol('direct_execute.yaml', require_hash=False)
 
 # The driving system serial only needs to live in direct_execute.yaml -- load_protocol() already
 # resolved it into a real DrivingSystem, reachable via the protocol's own driving_sys, so there's
