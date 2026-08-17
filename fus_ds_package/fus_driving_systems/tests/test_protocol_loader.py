@@ -10,6 +10,7 @@ sys.exit() messages; these tests confirm load_protocol() delegates to those unch
 adds its own validation for the YAML file's own structure (required keys, unknown/typo'd keys).
 """
 import hashlib
+import pathlib
 
 import pytest
 
@@ -20,6 +21,10 @@ TRANSDUCER_1 = 'IS_PCD15287_01001'
 TRANSDUCER_2 = 'IS_PCD15287_01002'
 FOCUS_OPTION = 'Focus wrt exit plane [mm]'
 POWER_OPTION = 'Max. pressure in free water [MPa]'
+
+# fus_ds_package/fus_driving_systems/tests/ -> repo root -> example_protocols/
+_EXAMPLE_PROTOCOLS_DIR = pathlib.Path(__file__).resolve().parents[3] / 'example_protocols'
+_SHIPPED_EXAMPLE_YAML_FILES = sorted(_EXAMPLE_PROTOCOLS_DIR.rglob('*.yaml'))
 
 
 def _write_yaml(tmp_path, content, name='protocol.yaml'):
@@ -516,3 +521,18 @@ class TestRequireHash:
             load_protocol(path, require_hash=True)
 
         assert 'edited since it was last approved' in str(exc_info.value)
+
+
+class TestShippedExampleFiles:
+    """Regression net against config drift: every protocol.yaml shipped under
+    example_protocols/ must keep loading successfully against the real, current ds_config.ini.
+    A renamed/removed focus or power option, for instance, would otherwise only surface once a
+    researcher copies one of these files and hits it themselves."""
+
+    @pytest.mark.parametrize(
+        'yaml_path', _SHIPPED_EXAMPLE_YAML_FILES,
+        ids=[str(p.relative_to(_EXAMPLE_PROTOCOLS_DIR)) for p in _SHIPPED_EXAMPLE_YAML_FILES])
+    def test_shipped_example_loads_successfully(self, yaml_path):
+        protocols, _ = load_protocol(str(yaml_path))
+
+        assert len(protocols) >= 1
