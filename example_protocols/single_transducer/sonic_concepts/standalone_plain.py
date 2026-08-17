@@ -28,7 +28,10 @@ If you use this kit in your research or project, please refer to the 'How to Cit
 README.md file of https://github.com/Donders-Institute/Radboud-FUS-driving-system-software.
 """
 
-# Sonic Concepts example
+# Sonic Concepts example: a single transducer, built directly in Python (full manual control --
+# no YAML). See standalone_yaml.py in this same folder for the simpler, YAML-driven equivalent.
+# See standalone_plain_demo.py (also in this folder) for sending two different protocols to the
+# same driving system in sequence.
 # Note: you can click on each parameter to get more information
 
 ##############################################################################
@@ -38,7 +41,7 @@ README.md file of https://github.com/Donders-Institute/Radboud-FUS-driving-syste
 from fus_driving_systems.config.logging_config import initialize_logger
 
 log_dir = "C://Temp"
-filename = "standalone_sc_demo"
+filename = "standalone_plain"
 logger = initialize_logger(log_dir, filename)
 
 # When this code is embedded in other code with logging, ignore above commands and sync the logger
@@ -62,7 +65,7 @@ from fus_driving_systems.sonic_concepts import sonic_concepts_ds
 # to check available driving systems: print(driving_system.get_ds_serials())
 # choose one driving system from that list as input
 ds_info = driving_system.DrivingSystem()
-ds_info.set_ds_info('203-035')
+ds_info.set_ds_info('105-010')
 ds_info.connect_info = 'COM5'  # COM port the driving system is actually connected to on this machine
 
 sc_ds = sonic_concepts_ds.SonicConcepts()
@@ -83,14 +86,14 @@ sc_ds.check_tran_sel()
 from fus_driving_systems import tus_protocol, transducer
 
 # equipment: same driving system already used to connect() above
-slow_protocol = tus_protocol.TUSProtocol(ds_info.serial)
+protocol = tus_protocol.TUSProtocol(ds_info.serial)
 
 # send_protocol()/execute_protocol() automatically reconnect using
-# slow_protocol.driving_sys.connect_info if the connection ever drops -- propagate this machine's
+# protocol.driving_sys.connect_info if the connection ever drops -- propagate this machine's
 # actual COM port onto the protocol's own driving system too (ds_info above is a separate
 # object), so that automatic reconnect uses the right port instead of falling back to whatever
 # ds_config.ini happens to default to.
-slow_protocol.driving_sys.connect_info = ds_info.connect_info
+protocol.driving_sys.connect_info = ds_info.connect_info
 
 # add_slot() fully configures one transducer -- serial, focus, and power all at once (no
 # partial/half-configured slot). This driving system currently supports only one transducer slot
@@ -98,74 +101,13 @@ slow_protocol.driving_sys.connect_info = ds_info.connect_info
 # future SC driving system ever supports more.
 # to check available transducers: print(transducer.get_tran_serials())
 # choose one transducer from that list as input
-slow_slot = slow_protocol.add_slot(
-    'CTX-250-014',
+# to check available focus/power options for this driving system (no need to add a slot first):
+# print(protocol.get_focus_options()) / print(protocol.get_power_options())
+slot = protocol.add_slot(
+    'CTX-500-026',
     'Focus wrt exit plane [mm]', 40,  # [mm], focal depth
-    'Global power [mW]', 15,  # [W], global power. NOTE: DIFFERENT THAN IGT
-    oper_freq=250,  # [kHz], operating frequency
-)
-
-# # timing parameters # #
-# you can use the TUS Calculator to visualize the timing parameters:
-# https://www.socsci.ru.nl/fusinitiative/tuscalculator/
-
-# configure_timing() sets every pulse/pulse-train/trigger parameter together, in one call --
-# it's the only way to set any of them (pulse_dur, pulse_rep_int, pulse_ramp_shape, ...,
-# trigger_option, n_triggers all have getters only), precisely because they cascade/interact
-# with each other and are prone to ordering hazards if set individually and out of order.
-slow_protocol.configure_timing(
-    # ## pulse ## #
-    pulse_dur=100,  # [ms], pulse duration
-
-    # pulse ramping
-    # to check available ramp shapes: print(slow_protocol.get_ramp_shapes())
-    # choose one ramp shape from that list as input
-    pulse_ramp_shape='Rectangular - no ramping',
-    # ramping up and ramping down duration are equal and are equal to ramp duration
-    pulse_ramp_dur=0,  # [ms], ramp duration
-
-    # ## pulse train ## #
-    pulse_rep_int=1000,  # [ms], pulse repetition interval
-
-    # if you only want one pulse train, you don't need to set this at all -- it defaults to
-    # pulse_rep_int. Set explicitly here for clarity.
-    pulse_train_dur=80000,  # [ms], pulse train duration
-
-    # wait_for_trigger is derived from trigger_option -- there is no separate flag to set. Use
-    # 'None' (this template's default) to not use a trigger at all; 'TriggerOnePulseTrain' to fire
-    # one pulse train per trigger received; 'TriggerWholeProtocol' to fire the entire, already
-    # fully-timed protocol at once with a single trigger (equivalent to executing it directly,
-    # just gated behind that one trigger). To check available trigger options:
-    # print(slow_protocol.get_trigger_options())
-    trigger_option='None',
-    # trigger_option='TriggerOnePulseTrain',
-    # trigger_option='TriggerWholeProtocol'
-)
-
-
-#################################################################
-
-# equipment: same driving system already used to connect() above
-fast_protocol = tus_protocol.TUSProtocol(ds_info.serial)
-
-# send_protocol()/execute_protocol() automatically reconnect using
-# fast_protocol.driving_sys.connect_info if the connection ever drops -- propagate this machine's
-# actual COM port onto the protocol's own driving system too (ds_info above is a separate
-# object), so that automatic reconnect uses the right port instead of falling back to whatever
-# ds_config.ini happens to default to.
-fast_protocol.driving_sys.connect_info = ds_info.connect_info
-
-# add_slot() fully configures one transducer -- serial, focus, and power all at once (no
-# partial/half-configured slot). This driving system currently supports only one transducer slot
-# (see ds_info.max_tran_slots) -- add another add_slot() call for each additional transducer if a
-# future SC driving system ever supports more.
-# to check available transducers: print(transducer.get_tran_serials())
-# choose one transducer from that list as input
-fast_slot = fast_protocol.add_slot(
-    'CTX-250-014',
-    'Focus wrt exit plane [mm]', 40,  # [mm], focal depth
-    'Global power [mW]', 15,  # [W], global power. NOTE: DIFFERENT THAN IGT
-    oper_freq=250,  # [kHz], operating frequency
+    'Global power [mW]', 2.5,  # [W], global power
+    oper_freq=500,  # [kHz], operating frequency
 )
 
 # # timing parameters # #
@@ -176,34 +118,39 @@ fast_slot = fast_protocol.add_slot(
 # it's the only way to set any of them (pulse_dur, pulse_rep_int, pulse_ramp_shape, ...,
 # trigger_option, n_triggers all have getters only), precisely because they cascade/interact
 # with each other and are prone to ordering hazards if set individually and out of order.
-fast_protocol.configure_timing(
+protocol.configure_timing(
     # ## pulse ## #
-    pulse_dur=0.1,  # [ms], pulse duration
+    pulse_dur=10,  # [ms], pulse duration
 
     # pulse ramping
-    # to check available ramp shapes: print(fast_protocol.get_ramp_shapes())
+    # to check available ramp shapes: print(protocol.get_ramp_shapes())
     # choose one ramp shape from that list as input
     pulse_ramp_shape='Rectangular - no ramping',
     # ramping up and ramping down duration are equal and are equal to ramp duration
     pulse_ramp_dur=0,  # [ms], ramp duration
 
     # ## pulse train ## #
-    pulse_rep_int=1,  # [ms], pulse repetition interval
+    pulse_rep_int=50,  # [ms], pulse repetition interval -- one pulse every 50 ms
 
     # if you only want one pulse train, you don't need to set this at all -- it defaults to
     # pulse_rep_int. Set explicitly here for clarity.
-    pulse_train_dur=80000,  # [ms], pulse train duration
+    pulse_train_dur=200,  # [ms], pulse train duration -- 4 pulses per train (200 / 50)
 
-    # wait_for_trigger is derived from trigger_option -- there is no separate flag to set. Use
-    # 'None' (this template's default) to not use a trigger at all; 'TriggerOnePulseTrain' to fire
-    # one pulse train per trigger received; 'TriggerWholeProtocol' to fire the entire, already
-    # fully-timed protocol at once with a single trigger (equivalent to executing it directly,
-    # just gated behind that one trigger). To check available trigger options:
-    # print(fast_protocol.get_trigger_options())
+    # wait_for_trigger is derived from trigger_option -- there is no separate flag to set. For
+    # SC specifically, this is effectively binary: send_protocol()/execute_protocol() only ever
+    # check whether a trigger is expected at all (protocol.wait_for_trigger), never which kind --
+    # so 'TriggerOnePulseTrain' has no meaningful effect over 'TriggerWholeProtocol' here. Unlike
+    # IGT's own 'TriggerWholeProtocol' (one trigger arms every repetition at once), SC's driving
+    # system waits for a fresh external trigger each time it needs to fire the pulse train.
+    # 'None' (this template's default) means no trigger at all -- executed directly. To check
+    # available trigger options:
+    # print(protocol.get_trigger_options())
     trigger_option='None',
-    # trigger_option='TriggerOnePulseTrain',
     # trigger_option='TriggerWholeProtocol'
 )
+
+# to get a summary of your entered protocol: print(protocol)
+logger.info(f'The following protocol is used: {protocol}')
 
 ##############################################################################
 # send and execute the protocol
@@ -224,22 +171,19 @@ fast_protocol.configure_timing(
 
 try:
     # If wait_for_trigger is true, only the protocol is sent and will be executed by the external trigger
-    if slow_protocol.wait_for_trigger:
+    if protocol.wait_for_trigger:
         # currently, triggermode is set to 1. Triggermode of 2 is not supported yet.
-        sc_ds.send_protocol(slow_protocol)
+        sc_ds.send_protocol(protocol)
 
     # If wait_for_trigger is false, the protocol is sent and can be executed directly using the execute_protocol() function
     else:
-        sc_ds.send_protocol(slow_protocol)
-        sc_ds.execute_protocol(slow_protocol)
-
-        sc_ds.send_protocol(fast_protocol)
-        sc_ds.execute_protocol(fast_protocol)
+        sc_ds.send_protocol(protocol)
+        sc_ds.execute_protocol(protocol)
 
 finally:
     # When the protocol is executed using execute_protocol(), the system will be disconnected automatically,
     # In the case your code is stopped abruptly, the driving system will be disconnected. Otherwise, there
     # is a change that it keeps on firing ultrasound protocols.
     # When using the external trigger, disconnect the driving system yourself.
-    if not slow_protocol.wait_for_trigger:
+    if not protocol.wait_for_trigger:
         sc_ds.disconnect()

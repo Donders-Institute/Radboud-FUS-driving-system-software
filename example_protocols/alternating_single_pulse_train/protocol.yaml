@@ -1,0 +1,77 @@
+# Two protocols interleaved as one alternating group -- transducer A fires its pulse, then
+# transducer B fires its pulse, then A again, and so on, for the whole
+# total_alternating_duration_ms below. This is "pulse train interleaving": each round still
+# counts as one pulse train per transducer (a pulse plus its own off-time), just alternating
+# instead of each transducer repeating its own full pulse train back-to-back before handing off
+# to the other. Used by standalone_yaml.py in this same folder.
+#
+# See standalone_plain.py (also in this folder) if you want the full, manually-written Python
+# equivalent instead, or need something this file's fields don't cover.
+#
+# IMPORTANT: ramping (pulse_ramp_shape/pulse_ramp_dur) and trigger_option are whole-group
+# settings for the generator, not something each interleaved protocol configures independently
+# -- send_protocol()/wait_for_trigger() only ever read them from the FIRST protocol below, and
+# exit with a clear error if the protocols don't all declare the same values. There is no way in
+# YAML to share these values automatically between the two entries below, so they are repeated
+# on purpose -- make sure they stay identical if you ever change one.
+
+driving_sys_serial: IGT-32-ch_comb_2x10-ch  # print(driving_system.get_ds_serials()) for options
+
+protocols:
+  # -- protocol A: transducer 1 active, transducer 2 off --
+  - slots:
+      - transducer_serial: IS_PCD15287_01001  # print(transducer.get_tran_serials()) for options
+        focus_option: Focus wrt exit plane [mm]
+        focus_value: 40  # [mm], focal depth w.r.t. the exit plane and FWHM middle
+        power_option: Max. pressure in free water [MPa]
+        power_value: 0.5  # [MPa], maximum pressure in free water.
+        oper_freq: 300  # [kHz], operating frequency
+
+      - transducer_serial: IS_PCD15287_01002
+        focus_option: Focus wrt exit plane [mm]
+        focus_value: 80  # [mm], focal depth w.r.t. the exit plane and FWHM middle
+        power_option: Max. pressure in free water [MPa]
+        power_value: 0  # [MPa] -- off for protocol A
+        oper_freq: 300  # [kHz], operating frequency
+
+    timing:
+      # When interleaving, each protocol contributes exactly one pulse per round of the
+      # alternating group -- not a repeated pulse train of its own. pulse_dur/pulse_rep_int are
+      # what matter here (pulse_rep_int decides how much of the shared round this protocol's own
+      # pulse occupies); every other timing field (pulse_train_dur, pulse_train_rep_int,
+      # pulse_train_rep_dur) has no effect in this mode and is left out below, so it falls back
+      # to its own default rather than being set to a value that's silently ignored.
+      pulse_dur: 45          # [ms], pulse duration
+      pulse_ramp_shape: Tukey  # must match protocol B's below exactly -- see note above
+      pulse_ramp_dur: 5      # [ms], must match protocol B's below exactly -- see note above
+      pulse_rep_int: 100     # [ms], pulse repetition interval
+      trigger_option: TriggerWholeProtocol  # must match protocol B's below exactly
+
+  # -- protocol B: transducer 1 off, transducer 2 active --
+  - slots:
+      - transducer_serial: IS_PCD15287_01001
+        focus_option: Focus wrt exit plane [mm]
+        focus_value: 40  # [mm], focal depth w.r.t. the exit plane and FWHM middle
+        power_option: Max. pressure in free water [MPa]
+        power_value: 0  # [MPa] -- off for protocol B
+        oper_freq: 300  # [kHz], operating frequency
+
+      - transducer_serial: IS_PCD15287_01002
+        focus_option: Focus wrt exit plane [mm]
+        focus_value: 80  # [mm], focal depth w.r.t. the exit plane and FWHM middle
+        power_option: Max. pressure in free water [MPa]
+        power_value: 0.5  # [MPa], maximum pressure in free water.
+        oper_freq: 300  # [kHz], operating frequency
+
+    timing:
+      pulse_dur: 45          # [ms], pulse duration
+      pulse_ramp_shape: Tukey  # must match protocol A's above exactly
+      pulse_ramp_dur: 5      # [ms], must match protocol A's above exactly
+      pulse_rep_int: 100     # [ms], pulse repetition interval
+      trigger_option: TriggerWholeProtocol  # must match protocol A's above exactly
+
+# How long the alternating group as a whole keeps repeating [ms]. Required here, since there's
+# more than one protocol above -- unlike a single protocol, which derives its own repetition
+# count from its own pulse_train_rep_dur/pulse_train_rep_int, the group as a whole has no
+# fallback for this.
+total_alternating_duration_ms: 80000

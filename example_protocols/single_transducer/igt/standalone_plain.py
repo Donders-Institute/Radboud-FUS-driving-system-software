@@ -28,7 +28,14 @@ If you use this kit in your research or project, please refer to the 'How to Cit
 README.md file of https://github.com/Donders-Institute/Radboud-FUS-driving-system-software.
 """
 
-# IGT example
+# IGT example: a single transducer, built directly in Python (full manual control -- no YAML).
+# See standalone_direct_execute.py/standalone_wait_for_trigger.py/
+# standalone_wait_for_trigger_poll.py in this same folder for the simpler, YAML-driven
+# equivalents of the two execution patterns shown together below.
+#
+# Only one transducer connected? Use this script as-is. Two transducers firing together as part
+# of the same protocol? See ../../two_transducers_simultaneous/ instead.
+#
 # Note: you can click on each parameter to get more information
 
 ##############################################################################
@@ -38,7 +45,7 @@ README.md file of https://github.com/Donders-Institute/Radboud-FUS-driving-syste
 from fus_driving_systems.config.logging_config import initialize_logger
 
 log_dir = "C://Temp"
-filename = "standalone_igt"
+filename = "standalone_plain"
 logger = initialize_logger(log_dir, filename)
 
 # This creates a timestamped session folder inside log_dir (e.g. "2026-08-05_18-00-00_
@@ -110,31 +117,12 @@ POWER_OPTION = 'Max. pressure in free water [MPa]'  # or 'Global power [mW]'
 slot1 = protocol.add_slot(
     'IS_PCD15287_01001',
     FOCUS_OPTION, 80,  # [mm], focal depth w.r.t. the exit plane and FWHM middle
-    POWER_OPTION, 0.3,  # [MPa], maximum pressure in free water. NOTE: DIFFERENT THAN SC
+    POWER_OPTION, 0.3,  # [MPa], maximum pressure in free water
     oper_freq=300,  # [kHz], operating frequency
 
     # Degree used to dephase every nth elemen based on chosen degree. None = no dephasing
     # One value (>0) is the degree of dephasing, for example [90] with 4 elements: 1 elem: 0
     # dephasing, 2 elem: 90 dephasing, 3 elem: 180 dephasing, 4 elem: 270 dephasing.
-    # When the amount of values match the amount of elements, it will override the calculated
-    # phases based on the set focus.
-    dephasing_degree=None,  # [degrees]: None, [120] or [0, 135, 239, 90]
-)
-
-# Using more than one transducer at once? Just add another slot -- as many as this driving
-# system's config allows (see ds_info.max_tran_slots). Remove this second add_slot() call
-# entirely if you only have one transducer connected.
-# to check available transducers: print(transducer.get_tran_serials())
-# choose one transducer from that list as input
-slot2 = protocol.add_slot(
-    'IS_PCD15287_01002',
-    FOCUS_OPTION, 80,  # [mm], focal depth w.r.t. the exit plane and FWHM middle
-    POWER_OPTION, 0.3,  # [MPa], maximum pressure in free water. NOTE: DIFFERENT THAN SC
-    oper_freq=300,  # [kHz], operating frequency
-
-    # Degree used to dephase every nth element based on chosen degree. None = no dephasing
-    # One value (>0) is the degree of dephasing, for example [90] with 4 elements: 1 elem: 0
-    # dephasing. 2 elem: 90 dephasing, 3 elem: 180 dephasing, 4 elem: 270 dephasing.
     # When the amount of values match the amount of elements, it will override the calculated
     # phases based on the set focus.
     dephasing_degree=None,  # [degrees]: None, [120] or [0, 135, 239, 90]
@@ -161,11 +149,14 @@ protocol.configure_timing(
     pulse_ramp_dur=0,  # [ms], ramp duration, with at least 70 us between ramping up and down
 
     # ## pulse train ## #
-    pulse_rep_int=200,  # [ms], pulse repetition interval
+    # Each field below is deliberately a genuinely different value from the one before it (not
+    # just mirroring the level below), to show the full timing hierarchy in one place: one
+    # pulse, repeated into a pulse train, itself repeated some number of times.
+    pulse_rep_int=50,  # [ms], pulse repetition interval -- one pulse every 50 ms
 
     # if you only want one pulse train, you don't need to set this at all -- it defaults to
     # pulse_rep_int. Set explicitly here for clarity.
-    pulse_train_dur=200,  # [ms], pulse train duration
+    pulse_train_dur=200,  # [ms], pulse train duration -- 4 pulses per train (200 / 50)
 
     # wait_for_trigger is derived from trigger_option -- there is no separate flag to set. Use
     # 'None' (this template's default) to not use a trigger at all; 'TriggerOnePulseTrain' to
@@ -187,8 +178,10 @@ protocol.configure_timing(
     # if you only want one pulse train repetition, you don't need to set either of these at all --
     # pulse_train_rep_int defaults to pulse_train_dur, and pulse_train_rep_dur then defaults to
     # that (i.e. "repeat exactly once"). Set explicitly here for clarity.
-    pulse_train_rep_int=200,  # [ms], pulse train repetition interval, NOTE: DIFFERENT THAN SC
-    pulse_train_rep_dur=2,  # [s], pulse train repetition duration, NOTE: DIFFERENT THAN SC
+    # a new train starts every 400 ms (200 ms train, then a 200 ms gap before the next)
+    pulse_train_rep_int=400,  # [ms], pulse train repetition interval
+    # keeps repeating for 2 s in total, i.e. 5 repetitions of the whole train (2000 / 400)
+    pulse_train_rep_dur=2,  # [s], pulse train repetition duration
 )
 
 # to get a summary of your entered protocol: print(protocol)
@@ -223,7 +216,8 @@ try:
         # Call wait_for_trigger_result() once you expect the trigger to have fired (or with a
         # generous timeout covering your full protocol) to block until completion and exit if
         # the driving system reports the execution failed. Adjust the timeout below to match
-        # how long your triggered protocol is expected to take.
+        # how long your triggered protocol is expected to take. See
+        # standalone_wait_for_trigger.py in this same folder for this pattern on its own.
         #
         # Note: an execution error is always logged immediately when it happens (regardless of
         # when you call this), but your code will only actively react to it (via sys.exit())
@@ -232,24 +226,13 @@ try:
         #
         # If you have other work to do while waiting for the external trigger (e.g. waiting on
         # other equipment), use the non-blocking has_execution_error() instead, in your own
-        # polling loop, for real-time reaction instead of only finding out at the end:
-        #
-        # while <your own condition, e.g. still waiting on the scanner>:
-        #     if igt_driving_sys.has_execution_error() is not None:
-        #         ...  # react immediately (log, stop other equipment, sys.exit(), ...)
-        #     <do other work / short sleep>
-        #
-        # Note: has_execution_error() only tells you whether an error has occurred so far --
-        # not whether the protocol has finished. Your own loop condition (e.g. "still waiting
-        # on the scanner") isn't necessarily tied to the protocol's actual completion, so
-        # disconnecting right after such a loop can cut off a still-running protocol. If you
-        # use this pattern instead of wait_for_trigger_result(), make sure you have your own
-        # way of confirming the protocol actually finished (e.g. also call
-        # wait_for_trigger_result() once you expect it to have) before disconnecting.
+        # polling loop, for real-time reaction instead of only finding out at the end -- see
+        # standalone_wait_for_trigger_poll.py in this same folder for this pattern on its own.
         igt_driving_sys.wait_for_trigger_result(timeout_s=5.0)
 
     # If wait_for_trigger is false, the protocol is sent and can be executed directly using the
-    # execute_protocol() function
+    # execute_protocol() function -- see standalone_direct_execute.py in this same folder for
+    # this pattern on its own.
     else:
         igt_driving_sys.execute_protocol(protocol)
 

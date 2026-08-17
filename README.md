@@ -189,9 +189,11 @@ spyder
 ```
 
 ### Step 4: Open the main script
-Open one of the Python scripts provided in the [standalone_driving_system_software directory](standalone_driving_system_software) in the cloned repository, which serve as examples of how to create and execute a TUS protocol with a driving system from a specific manufacturer.
+Open one of the example scripts provided in the [example_protocols directory](example_protocols) in the cloned repository, organized by scenario (e.g. `single_transducer`, `two_transducers_simultaneous`, `alternating_single_pulse_train`, `switch_active_transducer`) and, where more than one manufacturer has a working example, by manufacturer. Each scenario folder has a `standalone_plain.py` (built directly in Python, full manual control) and, for most scenarios, a `standalone_yaml.py` plus its own `protocol.yaml` -- a simpler, declarative alternative where the protocol itself is described in a YAML file instead (see "Load a protocol from a YAML file" below).
 
 Follow the instructions within the code to understand how to integrate it into your own codebase. Additionally, these scripts can be utilized to explore the functionality of the package before integrating it into your project.
+
+Once you're ready to build your own experiment, copy the relevant example (script and/or `protocol.yaml`) into your **own project folder, outside this cloned repository**, rather than editing it in place inside `example_protocols/`. The package itself is `pip install`ed, so your own scripts can `import fus_driving_systems` from anywhere -- nothing requires them to live inside this repo. Keeping your own work outside the repo also means a future upgrade (see "Installation of new release" below) never touches it, even if `example_protocols/`'s own structure changes between releases.
 
 ### Activate your virtual environment and launch the IDE at once
 To simplify the process of activating the virtual environment and launching your IDE, you can use the provided [batch script](start_venv_and_ide.bat).
@@ -221,12 +223,11 @@ How to use the script:
 
 # 🌟 Installation of new release <a name="install-new-release"></a>
 
-## (Optional) Step 1: Backup your current installation
-To avoid losing your custom standalone scripts:
-- Create a backup by copying your current installation directory to a safe location.
-- Save any custom standalone scripts for reuse.
+As long as your own scripts/protocol files live in your own project folder, outside this cloned
+repository (see "Step 4: Open the main script" above), upgrading never touches them -- there's
+nothing to back up or restore first. Just clone the new release into a fresh directory as usual.
 
-## Step 2: Clone the repository to your desired folder
+## Step 1: Clone the repository to your desired folder
 - Git terminal
 	```
 	cd my-folder
@@ -246,7 +247,7 @@ To avoid losing your custom standalone scripts:
 - GitHub\
 	Download the source code directly for the latest release. Visit the [Latest Release](https://github.com/Donders-Institute/Radboud-FUS-driving-system-software/releases/latest), and download the Source code (zip) file. Extract it to your desired location and proceed with the installation steps.
 
-## Step 3: Install the new release in your virtual environment
+## Step 2: Install the new release in your virtual environment
 - Open your command prompt and activate your virtual environment:
 	```
 	call [VENV_PATH]\Scripts\activate
@@ -261,9 +262,8 @@ To avoid losing your custom standalone scripts:
 	pip install .\fus_ds_package
 	```
 
-## (Optional) Step 4: Restore your custom standalone scripts
-- If you have custom standalone scripts, copy them to the following location: your_directory_with_cloned_repository\standalone_driving_system_software.
-- Review the release notes to check if any modifications are needed for your scripts to remain compatible.
+## Step 3: Check the release notes
+Review the release notes for any breaking changes that might affect your own scripts/protocol files, and update them accordingly.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -453,8 +453,8 @@ You can add additional helper methods as needed to support your implementation.
 
 ### Step 3: Create a Standalone Script
 
-1. Create a new script in [standalone_driving_system_software/](standalone_driving_system_software) (e.g., `standalone_your_manufacturer.py`)
-2. Use existing scripts (like [standalone_sonic_concepts.py](standalone_driving_system_software/standalone_sonic_concepts.py) as templates
+1. Create a new scenario folder under [example_protocols/](example_protocols) (e.g., `example_protocols/your_manufacturer/`), or add a manufacturer subfolder to an existing scenario if it fits one already.
+2. Use existing scripts (like [standalone_plain.py](example_protocols/single_transducer/sonic_concepts/standalone_plain.py)) as templates.
 3. In the first section: Define user input by setting appropriate TUSProtocol parameters. Configure the code according to your specific equipment by adjusting timing parameters, power input levels, and other relevant settings.
 4. In the second section: Import your new driving system script and initialize an instance of the class. The invocation of the implemented abstract functions (connect, send_protocol, execute_protocol, disconnect) can remain the same.
 
@@ -469,6 +469,36 @@ To swap an already-added slot's transducer for a different one, call `protocol.s
 `'TriggerOnePulseTrain'` fires exactly one pulse train per external trigger received, so the driving system needs to know in advance how many to expect: `n_triggers` is *required* (not optional) specifically for this trigger option, and `pulse_train_rep_int`/`pulse_train_rep_dur` don't apply at all. Every other `trigger_option` -- `'None'` (no trigger) or `'TriggerWholeProtocol'` (one trigger fires the entire, already fully-timed protocol at once, equivalent to executing it directly but gated behind a single external trigger) alike -- uses `pulse_train_rep_int`/`pulse_train_rep_dur` instead, and `n_triggers` isn't valid there. `pulse_train_rep_int`/`pulse_train_rep_dur` may be given together, or just one of the two, or neither: `pulse_train_rep_int` defaults to `pulse_train_dur` (back-to-back repetition) when not given; only *then* does `pulse_train_rep_dur` default to that interval (i.e. "repeat exactly once") when not given -- so giving only `pulse_train_rep_dur` (a total span) fills it back-to-back, while giving only `pulse_train_rep_int` (or neither) collapses to a single repetition.
 
 There is no `wait_for_trigger` parameter to set, on `configure_timing()` or on `TUSProtocol` directly -- `protocol.wait_for_trigger` is a read-only property, derived from `trigger_option`: `True` whenever `trigger_option` is anything other than the config's designated "no trigger" option (`'None'` by default), mirroring how there is no separate "is ramping enabled" flag either (see `pulse_ramp_shape`). To stop waiting for a trigger, set `trigger_option` to that "no trigger" option instead of a boolean.
+
+#### Load a protocol from a YAML file
+
+Instead of building a `TUSProtocol` directly in Python, `fus_driving_systems.protocol_loader.load_protocol(yaml_path, engineering_mode=False)` parses a YAML file into ready-to-use `TUSProtocol` object(s) -- a simpler alternative aimed specifically at researchers who need to adjust a protocol's parameters without writing or editing Python. It returns `(protocols, total_alternating_duration_ms)`: `protocols` is always a list (even for a single protocol), and `total_alternating_duration_ms` is `None` unless the file describes more than one protocol to interleave -- both are meant to be forwarded straight into `send_protocol()`/`wait_for_trigger()`/`execute_protocol()`.
+
+```yaml
+driving_sys_serial: IGT-32-ch_comb_2x10-ch
+
+protocols:
+  - slots:
+      - transducer_serial: IS_PCD15287_01001
+        focus_option: Focus wrt exit plane [mm]
+        focus_value: 40
+        power_option: Max. pressure in free water [MPa]
+        power_value: 0.5
+        oper_freq: 300          # optional
+        dephasing_degree: null  # optional
+    timing:
+      pulse_dur: 45             # the only required timing field
+      pulse_rep_int: 100        # optional
+      trigger_option: TriggerWholeProtocol  # optional
+
+total_alternating_duration_ms: null  # only needed when protocols above has more than one entry
+```
+
+Every field mirrors a Python parameter name 1:1 (`slots[i]` -> `add_slot()`'s arguments, `timing` -> `configure_timing()`'s keyword arguments) -- an omitted or `null` optional field falls back to exactly the same default `add_slot()`/`configure_timing()` would already use. Semantic mistakes (an unknown driving-system/transducer serial, an invalid focus/power/trigger option, an out-of-range timing value) are not re-validated by the loader -- they surface via `TUSProtocol`/`add_slot()`/`configure_timing()`'s own existing, clear error messages, exactly as if you'd written the equivalent Python yourself. The loader does check the file's own structure: every required key must be present, and an unrecognized/typo'd key (anywhere in the file) is rejected immediately rather than silently doing nothing.
+
+When a file's `protocols` list has more than one entry (interleaving several protocols as one alternating group), every entry's `timing.pulse_ramp_shape`/`pulse_ramp_dur`/`trigger_option`/`n_triggers` must be identical (the same requirement `send_protocol()`/`wait_for_trigger()` already enforce for Python-built protocols) -- there is no way in YAML to share these values automatically between entries, so double-check they stay in sync if you ever change one.
+
+See [example_protocols/](example_protocols) for a `protocol.yaml`/`standalone_yaml.py` pair in most scenario folders, alongside that scenario's `standalone_plain.py` (the full, manually-written Python equivalent).
 
 To use your new equipment with custom serial numbers for driving systems and transducers, you'll need to update the configuration file. You can either modify the [ds_config.ini](fus_ds_package/fus_driving_systems/config/ds_config.ini) file directly or modify and regenerate it using the provided [create_config.py](fus_ds_package/fus_driving_systems/config/create_config.py) script. How and what to modify is explained in the next step.
 

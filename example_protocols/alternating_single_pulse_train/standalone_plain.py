@@ -38,8 +38,9 @@ README.md file of https://github.com/Donders-Institute/Radboud-FUS-driving-syste
 # fires transducer A's complete pulse train repetition, then reconfigures and fires transducer
 # B's complete pulse train repetition (with real time in between, e.g. to reposition/re-plan),
 # you don't need any of this: just call send_protocol()/execute_protocol() twice in a row, once
-# per transducer, exactly like standalone_igt.py does. See
-# standalone_igt_switch_active_transducer.py for that pattern.
+# per transducer. See ../switch_active_transducer/ for that pattern.
+#
+# See standalone_yaml.py in this same folder for the simpler, YAML-driven equivalent.
 #
 # Note: you can click on each parameter to get more information
 
@@ -50,7 +51,7 @@ README.md file of https://github.com/Donders-Institute/Radboud-FUS-driving-syste
 from fus_driving_systems.config.logging_config import initialize_logger
 
 log_dir = "C:\\Temp"
-filename = "standalone_igt_alternating_single_pulse_train"
+filename = "standalone_plain"
 logger = initialize_logger(log_dir, filename)
 
 # This creates a timestamped session folder inside log_dir for this FDS log, and also enables
@@ -130,13 +131,13 @@ protocol_a = tus_protocol.TUSProtocol('IGT-32-ch_comb_2x10-ch')
 slot_a1 = protocol_a.add_slot(
     TRANSDUCER_1,
     FOCUS_OPTION, 40,  # [mm], focal depth w.r.t. the exit plane and FWHM middle
-    POWER_OPTION, 0.5,  # [MPa], maximum pressure in free water. NOTE: DIFFERENT THAN SC
+    POWER_OPTION, 0.5,  # [MPa], maximum pressure in free water.
     oper_freq=300,  # [kHz], operating frequency
 )
 slot_a2 = protocol_a.add_slot(
     TRANSDUCER_2,
     FOCUS_OPTION, 80,  # [mm], focal depth w.r.t. the exit plane and FWHM middle
-    POWER_OPTION, 0,  # [MPa], maximum pressure in free water. NOTE: DIFFERENT THAN SC
+    POWER_OPTION, 0,  # [MPa], maximum pressure in free water.
     oper_freq=300,  # [kHz], operating frequency
 )
 protocol_a.configure_timing(
@@ -154,13 +155,13 @@ protocol_b = tus_protocol.TUSProtocol('IGT-32-ch_comb_2x10-ch')
 slot_b1 = protocol_b.add_slot(
     TRANSDUCER_1,
     FOCUS_OPTION, 40,  # [mm], focal depth w.r.t. the exit plane and FWHM middle
-    POWER_OPTION, 0,  # [MPa], maximum pressure in free water. NOTE: DIFFERENT THAN SC
+    POWER_OPTION, 0,  # [MPa], maximum pressure in free water.
     oper_freq=300,  # [kHz], operating frequency
 )
 slot_b2 = protocol_b.add_slot(
     TRANSDUCER_2,
     FOCUS_OPTION, 80,  # [mm], focal depth w.r.t. the exit plane and FWHM middle
-    POWER_OPTION, 0.5,  # [MPa], maximum pressure in free water. NOTE: DIFFERENT THAN SC
+    POWER_OPTION, 0.5,  # [MPa], maximum pressure in free water.
     oper_freq=300,  # [kHz], operating frequency
 )
 protocol_b.configure_timing(
@@ -200,8 +201,8 @@ try:
     #
     # Call wait_for_trigger_result() once you expect the trigger to have fired (or with a
     # generous timeout covering your full protocol) to block until completion and exit if the
-    # driving system reports the execution failed. total_duration_ms above is reused here since
-    # it already describes how long this triggered protocol is expected to take.
+    # driving system reports the execution failed. total_alternating_duration_ms above is reused
+    # here since it already describes how long this triggered protocol is expected to take.
     #
     # Note: an execution error is always logged immediately when it happens (regardless of when
     # you call this), but your code will only actively react to it (via sys.exit()) once

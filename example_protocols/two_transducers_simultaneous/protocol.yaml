@@ -1,0 +1,51 @@
+# Two transducers, part of the SAME protocol -- they fire together, at the same time, not
+# alternating (see ../alternating_single_pulse_train/ instead for that). Used by
+# standalone_yaml.py in this same folder.
+#
+# See standalone_plain.py (also in this folder) if you want the full, manually-written Python
+# equivalent instead, or need something this file's fields don't cover.
+
+driving_sys_serial: IGT-32-ch_comb_2x10-ch  # print(driving_system.get_ds_serials()) for options
+
+protocols:
+  - slots:
+      # As many slots as this driving system's config allows (see DrivingSystem.max_tran_slots)
+      # -- 2 here. Remove the second slot entirely if only one transducer is connected.
+      - transducer_serial: IS_PCD15287_01001  # print(transducer.get_tran_serials()) for options
+        focus_option: Focus wrt exit plane [mm]
+        focus_value: 80  # [mm], focal depth w.r.t. the exit plane and FWHM middle
+        power_option: Max. pressure in free water [MPa]
+        power_value: 0.3  # [MPa], maximum pressure in free water
+        oper_freq: 300  # [kHz], operating frequency
+
+      - transducer_serial: IS_PCD15287_01002
+        focus_option: Focus wrt exit plane [mm]
+        focus_value: 80  # [mm], focal depth w.r.t. the exit plane and FWHM middle
+        power_option: Max. pressure in free water [MPa]
+        power_value: 0.3  # [MPa], maximum pressure in free water
+        oper_freq: 300  # [kHz], operating frequency
+
+    # Applies once, to the whole protocol -- both slots above fire together, on this same timing.
+    # Each field below is deliberately a genuinely different value from the one before it (not
+    # just mirroring the level below), to show the full timing hierarchy in one place: one
+    # pulse, repeated into a pulse train, itself repeated some number of times.
+    timing:
+      pulse_dur: 10          # [ms], pulse duration -- the only required timing field
+      pulse_ramp_shape: Rectangular - no ramping
+      pulse_ramp_dur: 0      # [ms], ramp duration
+      pulse_rep_int: 50      # [ms], pulse repetition interval -- one pulse every 50 ms
+      pulse_train_dur: 200   # [ms], pulse train duration -- 4 pulses per train (200 / 50)
+
+      # 'None' (used here) means no trigger at all -- executed directly. 'TriggerOnePulseTrain'
+      # fires one pulse train per trigger received (also requires n_triggers);
+      # 'TriggerWholeProtocol' fires the entire, already fully-timed protocol at once with a
+      # single trigger.
+      trigger_option: None
+
+      # a new train starts every 400 ms (200 ms train, then a 200 ms gap before the next)
+      pulse_train_rep_int: 400  # [ms]
+      # keeps repeating for 2 s in total, i.e. 5 repetitions of the whole train (2000 / 400)
+      pulse_train_rep_dur: 2    # [s]
+
+# total_alternating_duration_ms is only needed when protocols above has more than one entry
+# (interleaving several protocols) -- omit it entirely for one combined protocol like this.

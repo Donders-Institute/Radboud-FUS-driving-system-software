@@ -1,0 +1,59 @@
+# Protocol for a single transducer, executed directly (no external trigger) -- used by
+# standalone_direct_execute.py in this same folder.
+#
+# See standalone_plain.py (also in this folder) if you want the full, manually-written Python
+# equivalent instead, or need something this file's fields don't cover.
+
+driving_sys_serial: IGT-32-ch_comb_2x10-ch  # print(driving_system.get_ds_serials()) for options
+
+protocols:
+  - slots:
+      - transducer_serial: IS_PCD15287_01001  # print(transducer.get_tran_serials()) for options
+
+        # 'Focus wrt mid bowl [mm]' is also a valid option for IGT, but is engineering-only by
+        # default (see load_protocol()'s engineering_mode parameter in the .py script).
+        focus_option: Focus wrt exit plane [mm]
+        focus_value: 80  # [mm], focal depth w.r.t. the exit plane and FWHM middle
+
+        # 'Global power [mW]' is also valid for IGT. 'Voltage [V]'/'Amplitude [%]' too, but both
+        # are engineering-only by default.
+        power_option: Max. pressure in free water [MPa]
+        power_value: 0.3  # [MPa], maximum pressure in free water
+
+        oper_freq: 300  # [kHz], operating frequency -- optional, defaults to the transducer's
+                        # own fundamental frequency when omitted
+
+        # Degree used to dephase every nth element. null = no dephasing. One value (>0) is the
+        # degree of dephasing, e.g. 90 with 4 elements: element 1: 0, element 2: 90, element 3:
+        # 180, element 4: 270. When the number of values matches the number of elements, this
+        # overrides the phases that would otherwise be calculated from focus_value.
+        dephasing_degree: null
+
+    timing:
+      # Each field below is deliberately a genuinely different value from the one before it (not
+      # just mirroring the level below), to show the full timing hierarchy in one place: one
+      # pulse, repeated into a pulse train, itself repeated some number of times.
+      pulse_dur: 10          # [ms], pulse duration -- the only required timing field
+
+      # pulse ramping -- both optional, default to "no ramping" / 0 when omitted
+      pulse_ramp_shape: Rectangular - no ramping
+      pulse_ramp_dur: 0      # [ms], ramp duration, with at least 70 us between ramp up/down
+
+      pulse_rep_int: 50      # [ms], pulse repetition interval -- one pulse every 50 ms
+      pulse_train_dur: 200   # [ms], pulse train duration -- 4 pulses per train (200 / 50)
+
+      # 'None' means no trigger at all -- the protocol is executed directly via
+      # execute_protocol(), which is exactly what this file is for. See wait_for_trigger.yaml
+      # (this same folder) for the trigger-based alternative instead.
+      trigger_option: None
+
+      # pulse_train_rep_int/pulse_train_rep_dur (how many times the pulse train repeats) only
+      # apply when trigger_option is not TriggerOnePulseTrain -- both optional; omitting both
+      # means "repeat exactly once".
+      # a new train starts every 400 ms (200 ms train, then a 200 ms gap before the next)
+      pulse_train_rep_int: 400  # [ms]
+      # keeps repeating for 2 s in total, i.e. 5 repetitions of the whole train (2000 / 400)
+      pulse_train_rep_dur: 2    # [s]
+
+# total_alternating_duration_ms is only needed when protocols above has more than one entry
+# (interleaving several protocols) -- omit it entirely for a single protocol like this one.

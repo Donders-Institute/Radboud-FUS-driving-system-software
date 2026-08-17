@@ -30,16 +30,18 @@ README.md file of https://github.com/Donders-Institute/Radboud-FUS-driving-syste
 
 # IGT example: two physically connected transducers, only one of which is actually active at a
 # time -- switched mid-experiment by reconfiguring the SAME protocol's slots via
-# slot.configure(), rather than by physically reconnecting a transducer (which usually costs too
-# much time/coupling effort to do mid-study) or building an entirely separate protocol just to
-# swap which slot is on. Slot 1 starts active (real press) and slot 2 off (press=0); later,
+# slot.configure(). Slot 1 starts active (real press) and slot 2 off (press=0); later, 
 # slot.configure() swaps that around on both slots at once, and the protocol is re-sent so the
 # driving system actually picks up the change before executing again.
 #
 # There is no interleaving API involved here at all -- send_protocol()/execute_protocol() are
-# each called twice, once before and once after the switch, exactly like standalone_igt.py's
-# single call. See standalone_igt_alternating_single_pulse_train.py instead if you actually want
-# both transducers to alternate pulse-by-pulse within one shared execution.
+# each called twice, once before and once after the switch. See
+# ../alternating_single_pulse_train/ instead if you actually want both transducers to alternate
+# pulse-by-pulse within one shared execution.
+#
+# See standalone_yaml.py in this same folder for the YAML-driven equivalent of the initial
+# configuration -- the runtime slot.configure() switch below still happens in Python either way,
+# since it's an imperative, mid-script action a static declarative file can't express.
 #
 # Note: you can click on each parameter to get more information
 
@@ -50,7 +52,7 @@ README.md file of https://github.com/Donders-Institute/Radboud-FUS-driving-syste
 from fus_driving_systems.config.logging_config import initialize_logger
 
 log_dir = "C:\\Temp"
-filename = "standalone_igt_switch_active_transducer"
+filename = "standalone_plain"
 logger = initialize_logger(log_dir, filename)
 
 # This creates a timestamped session folder inside log_dir for this FDS log, and also enables
@@ -100,7 +102,7 @@ igt_driving_sys.connect(ds_info.connect_info, log_dir, filename)
 # to check available options for this driving system (no need to add a slot first):
 # print(protocol.get_focus_options()) / print(protocol.get_power_options())
 FOCUS_OPTION = 'Focus wrt exit plane [mm]'
-POWER_OPTION = 'Max. pressure in free water [MPa]'  # or 'Global power [mW]'
+POWER_OPTION = 'Max. pressure in free water [MPa]'
 
 # Both transducers below are physically connected for the whole session -- defined once here so
 # the transducer_1/transducer_2 mapping used in the switch further down can't drift apart from
@@ -142,7 +144,15 @@ protocol.configure_timing(
     # [s], pulse train repetition duration -- keeps repeating for 5 s in total, i.e. 5
     # repetitions of the whole train (5000 ms / 1000 ms)
     pulse_train_rep_dur=5,
+
+    # wait_for_trigger is derived from trigger_option -- there is no separate flag to set. Use
+    # 'None' (this template's default) to not use a trigger at all; 'TriggerOnePulseTrain' to
+    # fire one pulse train per trigger received (you must also give n_triggers below); or
+    # 'TriggerWholeProtocol' to fire the entire, already fully-timed protocol at once with a
+    # single trigger. To check available trigger options: print(protocol.get_trigger_options())
     trigger_option='None',
+    # trigger_option='TriggerOnePulseTrain',
+    # trigger_option='TriggerWholeProtocol'
 )
 
 # It is important to place your experimental code into a try-finally block, so if your code is
@@ -150,7 +160,18 @@ protocol.configure_timing(
 # it keeps on firing ultrasound protocols.
 try:
     igt_driving_sys.send_protocol(protocol)
-    igt_driving_sys.execute_protocol(protocol)
+
+    # If wait_for_trigger is true, only the protocol is sent and will be executed by the
+    # external trigger. If false (this template's default), the protocol is sent and can be
+    # executed directly using execute_protocol(). See
+    # ../single_transducer/igt/standalone_wait_for_trigger.py/standalone_wait_for_trigger_poll.py
+    # for the full wait_for_trigger_result()/has_execution_error() explanation this pattern
+    # relies on.
+    if protocol.wait_for_trigger:
+        igt_driving_sys.wait_for_trigger(protocol)
+        igt_driving_sys.wait_for_trigger_result(timeout_s=5.0)
+    else:
+        igt_driving_sys.execute_protocol(protocol)
 
     ##########################################################################
     # ... later in your experiment: switch which transducer is active ...
@@ -165,12 +186,16 @@ try:
     # The driving system already has the OLD configuration loaded -- send_protocol() must be
     # called again so it picks up what slot.configure() just changed above.
     igt_driving_sys.send_protocol(protocol)
-    igt_driving_sys.execute_protocol(protocol)
+    if protocol.wait_for_trigger:
+        igt_driving_sys.wait_for_trigger(protocol)
+        igt_driving_sys.wait_for_trigger_result(timeout_s=5.0)
+    else:
+        igt_driving_sys.execute_protocol(protocol)
 
 finally:
     # By the time we reach here, the protocol has actually finished executing either way:
-    # execute_protocol() only returns once it's done. So it's always safe to disconnect here --
-    # if your code stops abruptly before this point instead (like a kernel death/crash), make
-    # sure to disconnect the driving system yourself, otherwise it may keep firing ultrasound
-    # protocols.
+    # execute_protocol()/wait_for_trigger_result() only return once it's done. So it's always
+    # safe to disconnect here -- if your code stops abruptly before this point instead (like a
+    # kernel death/crash), make sure to disconnect the driving system yourself, otherwise it may
+    # keep firing ultrasound protocols.
     igt_driving_sys.disconnect()
