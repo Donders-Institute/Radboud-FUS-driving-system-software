@@ -12,11 +12,32 @@ discovery.py so it can be shared with test modules that need to build
 parametrize lists at collection time.
 """
 import faulthandler
+import os
 from types import SimpleNamespace
 
 import pytest
 
 from discovery import CONVERSION_DATA_SUBPATH, resolve_conversion_data_dir
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _run_tests_from_a_scratch_directory(tmp_path_factory):
+    """The real unifus.pyd native extension (imported transitively via igt_ds.py, exercised by
+    igt/conftest.py's fixtures) writes its own startup-banner log file the moment a real
+    unifus.FUSSystem() is used during a test -- named unifus_<timestamp>.log by the native
+    library itself, in the current working directory. This isn't configurable from Python:
+    igt_ds.py's own unifus.setLogPath(log_dir, ...) call only affects the *name*, not this
+    initial banner, and no log_dir any test passes around changes where it lands. Running the
+    whole session from a disposable scratch directory (instead of fus_ds_package/, the package's
+    own source tree) keeps this file out of the repo working copy without needing any change to
+    the native library itself -- pytest's own tmp_path_factory retention policy cleans it up
+    over time, the same as any other test-generated tmp_path."""
+    original_cwd = os.getcwd()
+    os.chdir(tmp_path_factory.mktemp('pytest_cwd'))
+
+    yield
+
+    os.chdir(original_cwd)
 
 
 # Every consumer module (tus_protocol.py, driving_system.py, transducer.py, the driving-system
