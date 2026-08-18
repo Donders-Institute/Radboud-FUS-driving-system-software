@@ -455,7 +455,7 @@ _add_driving_system(
     native_focus_parameters=FOC_WRT_BOWL,
     max_transducer_slots=2,
     max_buffers=2,
-    active=True,
+    active=False,
 )
 
 # 2 x 10 ch.: this driving system config drives two 10-element transducers at once.
@@ -472,7 +472,7 @@ _add_driving_system(
     native_focus_parameters=FOC_WRT_BOWL,
     max_transducer_slots=2,
     max_buffers=2,
-    active=True,
+    active=False,
 )
 
 _add_driving_system(
@@ -488,7 +488,7 @@ _add_driving_system(
     native_focus_parameters=FOC_WRT_BOWL,
     max_transducer_slots=1,
     max_buffers=2,
-    active=True,
+    active=False,
 )
 
 _add_driving_system(
