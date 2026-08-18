@@ -410,7 +410,10 @@ _add_driving_system(
     manufacturer=SONIC_CONCEPTS,
     available_channels=4,
     connection_info='COM6',
-    transducer_compatibility=SC_TRANS + DUMMIES,
+    # No Dummy here: unlike IGT, this driving system's transducer selection happens physically
+    # on the hardware itself (not managed by this software), so there is nothing for a
+    # software-only "Dummy load" choice to correspond to.
+    transducer_compatibility=SC_TRANS,
     power_options=[POW_GP],
     native_power_parameters=POW_GP,
     focus_options=[FOC_WRT_EXIT],
@@ -426,7 +429,10 @@ _add_driving_system(
     manufacturer=SONIC_CONCEPTS,
     available_channels=4,
     connection_info='COM5',
-    transducer_compatibility=SC_TRANS + DUMMIES,
+    # No Dummy here: unlike IGT, this driving system's transducer selection happens physically
+    # on the hardware itself (not managed by this software), so there is nothing for a
+    # software-only "Dummy load" choice to correspond to.
+    transducer_compatibility=SC_TRANS,
     power_options=[POW_GP],
     native_power_parameters=POW_GP,
     focus_options=[FOC_WRT_EXIT],
@@ -668,7 +674,9 @@ _add_driving_system(
     manufacturer=CITRUS,
     available_channels=256,
     connection_info='COM1',
-    transducer_compatibility=CITRUS_TRANS + DUMMIES,
+    # No Dummy here either -- same reason as Sonic Concepts: transducer selection isn't
+    # software-managed for this driving system.
+    transducer_compatibility=CITRUS_TRANS,
     power_options=[POW_VOLT],
     native_power_parameters=POW_VOLT,
     focus_options=[FOC_WRT_EXIT],
@@ -800,9 +808,14 @@ _add_transducer(
 # Dummy tranducer
 #######################################################################################
 
+# For characterizing a driving system's own electrical output (e.g. into resistors) with no
+# real transducer connected. Only usable with a driving system's native power/focus parameters
+# -- there is no Equipment.Combination.* calibration for Dummy with any driving system, and none
+# is meaningful: a dummy load has no real acoustic behavior to calibrate against, so setting a
+# non-native option (e.g. a target pressure) would exit with a "no active calibration" error.
 _add_transducer(
     DUMMY, name='Dummy load', manufacturer='', elements=0, fund_freq=0,
-    min_focus=0, max_focus=1000, active=False,
+    min_focus=0, max_focus=1000, active=True,
 )
 
 #######################################################################################
