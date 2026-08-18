@@ -277,7 +277,7 @@ The Radboud FUS Driving System software can be customized through its configurat
 
 Here are some frequently adjusted settings:
 
-- **Change equipment**: Modify `driving systems` and `transducers` in the `[Equipment]` section
+- **Change equipment**: Add/edit entries in [create_config.py](fus_ds_package/fus_driving_systems/config/create_config.py)'s `[Equipment]`-related sections, then regenerate `ds_config.ini` from it -- see [Adding Your Own Equipment](#add-equip)
 - **Adjust safety limits**: Update `maximum pressure allowed in free water` in the `[Power]` section
 - **Modify logging behavior**: Change log levels and paths in the `[Logging]` section
 
@@ -296,13 +296,11 @@ If you encounter issues after modifying the configuration:
 
 ## ⚙️ Configuring System Parameters <a name="other-config"></a>
 
-The package includes a comprehensive configuration file [ds_config.ini](fus_ds_package/fus_driving_systems/config/ds_config.ini) that controls various aspects of the system. You can either modify this file directly or modify and regenerate it using the provided [create_config.py](fus_ds_package/fus_driving_systems/config/create_config.py) script. Before making any changes:
+The package includes a comprehensive configuration file [ds_config.ini](fus_ds_package/fus_driving_systems/config/ds_config.ini) that controls various aspects of the system -- but it is a **generated file**, produced by running [create_config.py](fus_ds_package/fus_driving_systems/config/create_config.py), and should not be hand-edited directly: any direct edit is silently lost the next time `create_config.py` runs, or the moment a new package release is installed (which ships its own freshly generated copy). To change something, edit `create_config.py` instead:
 
-1. **Create a backup** of the original configuration file
-2. Edit the file using a text editor like Notepad++ or VS Code
-3. Make your changes while preserving the formatting
-4. Save the file with the same name
-5. Reinstall and restart the application for changes to take effect
+1. Open [create_config.py](fus_ds_package/fus_driving_systems/config/create_config.py) and make your changes there (see [Adding Your Own Equipment](#add-equip) for the equipment-specific case)
+2. Run it from inside `fus_ds_package/fus_driving_systems/config/` (e.g. `python create_config.py`) to regenerate `ds_config.ini`
+3. Reinstall and restart the application for changes to take effect
 
 The configuration file is organized into these main sections:
 
@@ -515,7 +513,9 @@ To use your new equipment with custom serial numbers for driving systems and tra
 
 ### Step 4: Update the Configuration File
 
-Update the [ds_config.ini](fus_ds_package/fus_driving_systems/config/ds_config.ini) file to include your new equipment. The Equipment section is extensive and includes settings for:
+`ds_config.ini` is a **generated file** -- never add your equipment there directly, since any hand-edit is silently lost the next time [create_config.py](fus_ds_package/fus_driving_systems/config/create_config.py) runs, or the moment a new package release is installed. Add your equipment to `create_config.py` instead, then regenerate `ds_config.ini` from it (Step 5 below).
+
+The easiest way in today's `create_config.py`: find an existing driving system/transducer close to your own hardware (e.g. search for one of the serials listed under "Currently Supported Hardware" above, or its manufacturer's own list of serials near the top of the file, like `IGT_DS`/`SC_DS`), and copy its block as your starting point. Each of the four subsections below shows what the resulting `ds_config.ini` entry looks like -- that's what you're reproducing by adding the equivalent lines to `create_config.py`, not by typing this directly into `ds_config.ini`. The Equipment section is extensive and includes settings for:
 
 1. Available driving systems and transducers
 2. Manufacturer-specific configurations
@@ -523,6 +523,7 @@ Update the [ds_config.ini](fus_ds_package/fus_driving_systems/config/ds_config.i
 4. Compatible combinations of equipment
 
 #### 1. Add to Equipment Section
+Add your system/transducer identifier to the relevant list near the top of `create_config.py` (e.g. `IGT_DS`/`SC_DS`/`CITRUS_DS` for driving systems, `IS_TRANS`/`SC_TRAN_2CH`/etc. for transducers), which ends up in the generated `ds_config.ini` as:
 ```ini
 [Equipment]
 driving systems = 203-035
@@ -541,6 +542,7 @@ combination sign = ~
 - **combination sign**: Symbol used to denote system-transducer combinations
 
 #### 2. Add Manufacturer Settings
+If your manufacturer isn't one of the existing ones in `create_config.py` yet, add a new block of `config['Equipment.Manufacturer.YM'][...] = ...` assignments (copy an existing manufacturer's block as a starting point), which ends up in the generated `ds_config.ini` as:
 ```ini
 [Equipment.Manufacturer.YM]  # Use your manufacturer's abbreviation
 name = Your Manufacturer Name
@@ -564,6 +566,7 @@ Additional manufacturer-specific settings can be added as needed. For example, t
 
 
 #### 3. Add Specific Equipment Settings
+In `create_config.py`, copy an existing `config['Equipment.Driving system.<serial>'][...] = ...` block (e.g. search for `IGT_DS[0]`) and adjust the values for your own hardware, which ends up in the generated `ds_config.ini` as:
 ```ini
 [Equipment.Driving system.YOUR-SYSTEM-ID]
 name = Your System Name
@@ -594,6 +597,7 @@ The driving system identifier must match one of the identifiers defined in the '
 - **max. buffers**: How many hardware buffers this driving system can hold a protocol in at once -- each buffer can be pre-loaded with its own protocol ahead of time and triggered/executed independently (see `TUSProtocol.buffer_num`). Defaults to `1` (no real buffer concept, `buffer_num` is then only ever `0`) when omitted -- all current IGT systems declare `2` here.
 - **active?**: Whether this system is active and available for use
 
+Similarly, copy an existing `config['Equipment.Transducer.<serial>'][...] = ...` block for your transducer, which ends up as:
 ```ini
 [Equipment.Transducer.YOUR-TRANSDUCER-ID]
 name = Your Transducer Name
@@ -621,7 +625,7 @@ The transducer identifier must match one of the identifiers defined in the '[Equ
 - **active?**: Whether this transducer is active and available for use
 
 #### 4. Add Equipment Combinations (advanced feature, if needed)
-If your system's *native power parameters* and/or *native focus parameters* isn't the only power/focus option you want to offer, add a combination entry per driving-system/transducer pair to make the other options settable too:
+If your system's *native power parameters* and/or *native focus parameters* isn't the only power/focus option you want to offer, add a combination entry per driving-system/transducer pair to make the other options settable too. In `create_config.py`, add your pair's serial to `DS_TRAN_COMBOS`, add a `config['Equipment.Combination.<serial>~<serial>'][...] = ...` block (copy an existing one, e.g. a combination already using `_combo_files_exist(...)`) pointing at your own calibration JSON files, which ends up as:
 
 ```ini
 [Equipment.Combination.YOUR-SYSTEM-ID~YOUR-TRANSDUCER-ID]
@@ -643,9 +647,10 @@ The four typical conversion equations are:
 
 These conversion equations allow users to specify parameters in intuitive units (like pressure) while the system handles the conversion to hardware-specific inputs.
 
-### Step 5: Reinstall the Package
+### Step 5: Regenerate the Configuration File and Reinstall the Package
 
-After making these changes, reinstall the FUS driving system package to apply your updates. 
+1. Run `create_config.py` from inside `fus_ds_package/fus_driving_systems/config/` (e.g. `python create_config.py`) to regenerate `ds_config.ini` from your changes.
+2. Reinstall the FUS driving system package to apply your updates.
 
 Now you are ready to use your new standalone script to drive the new equipment.
 
