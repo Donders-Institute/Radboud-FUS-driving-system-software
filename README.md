@@ -53,23 +53,23 @@ This project is facilitated by the Radboud FUS Centre. For more information, ple
 ## 👥 Authors <a name="authors"></a>
 
 👤 **[Margely Cornelissen](https://www.ru.nl/en/people/cornelissen-m), [FUS Centre](https://www.ru.nl/en/donders-institute/research/research-facilities/focused-ultrasound-initiative-fus), Radboud University**
-- GitHub: [@MaCuinea](https://github.com/MaCuinea)
+- [GitHub](https://github.com/MaCuinea) (@MaCuinea)
 - [LinkedIn](https://linkedin.com/in/margely-cornelissen)
 - [ORCID](https://orcid.org/0009-0002-1330-4401)
 
 👤 **[Stein Fekkes](https://www.ru.nl/en/people/fekkes-s), [FUS Centre](https://www.ru.nl/en/donders-institute/research/research-facilities/focused-ultrasound-initiative-fus), Radboud University**
 
-- GitHub: [@StefFek-GIT](https://github.com/StefFek-GIT)
+- [GitHub](https://github.com/StefFek-GIT) (@StefFek-GIT)
 - [LinkedIn](https://linkedin.com/in/sfekkes)
 - [ORCID](https://orcid.org/0000-0002-9955-0795)
 
 👤 **Erik Dumont, [Image Guided Therapy (IGT)](http://www.imageguidedtherapy.com/)**
-- GitHub: [@erikdumontigt](https://github.com/erikdumontigt)
+- [GitHub](https://github.com/erikdumontigt) (@erikdumontigt)
 - [LinkedIn](https://linkedin.com/in/erik-dumont-986a814)
 - [ORCID](https://orcid.org/0000-0003-1002-8667)
 
 👤 **Lennart Verhagen, [FUS Centre](https://www.ru.nl/en/donders-institute/research/research-facilities/focused-ultrasound-initiative-fus), Radboud University**
-- GitHub: [@lennartverhagen](https://github.com/lennartverhagen)
+- [GitHub](https://github.com/lennartverhagen) (@lennartverhagen)
 - [LinkedIn](https://nl.linkedin.com/in/lennartverhagen)
 - [ORCID](https://orcid.org/0000-0003-3207-7929)
 
