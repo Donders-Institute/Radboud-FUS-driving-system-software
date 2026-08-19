@@ -26,7 +26,7 @@ import pandas as pd
 import pytest
 
 from fus_driving_systems.config import logging_config
-from fus_driving_systems.igt import unifus
+from fus_driving_systems.igt import transducer_xyz, unifus
 from fus_driving_systems.igt.igt_ds import IGT
 
 
@@ -524,7 +524,7 @@ class TestDefinePulseGroupSingleSlot:
 
     def test_uses_override_phases_when_dephasing_matches_element_count(self, connected_instance):
         connected_instance.n_channels = 2
-        fake_transducer = SimpleNamespace(elements=2, steer_info='dummy.ini', natural_foc=0)
+        fake_transducer = SimpleNamespace(elements=2, steer_info='dummy.ini')
         slot = SimpleNamespace(oper_freq=250, ampl=[50, 60], dephasing_degree=[10.0, 20.0],
                                transducer=fake_transducer, focus_wrt_mid_bowl=50)
         protocol = SimpleNamespace(pulse_dur=1.0, pulse_rep_int=2.0, slots=[slot])
@@ -547,7 +547,7 @@ class TestDefinePulseGroupSingleSlot:
         """A single slot's length-1 ampl is expanded to its transducer's own element count,
         same as any other slot regardless of how many are in the protocol."""
         connected_instance.n_channels = 10
-        fake_transducer = SimpleNamespace(elements=10, steer_info='dummy.ini', natural_foc=0)
+        fake_transducer = SimpleNamespace(elements=10, steer_info='dummy.ini')
         slot = SimpleNamespace(oper_freq=250, ampl=[50], dephasing_degree=[0.0] * 10,
                                transducer=fake_transducer, focus_wrt_mid_bowl=50)
         protocol = SimpleNamespace(pulse_dur=1.0, pulse_rep_int=2.0, slots=[slot])
@@ -579,7 +579,6 @@ class TestDefinePulseGroupSingleSlot:
         fake_transducer = SimpleNamespace(
             elements=10,
             steer_info='igt/config/imasonic_transducers/transducer_15287_10_300kHz.ini',
-            natural_foc=75,
         )
         slot = SimpleNamespace(oper_freq=300, ampl=[50] * 10, dephasing_degree=None,
                                transducer=fake_transducer, focus_wrt_mid_bowl=75)
@@ -613,9 +612,39 @@ class TestSetPhasesIniBranch:
         phases = connected_instance._set_phases(
             pulse, focus=75,
             steer_info='igt/config/imasonic_transducers/transducer_15287_10_300kHz.ini',
-            natural_foc=75, dephasing_degree=None)
+            dephasing_degree=None)
 
         assert len(phases) == 10
+
+    def test_ini_branch_reads_focal_length_from_the_loaded_ini_file(
+            self, mocker, connected_instance):
+        """Regression proof for the natural-focus/focalLength consolidation: _set_phases() no
+        longer takes a natural_foc parameter -- aim_wrt_natural_focus must come from
+        trans.focalLength, populated by Transducer.load() from the .ini file itself. Proven by
+        mocking load() to set two different focalLength values (rather than asserting one exact
+        phase, which would just as easily pass if the value were silently ignored/hardcoded) and
+        confirming the computed phases differ accordingly."""
+        connected_instance.n_channels = 1
+
+        def make_fake_load(focal_length):
+            def fake_load(self, filename):
+                self.focalLength = focal_length
+                self.elements = [(0.0, 0.0, 0.05)]
+                return True
+            return fake_load
+
+        pulse = unifus.Pulse(1, 1, 1)
+        pulse.setFrequencies([300_000])
+
+        mocker.patch.object(transducer_xyz.Transducer, 'load', make_fake_load(75.0))
+        phases_a = connected_instance._set_phases(
+            pulse, focus=40, steer_info='fake.ini', dephasing_degree=None)
+
+        mocker.patch.object(transducer_xyz.Transducer, 'load', make_fake_load(100.0))
+        phases_b = connected_instance._set_phases(
+            pulse, focus=40, steer_info='fake.ini', dephasing_degree=None)
+
+        assert phases_a != phases_b
 
 
 class TestSetPhasesExcelBranch:
@@ -640,7 +669,7 @@ class TestSetPhasesExcelBranch:
 
         phases = connected_instance._set_phases(mocker.Mock(), focus=50.0,
                                                 steer_info='some_table.xlsx',
-                                                natural_foc=75, dephasing_degree=None)
+                                                dephasing_degree=None)
 
         assert phases == [10.0, 20.0]
 
@@ -650,7 +679,7 @@ class TestSetPhasesExcelBranch:
 
         with pytest.raises(SystemExit):
             connected_instance._set_phases(mocker.Mock(), focus=50.0, steer_info='missing.xlsx',
-                                           natural_foc=75, dephasing_degree=None)
+                                           dephasing_degree=None)
 
     def test_exits_when_steer_info_is_neither_ini_nor_xlsx(self, mocker, connected_instance):
         """DUMMY/CITRUS transducers configure an empty 'Steer information'
@@ -661,7 +690,7 @@ class TestSetPhasesExcelBranch:
 
         with pytest.raises(SystemExit):
             connected_instance._set_phases(mocker.Mock(), focus=50.0, steer_info='',
-                                           natural_foc=75, dephasing_degree=None)
+                                           dephasing_degree=None)
 
 
 class TestDefinePulseGroupMultiSlot:

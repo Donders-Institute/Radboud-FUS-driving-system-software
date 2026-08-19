@@ -75,7 +75,10 @@ class Transducer:
 
     def __init__(self):
         # self.name = ""
-        # self.focalLength = 0
+        # Kept in mm (unlike self.elements' coordinates below, which are stored in meters) --
+        # this crosses the class's own public boundary the same way point_mm/set_focus_mm do,
+        # so callers (igt_ds.py) can use it directly alongside those, in the same unit.
+        self.focalLength = 0
         self.elements = []
 
     def load(self, filename):
@@ -118,11 +121,23 @@ class Transducer:
         return self._load_config(config)
 
     def _load_config(self, config):
+        # Required, not merely defaulted to 0 -- a missing/invalid focalLength would silently
+        # feed a wrong value into compute_phases()'s aim_wrt_natural_focus arithmetic, producing
+        # a plausible-looking but incorrect target focus rather than a loud failure. No
+        # /1000.0 here (unlike the element coordinates below) -- focalLength stays in mm.
+        try:
+            self.focalLength = config.getfloat("transducer", "focalLength")
+        except (cfg.Error, ValueError):
+            message = "Error: missing or invalid 'transducer.focalLength' parameter"
+            get_logger().critical(message)
+            sys.exit(message)
+
+            return False
+
         size = 0
         # self.name = ""
         try:
             # self.name = config.get ("transducer", "name")
-            # self.focalLength = config.getfloat ("transducer", "focalLength") / 1000.0
             size = config.getint("elements", "size")
         except (cfg.Error, ValueError):
             message = "Error: missing 'elements.size' parameter"

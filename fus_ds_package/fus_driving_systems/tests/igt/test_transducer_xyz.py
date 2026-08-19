@@ -125,9 +125,33 @@ class TestComputePhases:
 
 class TestLoadFromString:
 
+    def test_parses_focal_length_in_mm_not_meters(self):
+        """Unlike the element coordinates below (stored in meters), focalLength stays in mm --
+        it crosses this class's public boundary the same way point_mm/set_focus_mm already do,
+        so callers (igt_ds.py's _set_phases()) can use it directly alongside those."""
+        trans = transducer_xyz.Transducer()
+        definition = (
+            "[transducer]\n"
+            "focalLength = 75\n"
+            "[elements]\n"
+            "size = 1\n"
+            "1 = 0|0|10\n"
+        )
+
+        trans.load_from_string(definition)
+
+        assert trans.focalLength == pytest.approx(75.0)
+
+    def test_focal_length_defaults_to_zero_before_loading(self):
+        trans = transducer_xyz.Transducer()
+
+        assert trans.focalLength == 0
+
     def test_parses_elements_section_into_meter_coordinates(self):
         trans = transducer_xyz.Transducer()
         definition = (
+            "[transducer]\n"
+            "focalLength = 75\n"
             "[elements]\n"
             "size = 2\n"
             "1 = 0|0|10\n"
@@ -143,16 +167,33 @@ class TestLoadFromString:
             (0.005, 0.005, 0.02),
         ])
 
+    def test_exits_when_focal_length_key_is_missing(self):
+        """focalLength is required, not merely defaulted to 0 -- a missing/invalid value would
+        silently feed a wrong number into compute_phases()'s aim_wrt_natural_focus arithmetic,
+        producing a plausible-looking but incorrect target focus instead of a loud failure."""
+        trans = transducer_xyz.Transducer()
+        definition = "[elements]\nsize = 1\n1 = 0|0|10\n"
+
+        with pytest.raises(SystemExit, match='focalLength'):
+            trans.load_from_string(definition)
+
+    def test_exits_when_focal_length_is_not_numeric(self):
+        trans = transducer_xyz.Transducer()
+        definition = "[transducer]\nfocalLength = not_a_number\n[elements]\nsize = 1\n1 = 0|0|10\n"
+
+        with pytest.raises(SystemExit, match='focalLength'):
+            trans.load_from_string(definition)
+
     def test_exits_when_size_key_is_missing(self):
         trans = transducer_xyz.Transducer()
-        definition = "[elements]\nnotsize = 2\n"
+        definition = "[transducer]\nfocalLength = 75\n[elements]\nnotsize = 2\n"
 
         with pytest.raises(SystemExit):
             trans.load_from_string(definition)
 
     def test_exits_when_size_is_zero(self):
         trans = transducer_xyz.Transducer()
-        definition = "[elements]\nsize = 0\n"
+        definition = "[transducer]\nfocalLength = 75\n[elements]\nsize = 0\n"
 
         with pytest.raises(SystemExit):
             trans.load_from_string(definition)
@@ -160,6 +201,8 @@ class TestLoadFromString:
     def test_exits_when_an_element_entry_is_malformed(self):
         trans = transducer_xyz.Transducer()
         definition = (
+            "[transducer]\n"
+            "focalLength = 75\n"
             "[elements]\n"
             "size = 1\n"
             "1 = not|enough\n"
@@ -206,6 +249,8 @@ class TestLoad:
         def_file.write_text(
             "checksum=DEADBEEF\n"
             "\n"
+            "[transducer]\n"
+            "focalLength = 75\n"
             "[elements]\n"
             "size = 1\n"
             "1 = 1|2|3\n"

@@ -14,7 +14,7 @@ from fus_driving_systems import transducer
 
 def _configure_transducer_section_only(patch_config, serial, name='Test Transducer',
                                        manufacturer='Test Manufacturer', elements='128',
-                                       fund_freq='300', natural_foc='50.0',
+                                       fund_freq='300',
                                        exit_plane_dist='10.0', min_focus='20.0',
                                        max_focus='80.0', steer_info='igt/config/steer.xlsx',
                                        active='True'):
@@ -27,7 +27,6 @@ def _configure_transducer_section_only(patch_config, serial, name='Test Transduc
     patch_config.set(section, 'Manufacturer', manufacturer)
     patch_config.set(section, 'Elements', elements)
     patch_config.set(section, 'Fund. freq.', fund_freq)
-    patch_config.set(section, 'Natural focus', natural_foc)
     patch_config.set(section, 'Exit plane - first element dist.', exit_plane_dist)
     patch_config.set(section, 'Min. focus', min_focus)
     patch_config.set(section, 'Max. focus', max_focus)
@@ -53,7 +52,6 @@ def test_init_sets_expected_defaults(patch_config):
     assert tran.manufact is None
     assert tran.elements == 0
     assert tran.fund_freq == 0
-    assert tran.natural_foc == 0
     assert tran.exit_plane_dist == 0
     assert tran.min_foc == 5.0
     assert tran.max_foc == 200.0
@@ -68,7 +66,6 @@ def test_str_includes_all_fields():
     tran.manufact = 'ACME'
     tran.elements = 128
     tran.fund_freq = 300
-    tran.natural_foc = 50.0
     tran.exit_plane_dist = 10.0
     tran.min_foc = 20.0
     tran.max_foc = 80.0
@@ -80,7 +77,6 @@ def test_str_includes_all_fields():
     assert 'ACME' in text
     assert '128' in text
     assert '300' in text
-    assert '50.0' in text
     assert '10.0' in text
     assert '20.0' in text
     assert '80.0' in text
@@ -112,7 +108,6 @@ def test_set_transducer_info_populates_fields_from_config(patch_config):
     assert tran.manufact == 'Test Manufacturer'
     assert tran.elements == 128
     assert tran.fund_freq == 300
-    assert tran.natural_foc == 50.0
     assert tran.exit_plane_dist == 10.0
     assert tran.min_foc == 20.0
     assert tran.max_foc == 80.0

@@ -617,7 +617,6 @@ class IGT(ds.ControlDrivingSystem):
             else:
                 computed_phases = self._set_phases(pulse, slot.focus_wrt_mid_bowl,
                                                    slot.transducer.steer_info,
-                                                   slot.transducer.natural_foc,
                                                    slot.dephasing_degree)
                 phases = phases + computed_phases
 
@@ -996,7 +995,7 @@ class IGT(ds.ControlDrivingSystem):
 
         return pulse_train_seq, pulse_train_delay
 
-    def _set_phases(self, pulse, focus, steer_info, natural_foc, dephasing_degree):
+    def _set_phases(self, pulse, focus, steer_info, dephasing_degree):
         """
         Gets the phases for the IGT ultrasound driving system.
 
@@ -1004,7 +1003,6 @@ class IGT(ds.ControlDrivingSystem):
             pulse (unifus.Pulse): The defined pulse.
             focus (float): The focus value wrt the middle of the transducer bowl [mm].
             steer_info (str): Path to the steer information.
-            natural_foc (float): The natural focus value [mm] used to calculate target focus.
             dephasing_degree (list(float)): The degree used to dephase n elements in one cycle.
             None = no dephasing. If the list is equal to the number of elements, the phases
             based on the focus are overridden.
@@ -1025,9 +1023,12 @@ class IGT(ds.ControlDrivingSystem):
                 get_logger().critical(message)
                 sys.exit(message)
 
+            # Natural focus (radius of curvature) comes from the transducer's own .ini steer
+            # file (trans.focalLength) -- not a separately-maintained config value -- so it can
+            # never drift out of sync with the same file's element coordinates.
             # Calculate target focus with respect to natural focus: + is before natural focus,
             # - is after natural focus
-            aim_wrt_natural_focus = natural_foc - focus
+            aim_wrt_natural_focus = trans.focalLength - focus
 
             # Aim n mm away from the natural focal spot, on main axis (Z)
             phases = trans.compute_phases(pulse, (0, 0, aim_wrt_natural_focus), focus,

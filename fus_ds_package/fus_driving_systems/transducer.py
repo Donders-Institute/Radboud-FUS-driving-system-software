@@ -50,7 +50,6 @@ class Transducer:
         manufact (str): Name of the manufacturer.
         elements (int): Number of elements.
         fund_freq (int): Fundamental frequency of the transducer [kHz].
-        natural_foc (float): Natural focal depth of the transducer [mm].
         exit_plane_dist (float): Distance between exit plane and first element [mm].
         min_foc (float): Minimum focal depth of the transducer [mm].
         max_foc (float): Maximum focal depth of the transducer [mm].
@@ -68,7 +67,10 @@ class Transducer:
         self.manufact = None
         self.elements = 0
         self.fund_freq = 0  # [kHz]
-        self.natural_foc = 0  # [mm]
+        # No natural_foc here -- for IGT it comes from the transducer's own .ini steer file
+        # (transducer_xyz.Transducer.focalLength), read fresh at connect-time, so it can never
+        # drift out of sync with a separately-maintained config copy. See igt_ds.py's
+        # _set_phases().
         self.exit_plane_dist = 0  # [mm]
         self.min_foc = float(get_config_value(get_logger(), config, 'Focus',
                                               'Default.minimum', 0))  # [mm]
@@ -107,8 +109,6 @@ class Transducer:
             get_logger(), config, section, 'Elements', 0, True))
         self.fund_freq = int(get_config_value(
             get_logger(), config, section, 'Fund. freq.', 0, True))
-        self.natural_foc = float(get_config_value(
-            get_logger(), config, section, 'Natural focus', 0))
         self.exit_plane_dist = float(get_config_value(get_logger(), config, section,
                                                       'Exit plane - first element dist.', 0))
         default_min = float(get_config_value(
@@ -141,7 +141,6 @@ class Transducer:
         info += f"Transducer manufacturer: {self.manufact} \n "
         info += f"Transducer elements: {self.elements} \n "
         info += f"Transducer fundamental frequency [kHz]: {self.fund_freq} \n "
-        info += f"Transducer natural focus [mm]: {self.natural_foc} \n "
         info += f"Transducer exit plane - first elem. distance [mm]: {self.exit_plane_dist} \n "
         info += f"Transducer min. focus [mm]: {self.min_foc} \n "
         info += f"Transducer max. focus [mm]: {self.max_foc} \n "

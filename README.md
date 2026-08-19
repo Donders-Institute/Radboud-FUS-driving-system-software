@@ -625,8 +625,10 @@ _add_transducer(
     fund_freq=250,
     min_focus=0,
     max_focus=100,
-    # natural_focus/exit_plane_dist only matter for Imasonic transducers -- leave at their
-    # defaults (0) otherwise
+    # exit_plane_dist is the geometric fallback used to convert between exit-plane and
+    # mid-bowl focus when no active calibration exists -- native-ness checks ensure it's
+    # only ever used for the informational side, never the value actually sent to
+    # hardware.
     steer_information='path\\to\\steer\\info',  # only if applicable
     active=True,
 )
@@ -638,7 +640,6 @@ name = Your Transducer Name
 manufacturer = Your Manufacturer Name
 elements = 2
 fund. freq. = 250
-natural focus = 0
 exit plane - first element dist. = 0
 min. focus = 0
 max. focus = 100
@@ -651,8 +652,7 @@ The transducer identifier must match one of the identifiers defined in the '[Equ
 - **manufacturer**: Must match one of your defined manufacturers
 - **elements**: Number of elements in the transducer
 - **fund. freq.**: Fundamental frequency in kHz
-- **natural focus**: Radius of curvature in millimeters
-- **exit plane - first element dist.**: Distance between radiating surface and exit plane in millimeters
+- **exit plane - first element dist.**: Distance between radiating surface and exit plane in millimeters. Used as a geometric fallback when converting between exit-plane and mid-bowl focus without an active calibration -- native-ness checks ensure it's only ever used informationally, never for the value actually sent to hardware.
 - **min. focus**: Minimum allowed focus with respect to exit plane in millimeters. Only used as-is when there's no active `Equipment.Combination.*` calibration for this transducer/driving-system pair -- once one is active, this value is overwritten (not merely defaulted) with the equalization curve's own minimum break, so the configured value becomes irrelevant.
 - **max. focus**: Maximum allowed focus with respect to exit plane in millimeters. Same overwrite behavior as *min. focus* above, once a calibration is active.
 - **steer information**: Path to steering information file if applicable

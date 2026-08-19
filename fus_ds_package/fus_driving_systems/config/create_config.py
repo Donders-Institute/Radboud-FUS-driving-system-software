@@ -97,9 +97,14 @@ def _add_driving_system(serial, name, manufacturer, available_channels, connecti
 
 
 def _add_transducer(serial, name, manufacturer, elements, fund_freq, min_focus, max_focus,
-                    natural_focus=0, exit_plane_dist=0, steer_information='', active=True):
+                    exit_plane_dist=0, steer_information='', active=True):
     """
     Builds one '[Equipment.Transducer.<serial>]' section from keyword arguments.
+
+    No natural-focus/radius-of-curvature argument here -- for IGT that value is read directly
+    from the transducer's own .ini steer file (transducer_xyz.Transducer.focalLength) instead of
+    being duplicated in ds_config.ini, so it can never drift out of sync with that file's own
+    element coordinates. See igt_ds.py's _set_phases().
 
     Parameters:
         serial (str): Transducer serial -- used as-is for the section name.
@@ -109,9 +114,11 @@ def _add_transducer(serial, name, manufacturer, elements, fund_freq, min_focus, 
         fund_freq (float): Fundamental frequency [kHz].
         min_focus (float): Minimum allowed focus wrt exit plane [mm].
         max_focus (float): Maximum allowed focus wrt exit plane [mm].
-        natural_focus (float): Radius of curvature [mm] -- only meaningful for Imasonic.
-        exit_plane_dist (float): Distance between radiating surface and exit plane [mm] -- only
-            meaningful for Imasonic.
+        exit_plane_dist (float): Distance between radiating surface and exit plane [mm]. The
+            geometric fallback used to convert between exit-plane and mid-bowl focus when no
+            active calibration exists (or its curve doesn't cover the requested value) --
+            native-ness checks in transducer_slot.py ensure this fallback is only ever used for
+            the side that's purely informational, never for the value actually sent to hardware.
         steer_information (str): Path to steering information file, if applicable.
         active (bool): Whether this transducer is active and available for use.
     """
@@ -122,7 +129,6 @@ def _add_transducer(serial, name, manufacturer, elements, fund_freq, min_focus, 
     config[section]['Manufacturer'] = manufacturer
     config[section]['Elements'] = str(elements)
     config[section]['Fund. freq.'] = str(fund_freq)
-    config[section]['Natural focus'] = str(natural_focus)
     config[section]['Exit plane - first element dist.'] = str(exit_plane_dist)
     config[section]['Min. focus'] = str(min_focus)
     config[section]['Max. focus'] = str(max_focus)
@@ -743,7 +749,7 @@ _add_transducer(
 
 _add_transducer(
     IS_TRANS[0], name=IMASONIC + ' 10 ch. PCD15287_01001 ROC 75 mm', manufacturer=IMASONIC,
-    elements=10, fund_freq=300, natural_focus=75, exit_plane_dist=9.7,
+    elements=10, fund_freq=300, exit_plane_dist=9.7,
     min_focus=5.0, max_focus=91.7,
     steer_information=str(os.path.join(
         CONFIG_FILE_FOLDER_IS_TRAN, 'transducer_15287_10_300kHz.ini')),
@@ -752,7 +758,7 @@ _add_transducer(
 
 _add_transducer(
     IS_TRANS[1], name=IMASONIC + ' 10 ch. PCD15287_01002 ROC 75 mm', manufacturer=IMASONIC,
-    elements=10, fund_freq=300, natural_focus=75, exit_plane_dist=9.7,
+    elements=10, fund_freq=300, exit_plane_dist=9.7,
     min_focus=6.1, max_focus=93.2,
     steer_information=str(os.path.join(
         CONFIG_FILE_FOLDER_IS_TRAN, 'transducer_15287_10_300kHz.ini')),
@@ -761,7 +767,7 @@ _add_transducer(
 
 _add_transducer(
     IS_TRANS[2], name=IMASONIC + ' 10 ch. PCD15473_01001 ROC 100 mm', manufacturer=IMASONIC,
-    elements=10, fund_freq=300, natural_focus=100, exit_plane_dist=7.3,
+    elements=10, fund_freq=300, exit_plane_dist=7.3,
     min_focus=6.7, max_focus=92.6,
     steer_information=str(os.path.join(
         CONFIG_FILE_FOLDER_IS_TRAN, 'transducer_15473_10_300kHz.ini')),
@@ -771,7 +777,7 @@ _add_transducer(
 _add_transducer(
     IS_TRANS[3], name=IMASONIC + ' 10 ch. PCD15473_01002 ROC 100 mm BROKEN',
     manufacturer=IMASONIC,
-    elements=10, fund_freq=300, natural_focus=100, exit_plane_dist=7.3,
+    elements=10, fund_freq=300, exit_plane_dist=7.3,
     min_focus=5.32, max_focus=92.17,
     steer_information=str(os.path.join(
         CONFIG_FILE_FOLDER_IS_TRAN, 'transducer_15473_10_300kHz.ini')),
@@ -780,7 +786,7 @@ _add_transducer(
 
 _add_transducer(
     IS_TRANS[4], name=IMASONIC + ' 10 ch. PCD15473_01003 ROC 100 mm', manufacturer=IMASONIC,
-    elements=10, fund_freq=300, natural_focus=100, exit_plane_dist=7.3,
+    elements=10, fund_freq=300, exit_plane_dist=7.3,
     min_focus=7.2, max_focus=93.6,
     steer_information=str(os.path.join(
         CONFIG_FILE_FOLDER_IS_TRAN, 'transducer_15473_10_300kHz.ini')),
@@ -794,7 +800,7 @@ _add_transducer(
 _add_transducer(
     IS_TRANS[5], name=IMASONIC + ' 10 ch. PCD15473_01001 ROC 100 mm - OPM setup',
     manufacturer=IMASONIC,
-    elements=10, fund_freq=300, natural_focus=100, exit_plane_dist=7.3,
+    elements=10, fund_freq=300, exit_plane_dist=7.3,
     min_focus=7.8, max_focus=92.0,
     steer_information=str(os.path.join(
         CONFIG_FILE_FOLDER_IS_TRAN, 'transducer_15473_10_300kHz_inverted_OPM.ini')),
@@ -804,7 +810,7 @@ _add_transducer(
 _add_transducer(
     IS_TRANS[6], name=IMASONIC + ' 10 ch. PCD15473_01003 ROC 100 mm - OPM setup',
     manufacturer=IMASONIC,
-    elements=10, fund_freq=300, natural_focus=100, exit_plane_dist=7.3,
+    elements=10, fund_freq=300, exit_plane_dist=7.3,
     min_focus=6.7, max_focus=93.2,
     steer_information=str(os.path.join(
         CONFIG_FILE_FOLDER_IS_TRAN, 'transducer_15473_10_300kHz_inverted_OPM.ini')),
