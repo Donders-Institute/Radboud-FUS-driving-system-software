@@ -16,9 +16,10 @@ addopts = """
 # Release versioning. Run from fus_ds_package/ when cutting a release:
 #   pip install bump-my-version   (one-time)
 #   bump-my-version bump patch    (or: minor / major)
-# This updates setup.py and the root README.md's citation line, commits, and creates a
-# matching vX.Y.Z git tag -- push both (git push && git push --tags), then create the GitHub
-# Release from that already-pushed tag so its version is always correct and consistent.
+# This updates setup.py, the root README.md's/CITATION.cff's version and citation year, and
+# LICENSE's copyright year, commits, and creates a matching vX.Y.Z git tag -- push both
+# (git push && git push --tags), then create the GitHub Release from that already-pushed tag so
+# its version is always correct and consistent.
 [tool.bumpversion]
 current_version = "2.2.3"
 commit = true
@@ -32,3 +33,26 @@ filename = "setup.py"
 
 [[tool.bumpversion.files]]
 filename = "../README.md"
+
+[[tool.bumpversion.files]]
+filename = "../CITATION.cff"
+
+# Citation/copyright years track the current year automatically, anchored at the founding year
+# (2024) -- only the range's end year moves, never the start.
+[[tool.bumpversion.files]]
+filename = "../README.md"
+search = "2024-\\d{{4}}"
+replace = "2024-{now:%Y}"
+regex = true
+
+[[tool.bumpversion.files]]
+filename = "../CITATION.cff"
+search = "date-released: \"\\d{{4}}-\\d{{2}}-\\d{{2}}\""
+replace = "date-released: \"{now:%Y-%m-%d}\""
+regex = true
+
+[[tool.bumpversion.files]]
+filename = "../LICENSE"
+search = "2024-\\d{{4}}"
+replace = "2024-{now:%Y}"
+regex = true

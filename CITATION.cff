@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+message: "If you use this software in your research or project, please cite it as below."
+type: software
+title: "Radboud FUS Driving System Software"
+version: 2.2.3
+date-released: "2026-07-29"
+repository-code: "https://github.com/Donders-Institute/Radboud-FUS-driving-system-software"
+license: MIT
+authors:
+  - given-names: Margely
+    family-names: Cornelissen
+    affiliation: "FUS Centre, Donders Institute for Brain, Cognition and Behaviour, Radboud University"
+    orcid: "https://orcid.org/0009-0002-1330-4401"
+  - given-names: Stein
+    family-names: Fekkes
+    affiliation: "FUS Centre, Donders Institute for Brain, Cognition and Behaviour, Radboud University"
+    orcid: "https://orcid.org/0000-0002-9955-0795"
+  - given-names: Erik
+    family-names: Dumont
+    affiliation: "Image Guided Therapy"
+    orcid: "https://orcid.org/0000-0003-1002-8667"
+  - given-names: Lennart
+    family-names: Verhagen
+    affiliation: "FUS Centre, Donders Institute for Brain, Cognition and Behaviour, Radboud University"
+    orcid: "https://orcid.org/0000-0003-3207-7929"

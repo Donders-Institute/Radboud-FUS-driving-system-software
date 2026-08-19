@@ -2,12 +2,11 @@
 <a name="readme-top"></a>
 
 <div align="center">
-  <img src="/images/Radboud-logo.jpg" alt="ru_logo" width="auto"  height="70" />
-
-  <img src="/images/fuslogo.png" alt="fus_logo" width="auto" height="70">
-
+  <img src="/images/donders_logo.svg" alt="donders_logo" width="auto" height="70">
+  <img src="/images/logo_FUS_CENTRE.png" alt="fus_centre_logo" width="auto" height="70">
+  <br>
   <img src="/images/igtlogo.jpeg" alt="igt_logo" width="auto" height="70">
-  
+  <img src="/images/Radboud-logo.jpg" alt="ru_logo" width="auto" height="70" />
 </div>
 
 
@@ -38,7 +37,7 @@
 
 The **Radboud FUS driving system software** is designed to streamline the integration of new focused ultrasound equipment into your workflow. It enables control of the equipment while limiting the need for users to familiarize themselves with new software interfaces. 
 
-This project is facilitated by the Radboud Focused Ultrasound Initiative. For more information, please visit the [website](https://www.ru.nl/en/donders-institute/research/research-facilities/focused-ultrasound-initiative-fus).
+This project is facilitated by the Radboud FUS Centre. For more information, please visit the [website](https://www.ru.nl/en/donders-institute/research/research-facilities/focused-ultrasound-initiative-fus).
 
 **⚠️ DEVELOPMENT STATUS**: This repository is currently under active development and is provided AS IS. Features may be incomplete, undergo significant changes, or contain bugs. Use at your own discretion.
 
@@ -47,17 +46,17 @@ This project is facilitated by the Radboud Focused Ultrasound Initiative. For mo
 - **Compatibility**: This package is also a prerequisite for the latest version of the [SonoRover One software](https://github.com/Donders-Institute/Radboud-FUS-measurement-kit), which utilizes it to communicate with your focused ultrasound equipment. 
 By adhering to a standardized communication structure, the characterization software does not need to directly handle communication protocols. Instead, it uses the same codebase for both standalone and experimental settings, ensuring consistent and centralized updates to equipment communication.
 
-This project is facilitated by the Radboud Focused Ultrasound Initiative. For more information, please visit the [website](https://www.ru.nl/en/donders-institute/research/research-facilities/focused-ultrasound-initiative-fus).
+This project is facilitated by the Radboud FUS Centre. For more information, please visit the [website](https://www.ru.nl/en/donders-institute/research/research-facilities/focused-ultrasound-initiative-fus).
 
 <!-- AUTHORS -->
 
 ## 👥 Authors <a name="authors"></a>
 
-👤 **[Margely Cornelissen](https://www.ru.nl/en/people/cornelissen-m), [FUS Initiative](https://www.ru.nl/en/donders-institute/research/research-facilities/focused-ultrasound-initiative-fus), Radboud University**
+👤 **[Margely Cornelissen](https://www.ru.nl/en/people/cornelissen-m), [FUS Centre](https://www.ru.nl/en/donders-institute/research/research-facilities/focused-ultrasound-initiative-fus), Radboud University**
 - GitHub: [@MaCuinea](https://github.com/MaCuinea)
 - [LinkedIn](https://linkedin.com/in/margely-cornelissen)
 
-👤 **[Stein Fekkes](https://www.ru.nl/en/people/fekkes-s), [FUS Initiative](https://www.ru.nl/en/donders-institute/research/research-facilities/focused-ultrasound-initiative-fus), Radboud University**
+👤 **[Stein Fekkes](https://www.ru.nl/en/people/fekkes-s), [FUS Centre](https://www.ru.nl/en/donders-institute/research/research-facilities/focused-ultrasound-initiative-fus), Radboud University**
 
 - GitHub: [@StefFek-GIT](https://github.com/StefFek-GIT)
 - [LinkedIn](https://linkedin.com/in/sfekkes)
@@ -66,13 +65,17 @@ This project is facilitated by the Radboud Focused Ultrasound Initiative. For mo
 - GitHub: [@erikdumontigt](https://github.com/erikdumontigt)
 - [LinkedIn](https://linkedin.com/in/erik-dumont-986a814)
 
+👤 **Lennart Verhagen, FUS Centre, Radboud University**
+- GitHub: [@lennartverhagen](https://github.com/lennartverhagen)
+- [LinkedIn](https://nl.linkedin.com/in/lennartverhagen)
+
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ## ✒️ How to cite <a name="how-to-cite"></a>
 
-If you use this package in your research or project, please cite it as follows:
+If you use this package in your research or project, please cite it as follows (see also `CITATION.cff`):
 
-Margely Cornelissen, Stein Fekkes (Radboud University, Nijmegen, The Netherlands) & Erik Dumont (Image Guided Therapy, Pessac, France) (2024-2025), Radboud FUS Driving System Software (version 2.2.3)
+Margely Cornelissen, Stein Fekkes (FUS Centre, Radboud University, Nijmegen, The Netherlands), Erik Dumont (Image Guided Therapy, Pessac, France) & Lennart Verhagen (FUS Centre, Radboud University, Nijmegen, The Netherlands) (2024-2026), Radboud FUS Driving System Software (version 2.2.3)
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
