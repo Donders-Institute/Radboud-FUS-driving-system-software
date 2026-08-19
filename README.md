@@ -55,25 +55,29 @@ This project is facilitated by the Radboud FUS Centre. For more information, ple
 👤 **[Margely Cornelissen](https://www.ru.nl/en/people/cornelissen-m), [FUS Centre](https://www.ru.nl/en/donders-institute/research/research-facilities/focused-ultrasound-initiative-fus), Radboud University**
 - GitHub: [@MaCuinea](https://github.com/MaCuinea)
 - [LinkedIn](https://linkedin.com/in/margely-cornelissen)
+- [ORCID](https://orcid.org/0009-0002-1330-4401)
 
 👤 **[Stein Fekkes](https://www.ru.nl/en/people/fekkes-s), [FUS Centre](https://www.ru.nl/en/donders-institute/research/research-facilities/focused-ultrasound-initiative-fus), Radboud University**
 
 - GitHub: [@StefFek-GIT](https://github.com/StefFek-GIT)
 - [LinkedIn](https://linkedin.com/in/sfekkes)
+- [ORCID](https://orcid.org/0000-0002-9955-0795)
 
 👤 **Erik Dumont, [Image Guided Therapy (IGT)](http://www.imageguidedtherapy.com/)**
 - GitHub: [@erikdumontigt](https://github.com/erikdumontigt)
 - [LinkedIn](https://linkedin.com/in/erik-dumont-986a814)
+- [ORCID](https://orcid.org/0000-0003-1002-8667)
 
-👤 **Lennart Verhagen, FUS Centre, Radboud University**
+👤 **Lennart Verhagen, [FUS Centre](https://www.ru.nl/en/donders-institute/research/research-facilities/focused-ultrasound-initiative-fus), Radboud University**
 - GitHub: [@lennartverhagen](https://github.com/lennartverhagen)
 - [LinkedIn](https://nl.linkedin.com/in/lennartverhagen)
+- [ORCID](https://orcid.org/0000-0003-3207-7929)
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ## ✒️ How to cite <a name="how-to-cite"></a>
 
-If you use this package in your research or project, please cite it as follows (see also `CITATION.cff`):
+If you use this package in your research or project, please cite it as follows (see also [`CITATION.cff`](CITATION.cff)):
 
 Margely Cornelissen, Stein Fekkes (FUS Centre, Radboud University, Nijmegen, The Netherlands), Erik Dumont (Image Guided Therapy, Pessac, France) & Lennart Verhagen (FUS Centre, Radboud University, Nijmegen, The Netherlands) (2024-2026), Radboud FUS Driving System Software (version 2.2.3)
 
