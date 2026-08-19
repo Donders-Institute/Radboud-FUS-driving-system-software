@@ -39,7 +39,7 @@ def test_connect_configures_and_opens_serial_port(mock_serial):
     assert mock_serial.stopbits == 1
     assert mock_serial.timeout == 1
     mock_serial.open.assert_called_once()
-    assert citrus.connected is True
+    assert citrus._connected is True
 
 
 def test_execute_protocol_writes_expected_trigger_byte(mocker):
@@ -88,7 +88,7 @@ def test_disconnect_closes_serial_port_and_marks_disconnected(mocker):
     citrus.disconnect()
 
     citrus.ser_bitsi.close.assert_called_once()
-    assert citrus.connected is False
+    assert citrus._connected is False
 
 
 def test_disconnect_before_connect_is_a_no_op():
@@ -104,4 +104,4 @@ def test_disconnect_before_connect_is_a_no_op():
 
     citrus.disconnect()
 
-    assert citrus.connected is False
+    assert citrus._connected is False

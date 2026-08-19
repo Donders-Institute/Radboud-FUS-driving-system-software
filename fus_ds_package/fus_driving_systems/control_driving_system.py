@@ -23,7 +23,6 @@ class ControlDrivingSystem(ABC):
     Abstract base class for an ultrasound driving system.
 
     Attributes:
-        connected (bool): Indicates whether the system is connected.
         gen: Generator object.
         logger_name (str): Name of the logger.
     """
@@ -33,8 +32,11 @@ class ControlDrivingSystem(ABC):
         Initializes the DrivingSystem object.
         """
 
-        # boolean to determine if gen is connected
-        self.connected = False
+        # Private -- subclasses must use is_connected()/set this via their own connect()/
+        # disconnect(), never read/write it directly (nor should any external caller, e.g. a
+        # host application). This is what actually enforces that: is_connected() is the only
+        # supported way to check connection status.
+        self._connected = False
 
         self.protocol_sent = False
 
@@ -82,7 +84,7 @@ class ControlDrivingSystem(ABC):
             bool: True if connected, False otherwise.
         """
 
-        return self.connected
+        return self._connected
 
     def is_protocol_sent(self):
         """

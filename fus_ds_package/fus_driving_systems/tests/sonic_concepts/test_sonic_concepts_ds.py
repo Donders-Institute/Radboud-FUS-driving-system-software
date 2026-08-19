@@ -17,7 +17,7 @@ def test_connect_establishes_connection_on_normal_response(mock_serial):
 
     instance.connect('COM3')
 
-    assert instance.connected is True
+    assert instance._connected is True
     assert instance.protocol_sent is False
 
 
@@ -28,7 +28,7 @@ def test_connect_exits_on_e2_response(mock_serial):
 
     with pytest.raises(SystemExit):
         instance.connect('COM3')
-    assert instance.connected is False
+    assert instance._connected is False
 
 
 def test_send_command_writes_and_returns_response(connected_instance):
@@ -253,7 +253,7 @@ def test_disconnect_closes_gen_and_marks_disconnected(connected_instance):
     connected_instance.disconnect()
 
     connected_instance.gen.close.assert_called_once()
-    assert connected_instance.connected is False
+    assert connected_instance._connected is False
 
 
 def test_send_protocol_calls_setters_in_order_and_marks_sent(mocker, connected_instance):
@@ -315,10 +315,10 @@ def test_send_protocol_reconnects_when_not_connected(mocker):
     if not connected, connect() then retry the same call."""
     from fus_driving_systems.sonic_concepts.sonic_concepts_ds import SonicConcepts
     instance = SonicConcepts()
-    instance.connected = False
+    instance._connected = False
 
     def fake_connect(connect_info):
-        instance.connected = True
+        instance._connected = True
     mock_connect = mocker.patch.object(instance, 'connect', side_effect=fake_connect)
     for name in ['_reset_parameters', '_set_operating_freq', '_set_focus',
                  '_set_global_power', '_set_burst_and_period', '_set_timer',
@@ -379,12 +379,12 @@ def test_execute_protocol_reconnects_when_not_connected(mocker):
     execute_protocol() all get retried."""
     from fus_driving_systems.sonic_concepts.sonic_concepts_ds import SonicConcepts
     instance = SonicConcepts()
-    instance.connected = False
+    instance._connected = False
     instance.gen = mocker.Mock()
     instance.gen.readline.return_value = b'OK\n'
 
     def fake_connect(connect_info):
-        instance.connected = True
+        instance._connected = True
     mock_connect = mocker.patch.object(instance, 'connect', side_effect=fake_connect)
     mock_send_protocol = mocker.patch.object(instance, 'send_protocol')
 

@@ -63,7 +63,7 @@ class CITRUS(ds.ControlDrivingSystem):
         self.ser_bitsi.timeout = 1
         self.ser_bitsi.open()
 
-        self.connected = True
+        self._connected = True
 
     def send_protocol(self, protocol):
         """
@@ -110,4 +110,4 @@ class CITRUS(ds.ControlDrivingSystem):
         if self.ser_bitsi is not None:
             self.ser_bitsi.close()
 
-        self.connected = False
+        self._connected = False

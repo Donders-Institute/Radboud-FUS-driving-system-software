@@ -56,12 +56,12 @@ class SonicConcepts(ds.ControlDrivingSystem):
         get_logger().debug("Driving system: %s", startup_message)
 
         if startup_message == 'E2':
-            self.connected = False
+            self._connected = False
             message = "Error E2; connection cannot be made with driving system"
             get_logger().critical(message)
             sys.exit(message)
         else:
-            self.connected = True
+            self._connected = True
             get_logger().debug("Connection with driving system %s is established", startup_message)
 
     def send_protocol(self, protocol):
@@ -159,7 +159,7 @@ class SonicConcepts(ds.ControlDrivingSystem):
 
         if self.gen is not None:
             self.gen.close()
-            self.connected = False
+            self._connected = False
             get_logger().info("Disconnected.")
 
     def _send_command(self, command, sleep_time_s=1):

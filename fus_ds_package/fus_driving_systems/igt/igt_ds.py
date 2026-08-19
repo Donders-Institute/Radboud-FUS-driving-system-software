@@ -92,6 +92,28 @@ class IGT(ds.ControlDrivingSystem):
 
         return buffer_num in self.sent_protocols
 
+    def is_connected(self):
+        """
+        Checks whether the driving system is currently connected -- queries the underlying
+        unifus SDK directly (self.fus.isConnected()) instead of the inherited _connected flag
+        (GitHub issue #79): that flag is only ever updated at connect()/disconnect() time, so a
+        connection lost in between (e.g. a cable break) would otherwise still read as connected
+        until the next explicit connect()/disconnect() call. IGT never sets the inherited
+        _connected flag at all -- it would just be a second, redundant place to keep in sync
+        with this live check, for no benefit.
+
+        Unconditionally False when self.fus doesn't exist yet (i.e. before the first connect()
+        attempt) -- with no fus object, there is nothing to be connected to.
+
+        Returns:
+            bool: True if connected, False otherwise.
+        """
+
+        if self.fus is None:
+            return False
+
+        return self.fus.isConnected()
+
     def register_sent_protocol(self, buffer_num, pulse_train_seq, n_pulse_train_rep,
                                pulse_train_delay, phases=None):
         """
@@ -149,7 +171,11 @@ class IGT(ds.ControlDrivingSystem):
             False instead is a separate, later change).
         """
 
-        if self.connected:
+        # Only checked on the initial, externally-invoked call (attempt == 0) -- an internal
+        # retry recursion (attempt > 0) is already mid-reconnect and has its own explicit
+        # isConnected() check further below; re-checking here too would consume that same
+        # live status early and short-circuit the retry with a stale verdict.
+        if attempt == 0 and self.is_connected():
             get_logger().info('Already connected, skipping reconnection.')
             return True
 
@@ -160,12 +186,12 @@ class IGT(ds.ControlDrivingSystem):
 
         if attempt == 0:
             # Experimental mitigation for the non-deterministic kernel-death crashes
-            # reported in GitHub issue #126. self.connected (checked above) and
-            # self.fus.isConnected() (checked further below) both only reflect state
-            # tracked by *this* process/instance -- a fresh process (e.g. a new Spyder
-            # console the next morning) always starts with neither, so neither check can
-            # ever reveal whether a previous, possibly crashed session left the native
-            # driver holding a connection open. Forcing a disconnect on a throwaway
+            # reported in GitHub issue #126. is_connected() (checked above and further
+            # below) only reflects state tracked by *this* process/instance -- a fresh
+            # process (e.g. a new Spyder console the next morning) always starts
+            # disconnected, so it can never reveal whether a previous, possibly crashed
+            # session left the native driver holding a connection open. Forcing a
+            # disconnect on a throwaway
             # FUSSystem() here gives the driver a chance to release that stale state
             # before the real attempt below. Unverified whether this actually reduces
             # kernel deaths -- logged explicitly so frequency can be compared over time.
@@ -257,8 +283,7 @@ class IGT(ds.ControlDrivingSystem):
             sys.exit(message)
 
         try:
-            if self.fus.isConnected():
-                self.connected = True
+            if self.is_connected():
                 get_logger().debug('Driving system is connected.')
 
                 self.gen = self.fus.gen()
@@ -266,7 +291,6 @@ class IGT(ds.ControlDrivingSystem):
                 get_logger().debug("Generator: %s channels", self.n_channels)
                 return True
 
-            self.connected = False
             get_logger().warning("Error: connection failed.")
 
             if attempt < max_attempts:
@@ -944,12 +968,10 @@ class IGT(ds.ControlDrivingSystem):
             self.fus.clearListeners()
             self.fus.disconnect()
 
-            if not self.fus.isConnected():
-                self.connected = False
+            if not self.is_connected():
                 get_logger().info("Disconnected.")
             else:
                 get_logger().error("Failed to disconnect")
-                self.connected = True
 
     def _define_pulse_train(self, protocol, pulse):
         """

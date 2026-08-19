@@ -67,7 +67,7 @@ class TestInit:
         assert instance.fus is None
         assert instance.listener is None
         assert instance.n_channels == 0
-        assert instance.connected is False
+        assert instance.is_connected() is False
 
     def test_init_enables_crash_detection_when_not_already_enabled(self, tmp_path):
         """GitHub issue #126: crash detection is normally enabled centrally by whichever of
@@ -186,7 +186,7 @@ class TestConnect:
         result = instance.connect('igt/config/gen_test.json', log_dir=str(tmp_path))
 
         assert result is True
-        assert instance.connected is True
+        assert instance.is_connected() is True
         assert instance.n_channels == 8
         assert instance.gen is fake_gen
         mock_fus_system.loadConfig.assert_called_once()
@@ -303,8 +303,10 @@ class TestConnect:
 
         result = instance.connect('igt/config/gen_test.json', log_dir=str(tmp_path))
 
+        # Not also asserting is_connected() here: isConnected()'s side_effect list is exhausted
+        # by the two attempts above (fails once, then succeeds), and calling it a third time
+        # would raise -- result is True already proves the retry-then-succeed behavior.
         assert result is True
-        assert instance.connected is True
 
     def test_connect_skips_reconnection_when_already_connected(self, mocker, mock_fus_system,
                                                                tmp_path):
@@ -313,7 +315,8 @@ class TestConnect:
         already live connection, a plausible source of instability. It should now be a no-op
         that just confirms the existing connection."""
         instance = IGT(log_dir=str(tmp_path))
-        instance.connected = True
+        instance.fus = mock_fus_system
+        mock_fus_system.isConnected.return_value = True
 
         result = instance.connect('igt/config/gen_test.json', log_dir=str(tmp_path))
 
@@ -321,6 +324,50 @@ class TestConnect:
         mock_fus_system.loadConfig.assert_not_called()
         mock_fus_system.registerListener.assert_not_called()
         mock_fus_system.connect.assert_not_called()
+
+    def test_connect_does_not_skip_when_fus_exists_but_reports_disconnected(
+            self, mocker, mock_fus_system, tmp_path):
+        """GitHub issue #79: is_connected() queries the live SDK, not a cached flag -- a fus
+        object left over from a previous, now-broken connection (e.g. a cable break) must not
+        cause connect() to take the 'already connected, skip' shortcut just because fus exists,
+        unlike test_connect_skips_reconnection_when_already_connected above."""
+        instance = IGT(log_dir=str(tmp_path))
+        instance.fus = mock_fus_system
+        mock_fus_system.isConnected.return_value = False
+        fake_gen = mocker.Mock()
+        fake_gen.getParam.return_value = 8
+        mock_fus_system.gen.return_value = fake_gen
+        mocker.patch.object(instance, 'disconnect')  # not under test here
+
+        with pytest.raises(SystemExit):
+            # isConnected() is stubbed to always return False, so every reconnection attempt
+            # fails too -- the point of this test is only that it actually *attempts* to
+            # reconnect (loadConfig/connect get called) rather than skipping via the stale flag.
+            instance.connect('igt/config/gen_test.json', log_dir=str(tmp_path))
+
+        mock_fus_system.loadConfig.assert_called()
+        mock_fus_system.connect.assert_called()
+
+
+class TestIsConnected:
+
+    def test_returns_false_when_fus_is_none(self, igt_instance):
+        """With no fus object, there is nothing to be connected to."""
+        assert igt_instance.fus is None
+
+        assert igt_instance.is_connected() is False
+
+    def test_returns_live_fus_status_when_fus_exists(self, mocker, igt_instance):
+        """GitHub issue #79: is_connected() queries the live SDK directly -- IGT never keeps a
+        separate cached flag in sync with it at all."""
+        igt_instance.fus = mocker.Mock()
+        igt_instance.fus.isConnected.return_value = False
+
+        assert igt_instance.is_connected() is False
+
+        igt_instance.fus.isConnected.return_value = True
+
+        assert igt_instance.is_connected() is True
 
 
 # ---------------------------------------------------------------------------
@@ -836,10 +883,10 @@ class TestSendProtocol:
 
     def test_reconnects_and_retries_when_not_connected(self, mocker, tmp_path):
         instance = IGT(log_dir=str(tmp_path))
-        instance.connected = False
 
         def fake_connect(connect_info):
-            instance.connected = True
+            instance.fus = mocker.Mock()
+            instance.fus.isConnected.return_value = True
             instance.gen = mocker.Mock()
         mock_connect = mocker.patch.object(instance, 'connect', side_effect=fake_connect)
         mocker.patch.object(instance, 'validate_protocol', return_value=[])
@@ -1137,16 +1184,11 @@ class TestExecuteProtocol:
                     unifus.ExecFlag.MeasureTimings)
         assert int(exec_flags) == int(expected)
 
-    @pytest.mark.parametrize('connected', [True, False])
-    def test_exits_when_never_sent_regardless_of_connection_state(self, mocker, tmp_path,
-                                                                  connected):
+    def test_exits_when_never_sent_regardless_of_connection_state(self, mocker, tmp_path):
         """A protocol that was never sent is a caller mistake either way -- is_protocol_sent()
         is checked before is_connected() (see the source), so neither the 'already connected'
-        happy path nor the 'not connected' reconnect-and-resend path is ever reached; connection
-        state plays no role in this decision, hence testing both here rather than splitting
-        into two near-identical tests that would actually exercise the same line."""
+        happy path nor the 'not connected' reconnect-and-resend path is ever reached."""
         instance = IGT(log_dir=str(tmp_path))
-        instance.connected = connected
         mock_connect = mocker.patch.object(instance, 'connect')
         mock_send = mocker.patch.object(instance, 'send_protocol')
 
@@ -1176,12 +1218,12 @@ class TestExecuteProtocol:
         an AttributeError instead of passing (see TestWaitForTrigger's
         identical regression test for how this bug was originally found)."""
         instance = IGT(log_dir=str(tmp_path))
-        instance.connected = False
         instance.sent_protocols[0] = {'n_pulse_train_rep': 1, 'pulse_train_delay': 0.0,
                                       'total_protocol_duration_ms': 10.0}
 
         def fake_connect(connect_info):
-            instance.connected = True
+            instance.fus = mocker.Mock()
+            instance.fus.isConnected.return_value = True
             instance.gen = mocker.Mock()
             instance.listener = mocker.Mock()
             instance.listener.exec_error_code = None
@@ -1391,16 +1433,11 @@ class TestWaitForTrigger:
         with pytest.raises(SystemExit):
             connected_instance.wait_for_trigger([fake_protocol], debug_info=False)
 
-    @pytest.mark.parametrize('connected', [True, False])
-    def test_exits_when_never_sent_regardless_of_connection_state(self, mocker, tmp_path,
-                                                                  connected):
+    def test_exits_when_never_sent_regardless_of_connection_state(self, mocker, tmp_path):
         """A protocol that was never sent is a caller mistake either way -- is_protocol_sent()
         is checked before is_connected() (see the source), so neither the 'already connected'
-        happy path nor the 'not connected' reconnect-and-resend path is ever reached; connection
-        state plays no role in this decision, hence testing both here rather than splitting
-        into two near-identical tests that would actually exercise the same line."""
+        happy path nor the 'not connected' reconnect-and-resend path is ever reached."""
         instance = IGT(log_dir=str(tmp_path))
-        instance.connected = connected
         mock_connect = mocker.patch.object(instance, 'connect')
         mock_send = mocker.patch.object(instance, 'send_protocol')
 
@@ -1437,7 +1474,6 @@ class TestWaitForTrigger:
         patch_config.set('Trigger', 'Option.pulse_train', 'TriggerOnePulseTrain')
         patch_config.set('Trigger', 'Option.whole_protocol', 'TriggerWholeProtocol')
         instance = IGT(log_dir=str(tmp_path))
-        instance.connected = False
         # This reconnect-and-resend path is only reached once a protocol is already known to
         # have been sent (pre-populated here) -- it recovers a dropped connection after a real
         # send, it doesn't fill in for a caller who never sent anything at all (see
@@ -1445,7 +1481,8 @@ class TestWaitForTrigger:
         instance.sent_protocols[0] = {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0}
 
         def fake_connect(connect_info):
-            instance.connected = True
+            instance.fus = mocker.Mock()
+            instance.fus.isConnected.return_value = True
             instance.gen = mocker.Mock()
             instance.listener = mocker.Mock()
             instance.listener.exec_error_code = None
@@ -1549,7 +1586,7 @@ class TestDisconnect:
         connected_instance.gen.stopSequence.assert_called_once()
         connected_instance.fus.clearListeners.assert_called_once()
         connected_instance.fus.disconnect.assert_called_once()
-        assert connected_instance.connected is False
+        assert connected_instance.is_connected() is False
 
     def test_marks_still_connected_when_fus_still_reports_connected(self, mocker,
                                                                     connected_instance):
@@ -1558,7 +1595,7 @@ class TestDisconnect:
 
         connected_instance.disconnect()
 
-        assert connected_instance.connected is True
+        assert connected_instance.is_connected() is True
 
     def test_noop_when_never_connected(self, tmp_path):
         instance = IGT(log_dir=str(tmp_path))
