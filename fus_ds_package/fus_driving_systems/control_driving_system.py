@@ -67,9 +67,15 @@ class ControlDrivingSystem(ABC):
         """
 
     @abstractmethod
-    def execute_protocol(self):
+    def execute_protocol(self, protocol):
         """
         Abstract method for executing the previously sent protocol.
+
+        Parameters:
+            protocol(Object): a TUSProtocol instance containing, amongst other things:
+                the timing/power/focus parameters (focus, pulse duration, pulse rep. interval
+                and etcetera) and the equipment used (driving system and transducer). IGT's own
+                override accepts a list of these instead, to support interleaving.
         """
 
     @abstractmethod

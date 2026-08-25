@@ -135,55 +135,50 @@ class Transducer:
             get_logger().critical(message)
             sys.exit(message)
 
-            return False
-
     def load_from_string(self, definition):
         if not definition.strip():
             message = 'Error: empty content'
             get_logger().critical(message)
             sys.exit(message)
 
-        config = cfg.ConfigParser()
+        # Named parser, not config -- that name is already taken at module level by the shared
+        # config_info object (see SOUND_SPEED_WATER above), which this ConfigParser instance
+        # (for the transducer's own .ini steer file, an unrelated file) has nothing to do with.
+        parser = cfg.ConfigParser()
         stringio = StringIO(definition)
-        config.read_file(stringio)
-        return self._load_config(config)
+        parser.read_file(stringio)
+        return self._load_config(parser)
 
-    def _load_config(self, config):
+    def _load_config(self, parser):
         # Required, not merely defaulted to 0 -- a missing/invalid focalLength would silently
         # feed a wrong value into compute_phases()'s aim_wrt_natural_focus arithmetic, producing
         # a plausible-looking but incorrect target focus rather than a loud failure. No
         # /1000.0 here (unlike the element coordinates below) -- focalLength stays in mm.
         try:
-            self.focalLength = config.getfloat("transducer", "focalLength")
+            self.focalLength = parser.getfloat("transducer", "focalLength")
         except (cfg.Error, ValueError):
             message = "Error: missing or invalid 'transducer.focalLength' parameter"
             get_logger().critical(message)
             sys.exit(message)
 
-            return False
-
         size = 0
         # self.name = ""
         try:
-            # self.name = config.get ("transducer", "name")
-            size = config.getint("elements", "size")
+            # self.name = parser.get ("transducer", "name")
+            size = parser.getint("elements", "size")
         except (cfg.Error, ValueError):
             message = "Error: missing 'elements.size' parameter"
             get_logger().critical(message)
             sys.exit(message)
-
-            return False
         if size == 0:
             message = "Error: size is 0"
             get_logger().critical(message)
             sys.exit(message)
 
-            return False
-
         self.elements = []
         for i in range(1, 1+size):
             try:
-                elem = config.get("elements", f"{i}").strip()
+                elem = parser.get("elements", f"{i}").strip()
                 coords = elem.split("|")
                 # read coordinates in mm (convert them in m)
                 item = (float(coords[0])/1000.0, float(coords[1])/1000.0, float(coords[2])/1000.0)
@@ -192,8 +187,6 @@ class Transducer:
                 message = f"Error: {ex}"
                 get_logger().critical(message)
                 sys.exit(message)
-
-                return False
 
         return True
 
@@ -221,8 +214,6 @@ class Transducer:
                        "compute_phases().")
             get_logger().critical(message)
             sys.exit(message)
-
-            return False
         if freq_count == 1:
             wavelen = SOUND_SPEED_WATER / pulse.frequency(0)
         elif freq_count != self.channel_count():
@@ -230,8 +221,6 @@ class Transducer:
                        f"{self.channel_count()} elements in transducer)")
             get_logger().critical(message)
             sys.exit(message)
-
-            return False
 
         phases = [0.0] * self.channel_count()
         x = point_mm[0] / 1000.0

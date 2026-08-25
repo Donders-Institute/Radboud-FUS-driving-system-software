@@ -248,16 +248,21 @@ def find_x_for_y_in_pp(pp, y_value, x_min=None, x_max=None, tol=1e-6):
         return None, False
 
 
-def format_or_unavailable(value):
+def format_or_unavailable(value, unavailable_reason='out of calibrated range'):
     """
-    Formats a calculated power/focus value for a log line, or a fallback string if it's None
-    (couldn't be calculated -- out of the current calibration's range).
+    Formats a calculated power/focus value for a log line, or a fallback string if it's None.
 
     Parameters:
         value (float or None): The value to format, e.g. slot.press or slot.volt.
+        unavailable_reason (str): Why `value` is None, e.g. 'out of calibrated range' (default --
+            a power value a curve lookup genuinely couldn't produce for the given input) or 'not
+            yet configured' (a value that was reset and never set again, e.g. after a transducer
+            change, on a slot no focus/power has been chosen for yet at all). Callers know which
+            one applies for their own field; this function doesn't guess.
 
     Returns:
-        str: value formatted to 2 decimal places, or a fallback string if value is None.
+        str: value formatted to 2 decimal places, or a fallback string naming why if value is
+        None.
     """
 
-    return f'{value:.2f}' if value is not None else 'unavailable (out of calibrated range)'
+    return f'{value:.2f}' if value is not None else f'unavailable ({unavailable_reason})'

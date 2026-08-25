@@ -8,6 +8,7 @@ single _send_command() choke point, or reads/writes self.gen directly --
 the connected_instance fixture bypasses connect() entirely for those.
 """
 import pytest
+import serial
 
 
 def test_connect_establishes_connection_on_normal_response(mock_serial):
@@ -350,8 +351,11 @@ def test_execute_protocol_writes_start_command_when_protocol_sent(connected_inst
 
 
 def test_execute_protocol_exits_on_exception(connected_instance):
+    """serial.SerialException, not a bare OSError -- that's the real exception pyserial raises
+    on an I/O failure, and the one this method's except clause now specifically catches (it used
+    to catch bare Exception)."""
     connected_instance.protocol_sent = True
-    connected_instance.gen.write.side_effect = OSError('boom')
+    connected_instance.gen.write.side_effect = serial.SerialException('boom')
 
     with pytest.raises(SystemExit):
         connected_instance.execute_protocol(None)

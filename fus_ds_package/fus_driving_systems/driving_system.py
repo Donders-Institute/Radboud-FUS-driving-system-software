@@ -241,5 +241,6 @@ def get_serial_from_name(name):
 
     for ds in get_ds_list():
         if ds.name == name:
-
             return ds.serial
+
+    return None

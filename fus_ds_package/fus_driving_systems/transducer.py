@@ -222,5 +222,6 @@ def get_serial_from_name(name):
 
     for tran in get_tran_list():
         if tran.name == name:
-
             return tran.serial
+
+    return None

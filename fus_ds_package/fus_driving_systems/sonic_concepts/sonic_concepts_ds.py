@@ -124,8 +124,8 @@ class SonicConcepts(ds.ControlDrivingSystem):
                     line = self.gen.readline()
                     get_logger().debug('START: %s', line)
 
-                except Exception as why:
-                    message = "Exception: %s", str(why)
+                except serial.SerialException as why:
+                    message = f"Exception: {why}"
                     get_logger().critical(message)
                     sys.exit(message)
             else:

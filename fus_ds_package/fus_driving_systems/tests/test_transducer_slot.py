@@ -1403,13 +1403,15 @@ def test_transducer_setter_exits_when_not_compatible(patch_config):
         slot._set_transducer('TRAN-C')
 
 
-def test_transducer_setter_sets_default_oper_freq_and_resets_focus(patch_config):
+def test_transducer_setter_sets_default_oper_freq_and_resets_focus_and_power(patch_config):
     """oper_freq defaults from the new transducer's own fundamental frequency (add_slot()'s own
-    oper_freq parameter relies on this) -- but focus no longer defaults to anything, it resets
-    to None, since nothing in FDS's own add_slot() flow ever observes that intermediate state
-    (configure() always sets the real focus right after) and SonoRover One (the one known
-    external consumer of the old min_foc default) needs its own rewrite against this API
-    regardless."""
+    oper_freq parameter relies on this) -- but focus and power no longer default to anything,
+    they reset to None, since nothing in FDS's own add_slot() flow ever observes that
+    intermediate state (configure() always sets the real focus/power right after) and SonoRover
+    One (the one known external consumer of the old min_foc default) needs its own rewrite
+    against this API regardless. Power is exactly as transducer-specific as focus -- the
+    calibration curve a previously chosen power value was computed against belonged to the old
+    transducer -- so it's reset for the same reason, not just focus."""
     slot = _bare_slot()
     slot.driving_sys = SimpleNamespace(serial='DS1', tran_comp=['TRAN-A'])
     slot._transducer = SimpleNamespace(
@@ -1419,6 +1421,14 @@ def test_transducer_setter_sets_default_oper_freq_and_resets_focus(patch_config)
     slot._chosen_focus = 'Focus wrt exit plane [mm]'
     slot._focus_wrt_exit_plane = 20
     slot._focus_wrt_mid_bowl = 25
+    slot._chosen_power = 'Max. pressure in free water [MPa]'
+    slot._press = 1.0
+    slot._volt = [10.0]
+    slot._ampl = [50.0]
+    slot._global_power = 2.0
+    slot._input_press_mpa = 1.0
+    slot._eq_press_mpa = 1.1
+    slot._calculated_ampl = 50.0
 
     slot._set_transducer('TRAN-A')
 
@@ -1426,6 +1436,14 @@ def test_transducer_setter_sets_default_oper_freq_and_resets_focus(patch_config)
     assert slot._chosen_focus is None
     assert slot._focus_wrt_exit_plane is None
     assert slot._focus_wrt_mid_bowl is None
+    assert slot._chosen_power is None
+    assert slot._press is None
+    assert slot._volt is None
+    assert slot._ampl is None
+    assert slot._global_power is None
+    assert slot._input_press_mpa is None
+    assert slot._eq_press_mpa is None
+    assert slot._calculated_ampl is None
     assert slot._ds_tran_combo == 'DS1~TRAN-A'
 
 
@@ -1793,6 +1811,7 @@ def _str_ready_slot():
     slot._global_power = 2.5
     slot._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
     slot._oper_freq = 500
+    slot._chosen_focus = 'Focus wrt exit plane [mm]'
     slot._focus_wrt_exit_plane = 40
     slot._focus_wrt_mid_bowl = 40
     slot._dephasing_degree = None
@@ -1820,3 +1839,82 @@ def test_str_reports_missing_correction_when_not_native_and_combo_inactive():
 
     assert "not available in the configuration file" in info
     assert "native power parameter" not in info
+
+
+def test_str_reports_not_implemented_for_an_unrecognized_chosen_power(patch_config):
+    """chosen_power holding a value that isn't None and doesn't match any of the four known
+    option strings (e.g. a config-driven power option added/renamed without updating __str__)
+    must be reported distinctly from "not yet configured" -- something genuinely was chosen."""
+    slot = _str_ready_slot()
+    slot.driving_sys = SimpleNamespace(native_power_params=['Global power [mW]'], serial='DS-1')
+    slot._chosen_power = 'Some future power option [X]'
+
+    info = str(slot)
+
+    assert "Some future power option [X] (reporting not implemented for this option)" in info
+    assert "Chosen power option: not yet configured" not in info
+
+
+def test_str_reports_no_pressure_correction_info_when_no_power_chosen_yet(patch_config):
+    """Mirrors chosen_focus's own guard: a slot whose transducer is already assigned (combo
+    active) but whose configure() hasn't run yet must not print sibling press/volt/ampl values
+    or a normalized-pressure line right underneath its own "not yet configured" line -- none of
+    that means anything until a power option has actually been chosen."""
+    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
+    slot = _str_ready_slot()
+    slot.driving_sys = SimpleNamespace(native_power_params=['Global power [mW]'], serial='DS-1')
+    slot._chosen_power = None
+
+    info = str(slot)
+
+    assert "Chosen power option: not yet configured" in info
+    assert "Voltage [V]" not in info
+    assert "Amplitude [%]" not in info
+    assert "Normalized pressure" not in info
+    assert "native power parameter" not in info
+    assert "not available in the configuration file" not in info
+
+
+def test_str_reports_focus_values_when_chosen():
+    """Mirrors chosen_power's own behavior: once a focus option has actually been chosen, both
+    derived focal depth values are shown."""
+    slot = _str_ready_slot()
+    slot.driving_sys = SimpleNamespace(native_power_params=['Global power [mW]'], serial='DS-1')
+
+    info = str(slot)
+
+    assert "Chosen focus option: Focus wrt exit plane [mm]" in info
+    assert "Focal depth wrt exit plane [mm]: 40" in info
+    assert "Focal depth wrt bowl middle [mm]: 40" in info
+
+
+def test_str_reports_no_focus_values_when_not_yet_chosen():
+    """Mirrors chosen_power's own else branch: when nothing has been chosen yet, no derived
+    focus value is shown at all, rather than two "not yet configured" lines."""
+    slot = _str_ready_slot()
+    slot.driving_sys = SimpleNamespace(native_power_params=['Global power [mW]'], serial='DS-1')
+    slot._chosen_focus = None
+
+    info = str(slot)
+
+    assert "Chosen focus option: not yet configured" in info
+    assert "Focal depth wrt exit plane" not in info
+    assert "Focal depth wrt bowl middle" not in info
+
+
+def test_str_does_not_crash_on_a_genuinely_bare_slot():
+    """TransducerSlot's own docstring says direct construction isn't a supported entry point
+    (use TUSProtocol.add_slot() instead) -- but str() on one must still not crash if a caller
+    does construct one directly and inspects it before configuring anything. Regression test:
+    _combo_is_active() used to crash with a TypeError trying to string-concatenate
+    self._ds_tran_combo (None, since no transducer has ever been assigned) into a config section
+    name; further down, the focus fields' :.2f formatting used to crash the same way on None.
+    Neither chosen_power nor chosen_focus has ever been set here, so -- mirroring each other --
+    both simply report "not yet configured" rather than printing any of their underlying,
+    still-unset fields."""
+    fake_driving_sys = SimpleNamespace(native_power_params=['Amplitude [%]'], serial='DS-1')
+    slot = TransducerSlot(fake_driving_sys, engineering_mode=False)
+
+    info = str(slot)
+
+    assert info.count("not yet configured") == 2

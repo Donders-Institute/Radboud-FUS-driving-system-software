@@ -168,7 +168,9 @@ class TransducerSlot:
                                      'Max. pressure in free water [MPa]')
         opt_volt = get_config_value(get_logger(), config, 'Power', 'Option.volt', 'Voltage [V]')
 
-        if self.chosen_power == opt_glob_pow:
+        if self.chosen_power is None:
+            info += "not yet configured \n "
+        elif self.chosen_power == opt_glob_pow:
             info += f"Global power [W]: {format_or_unavailable(self._global_power)} \n "
         elif self.chosen_power == opt_ampl:
             info += f"Amplitude [%]: {[format_or_unavailable(a) for a in self._ampl]} \n "
@@ -184,53 +186,79 @@ class TransducerSlot:
         elif self.chosen_power == opt_volt:
             info += f"Voltage [V]: {[format_or_unavailable(v) for v in self._volt]} \n "
         else:
-            info += "Unknown power option \n "
+            # chosen_power holds a value that isn't None and doesn't match any of the four known
+            # option strings above -- a config-driven power option (Option.*) was added or
+            # renamed without this reporting being updated to match. Distinct from "not yet
+            # configured" above: something genuinely was chosen, this __str__ just doesn't know
+            # how to display it yet.
+            info += f"{self.chosen_power} (reporting not implemented for this option) \n "
 
-        if self._combo_is_active():
+        # Mirrors chosen_focus below: none of this pressure-correction info means anything until
+        # a power option has actually been chosen -- without this guard, a slot whose transducer
+        # is already assigned (combo active) but whose configure() hasn't run yet would print
+        # sibling press/volt/ampl values and a normalized-pressure line right underneath its own
+        # "not yet configured" line above.
+        if self.chosen_power is not None:
+            if self._combo_is_active():
 
-            if self.chosen_power != opt_press and len(self._ampl) == 1:
-                info += ("Maximum pressure in free water [MPa]: " +
-                         f"{format_or_unavailable(self._press)} \n ")
+                if self.chosen_power != opt_press and len(self._ampl) == 1:
+                    info += ("Maximum pressure in free water [MPa]: " +
+                             f"{format_or_unavailable(self._press)} \n ")
 
-            if self.chosen_power != opt_volt:
-                info += f"Voltage [V]: {[format_or_unavailable(v) for v in self._volt]} \n "
+                if self.chosen_power != opt_volt:
+                    info += f"Voltage [V]: {[format_or_unavailable(v) for v in self._volt]} \n "
 
-            if self.chosen_power != opt_ampl:
-                info += f"Amplitude [%]: {[format_or_unavailable(a) for a in self._ampl]} \n "
+                if self.chosen_power != opt_ampl:
+                    info += f"Amplitude [%]: {[format_or_unavailable(a) for a in self._ampl]} \n "
 
-            # Information about piecewise polynomial fits
-            info += "Conversion parameters using piecewise polynomial fits:\n "
+                # Information about piecewise polynomial fits
+                info += "Conversion parameters using piecewise polynomial fits:\n "
 
-            if self._conv_param["volt_curve_pp"] is not None:
-                info += ("- Voltage to amplitude conversion: Using piecewise polynomial fit " +
-                         f"of {self.volt_curve_file}\n ")
+                if self._conv_param["volt_curve_pp"] is not None:
+                    info += ("- Voltage to amplitude conversion: Using piecewise polynomial " +
+                             f"fit of {self.volt_curve_file}\n ")
 
-            if self._conv_param["power_curve_pp"] is not None:
-                info += ("- Pressure to amplitude conversion: Using piecewise polynomial " +
-                         f"fit of {self.power_curve_file}\n ")
+                if self._conv_param["power_curve_pp"] is not None:
+                    info += ("- Pressure to amplitude conversion: Using piecewise polynomial " +
+                             f"fit of {self.power_curve_file}\n ")
 
-            if self._conv_param["focus_curve_pp"] is not None:
-                info += ("- Focus conversion: Using piecewise polynomial fit of " +
-                         f"{self.focus_curve_file}\n ")
+                if self._conv_param["focus_curve_pp"] is not None:
+                    info += ("- Focus conversion: Using piecewise polynomial fit of " +
+                             f"{self.focus_curve_file}\n ")
 
-            if self._conv_param["eq_curve_pp"] is not None:
-                info += ("- Normalization factor calculation: Using piecewise polynomial " +
-                         f"fit of {self.eq_curve_file}\n ")
+                if self._conv_param["eq_curve_pp"] is not None:
+                    info += ("- Normalization factor calculation: Using piecewise polynomial " +
+                             f"fit of {self.eq_curve_file}\n ")
 
-            info += ("Normalized pressure [-] based on chosen focal depth wrt exit plane of " +
-                     f"{self._focus_wrt_exit_plane:.2f} [mm]: {self._eq_factor:.2f} \n ")
+                info += (
+                    "Normalized pressure [-] based on chosen focal depth wrt exit plane of " +
+                    f"{format_or_unavailable(self._focus_wrt_exit_plane, 'not yet configured')}"
+                    f" [mm]: {format_or_unavailable(self._eq_factor, 'not yet configured')} \n ")
 
-        elif self.chosen_power in self.driving_sys.native_power_params:
-            info += (f"{self.chosen_power} is already {self.driving_sys.serial}'s native " +
-                     "power parameter -- no pressure correction needed. \n ")
-        else:
-            info += ("Pressure correction with an increasing focal depth not available in " +
-                     "the configuration file for this driving system and transducer " +
-                     "combination. \n ")
+            elif self.chosen_power in self.driving_sys.native_power_params:
+                info += (f"{self.chosen_power} is already {self.driving_sys.serial}'s native " +
+                         "power parameter -- no pressure correction needed. \n ")
+            else:
+                info += ("Pressure correction with an increasing focal depth not available in " +
+                         "the configuration file for this driving system and transducer " +
+                         "combination. \n ")
 
         info += f"Operating frequency [kHz]: {self._oper_freq} \n "
-        info += f"Focal depth wrt exit plane [mm]: {self._focus_wrt_exit_plane:.2f} \n "
-        info += f"Focal depth wrt bowl middle [mm]: {self._focus_wrt_mid_bowl:.2f} \n "
+
+        info += "Chosen focus option: "
+        if self.chosen_focus is not None:
+            info += f"{self.chosen_focus} \n "
+            info += ("Focal depth wrt exit plane [mm]: " +
+                     f"{format_or_unavailable(self._focus_wrt_exit_plane, 'not yet configured')}"
+                     " \n ")
+            info += ("Focal depth wrt bowl middle [mm]: " +
+                     f"{format_or_unavailable(self._focus_wrt_mid_bowl, 'not yet configured')}"
+                     " \n ")
+        else:
+            # Mirrors chosen_power's else branch above: no focus values are shown at all when
+            # nothing has been chosen yet, rather than two "not yet configured" lines.
+            info += "not yet configured \n "
+
         info += f"Dephasing degree (None = no dephasing): {self.dephasing_degree} \n "
 
         return info
@@ -282,6 +310,13 @@ class TransducerSlot:
         self._chosen_focus = None
         self._focus_wrt_exit_plane = None
         self._focus_wrt_mid_bowl = None
+
+        # Power is exactly as transducer-specific as focus (the calibration curve a previously
+        # chosen power value was computed against belonged to the old transducer) -- reset for
+        # the same reason: the caller must choose focus and power again for the new transducer,
+        # rather than keeping a stale value that no longer means anything for this transducer.
+        self._chosen_power = None
+        self._reset_power_fields()
 
         self._refresh_combo()
 
@@ -1255,8 +1290,13 @@ class TransducerSlot:
         Returns:
             bool: True only if an 'Equipment.Combination.<ds_tran_combo>' section exists for the
             current pair AND its 'Active?' key is True. False (no warning) when the section is
-            simply absent -- normal for equipment that never needs curve-based conversion at all.
+            simply absent -- normal for equipment that never needs curve-based conversion at
+            all, or when no transducer has been assigned to this slot yet at all (_ds_tran_combo
+            still None) -- there can be no active combo for a pair that doesn't exist yet.
         """
+
+        if self._ds_tran_combo is None:
+            return False
 
         section = 'Equipment.Combination.' + self._ds_tran_combo
         if section not in config:
