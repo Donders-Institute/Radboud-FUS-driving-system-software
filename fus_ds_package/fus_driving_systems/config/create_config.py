@@ -722,7 +722,8 @@ _add_transducer(
 
 _add_transducer(
     SC_TRANS[7], name='NeuroFUS 4 ch. DPX-500-022', manufacturer=SONIC_CONCEPTS,
-    elements=4, fund_freq=500, min_focus=54, max_focus=122, active=False,
+    elements=4, fund_freq=500, min_focus=54, max_focus=122, exit_plane_dist=5.1,
+    active=False,
 )
 
 #######################################################################################
