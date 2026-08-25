@@ -739,6 +739,22 @@ class TestSetPhasesExcelBranch:
             connected_instance._set_phases(mocker.Mock(), focus=50.0, steer_info='',
                                            dephasing_degree=None)
 
+    def test_exits_when_more_than_one_dephasing_entry_given(self, mocker, connected_instance):
+        """Regression test: this branch used to only warn and silently use the first entry when
+        given more than one dephasing value -- transducer_xyz.Transducer.compute_phases() (the
+        .ini branch's equivalent) already treated this as a hard error via the same underlying
+        apply_cyclic_dephasing() helper both branches now share, so the two used to disagree on
+        identical invalid input. sys.exit() is the behavior both branches agree on now."""
+        connected_instance.n_channels = 2
+        df = pd.DataFrame({'Distance': [50.0], 'ch0': [10.0], 'ch1': [20.0]})
+        mocker.patch('fus_driving_systems.igt.igt_ds.pd.read_excel', return_value=df)
+        mocker.patch('fus_driving_systems.igt.igt_ds.os.path.exists', return_value=True)
+
+        with pytest.raises(SystemExit):
+            connected_instance._set_phases(mocker.Mock(), focus=50.0,
+                                           steer_info='some_table.xlsx',
+                                           dephasing_degree=[10.0, 20.0])
+
 
 class TestDefinePulseGroupMultiSlot:
     """N=2 slots: each slot's amplitude/frequency array must be fully expanded to its own

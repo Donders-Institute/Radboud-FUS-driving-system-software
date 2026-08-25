@@ -11,11 +11,13 @@ https://github.com/Donders-Institute/Radboud-FUS-driving-system-software.
 """
 
 # Basis import
+import sys
 
 # Miscellaneous import
 from abc import ABC, abstractmethod
 
 # Own packages
+from fus_driving_systems.config.logging_config import get_logger
 
 
 class ControlDrivingSystem(ABC):
@@ -156,3 +158,21 @@ class ControlDrivingSystem(ABC):
                                   f"{protocol.pulse_train_rep_dur} [ms], respectively.")
 
         return error_messages
+
+    def _validate_or_exit(self, protocol):
+        """
+        Validates the given protocol and exits with a clear message if it's invalid -- this was
+        identical across every driving system's own send_protocol() (flagged by pylint's
+        duplicate-code check), so it lives here once instead of being copy-pasted per subclass.
+
+        Parameters:
+            protocol(Object): a TUSProtocol instance containing, amongst other things:
+                the timing/power/focus parameters (focus, pulse duration, pulse rep. interval
+                and etcetera) and the equipment used (driving system and transducer)
+        """
+
+        error_messages = self.validate_protocol(protocol)
+        if error_messages:
+            for error in error_messages:
+                get_logger().critical(error)
+            sys.exit('(Multiple) error(s) found when validating protocol, see log file.')

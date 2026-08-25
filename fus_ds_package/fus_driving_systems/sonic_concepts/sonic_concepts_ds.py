@@ -76,11 +76,7 @@ class SonicConcepts(ds.ControlDrivingSystem):
 
         get_logger().info('Validating protocol...')
 
-        error_messages = self.validate_protocol(protocol)
-        if error_messages:
-            for error in error_messages:
-                get_logger().critical(error)
-            sys.exit('(Multiple) error(s) found when validating protocol, see log file.')
+        self._validate_or_exit(protocol)
 
         get_logger().info('Sending protocol...')
 

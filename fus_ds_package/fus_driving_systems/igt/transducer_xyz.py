@@ -47,6 +47,50 @@ SOUND_SPEED_WATER = float(get_config_value(get_logger(), config, 'General',
 TWO_PI = 2.0 * math.pi      # 2 pi, rad
 
 
+def apply_cyclic_dephasing(phases, dephasing_degree):
+    """
+    Applies a cyclic dephasing step to a list of phases -- shared by Transducer.compute_phases()
+    (below) and IGT._set_phases()'s .xlsx branch (igt_ds.py), which used to each carry their own,
+    independent copy of this exact loop (flagged by pylint's duplicate-code check). The two
+    copies had quietly drifted apart on invalid input: this version's sys.exit() on more than one
+    entry is the one that was already correct -- more than one dephasing value that doesn't match
+    the element count exactly (that case is handled by the caller directly, as a full phase
+    override, before ever reaching here) is invalid input, not something to silently paper over
+    by using the first value and warning.
+
+    Parameters:
+        phases (list(float)): Phases [degrees] to dephase, one per element.
+        dephasing_degree (list(float)): Must contain exactly one entry -- the degree step used
+            to dephase n elements in one cycle.
+
+    Returns:
+        list(float): A new list with the dephasing step applied.
+    """
+
+    if len(dephasing_degree) > 1:
+        message = (f'Number of dephasing entries ({len(dephasing_degree)}) does not ' +
+                   f'correspond to number of transducer elements ({len(phases)}). Only enter ' +
+                   'one dephasing value or n-values equal to the number of transducer elements.')
+        get_logger().critical(message)
+        sys.exit(message)
+
+    dephasing_degree = dephasing_degree[0]
+    dephased = list(phases)
+
+    # determine n elements to dephase in one cycle
+    nth_elem = round(360 / dephasing_degree)
+    dephasing_elem = 0
+    for i, phase in enumerate(dephased):
+        # Add chosen degrees to dephase signal
+        dephased[i] = phase + dephasing_degree * dephasing_elem
+
+        dephasing_elem = dephasing_elem + 1
+        if dephasing_elem == nth_elem:
+            dephasing_elem = 0
+
+    return dephased
+
+
 class Transducer:
     """
     A representation of the device used to shoot.
@@ -204,26 +248,7 @@ class Transducer:
             phases[i] = rem * 360.0
 
         if dephasing_degree is not None:
-            if len(dephasing_degree) > 1:
-                message = (f'Number of dephasing entries ({len(dephasing_degree)}) does not ' +
-                           'correspond to number of transducer elements ' +
-                           f'({self.channel_count()}). Only enter one dephasing value or ' +
-                           'n-values equal to the number of transducer elements.')
-                get_logger().critical(message)
-                sys.exit(message)
-
-            dephasing_degree = dephasing_degree[0]
-
-            # determine n elements to dephase in one cycle
-            nth_elem = round(360/dephasing_degree)
-            dephasing_elem = 0
-            for i, phase in enumerate(phases):
-                # Add chosen degrees to dephase signal
-                phases[i] = phase + dephasing_degree*dephasing_elem
-
-                dephasing_elem = dephasing_elem + 1
-                if dephasing_elem == nth_elem:
-                    dephasing_elem = 0
+            phases = apply_cyclic_dephasing(phases, dephasing_degree)
 
         phases_str = ', '.join([format(x, '.2f') for x in phases])
         natural_foc = set_focus_mm + point_mm[2]

@@ -489,12 +489,7 @@ class IGT(ds.ControlDrivingSystem):
                 'Protocol with the following parameters is validated before sending: \n ' +
                 '%s', protocol)
 
-            error_messages = self.validate_protocol(protocol)
-
-            if error_messages:
-                for error in error_messages:
-                    get_logger().critical(error)
-                sys.exit('(Multiple) error(s) found when validating protocol, see log file.')
+            self._validate_or_exit(protocol)
 
         get_logger().info('Sending protocol...')
         if self.is_connected():
@@ -1069,22 +1064,7 @@ class IGT(ds.ControlDrivingSystem):
                 phases = match_row.iloc[0].iloc[1:int(self.n_channels)+1].to_list()
 
                 if dephasing_degree is not None:
-                    if len(dephasing_degree) > 1:
-                        get_logger().warning(
-                            'Too few or too many entries given at dephasing_degree.' +
-                            ' Only the first one is now used for dephasing purposes.')
-
-                    dephasing_degree = dephasing_degree[0]
-                    # determine n elements to dephase in one cycle
-                    nth_elem = round(360/dephasing_degree)
-                    dephasing_elem = 0
-                    for i, phase in enumerate(phases):
-                        # Add chosen degrees to dephase signal
-                        phases[i] = phase + dephasing_degree*dephasing_elem
-
-                        dephasing_elem = dephasing_elem + 1
-                        if dephasing_elem == nth_elem:
-                            dephasing_elem = 0
+                    phases = transducer_xyz.apply_cyclic_dephasing(phases, dephasing_degree)
 
                 phases_str = ', '.join([format(x, '.2f') for x in phases])
                 get_logger().debug(f'Computed phases for set focus of {focus}: {phases_str}')
