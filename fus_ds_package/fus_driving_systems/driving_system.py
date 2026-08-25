@@ -134,16 +134,16 @@ class DrivingSystem:
         info += f"Driving system available channels: {self.available_ch} \n "
         info += f"Driving system connection info: {self.connect_info} \n "
 
-        tran_comp = '\n '.join(self.tran_comp)
+        tran_comp = ', '.join(self.tran_comp)
         info += f"Driving system tranducer compatibility: {tran_comp} \n "
 
-        power_options = '\n '.join(self.power_options)
+        power_options = ', '.join(self.power_options)
         info += f"Driving system power options: {power_options} \n "
-        focus_options = '\n '.join(self.focus_options)
+        focus_options = ', '.join(self.focus_options)
         info += f"Driving system focus options: {focus_options} \n "
-        native_power_params = '\n '.join(self.native_power_params)
+        native_power_params = ', '.join(self.native_power_params)
         info += f"Driving system native power parameter(s): {native_power_params} \n "
-        native_focus_params = '\n '.join(self.native_focus_params)
+        native_focus_params = ', '.join(self.native_focus_params)
         info += f"Driving system native focus parameter(s): {native_focus_params} \n "
         info += f"Driving system max. transducer slots: {self.max_tran_slots} \n "
         info += f"Driving system max. buffers: {self.max_buffers} \n "

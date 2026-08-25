@@ -124,8 +124,8 @@ class Transducer:
         info += f"Transducer elements: {self.elements} \n "
         info += f"Transducer fundamental frequency [kHz]: {self.fund_freq} \n "
         info += f"Transducer exit plane - first elem. distance [mm]: {self.exit_plane_dist} \n "
-        info += f"Transducer min. focus [mm]: {self.min_foc} \n "
-        info += f"Transducer max. focus [mm]: {self.max_foc} \n "
+        info += f"Transducer min. focus [mm]: {self.min_foc:.2f} \n "
+        info += f"Transducer max. focus [mm]: {self.max_foc:.2f} \n "
         info += ("Transducer steer table (Note: only used i.c.w. IGT driving sys.):" +
                  f" {self.steer_info} \n ")
 

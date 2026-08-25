@@ -23,6 +23,13 @@ from fus_driving_systems.config.logging_config import get_logger
 from fus_driving_systems.utils import get_config_value
 
 
+# Which driving system serials have already had their (static, never changing within a process)
+# info logged once -- see TUSProtocol.__init__. Module-level rather than per-instance: a script
+# typically constructs many TUSProtocol objects for the same driving system over a session (one
+# per trial/condition), and this info is about the driving system, not any one of them.
+_logged_driving_systems = set()
+
+
 class TUSProtocol():
     """
     Class representing a TUS (transcranial ultrasound) protocol.
@@ -88,6 +95,16 @@ class TUSProtocol():
         self._driving_sys = ds.DrivingSystem()
         self._driving_sys.set_ds_info(driving_sys_serial)
 
+        # Logged once per driving system serial per process (not per protocol, and not in
+        # __str__() below) -- this is static config info (see ds_config.ini), unrelated to any
+        # one protocol, so repeating it on every protocol validation/send would only add clutter
+        # (GitHub issue #140). Logging it once, here, still puts it near the start of any log
+        # file for a given driving system, which is what it's actually useful for: spotting an
+        # unexpected config change/mismatch when reviewing a log later.
+        if driving_sys_serial not in _logged_driving_systems:
+            get_logger().debug(f'Driving system info:\n {self._driving_sys}')
+            _logged_driving_systems.add(driving_sys_serial)
+
         back_up_trigger_option = get_config_value(get_logger(), config, 'Trigger', 'Options',
                                                   '').split('\n')[0]
 
@@ -138,7 +155,6 @@ class TUSProtocol():
         info = ''
 
         info += f"Buffer number (for IGT purposes): {self._buffer_num} \n "
-        info += str(self._driving_sys)
 
         info += f"Wait for trigger: {self.wait_for_trigger} \n "
         info += f"Trigger option: {self._trigger_option} \n "

@@ -24,6 +24,21 @@ from fus_driving_systems.config.logging_config import get_logger
 from fus_driving_systems.utils import get_config_value
 
 
+# Which driving-system/transducer combinations have already had the transducer's (static, never
+# changing within a process) info logged once -- see TransducerSlot._set_transducer(). Keyed by
+# the combo, not the transducer serial alone, since min_foc/max_foc get overwritten by whichever
+# combo's own calibration curve is active (see _update_conv_param()) -- the same transducer can
+# legitimately show different values when paired with a different driving system.
+_logged_transducers = set()
+
+
+def _pp_summary(pp):
+    """One-line summary (order, pieces) of a loaded piecewise polynomial curve -- see
+    _set_transducer(), which logs one of these per curve, once per combo, in place of
+    extract_and_define_pp() unconditionally logging this on every single call (GitHub #140)."""
+    return f'pp - order: {pp.c.shape[0]} - pieces: {pp.c.shape[1]}'
+
+
 class TransducerSlot:
     """
     Class representing a single transducer, and everything about how it's driven, within a
@@ -145,8 +160,6 @@ class TransducerSlot:
         """
         info = ''
 
-        info += str(self._transducer)
-
         info += "Chosen power option: "
         opt_glob_pow = get_config_value(get_logger(), config, 'Power', 'Option.glob_pow',
                                         'Global power [mW]')
@@ -156,29 +169,34 @@ class TransducerSlot:
         opt_volt = get_config_value(get_logger(), config, 'Power', 'Option.volt', 'Voltage [V]')
 
         if self.chosen_power == opt_glob_pow:
-            info += f"Global power [W]: {self._global_power} \n "
+            info += f"Global power [W]: {format_or_unavailable(self._global_power)} \n "
         elif self.chosen_power == opt_ampl:
-            info += f"Amplitude [%]: {self._ampl} \n "
+            info += f"Amplitude [%]: {[format_or_unavailable(a) for a in self._ampl]} \n "
         elif self.chosen_power == opt_press:
-            info += f"Maximum pressure in free water [MPa]: {self._press} \n "
-            info += f"Input pressure in free water [MPa]: {self._input_press_mpa} \n "
-            info += f"Equalized pressure in free water [MPa]: {self._eq_press_mpa} \n "
-            info += f"Calculated amplitude [%]: {self._calculated_ampl} \n "
+            info += ("Maximum pressure in free water [MPa]: " +
+                     f"{format_or_unavailable(self._press)} \n ")
+            info += ("Input pressure in free water [MPa]: " +
+                     f"{format_or_unavailable(self._input_press_mpa)} \n ")
+            info += ("Equalized pressure in free water [MPa]: " +
+                     f"{format_or_unavailable(self._eq_press_mpa)} \n ")
+            info += ("Calculated amplitude [%]: " +
+                     f"{format_or_unavailable(self._calculated_ampl)} \n ")
         elif self.chosen_power == opt_volt:
-            info += f"Voltage [V]: {self._volt} \n "
+            info += f"Voltage [V]: {[format_or_unavailable(v) for v in self._volt]} \n "
         else:
             info += "Unknown power option \n "
 
         if self._combo_is_active():
 
             if self.chosen_power != opt_press and len(self._ampl) == 1:
-                info += f"Maximum pressure in free water [MPa]: {self._press} \n "
+                info += ("Maximum pressure in free water [MPa]: " +
+                         f"{format_or_unavailable(self._press)} \n ")
 
             if self.chosen_power != opt_volt:
-                info += f"Voltage [V]: {self._volt} \n "
+                info += f"Voltage [V]: {[format_or_unavailable(v) for v in self._volt]} \n "
 
             if self.chosen_power != opt_ampl:
-                info += f"Amplitude [%]: {self._ampl} \n "
+                info += f"Amplitude [%]: {[format_or_unavailable(a) for a in self._ampl]} \n "
 
             # Information about piecewise polynomial fits
             info += "Conversion parameters using piecewise polynomial fits:\n "
@@ -200,7 +218,7 @@ class TransducerSlot:
                          f"fit of {self.eq_curve_file}\n ")
 
             info += ("Normalized pressure [-] based on chosen focal depth wrt exit plane of " +
-                     f"{self._focus_wrt_exit_plane} [mm]: {self._eq_factor} \n ")
+                     f"{self._focus_wrt_exit_plane:.2f} [mm]: {self._eq_factor:.2f} \n ")
 
         elif self.chosen_power in self.driving_sys.native_power_params:
             info += (f"{self.chosen_power} is already {self.driving_sys.serial}'s native " +
@@ -211,8 +229,8 @@ class TransducerSlot:
                      "combination. \n ")
 
         info += f"Operating frequency [kHz]: {self._oper_freq} \n "
-        info += f"Focal depth wrt exit plane [mm]: {self._focus_wrt_exit_plane} \n "
-        info += f"Focal depth wrt bowl middle [mm]: {self._focus_wrt_mid_bowl} \n "
+        info += f"Focal depth wrt exit plane [mm]: {self._focus_wrt_exit_plane:.2f} \n "
+        info += f"Focal depth wrt bowl middle [mm]: {self._focus_wrt_mid_bowl:.2f} \n "
         info += f"Dephasing degree (None = no dephasing): {self.dephasing_degree} \n "
 
         return info
@@ -266,6 +284,24 @@ class TransducerSlot:
         self._focus_wrt_mid_bowl = None
 
         self._refresh_combo()
+
+        # Logged once per driving-system/transducer combo per process (not in __str__() below,
+        # and not per protocol) -- static config info (see ds_config.ini), unrelated to any one
+        # protocol (GitHub issue #140). Logged after _refresh_combo() so min_foc/max_foc already
+        # reflect whatever this combo's own calibration curve overwrote them to, if any. The
+        # conversion curves' own order/pieces (previously logged unconditionally by
+        # extract_and_define_pp() on every load) are folded in here too, for the same reason.
+        if self._ds_tran_combo not in _logged_transducers:
+            info = f'Transducer info:\n {self._transducer}'
+            if self._combo_is_active():
+                info += (
+                    'Conversion curves loaded for this combo:\n ' +
+                    f'- Equalization: {_pp_summary(self._conv_param["eq_curve_pp"])}\n ' +
+                    f'- Focus: {_pp_summary(self._conv_param["focus_curve_pp"])}\n ' +
+                    f'- Power: {_pp_summary(self._conv_param["power_curve_pp"])}\n ' +
+                    f'- Voltage: {_pp_summary(self._conv_param["volt_curve_pp"])}\n ')
+            get_logger().debug(info)
+            _logged_transducers.add(self._ds_tran_combo)
 
     def _validate_element_count(self):
         """
@@ -530,8 +566,8 @@ class TransducerSlot:
                                                'Maximum pressure allowed in free water [MPa]',
                                                1.4))
             if press > max_press:
-                message = (f'The set maximum pressure in free water of {press} [MPa] is ' +
-                           f'crossing the allowed limit of {max_press} [MPa]. Please change' +
+                message = (f'The set maximum pressure in free water of {press:.2f} [MPa] is ' +
+                           f'crossing the allowed limit of {max_press:.2f} [MPa]. Please change' +
                            ' your value.')
                 get_logger().critical(message)
                 sys.exit(message)
@@ -958,19 +994,19 @@ class TransducerSlot:
                         x_min = self._conv_param['focus_curve_pp'].x[0]
                         x_max = self._conv_param['focus_curve_pp'].x[-1]
                         message = (
-                            f'Focus wrt exit plane of {focus} [mm] is outside of the active ' +
-                            f"calibration curve's limits ({x_min:.2f} - {x_max:.2f} [mm]), " +
-                            f'and {focus_option} is not native for {self._ds_tran_combo} -- ' +
-                            'there is no way to accurately produce ' +
+                            f'Focus wrt exit plane of {focus:.2f} [mm] is outside of the ' +
+                            f"active calibration curve's limits ({x_min:.2f} - {x_max:.2f} " +
+                            f'[mm]), and {focus_option} is not native for ' +
+                            f'{self._ds_tran_combo} -- there is no way to accurately produce ' +
                             f'{self.driving_sys.native_focus_params} from this focus value.')
                         get_logger().critical(message)
                         sys.exit(message)
 
                     get_logger().warning(
-                        f'Focus wrt exit plane of {focus} [mm] is outside of the active ' +
+                        f'Focus wrt exit plane of {focus:.2f} [mm] is outside of the active ' +
                         'calibration curve\'s range. Focus wrt mid bowl will be calculated ' +
-                        f'based on exit plane distance of {self._transducer.exit_plane_dist} ' +
-                        '[mm].')
+                        'based on exit plane distance of ' +
+                        f'{self._transducer.exit_plane_dist:.2f} [mm].')
                     calc_mid_bowl = focus + self._transducer.exit_plane_dist
 
                 self._focus_wrt_mid_bowl = calc_mid_bowl
@@ -978,9 +1014,9 @@ class TransducerSlot:
                 # Check if focus is within the transducer's own physical range -- no curve to
                 # consult here.
                 if focus < self._transducer.min_foc or focus > self._transducer.max_foc:
-                    message = (f'Focus wrt exit plane of {focus} [mm] is not within the set ' +
-                               f'focus range of {self._transducer.min_foc} and ' +
-                               f'{self._transducer.max_foc} [mm] of transducer ' +
+                    message = (f'Focus wrt exit plane of {focus:.2f} [mm] is not within the ' +
+                               f'set focus range of {self._transducer.min_foc:.2f} and ' +
+                               f'{self._transducer.max_foc:.2f} [mm] of transducer ' +
                                f'{self._transducer.name}.')
                     get_logger().critical(message)
                     sys.exit(message)
@@ -994,8 +1030,8 @@ class TransducerSlot:
             self._focus_wrt_exit_plane = focus
 
             get_logger().debug(
-                f'Focus wrt exit plane [mm]: {self._focus_wrt_exit_plane} \n ' +
-                f'Focus wrt bowl middle [mm]: {self._focus_wrt_mid_bowl}')
+                f'Focus wrt exit plane [mm]: {self._focus_wrt_exit_plane:.2f} \n ' +
+                f'Focus wrt bowl middle [mm]: {self._focus_wrt_mid_bowl:.2f}')
 
             if self._combo_is_active():
                 # Needed as an input to _set_power()'s own calculation, which always runs right
@@ -1070,23 +1106,14 @@ class TransducerSlot:
                 self._focus_wrt_exit_plane, status = find_x_for_y_in_pp(
                     self._conv_param['focus_curve_pp'], target_y_value)
 
-                if status:
-                    get_logger().debug(
-                        f"Found x value: {self._focus_wrt_exit_plane} for y = " +
-                        f"{target_y_value}")
-
-                    # Verify
-                    calc_y = self._conv_param['focus_curve_pp'](self._focus_wrt_exit_plane)
-                    get_logger().debug(
-                        f"Verification: pp({self._focus_wrt_exit_plane}) = {calc_y}")
-                else:
+                if not status:
                     if focus_option not in self.driving_sys.native_focus_params:
                         # Mid bowl is not native here -- exit plane is what's actually native
                         # and would be sent to hardware, so an imprecise geometric approximation
                         # for it is not an acceptable fallback (unlike the native case below,
                         # where exit plane is purely informational and never sent anywhere).
                         message = (
-                            f'Could not find an x value for y = {target_y_value} in the ' +
+                            f'Could not find an x value for y = {target_y_value:.2f} in the ' +
                             'active calibration curve, and ' +
                             f'{focus_option} is not native for {self._ds_tran_combo} -- ' +
                             'there is no way to accurately produce ' +
@@ -1095,10 +1122,10 @@ class TransducerSlot:
                         sys.exit(message)
 
                     get_logger().warning(
-                        f"Could not find an x value for y = {target_y_value}. " +
+                        f"Could not find an x value for y = {target_y_value:.2f}. " +
                         'Focus wrt exit plane will be calculated based on ' +
                         'exit plane distance of ' +
-                        f'{self._transducer.exit_plane_dist} [mm].')
+                        f'{self._transducer.exit_plane_dist:.2f} [mm].')
 
                     self._focus_wrt_exit_plane = focus - self._transducer.exit_plane_dist
             else:
@@ -1111,10 +1138,10 @@ class TransducerSlot:
             if (self._focus_wrt_exit_plane < self._transducer.min_foc
                     or self._focus_wrt_exit_plane > self._transducer.max_foc):
                 message = (
-                    f'Focus wrt exit plane of {self._focus_wrt_exit_plane} [mm] is not ' +
+                    f'Focus wrt exit plane of {self._focus_wrt_exit_plane:.2f} [mm] is not ' +
                     'within the set ' +
-                    f'focus range of {self._transducer.min_foc} and ' +
-                    f'{self._transducer.max_foc} [mm] of transducer ' +
+                    f'focus range of {self._transducer.min_foc:.2f} and ' +
+                    f'{self._transducer.max_foc:.2f} [mm] of transducer ' +
                     f'{self._transducer.name}.')
                 get_logger().critical(message)
                 sys.exit(message)
@@ -1124,8 +1151,8 @@ class TransducerSlot:
             self._focus_wrt_mid_bowl = focus
 
             get_logger().debug(
-                f'Focus wrt exit plane [mm]: {self._focus_wrt_exit_plane} \n ' +
-                f'Focus wrt bowl middle [mm]: {self._focus_wrt_mid_bowl}')
+                f'Focus wrt exit plane [mm]: {self._focus_wrt_exit_plane:.2f} \n ' +
+                f'Focus wrt bowl middle [mm]: {self._focus_wrt_mid_bowl:.2f}')
 
             if self._combo_is_active():
                 # Needed as an input to _set_power()'s own calculation, which always runs right
@@ -1340,7 +1367,7 @@ class TransducerSlot:
             x_min = self._conv_param['eq_curve_pp'].x[0]
             x_max = self._conv_param['eq_curve_pp'].x[-1]
             message = (
-                f'Focus wrt exit plane of {focus_wrt_exit_plane} [mm] is outside of the ' +
+                f'Focus wrt exit plane of {focus_wrt_exit_plane:.2f} [mm] is outside of the ' +
                 f"active calibration curve's limits ({x_min:.2f} - {x_max:.2f} [mm]).")
             get_logger().critical(message)
             sys.exit(message)
@@ -1363,18 +1390,11 @@ class TransducerSlot:
         for a in ampl:
             volt_value, status = find_x_for_y_in_pp(self._conv_param['volt_curve_pp'], a)
 
-            if status:
-                get_logger().debug(f"Found x value: {volt_value} for y = {a}")
-
-                # Verify
-                calc_y = self._conv_param['volt_curve_pp'](volt_value)
-                get_logger().debug(f"Verification: pp({volt_value}) = {calc_y}")
-
-            else:
+            if not status:
                 # None, not 0: 0 would look like a genuine, calculated voltage to any later
                 # read of self._volt, when really no value could be found at all.
                 volt_value = None
-                get_logger().error(f"Could not find a voltage value for amplitude = {a}")
+                get_logger().error(f"Could not find a voltage value for amplitude = {a:.2f}")
 
             volt.append(volt_value)
 
@@ -1416,7 +1436,7 @@ class TransducerSlot:
             press_min = x_min_mpa / eq_factor
             press_max = x_max_mpa / eq_factor
             message = (
-                f'Maximum pressure in free water of {input_press_mpa} [MPa] is outside of ' +
+                f'Maximum pressure in free water of {input_press_mpa:.2f} [MPa] is outside of ' +
                 'the calibration curve\'s range at the current focal depth (equalization ' +
                 f'factor {eq_factor:.4f}) -- must be between {press_min:.2f} and ' +
                 f'{press_max:.2f} [MPa] for this chosen focal depth. Change input value.')
@@ -1546,26 +1566,20 @@ class TransducerSlot:
                                                            target_y_value)
 
         if status:
-            get_logger().debug(f"Found x value: {press_pa_with_eq_fact} for y = {target_y_value}")
-
-            # Verify
-            calc_y = self._conv_param['power_curve_pp'](press_pa_with_eq_fact)
-            get_logger().debug(f"Verification: pp({press_pa_with_eq_fact}) = {calc_y}")
-
             press_mpa = (press_pa_with_eq_fact / eq_factor) * 1e-6
             max_press = float(get_config_value(
                 get_logger(), config, 'Power',
                 'Maximum pressure allowed in free water [MPa]', 1.4))
             if press_mpa > max_press:
-                message = (f'The set maximum pressure in free water of {press_mpa} [MPa] is ' +
-                           f'crossing the allowed limit of {max_press} [MPa]. Please change' +
-                           ' your value.')
+                message = (f'The set maximum pressure in free water of {press_mpa:.2f} [MPa] ' +
+                           f'is crossing the allowed limit of {max_press:.2f} [MPa]. Please ' +
+                           'change your value.')
                 get_logger().critical(message)
                 sys.exit(message)
 
             return press_mpa  # MPa
 
-        get_logger().error(f"Could not find a pressure value for amplitude = {target_y_value}")
+        get_logger().error(f"Could not find a pressure value for amplitude = {target_y_value:.2f}")
         return None
 
     def _convert_ampl_to_press_for_logging(self, ampl, eq_factor, *sibling_fields):

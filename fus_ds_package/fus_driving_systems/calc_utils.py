@@ -141,7 +141,7 @@ def extract_and_define_pp(json_dir, return_breaks=False):
             get_logger().error(message)
             sys.exit(message)
     except KeyError:
-        get_logger().debug('xTransform is not part of the file structure.')
+        pass  # xTransform simply not being part of the file structure is the expected case.
     except TypeError:
         get_logger().warning('Data structure does not support this type of access.')
     except ValueError as ve:
@@ -157,8 +157,11 @@ def extract_and_define_pp(json_dir, return_breaks=False):
     # Calculate number of pieces from breaks
     pieces = len(breaks) - 1
 
-    get_logger().debug(f"Extracted order: {order}")
-    get_logger().debug(f"Number of pieces: {pieces}")
+    # Order/pieces are no longer logged here -- extract_and_define_pp() is a generic,
+    # combo-agnostic utility with no way to dedupe across the repeated calls one combo's four
+    # curves involve, or across a driving-system/transducer combo used again later (GitHub issue
+    # #140). TransducerSlot._set_transducer() logs a single, deduplicated summary instead, once
+    # per combo, alongside the transducer's own info.
 
     # Convert coefficients to the format expected by PPoly
     # SciPy expects shape (k, m) where k is order and m is pieces

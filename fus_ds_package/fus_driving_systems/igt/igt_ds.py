@@ -284,11 +284,10 @@ class IGT(ds.ControlDrivingSystem):
 
         try:
             if self.is_connected():
-                get_logger().debug('Driving system is connected.')
-
                 self.gen = self.fus.gen()
                 self.n_channels = self.gen.getParam(unifus.GenParam.ChannelCount)
-                get_logger().debug("Generator: %s channels", self.n_channels)
+                get_logger().info("Driving system is connected. Generator: %s channels",
+                                  self.n_channels)
                 return True
 
             get_logger().warning("Error: connection failed.")
@@ -481,9 +480,11 @@ class IGT(ds.ControlDrivingSystem):
             get_logger().critical(message)
             sys.exit(message)
 
-        get_logger().info('Validating protocol...')
-
         for protocol in protocols:
+            tran_serials = ', '.join(slot.transducer.serial for slot in protocol.slots)
+            get_logger().info(
+                f'Validating protocol for buffer {protocol.buffer_num} '
+                f'({len(protocol.slots)} slot(s): {tran_serials})...')
             get_logger().debug(
                 'Protocol with the following parameters is validated before sending: \n ' +
                 '%s', protocol)
