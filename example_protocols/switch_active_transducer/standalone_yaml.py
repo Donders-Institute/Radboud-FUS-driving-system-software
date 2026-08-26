@@ -70,7 +70,7 @@ try:
     # relies on.
     if protocol.wait_for_trigger:
         igt_driving_sys.wait_for_trigger(protocol)
-        igt_driving_sys.wait_for_trigger_result(timeout_s=5.0)
+        igt_driving_sys.wait_for_trigger_result(protocol.buffer_num, timeout_s=5.0)
     else:
         igt_driving_sys.execute_protocol(protocol)
 
@@ -89,7 +89,7 @@ try:
     igt_driving_sys.send_protocol(protocol)
     if protocol.wait_for_trigger:
         igt_driving_sys.wait_for_trigger(protocol)
-        igt_driving_sys.wait_for_trigger_result(timeout_s=5.0)
+        igt_driving_sys.wait_for_trigger_result(protocol.buffer_num, timeout_s=5.0)
     else:
         igt_driving_sys.execute_protocol(protocol)
 

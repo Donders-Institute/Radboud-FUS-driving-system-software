@@ -70,7 +70,7 @@ try:
     # triggered protocol is expected to take. An execution error is always logged immediately
     # when it happens, but your code only actively reacts to it (via sys.exit()) once this is
     # called -- calling it late means reacting late.
-    igt_driving_sys.wait_for_trigger_result(timeout_s=5.0)
+    igt_driving_sys.wait_for_trigger_result(protocols[0].buffer_num, timeout_s=5.0)
 
 finally:
     # Safe to disconnect here: wait_for_trigger_result() above blocks until the triggered

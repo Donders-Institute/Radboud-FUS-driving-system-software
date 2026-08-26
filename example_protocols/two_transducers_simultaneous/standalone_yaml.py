@@ -64,7 +64,7 @@ try:
     # relies on.
     if protocols[0].wait_for_trigger:
         igt_driving_sys.wait_for_trigger(protocols)
-        igt_driving_sys.wait_for_trigger_result(timeout_s=5.0)
+        igt_driving_sys.wait_for_trigger_result(protocols[0].buffer_num, timeout_s=5.0)
     else:
         igt_driving_sys.execute_protocol(protocols)
 finally:

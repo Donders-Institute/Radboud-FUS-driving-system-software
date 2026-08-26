@@ -225,7 +225,8 @@ try:
     # instead of wait_for_trigger_result(), make sure you have your own way of confirming the
     # protocol actually finished (e.g. also call wait_for_trigger_result() once you expect it
     # to have) before disconnecting.
-    igt_driving_sys.wait_for_trigger_result(timeout_s=total_alternating_duration_ms / 1000.0)
+    igt_driving_sys.wait_for_trigger_result(protocol_a.buffer_num,
+                                            timeout_s=total_alternating_duration_ms / 1000.0)
 
 finally:
     # By the time we reach here, the protocol has actually finished executing either way:

@@ -114,24 +114,55 @@ class IGT(ds.ControlDrivingSystem):
 
         return self.fus.isConnected()
 
-    def register_sent_protocol(self, buffer_num, pulse_train_seq, n_pulse_train_rep,
-                               pulse_train_delay, phases=None):
+    def register_sent_protocol(self, buffer_num, protocols, pulse_train_seq, n_pulse_train_rep,
+                               pulse_train_delay, phases=None,
+                               total_alternating_duration_ms=None):
         """
         Records the sent protocol under its buffer number in the sent protocol list.
             buffer_num: which hardware buffer this protocol was sent to (see
                 TUSProtocol.buffer_num)
+            protocols (list(TUSProtocol)): The protocol(s) actually given to send_protocol() for
+                this buffer. Stored three ways, for three different reasons: _build_
+                intensity_lines() snapshots it into plain, human-readable strings for reporting
+                (see that method's own docstring for why a live reference wouldn't do); _build_
+                protocol_fingerprints() snapshots the fuller, machine-comparable state (timing/
+                ramp plus every slot's own state) that actually determines the physical pulse
+                (see its own docstring), used by _assert_not_reconfigured_since_send() to detect
+                drift that intensity_lines wouldn't necessarily show; and the objects themselves
+                are also kept verbatim under 'source_protocols' so a later execute_protocol()/
+                wait_for_trigger() call can verify (see _assert_matches_sent()) that it was
+                actually given these same objects back, not some other, unrelated protocol that
+                merely happens to target the same buffer_num.
             pulse_train_seq: list of pulses representing a pulse train
             n_pulse_train_rep: number of executions of one pulse train
             pulse_train_delay: pulse train delay in miliseconds
             phases: phases in degrees to reach focal depth
+            total_alternating_duration_ms (float or None): The value actually given to
+                send_protocol() for this buffer -- read back by _assert_duration_matches_sent()
+                to verify a later execute_protocol()/wait_for_trigger() call was given the same
+                value when interleaving, rather than one silently going unused (GitHub #122/
+                #125).
             total_protocol_duration_ms (float): Total duration of the protocol in milliseconds.
         """
 
         self.sent_protocols[buffer_num] = {}
+        self.sent_protocols[buffer_num]['source_protocols'] = protocols
+        self.sent_protocols[buffer_num]['intensity_lines'] = self._build_intensity_lines(
+            protocols)
+        self.sent_protocols[buffer_num]['protocol_fingerprints'] = (
+            self._build_protocol_fingerprints(protocols))
+        self.sent_protocols[buffer_num]['total_alternating_duration_ms'] = (
+            total_alternating_duration_ms)
         self.sent_protocols[buffer_num]['pulse_train_seq'] = pulse_train_seq
         self.sent_protocols[buffer_num]['n_pulse_train_rep'] = n_pulse_train_rep
         self.sent_protocols[buffer_num]['pulse_train_delay'] = pulse_train_delay
         self.sent_protocols[buffer_num]['phases'] = phases
+        # Set once wait_for_trigger() actually arms this buffer -- read back by
+        # wait_for_trigger_result() (see its own docstring) to confirm it's being called for a
+        # buffer that's genuinely armed, not merely sent. Always False again immediately after a
+        # fresh send: whatever was armed before belonged to whatever was previously on this
+        # buffer, not to what's here now.
+        self.sent_protocols[buffer_num]['armed'] = False
 
         total_protocol_duration_ms = unifus.sequenceDurationMs(pulse_train_seq, n_pulse_train_rep,
                                                                pulse_train_delay)
@@ -412,6 +443,245 @@ class IGT(ds.ControlDrivingSystem):
             get_logger().critical(message)
             sys.exit(message)
 
+    def _assert_matches_sent(self, protocols, buffer_num):
+        """
+        Exits with a clear message unless `protocols` are (by identity, via the default list/
+        object equality Python already gives us) the exact objects send_protocol() was last
+        called with for this buffer.
+
+        is_protocol_sent(buffer_num) alone only proves *something* was sent to this buffer, not
+        that these specific objects are it -- without this additional check, execute_protocol()/
+        wait_for_trigger() would happily compute exec_flags/pulse_dur thresholds/trigger config
+        from a protocol that has nothing to do with what's actually on the buffer (the physical
+        pulse itself is safe either way, since it was already baked in at send time and these
+        methods never rebuild it -- but everything they *do* still derive from their own
+        protocols argument would silently be wrong).
+
+        Parameters:
+            protocols (list(TUSProtocol)): The protocol(s) this call was actually given.
+            buffer_num (int): Which hardware buffer to check against (see TUSProtocol.buffer_num)
+                -- caller must already have confirmed is_protocol_sent(buffer_num) is True.
+        """
+
+        sent = self.sent_protocols.get(buffer_num, {}).get('source_protocols', protocols)
+        if protocols != sent:
+            message = ('The protocol(s) given here are not the ones last sent to buffer ' +
+                       f'{buffer_num} -- call send_protocol() again with these protocol(s) ' +
+                       'first.')
+            get_logger().critical(message)
+            sys.exit(message)
+
+    def _assert_not_reconfigured_since_send(self, protocols, buffer_num):
+        """
+        Exits with a clear message if any protocol (its timing/ramping) or any of its slots has
+        been reconfigured since actually being sent to this buffer (e.g. protocol.
+        configure_timing()/slot.configure()/slot.update_transducer() called again, or slot.
+        oper_freq/dephasing_degree set directly, after send_protocol(), without resending).
+
+        _assert_matches_sent() only checks that these are the *same objects* that were sent --
+        it does not, and cannot, catch the same objects having since been reconfigured in place.
+        Compares against _build_protocol_fingerprints() rather than the human-readable
+        _build_intensity_lines() specifically because the latter only covers chosen_focus/
+        chosen_power on each slot -- a change to timing/ramping, oper_freq/dephasing_degree, or
+        a transducer swap that happens to derive the same chosen focus/power values, wouldn't
+        necessarily show up there, but does affect what send_protocol() actually built.
+
+        Without this check, the driving system would keep firing whatever was baked in at send
+        time while a researcher who just reconfigured something reasonably believes their new
+        value is what's about to run -- a real safety gap (e.g. a lower configured pressure, or
+        a shorter configured pulse duration, silently firing at the old, higher/longer one), not
+        merely a cosmetic logging one, and not something a log message alone reliably prevents.
+
+        Parameters:
+            protocols (list(TUSProtocol)): The protocol(s) this call was actually given.
+            buffer_num (int): Which hardware buffer to check against (see TUSProtocol.buffer_num)
+                -- caller must already have confirmed is_protocol_sent(buffer_num) is True.
+        """
+
+        current_fingerprints = self._build_protocol_fingerprints(protocols)
+        sent_fingerprints = self.sent_protocols.get(buffer_num, {}).get(
+            'protocol_fingerprints', current_fingerprints)
+        if current_fingerprints != sent_fingerprints:
+            message = (
+                f'Buffer {buffer_num} was reconfigured after being sent -- the protocol or one ' +
+                'or more of its slots no longer match what was actually sent to the driving ' +
+                'system. Call send_protocol() again before proceeding, so it fires what you ' +
+                'now expect instead of the stale, previously sent configuration.')
+            get_logger().critical(message)
+            sys.exit(message)
+
+    def _assert_duration_matches_sent(self, protocols, buffer_num, total_alternating_duration_ms):
+        """
+        Exits with a clear message if total_alternating_duration_ms doesn't match what this
+        buffer was actually sent with, when interleaving more than one protocol.
+
+        Without this, a caller passing a different duration here than they used at
+        send_protocol() would have it silently discarded rather than honored: execute_protocol()/
+        wait_for_trigger() never use their own total_alternating_duration_ms argument for
+        anything physical themselves -- it's only ever used (indirectly) via what's already
+        stored in sent_protocols. This check is what makes it safe for their own
+        reconnect-and-resend path to simply pass this call's value straight through: a mismatch
+        would already have exited here, before that path is ever reached, so there's nothing
+        left for it to reconcile.
+
+        Only checked when interleaving: a single protocol computes its own repetition count from
+        its own pulse_train_rep_dur/pulse_train_rep_int, so total_alternating_duration_ms is
+        genuinely unused (and safe to leave at its default) there -- see
+        _assert_duration_given_when_interleaving()'s identical scoping.
+
+        Parameters:
+            protocols (list(TUSProtocol)): The protocol(s) this call was actually given.
+            buffer_num (int): Which hardware buffer to check against (see TUSProtocol.buffer_num)
+                -- caller must already have confirmed is_protocol_sent(buffer_num) is True.
+            total_alternating_duration_ms (float or None): The value this call was actually
+                given.
+        """
+
+        if len(protocols) > 1:
+            sent_duration = self.sent_protocols.get(buffer_num, {}).get(
+                'total_alternating_duration_ms', total_alternating_duration_ms)
+            if total_alternating_duration_ms != sent_duration:
+                message = (
+                    'total_alternating_duration_ms given here ' +
+                    f'({total_alternating_duration_ms}) does not match what buffer ' +
+                    f'{buffer_num} was actually sent with ({sent_duration}). Call ' +
+                    'send_protocol() again with this new duration first, or pass the ' +
+                    'original value here.')
+                get_logger().critical(message)
+                sys.exit(message)
+
+    def _assert_ready_to_run(self, protocols, buffer_num, total_alternating_duration_ms, caller):
+        """
+        Authoritative gate, run once right before execute_protocol()/wait_for_trigger() actually
+        does anything: this buffer must have something sent to it, the protocol(s) given here
+        must be (by identity) the ones actually sent, everything that determines the physical
+        pulse must still match that snapshot, and (when interleaving) the duration given here
+        must match what was actually sent too -- see is_protocol_sent()/_assert_matches_sent()/
+        _assert_not_reconfigured_since_send()/_assert_duration_matches_sent() for why each of
+        these four is independently necessary. Mirrors _assert_ready_to_send()'s role for
+        send_protocol().
+
+        Parameters:
+            protocols (list(TUSProtocol)): The protocol(s) this call was actually given.
+            buffer_num (int): Which hardware buffer to check against (see TUSProtocol.buffer_num).
+            total_alternating_duration_ms (float or None): The value this call was actually
+                given.
+            caller (str): Name of the calling method, purely to name it in the "nothing sent"
+                message below (e.g. "execute_protocol").
+        """
+
+        if not self.is_protocol_sent(buffer_num):
+            message = (f'No protocol has been sent to buffer {buffer_num} yet -- call ' +
+                       f'send_protocol() before {caller}().')
+            get_logger().critical(message)
+            sys.exit(message)
+
+        self._assert_matches_sent(protocols, buffer_num)
+        self._assert_not_reconfigured_since_send(protocols, buffer_num)
+        self._assert_duration_matches_sent(protocols, buffer_num, total_alternating_duration_ms)
+
+    def _build_intensity_lines(self, protocols):
+        """
+        One line per transducer slot across the given protocol(s), naming its chosen focus/power
+        (TransducerSlot.intensity_summary()) -- computed once, at send_protocol() time, and
+        stored verbatim in sent_protocols (see register_sent_protocol()) rather than re-read
+        live from the TUSProtocol/TransducerSlot objects whenever a confirmation is logged later.
+        This matters because those objects are ordinary mutable Python objects: if a caller
+        reconfigures a slot (e.g. slot.configure(...)) after send_protocol() but before
+        execute_protocol()/wait_for_trigger(), without resending, the live values would already
+        have moved on from what _define_pulse_group() actually baked into the driving system's
+        buffer at send time -- a confirmation log built from the live objects at that later
+        point would then describe the *new*, not-yet-sent configuration, misrepresenting what's
+        actually physically about to fire (or already fired).
+
+        Parameters:
+            protocols (list(TUSProtocol)): The protocol(s) just given to send_protocol().
+
+        Returns:
+            list(str): One formatted line per transducer slot.
+        """
+
+        return [f'  Buffer {protocol.buffer_num}, slot {i}: {slot.intensity_summary()}'
+                for protocol in protocols for i, slot in enumerate(protocol.slots)]
+
+    def _build_slot_fingerprints(self, protocols):
+        """
+        A tuple per transducer slot capturing everything _define_pulse_group() actually reads to
+        build the physical pulse -- transducer serial, oper_freq, dephasing_degree, and the
+        already-derived focus_wrt_mid_bowl/ampl actually used for phases/amplitudes -- regardless
+        of which chosen_focus/chosen_power option a researcher used to arrive at them. Used
+        purely to detect reconfiguration since send_protocol() (see
+        _assert_not_reconfigured_since_send()), not for display -- _build_intensity_lines()
+        covers only the chosen-option subset of this same state, formatted for a researcher to
+        read; a change to oper_freq/dephasing_degree, or a transducer swap that happens to derive
+        the same chosen focus/power values, would not necessarily show up there, but does here.
+
+        Parameters:
+            protocols (list(TUSProtocol)): The protocol(s) to fingerprint.
+
+        Returns:
+            list(tuple): One tuple per transducer slot.
+        """
+
+        return [
+            (protocol.buffer_num, i, slot.transducer.serial, slot.oper_freq,
+             tuple(slot.dephasing_degree) if slot.dephasing_degree is not None else None,
+             slot.focus_wrt_mid_bowl,
+             tuple(slot.ampl) if slot.ampl is not None else None)
+            for protocol in protocols for i, slot in enumerate(protocol.slots)]
+
+    def _build_protocol_fingerprints(self, protocols):
+        """
+        A tuple per protocol capturing everything that actually gets baked into the driving
+        system's buffer at send_protocol() time: the timing/ramp fields _define_pulse_train()/
+        _apply_ramping() read (pulse_dur, pulse_rep_int, pulse_train_dur, pulse_train_rep_int,
+        pulse_train_rep_dur, pulse_ramp_shape, pulse_ramp_dur), plus each of its slots' own
+        fingerprint (see _build_slot_fingerprints()). None of these timing/ramp values are
+        re-read from the live protocol objects by execute_protocol()/wait_for_trigger() for the
+        actual hardware calls -- only n_pulse_train_rep/pulse_train_delay/pulse_train_seq, which
+        were already computed from them once, at send time, and stored in sent_protocols -- so a
+        change to any of them after send_protocol(), without resending, must be caught the same
+        way a slot-level drift is (see _assert_not_reconfigured_since_send()).
+
+        Reads the timing fields via getattr(..., None) rather than direct attribute access --
+        unlike a slot's own fields (always present on a real TransducerSlot), a real TUSProtocol
+        always has these too, so this changes nothing for actual production use; it only avoids
+        forcing every unrelated test double throughout this file to grow five new attributes it
+        has no reason to otherwise need.
+
+        Parameters:
+            protocols (list(TUSProtocol)): The protocol(s) to fingerprint.
+
+        Returns:
+            list(tuple): One tuple per protocol.
+        """
+
+        timing_fields = ('pulse_dur', 'pulse_rep_int', 'pulse_train_dur', 'pulse_train_rep_int',
+                         'pulse_train_rep_dur', 'pulse_ramp_shape', 'pulse_ramp_dur')
+        return [
+            (protocol.buffer_num,) +
+            tuple(getattr(protocol, field, None) for field in timing_fields) +
+            (tuple(self._build_slot_fingerprints([protocol])),)
+            for protocol in protocols]
+
+    def _log_intensity_summary(self, buffer_num, header):
+        """
+        Logs `header` at INFO level, followed by the intensity lines register_sent_protocol()
+        captured for this buffer at send_protocol() time -- shared by the "about to execute/wait
+        for trigger" and "confirmed executed" log points (GitHub #125/#122), so a researcher
+        knows what they're waiting for before a (possibly blocking) wait, and gets the same
+        information again once execution is confirmed successful. Always reflects what was
+        actually sent (see _build_intensity_lines()'s own docstring for why that's not the same
+        as re-reading the TUSProtocol/TransducerSlot objects live at this later point.
+
+        Parameters:
+            buffer_num (int): Which hardware buffer to report on (see TUSProtocol.buffer_num).
+            header (str): One-line description of the moment this is being logged at.
+        """
+
+        lines = self.sent_protocols.get(buffer_num, {}).get('intensity_lines', [])
+        get_logger().info(header + '\n' + '\n'.join(lines))
+
     def send_protocol(self, protocols, total_alternating_duration_ms=None):
         """
         Validates and sends one or more ultrasound protocols to the IGT ultrasound driving
@@ -557,8 +827,9 @@ class IGT(ds.ControlDrivingSystem):
             # Upload the protocol
             self.gen.sendSequence(protocol0.buffer_num, pulse_train_seq)
 
-            self.register_sent_protocol(protocol0.buffer_num, pulse_train_seq, n_pulse_train_rep,
-                                        pulse_train_delay, phases)
+            self.register_sent_protocol(protocol0.buffer_num, protocols, pulse_train_seq,
+                                        n_pulse_train_rep, pulse_train_delay, phases,
+                                        total_alternating_duration_ms)
 
         else:
             get_logger().warning("No connection with driving system.")
@@ -752,11 +1023,8 @@ class IGT(ds.ControlDrivingSystem):
         # caller actually intended to send, which nothing here can verify. Only once a protocol
         # is known to have been sent successfully at least once does losing the connection
         # afterward count as an external failure worth automatically recovering from (below).
-        if not self.is_protocol_sent(protocol0.buffer_num):
-            message = (f'No protocol has been sent to buffer {protocol0.buffer_num} yet -- ' +
-                       'call send_protocol() before wait_for_trigger().')
-            get_logger().critical(message)
-            sys.exit(message)
+        self._assert_ready_to_run(protocols, protocol0.buffer_num, total_alternating_duration_ms,
+                                  'wait_for_trigger')
 
         if self.is_connected():
             try:
@@ -794,10 +1062,19 @@ class IGT(ds.ControlDrivingSystem):
                 get_logger().info(
                     f"Waiting for a total of {protocol0.n_triggers} trigger(s)...")
 
+                # Logged before arming, so a researcher knows what will fire once the external
+                # trigger comes in, before they go trigger it themselves (GitHub #125).
+                self._log_intensity_summary(protocol0.buffer_num, 'This will fire once triggered:')
+
                 self.gen.prepareSequence(protocol0.buffer_num, n_pulse_train_rep,
                                          pulse_train_delay, exec_flags)
 
                 self.gen.startSequence()
+
+                # Only set once arming has actually succeeded -- read back by
+                # wait_for_trigger_result() (see its own docstring) to confirm it's being called
+                # for a buffer that's genuinely armed, not merely sent.
+                self.sent_protocols[protocol0.buffer_num]['armed'] = True
 
             except Exception as why:
                 message = f"Exception: {why}"
@@ -806,7 +1083,10 @@ class IGT(ds.ControlDrivingSystem):
         else:
             # Reached only once a protocol is confirmed sent (above) -- reconnecting and
             # resending here is recovering the driving system's own state after losing the
-            # connection, not guessing at values for a first-time send.
+            # connection, not guessing at values for a first-time send. Safe to just pass
+            # protocols/total_alternating_duration_ms through as given: _assert_ready_to_run()
+            # above already guarantees both match what this buffer was actually sent with --
+            # a mismatch in either would have exited before ever reaching this branch.
             get_logger().warning("No connection with driving system.")
             get_logger().warning("Reconnecting with driving system...")
 
@@ -815,7 +1095,7 @@ class IGT(ds.ControlDrivingSystem):
             self.send_protocol(protocols, total_alternating_duration_ms)
             self.wait_for_trigger(protocols, total_alternating_duration_ms, debug_info)
 
-    def wait_for_trigger_result(self, timeout_s=5.0):
+    def wait_for_trigger_result(self, buffer_num, timeout_s=5.0):
         """
         Waits (blocking) for a previously armed triggered protocol to finish, and exits if the
         driving system reports its execution failed.
@@ -825,10 +1105,26 @@ class IGT(ds.ControlDrivingSystem):
         issue #112). Call this once the external trigger is expected to have fired (or with a
         generous timeout) to check that the driving system actually reported success.
 
+        Exits with a clear message unless wait_for_trigger() has actually armed this buffer --
+        being merely sent (send_protocol() called, but wait_for_trigger() never was, e.g. the
+        caller used execute_protocol() instead) is not enough: reaching this method without a
+        real arm behind it is always a caller mistake, never something to silently wait out.
+
         Parameters:
+            buffer_num (int): Which hardware buffer to report on (see TUSProtocol.buffer_num) --
+                looks up what send_protocol() actually sent to it for the confirmation log below
+                (GitHub #122/#125), rather than trusting a protocols argument re-supplied here,
+                which would have no actual bearing on what's armed on the driving system.
             timeout_s (float): How long to wait for the triggered execution to finish, in
             seconds.
         """
+
+        if not self.sent_protocols.get(buffer_num, {}).get('armed', False):
+            message = (f'Buffer {buffer_num} has not been armed for a trigger -- nothing to ' +
+                       'wait for. Call send_protocol() and wait_for_trigger() before ' +
+                       'wait_for_trigger_result().')
+            get_logger().critical(message)
+            sys.exit(message)
 
         self.listener.wait_protocol(timeout_s)
 
@@ -838,6 +1134,8 @@ class IGT(ds.ControlDrivingSystem):
                        'emitted.')
             get_logger().critical(message)
             sys.exit(message)
+
+        self._log_intensity_summary(buffer_num, 'Triggered protocol executed successfully:')
 
     def has_execution_error(self):
         """
@@ -898,11 +1196,8 @@ class IGT(ds.ControlDrivingSystem):
         # caller actually intended to send, which nothing here can verify. Only once a protocol
         # is known to have been sent successfully at least once does losing the connection
         # afterward count as an external failure worth automatically recovering from (below).
-        if not self.is_protocol_sent(protocol0.buffer_num):
-            message = (f'No protocol has been sent to buffer {protocol0.buffer_num} yet -- ' +
-                       'call send_protocol() before execute_protocol().')
-            get_logger().critical(message)
-            sys.exit(message)
+        self._assert_ready_to_run(protocols, protocol0.buffer_num, total_alternating_duration_ms,
+                                  'execute_protocol')
 
         if self.is_connected():
             try:
@@ -917,6 +1212,10 @@ class IGT(ds.ControlDrivingSystem):
                                          sent_protocol_info.get('pulse_train_delay'),
                                          exec_flags)
 
+                # Logged right before the (potentially long) blocking wait below, so a
+                # researcher watching the log knows what they're waiting for (GitHub #125).
+                self._log_intensity_summary(protocol0.buffer_num, 'About to execute:')
+
                 self.gen.startSequence()
                 self.listener.wait_protocol(
                     sent_protocol_info.get('total_protocol_duration_ms') / 1000.0)
@@ -928,6 +1227,13 @@ class IGT(ds.ControlDrivingSystem):
                     get_logger().critical(message)
                     sys.exit(message)
 
+                # Confirms execution actually succeeded (GitHub #122), naming exactly what was
+                # fired (GitHub #125) -- distinct from "About to execute" above even though the
+                # values are identical, since the two log points confirm different things:
+                # intent, and actual outcome.
+                self._log_intensity_summary(protocol0.buffer_num,
+                                            'Protocol executed successfully:')
+
             except Exception as why:
                 message = f"Exception: {why}"
                 get_logger().critical(message)
@@ -936,7 +1242,10 @@ class IGT(ds.ControlDrivingSystem):
         else:
             # Reached only once a protocol is confirmed sent (above) -- reconnecting and
             # resending here is recovering the driving system's own state after losing the
-            # connection, not guessing at values for a first-time send.
+            # connection, not guessing at values for a first-time send. Safe to just pass
+            # protocols/total_alternating_duration_ms through as given: _assert_ready_to_run()
+            # above already guarantees both match what this buffer was actually sent with --
+            # a mismatch in either would have exited before ever reaching this branch.
             get_logger().warning("No connection with driving system.")
             get_logger().warning("Reconnecting with driving system...")
 

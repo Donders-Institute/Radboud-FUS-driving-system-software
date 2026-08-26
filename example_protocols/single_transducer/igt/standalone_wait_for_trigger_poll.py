@@ -74,7 +74,7 @@ try:
     # so disconnecting right after it can cut off a still-running protocol -- call
     # wait_for_trigger_result() once you expect the trigger to have fired, to confirm the
     # protocol actually finished (and exit if it reports failure) before disconnecting below.
-    igt_driving_sys.wait_for_trigger_result(timeout_s=5.0)
+    igt_driving_sys.wait_for_trigger_result(protocols[0].buffer_num, timeout_s=5.0)
 
 finally:
     # Safe to disconnect here: wait_for_trigger_result() above confirmed the protocol actually

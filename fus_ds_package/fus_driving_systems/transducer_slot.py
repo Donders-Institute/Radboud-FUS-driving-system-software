@@ -263,6 +263,36 @@ class TransducerSlot:
 
         return info
 
+    def intensity_summary(self):
+        """
+        One-line, researcher-facing summary of this slot's transducer, chosen focus, and chosen
+        power -- used to report what's about to run before waiting on execution/a trigger
+        (GitHub #125), and to confirm what actually ran once execution is confirmed successful
+        (GitHub #122). Deliberately much shorter than __str__(), which also includes
+        pressure-correction diagnostics and curve-fit details not useful for a quick "what's
+        firing right now" check.
+
+        Returns:
+            str: e.g. "IS_PCD15287_01001: Focus wrt exit plane [mm] = 40.00, Max. pressure in
+            free water [MPa] = 0.30".
+        """
+
+        if self.chosen_focus is None:
+            focus_str = 'focus not yet configured'
+        else:
+            focus_str = f'{self.chosen_focus} = {format_or_unavailable(self.chosen_focus_value)}'
+
+        power_value = self.chosen_power_value
+        if self.chosen_power is None:
+            power_str = 'power not yet configured'
+        elif isinstance(power_value, list):
+            power_str = (f'{self.chosen_power} = ' +
+                         f'{[format_or_unavailable(v) for v in power_value]}')
+        else:
+            power_str = f'{self.chosen_power} = {format_or_unavailable(power_value)}'
+
+        return f'{self.transducer.serial}: {focus_str}, {power_str}'
+
     @property
     def transducer(self):
         """
@@ -482,6 +512,40 @@ class TransducerSlot:
         """
 
         return self._chosen_power
+
+    @property
+    def chosen_power_value(self):
+        """
+        The current value of whichever power option chosen_power names, or None if nothing has
+        been chosen yet. Read-only, like chosen_power itself. Used for reporting (e.g. IGT's
+        "about to execute"/"executed successfully" summaries, GitHub #125/#122) -- callers that
+        already know which option is chosen can just read the matching property directly
+        instead.
+
+        Returns:
+            float or list(float) or None: A plain float for global power/pressure, a list for
+            amplitude/voltage (one entry per channel, or a single shared entry), or None.
+        """
+
+        opt_glob_pow = get_config_value(get_logger(), config, 'Power', 'Option.glob_pow',
+                                        'Global power [mW]')
+        if self.chosen_power == opt_glob_pow:
+            return self._global_power
+
+        opt_press = get_config_value(get_logger(), config, 'Power', 'Option.press',
+                                     'Max. pressure in free water [MPa]')
+        if self.chosen_power == opt_press:
+            return self._press
+
+        opt_volt = get_config_value(get_logger(), config, 'Power', 'Option.volt', 'Voltage [V]')
+        if self.chosen_power == opt_volt:
+            return self._volt
+
+        opt_ampl = get_config_value(get_logger(), config, 'Power', 'Option.ampl', 'Amplitude [%]')
+        if self.chosen_power == opt_ampl:
+            return self._ampl
+
+        return None
 
     @property
     def global_power(self):
@@ -959,6 +1023,29 @@ class TransducerSlot:
         """
 
         return self._chosen_focus
+
+    @property
+    def chosen_focus_value(self):
+        """
+        The current value of whichever focus option chosen_focus names, or None if nothing has
+        been chosen yet. Read-only, like chosen_focus itself. Used for reporting (e.g. IGT's
+        "about to execute"/"executed successfully" summaries, GitHub #125/#122).
+
+        Returns:
+            float or None: Focal depth [mm] for whichever focus option is chosen, or None.
+        """
+
+        exit_opt = get_config_value(get_logger(), config, 'Focus', 'Option.exit',
+                                    'Focus wrt exit plane [mm]')
+        if self.chosen_focus == exit_opt:
+            return self._focus_wrt_exit_plane
+
+        bowl_opt = get_config_value(get_logger(), config, 'Focus', 'Option.bowl',
+                                    'Focus wrt mid bowl [mm]')
+        if self.chosen_focus == bowl_opt:
+            return self._focus_wrt_mid_bowl
+
+        return None
 
     @property
     def focus_wrt_exit_plane(self):

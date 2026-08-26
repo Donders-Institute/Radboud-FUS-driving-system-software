@@ -58,7 +58,8 @@ try:
     # wait for the external trigger rather than executing directly -- see standalone_plain.py
     # for the has_execution_error()/wait_for_trigger_result() explanation this pattern relies on.
     igt_driving_sys.wait_for_trigger(protocols, total_alternating_duration_ms)
-    igt_driving_sys.wait_for_trigger_result(timeout_s=total_alternating_duration_ms / 1000.0)
+    igt_driving_sys.wait_for_trigger_result(protocols[0].buffer_num,
+                                            timeout_s=total_alternating_duration_ms / 1000.0)
 
 finally:
     # By the time we reach here, the protocol has actually finished executing: wait_for_trigger_

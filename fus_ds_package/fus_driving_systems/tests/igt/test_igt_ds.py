@@ -39,9 +39,14 @@ def _slot(elements=1, ampl=_UNSET, serial='TRAN-A', **overrides):
     calculation. ampl defaults to [50.0] when not given -- pass ampl=None explicitly to
     exercise the "amplitude not set" case. serial defaults to 'TRAN-A' -- validate_protocol()'s
     "amplitude is None" error names the transducer it's about, so tests checking that need a
-    distinguishable serial per slot."""
+    distinguishable serial per slot. intensity_summary defaults to a fixed, serial-identifying
+    string -- see TransducerSlot.intensity_summary(), used by _log_intensity_summary().
+    oper_freq/dephasing_degree/focus_wrt_mid_bowl are minimal, fixed defaults -- see
+    IGT._build_slot_fingerprints(), used by _assert_not_reconfigured_since_send()."""
     values = dict(ampl=[50.0] if ampl is _UNSET else ampl,
-                  transducer=SimpleNamespace(elements=elements, serial=serial))
+                  transducer=SimpleNamespace(elements=elements, serial=serial),
+                  intensity_summary=lambda: f'{serial}: fake intensity summary',
+                  oper_freq=500, dephasing_degree=None, focus_wrt_mid_bowl=50.0)
     values.update(overrides)
     return SimpleNamespace(**values)
 
@@ -130,15 +135,48 @@ class TestRegisterSentProtocol:
         mocker.patch('fus_driving_systems.igt.igt_ds.unifus.sequenceDurationMs',
                      return_value=200.0)
 
-        igt_instance.register_sent_protocol(0, pulse_train_seq=['pulse'], n_pulse_train_rep=3,
-                                            pulse_train_delay=5.0, phases=[10.0, 20.0])
+        fake_protocols = [SimpleNamespace(buffer_num=0, slots=[_slot(serial='TRAN-A')])]
+        igt_instance.register_sent_protocol(0, fake_protocols, pulse_train_seq=['pulse'],
+                                            n_pulse_train_rep=3, pulse_train_delay=5.0,
+                                            phases=[10.0, 20.0])
 
         stored = igt_instance.sent_protocols[0]
+        assert stored['intensity_lines'] == ['  Buffer 0, slot 0: TRAN-A: fake intensity summary']
+        assert stored['protocol_fingerprints'] == igt_instance._build_protocol_fingerprints(
+            fake_protocols)
         assert stored['pulse_train_seq'] == ['pulse']
         assert stored['n_pulse_train_rep'] == 3
         assert stored['pulse_train_delay'] == 5.0
         assert stored['phases'] == [10.0, 20.0]
         assert stored['total_protocol_duration_ms'] == pytest.approx(250.0)  # 200 + 50
+
+    def test_intensity_lines_are_a_frozen_snapshot_not_a_live_reference(self, igt_instance,
+                                                                        mocker):
+        """TUSProtocol/TransducerSlot are ordinary mutable objects -- if a caller reconfigures a
+        slot after send_protocol() but before execute_protocol()/wait_for_trigger(), without
+        resending, the driving system's buffer still holds whatever _define_pulse_group() baked
+        in at send time (see _build_intensity_lines()'s own docstring). The confirmation log
+        must therefore keep describing that original configuration, not whatever the live
+        objects have since been mutated to -- proven here by mutating the slot's own
+        intensity_summary() return value after registering, and confirming the stored lines
+        don't follow it."""
+        mocker.patch('fus_driving_systems.igt.igt_ds.unifus.sequenceDurationMs',
+                     return_value=200.0)
+        mutable_slot = SimpleNamespace(intensity_summary=lambda: mutable_slot.current_summary,
+                                       transducer=SimpleNamespace(serial='TRAN-A'),
+                                       oper_freq=500, dephasing_degree=None,
+                                       focus_wrt_mid_bowl=40.0, ampl=[30.0])
+        mutable_slot.current_summary = 'TRAN-A: 40.00 mm, 0.30 MPa'
+        fake_protocols = [SimpleNamespace(buffer_num=0, slots=[mutable_slot])]
+
+        igt_instance.register_sent_protocol(0, fake_protocols, pulse_train_seq=['pulse'],
+                                            n_pulse_train_rep=1, pulse_train_delay=0.0)
+
+        # Reconfigured after sending, without resending -- e.g. slot.configure(...) called again.
+        mutable_slot.current_summary = 'TRAN-A: 60.00 mm, 0.80 MPa'
+
+        assert igt_instance.sent_protocols[0]['intensity_lines'] == [
+            '  Buffer 0, slot 0: TRAN-A: 40.00 mm, 0.30 MPa']
 
 
 # ---------------------------------------------------------------------------
@@ -1119,7 +1157,7 @@ class TestExecuteProtocol:
         connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
                                                  'total_protocol_duration_ms': 500.0}}
         fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=0.5, pulse_ramp_dur=0,
-                                        pulse_ramp_shape='Rectangular - no ramping')
+                                        pulse_ramp_shape='Rectangular - no ramping', slots=[])
 
         connected_instance.execute_protocol([fake_protocol], debug_info=False)
 
@@ -1135,7 +1173,7 @@ class TestExecuteProtocol:
         connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
                                                  'total_protocol_duration_ms': 500.0}}
         fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=5.0, pulse_ramp_dur=0,
-                                        pulse_ramp_shape='Rectangular - no ramping')
+                                        pulse_ramp_shape='Rectangular - no ramping', slots=[])
 
         connected_instance.execute_protocol([fake_protocol], debug_info=True)
 
@@ -1156,8 +1194,8 @@ class TestExecuteProtocol:
         connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
                                                  'total_protocol_duration_ms': 500.0}}
         fake_protocol1 = SimpleNamespace(buffer_num=0, pulse_dur=5.0, pulse_ramp_dur=0,
-                                         pulse_ramp_shape='Rectangular - no ramping')
-        fake_protocol2 = SimpleNamespace(pulse_dur=0.01)
+                                         pulse_ramp_shape='Rectangular - no ramping', slots=[])
+        fake_protocol2 = SimpleNamespace(buffer_num=0, pulse_dur=0.01, slots=[])
 
         connected_instance.execute_protocol([fake_protocol1, fake_protocol2],
                                             total_alternating_duration_ms=100, debug_info=True)
@@ -1174,7 +1212,7 @@ class TestExecuteProtocol:
         connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
                                                  'total_protocol_duration_ms': 500.0}}
         fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=1.0, pulse_ramp_dur=0,
-                                        pulse_ramp_shape='Rectangular - no ramping')
+                                        pulse_ramp_shape='Rectangular - no ramping', slots=[])
 
         connected_instance.execute_protocol([fake_protocol], debug_info=True)
 
@@ -1190,7 +1228,7 @@ class TestExecuteProtocol:
         connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
                                                  'total_protocol_duration_ms': 500.0}}
         fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=0.01, pulse_ramp_dur=0,
-                                        pulse_ramp_shape='Rectangular - no ramping')
+                                        pulse_ramp_shape='Rectangular - no ramping', slots=[])
 
         connected_instance.execute_protocol([fake_protocol], debug_info=True)
 
@@ -1251,13 +1289,47 @@ class TestExecuteProtocol:
         mock_send = mocker.patch.object(instance, 'send_protocol', side_effect=fake_send_protocol)
 
         fake_protocol = SimpleNamespace(
-            buffer_num=0, driving_sys=SimpleNamespace(connect_info='igt/config/gen_test.json'))
+            buffer_num=0, driving_sys=SimpleNamespace(connect_info='igt/config/gen_test.json'),
+            slots=[])
 
         instance.execute_protocol([fake_protocol], debug_info=False)
 
         mock_connect.assert_called_once_with('igt/config/gen_test.json')
         mock_send.assert_called_once()
         instance.gen.startSequence.assert_called_once()
+
+    def test_reconnect_resends_with_this_calls_own_duration(self, mocker, tmp_path):
+        """The reconnect-and-resend path passes total_alternating_duration_ms straight through,
+        unmodified -- safe because _assert_ready_to_run() (specifically
+        _assert_duration_matches_sent()) already guarantees it matches what this buffer was
+        actually sent with whenever that distinction matters (interleaving); for a single
+        protocol like this one, the value is never used for anything physical either way, so it
+        being un-reconciled here is harmless by construction, not merely untested."""
+        instance = IGT(log_dir=str(tmp_path))
+        instance.sent_protocols[0] = {'n_pulse_train_rep': 1, 'pulse_train_delay': 0.0,
+                                      'total_protocol_duration_ms': 10.0}
+
+        def fake_connect(connect_info):
+            instance.fus = mocker.Mock()
+            instance.fus.isConnected.return_value = True
+            instance.gen = mocker.Mock()
+            instance.listener = mocker.Mock()
+            instance.listener.exec_error_code = None
+        mocker.patch.object(instance, 'connect', side_effect=fake_connect)
+
+        def fake_send_protocol(*args, **kwargs):
+            instance.sent_protocols[0] = {'n_pulse_train_rep': 1, 'pulse_train_delay': 0.0,
+                                          'total_protocol_duration_ms': 10.0}
+        mock_send = mocker.patch.object(instance, 'send_protocol', side_effect=fake_send_protocol)
+
+        fake_protocol = SimpleNamespace(
+            buffer_num=0, driving_sys=SimpleNamespace(connect_info='igt/config/gen_test.json'),
+            slots=[])
+
+        instance.execute_protocol([fake_protocol], total_alternating_duration_ms=5000,
+                                  debug_info=False)
+
+        mock_send.assert_called_once_with([fake_protocol], 5000)
 
     def test_exits_on_exception_during_execution(self, connected_instance):
         """The broad 'except Exception: sys.exit' wrapper around the
@@ -1267,7 +1339,7 @@ class TestExecuteProtocol:
                                                  'total_protocol_duration_ms': 500.0}}
         connected_instance.gen.prepareSequence.side_effect = RuntimeError('hardware fault')
         fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=0.5, pulse_ramp_dur=0,
-                                        pulse_ramp_shape='Rectangular - no ramping')
+                                        pulse_ramp_shape='Rectangular - no ramping', slots=[])
 
         with pytest.raises(SystemExit):
             connected_instance.execute_protocol([fake_protocol], debug_info=False)
@@ -1287,7 +1359,7 @@ class TestExecuteProtocol:
                                                  'total_protocol_duration_ms': 500.0}}
         connected_instance.listener.exec_error_code = 2863311530
         fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=0.5, pulse_ramp_dur=0,
-                                        pulse_ramp_shape='Rectangular - no ramping')
+                                        pulse_ramp_shape='Rectangular - no ramping', slots=[])
 
         with pytest.raises(SystemExit):
             connected_instance.execute_protocol([fake_protocol], debug_info=False)
@@ -1298,11 +1370,164 @@ class TestExecuteProtocol:
         connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
                                                  'total_protocol_duration_ms': 500.0}}
         fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=0.5, pulse_ramp_dur=0,
-                                        pulse_ramp_shape='Rectangular - no ramping')
+                                        pulse_ramp_shape='Rectangular - no ramping', slots=[])
 
         connected_instance.execute_protocol([fake_protocol], debug_info=False)  # must not raise
 
         connected_instance.listener.wait_protocol.assert_called_once()
+
+    def test_logs_intensity_summary_before_and_after_execution(self, connected_instance, caplog):
+        """GitHub #125/#122: a researcher should see what's about to run before the (possibly
+        blocking) wait, and get the same confirmation once execution is actually confirmed
+        successful."""
+        fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=0.5, pulse_ramp_dur=0,
+                                        pulse_ramp_shape='Rectangular - no ramping',
+                                        slots=[_slot(serial='TRAN-A')])
+        connected_instance.sent_protocols = {0: {
+            'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
+            'total_protocol_duration_ms': 500.0,
+            'intensity_lines': connected_instance._build_intensity_lines([fake_protocol])}}
+
+        with caplog.at_level('INFO'):
+            connected_instance.execute_protocol([fake_protocol], debug_info=False)
+
+        assert 'About to execute:' in caplog.text
+        assert 'Protocol executed successfully:' in caplog.text
+        assert caplog.text.count('TRAN-A: fake intensity summary') == 2
+
+    def test_exits_when_given_protocol_does_not_match_sent(self, connected_instance):
+        """is_protocol_sent(buffer_num) alone only proves *something* was sent to this buffer,
+        not that these specific protocol objects are it -- without _assert_matches_sent(), this
+        would silently compute exec_flags/pulse_dur thresholds from a protocol that has nothing
+        to do with what's physically on the buffer (GitHub #122/#125). Uses two differently
+        -labeled fake slots so a mismatch is unambiguous."""
+        sent_protocol = SimpleNamespace(buffer_num=0, slots=[_slot(serial='SENT-TRAN')])
+        connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
+                                                 'total_protocol_duration_ms': 500.0,
+                                                 'source_protocols': [sent_protocol],
+                                                 'intensity_lines': []}}
+        given_protocol = SimpleNamespace(buffer_num=0, pulse_dur=0.5, pulse_ramp_dur=0,
+                                         pulse_ramp_shape='Rectangular - no ramping',
+                                         slots=[_slot(serial='GIVEN-TRAN')])
+
+        with pytest.raises(SystemExit):
+            connected_instance.execute_protocol([given_protocol], debug_info=False)
+
+        connected_instance.gen.prepareSequence.assert_not_called()
+
+    def test_exits_when_slot_reconfigured_after_send_without_resending(self, connected_instance):
+        """A researcher who calls slot.configure() again after send_protocol() but forgets to
+        resend must not have their new value silently ignored (GitHub #122/#125) -- the driving
+        system would still fire whatever was baked in at send time. This must actually block
+        execution, not just log the discrepancy: log messages alone aren't a reliable enough
+        safeguard against a value a researcher doesn't carefully re-check."""
+        mutable_slot = SimpleNamespace(intensity_summary=lambda: mutable_slot.current_summary,
+                                       transducer=SimpleNamespace(serial='TRAN-A'),
+                                       oper_freq=500, dephasing_degree=None,
+                                       focus_wrt_mid_bowl=40.0, ampl=[30.0])
+        mutable_slot.current_summary = 'TRAN-A: 0.30 MPa'
+        protocol = SimpleNamespace(buffer_num=0, pulse_dur=0.5, pulse_ramp_dur=0,
+                                   pulse_ramp_shape='Rectangular - no ramping',
+                                   slots=[mutable_slot])
+        connected_instance.sent_protocols = {0: {
+            'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0, 'total_protocol_duration_ms': 500.0,
+            'source_protocols': [protocol],
+            'intensity_lines': connected_instance._build_intensity_lines([protocol]),
+            'protocol_fingerprints': connected_instance._build_protocol_fingerprints([protocol])}}
+
+        # Reconfigured after sending, without resending -- e.g. slot.configure(...) called again.
+        mutable_slot.current_summary = 'TRAN-A: 0.80 MPa'
+        mutable_slot.ampl = [80.0]
+
+        with pytest.raises(SystemExit):
+            connected_instance.execute_protocol([protocol], debug_info=False)
+
+        connected_instance.gen.prepareSequence.assert_not_called()
+
+    def test_exits_when_given_duration_does_not_match_sent_when_interleaving(
+            self, connected_instance):
+        """total_alternating_duration_ms is never actually read by execute_protocol()/
+        wait_for_trigger() for anything physical -- passing a different value here than what
+        this buffer was actually sent with must not look like it's silently being honored
+        (GitHub #122/#125): it never was, either way, so a mismatch should be a clear error
+        instead."""
+        protocol1 = SimpleNamespace(buffer_num=0, pulse_dur=0.5, pulse_ramp_dur=0,
+                                    pulse_ramp_shape='Rectangular - no ramping',
+                                    slots=[_slot(serial='TRAN-A')])
+        protocol2 = SimpleNamespace(buffer_num=0, pulse_dur=0.5, pulse_ramp_dur=0,
+                                    pulse_ramp_shape='Rectangular - no ramping',
+                                    slots=[_slot(serial='TRAN-B')])
+        connected_instance.sent_protocols = {0: {
+            'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0, 'total_protocol_duration_ms': 500.0,
+            'total_alternating_duration_ms': 1000,
+            'source_protocols': [protocol1, protocol2],
+            'intensity_lines': connected_instance._build_intensity_lines([protocol1, protocol2]),
+            'protocol_fingerprints': connected_instance._build_protocol_fingerprints(
+                [protocol1, protocol2])}}
+
+        with pytest.raises(SystemExit):
+            connected_instance.execute_protocol([protocol1, protocol2],
+                                                total_alternating_duration_ms=5000,
+                                                debug_info=False)
+
+        connected_instance.gen.prepareSequence.assert_not_called()
+
+    def test_exits_when_oper_freq_changed_without_touching_focus_or_power(self,
+                                                                          connected_instance):
+        """oper_freq/dephasing_degree have their own public setters, independent of configure()
+        -- changing either directly (without touching chosen focus/power at all) still changes
+        what _define_pulse_group() actually builds, so it must be caught too, not just a focus/
+        power drift (GitHub #122/#125)."""
+        slot = SimpleNamespace(intensity_summary=lambda: 'TRAN-A: unchanged',
+                               transducer=SimpleNamespace(serial='TRAN-A'),
+                               oper_freq=500, dephasing_degree=None,
+                               focus_wrt_mid_bowl=40.0, ampl=[30.0])
+        protocol = SimpleNamespace(buffer_num=0, pulse_dur=0.5, pulse_ramp_dur=0,
+                                   pulse_ramp_shape='Rectangular - no ramping', slots=[slot])
+        connected_instance.sent_protocols = {0: {
+            'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0, 'total_protocol_duration_ms': 500.0,
+            'source_protocols': [protocol],
+            'intensity_lines': connected_instance._build_intensity_lines([protocol]),
+            'protocol_fingerprints': connected_instance._build_protocol_fingerprints([protocol])}}
+
+        # slot.oper_freq = ... called directly, without configure() -- intensity_summary() (and
+        # therefore intensity_lines) would stay unaware of this, since it never reads oper_freq.
+        slot.oper_freq = 750
+
+        with pytest.raises(SystemExit):
+            connected_instance.execute_protocol([protocol], debug_info=False)
+
+        connected_instance.gen.prepareSequence.assert_not_called()
+
+    def test_exits_when_timing_reconfigured_without_touching_any_slot(self, connected_instance):
+        """protocol.configure_timing() has its own effect on what gets baked into the buffer at
+        send time (pulse_dur/pulse_rep_int/pulse_train_dur/pulse_train_rep_int/
+        pulse_train_rep_dur/ramping) -- calling it again after send_protocol(), without
+        resending, must be caught too, even when not a single slot was touched (GitHub
+        #122/#125): execute_protocol()/wait_for_trigger() only ever read n_pulse_train_rep/
+        pulse_train_delay/pulse_train_seq back from what was sent, never these fields live."""
+        slot = SimpleNamespace(intensity_summary=lambda: 'TRAN-A: unchanged',
+                               transducer=SimpleNamespace(serial='TRAN-A'),
+                               oper_freq=500, dephasing_degree=None,
+                               focus_wrt_mid_bowl=40.0, ampl=[30.0])
+        protocol = SimpleNamespace(buffer_num=0, pulse_dur=0.5, pulse_rep_int=1.0,
+                                   pulse_train_dur=10.0, pulse_train_rep_int=20.0,
+                                   pulse_train_rep_dur=100.0, pulse_ramp_dur=0,
+                                   pulse_ramp_shape='Rectangular - no ramping', slots=[slot])
+        connected_instance.sent_protocols = {0: {
+            'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0, 'total_protocol_duration_ms': 500.0,
+            'source_protocols': [protocol],
+            'intensity_lines': connected_instance._build_intensity_lines([protocol]),
+            'protocol_fingerprints': connected_instance._build_protocol_fingerprints([protocol])}}
+
+        # protocol.configure_timing(...) called again, without resending -- no slot is touched at
+        # all, only the protocol's own pulse_dur.
+        protocol.pulse_dur = 2.0
+
+        with pytest.raises(SystemExit):
+            connected_instance.execute_protocol([protocol], debug_info=False)
+
+        connected_instance.gen.prepareSequence.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -1319,12 +1544,30 @@ class TestWaitForTrigger:
         connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0}}
         fake_protocol = SimpleNamespace(buffer_num=0, pulse_ramp_dur=0,
                                         pulse_ramp_shape='Rectangular - no ramping',
-                                        trigger_option='TriggerOnePulseTrain', n_triggers=3)
+                                        trigger_option='TriggerOnePulseTrain', n_triggers=3,
+                                        slots=[])
 
         connected_instance.wait_for_trigger([fake_protocol], debug_info=False)
 
         connected_instance.gen.prepareSequence.assert_called_once_with(0, 3, 0, mocker.ANY)
         connected_instance.gen.startSequence.assert_called_once()
+
+    def test_marks_buffer_as_armed_once_arming_succeeds(self, connected_instance, patch_config):
+        """wait_for_trigger_result() relies on this to tell a genuinely armed buffer apart from
+        one that was merely sent (GitHub #122/#125) -- proven here directly, not just through
+        wait_for_trigger_result()'s own guard."""
+        patch_config.set('Trigger', 'Option.pulse_train', 'TriggerOnePulseTrain')
+        patch_config.set('Trigger', 'Option.whole_protocol', 'TriggerWholeProtocol')
+        connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
+                                                 'armed': False}}
+        fake_protocol = SimpleNamespace(buffer_num=0, pulse_ramp_dur=0,
+                                        pulse_ramp_shape='Rectangular - no ramping',
+                                        trigger_option='TriggerOnePulseTrain', n_triggers=3,
+                                        slots=[])
+
+        connected_instance.wait_for_trigger([fake_protocol], debug_info=False)
+
+        assert connected_instance.sent_protocols[0]['armed'] is True
 
     def test_exits_when_interleaved_protocols_have_different_trigger_configuration(
             self, patch_config, connected_instance):
@@ -1371,7 +1614,8 @@ class TestWaitForTrigger:
         connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0}}
         fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=5.0, pulse_ramp_dur=0,
                                         pulse_ramp_shape='Rectangular - no ramping',
-                                        trigger_option='TriggerOnePulseTrain', n_triggers=3)
+                                        trigger_option='TriggerOnePulseTrain', n_triggers=3,
+                                        slots=[])
 
         connected_instance.wait_for_trigger([fake_protocol], debug_info=True)
 
@@ -1391,7 +1635,8 @@ class TestWaitForTrigger:
         connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0}}
         fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=1.0, pulse_ramp_dur=0,
                                         pulse_ramp_shape='Rectangular - no ramping',
-                                        trigger_option='TriggerOnePulseTrain', n_triggers=3)
+                                        trigger_option='TriggerOnePulseTrain', n_triggers=3,
+                                        slots=[])
 
         connected_instance.wait_for_trigger([fake_protocol], debug_info=True)
 
@@ -1411,7 +1656,8 @@ class TestWaitForTrigger:
         connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0}}
         fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=0.01, pulse_ramp_dur=0,
                                         pulse_ramp_shape='Rectangular - no ramping',
-                                        trigger_option='TriggerOnePulseTrain', n_triggers=3)
+                                        trigger_option='TriggerOnePulseTrain', n_triggers=3,
+                                        slots=[])
 
         connected_instance.wait_for_trigger([fake_protocol], debug_info=True)
 
@@ -1431,7 +1677,7 @@ class TestWaitForTrigger:
         fake_protocol = SimpleNamespace(buffer_num=0, pulse_ramp_dur=0,
                                         pulse_ramp_shape='Rectangular - no ramping',
                                         trigger_option='TriggerWholeProtocol',
-                                        n_triggers=0)
+                                        n_triggers=0, slots=[])
 
         connected_instance.wait_for_trigger([fake_protocol], debug_info=False)
 
@@ -1444,7 +1690,7 @@ class TestWaitForTrigger:
         fake_protocol = SimpleNamespace(buffer_num=0, pulse_ramp_dur=0,
                                         pulse_ramp_shape='Rectangular - no ramping',
                                         trigger_option='Bogus',
-                                        get_trigger_options=lambda: [])
+                                        get_trigger_options=lambda: [], slots=[])
 
         with pytest.raises(SystemExit):
             connected_instance.wait_for_trigger([fake_protocol], debug_info=False)
@@ -1510,13 +1756,47 @@ class TestWaitForTrigger:
 
         fake_protocol = SimpleNamespace(
             buffer_num=0, driving_sys=SimpleNamespace(connect_info='igt/config/gen_test.json'),
-            trigger_option='TriggerOnePulseTrain', n_triggers=3)
+            trigger_option='TriggerOnePulseTrain', n_triggers=3, slots=[])
 
         instance.wait_for_trigger([fake_protocol], debug_info=False)
 
         mock_connect.assert_called_once_with('igt/config/gen_test.json')
         mock_send.assert_called_once()
         instance.gen.startSequence.assert_called_once()
+
+    def test_reconnect_resends_with_this_calls_own_duration(
+            self, mocker, tmp_path, patch_config):
+        """The reconnect-and-resend path passes total_alternating_duration_ms straight through,
+        unmodified -- safe because _assert_ready_to_run() (specifically
+        _assert_duration_matches_sent()) already guarantees it matches what this buffer was
+        actually sent with whenever that distinction matters (interleaving); for a single
+        protocol like this one, the value is never used for anything physical either way, so it
+        being un-reconciled here is harmless by construction, not merely untested."""
+        patch_config.set('Trigger', 'Option.pulse_train', 'TriggerOnePulseTrain')
+        patch_config.set('Trigger', 'Option.whole_protocol', 'TriggerWholeProtocol')
+        instance = IGT(log_dir=str(tmp_path))
+        instance.sent_protocols[0] = {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0}
+
+        def fake_connect(connect_info):
+            instance.fus = mocker.Mock()
+            instance.fus.isConnected.return_value = True
+            instance.gen = mocker.Mock()
+            instance.listener = mocker.Mock()
+            instance.listener.exec_error_code = None
+        mocker.patch.object(instance, 'connect', side_effect=fake_connect)
+
+        def fake_send_protocol(*args, **kwargs):
+            instance.sent_protocols[0] = {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0}
+        mock_send = mocker.patch.object(instance, 'send_protocol', side_effect=fake_send_protocol)
+
+        fake_protocol = SimpleNamespace(
+            buffer_num=0, driving_sys=SimpleNamespace(connect_info='igt/config/gen_test.json'),
+            trigger_option='TriggerOnePulseTrain', n_triggers=3, slots=[])
+
+        instance.wait_for_trigger([fake_protocol], total_alternating_duration_ms=5000,
+                                  debug_info=False)
+
+        mock_send.assert_called_once_with([fake_protocol], 5000)
 
     def test_exits_on_exception_during_trigger_wait(self, connected_instance, patch_config):
         """The broad 'except Exception: sys.exit' wrapper around the
@@ -1528,10 +1808,85 @@ class TestWaitForTrigger:
         connected_instance.gen.prepareSequence.side_effect = RuntimeError('hardware fault')
         fake_protocol = SimpleNamespace(buffer_num=0, pulse_ramp_dur=0,
                                         pulse_ramp_shape='Rectangular - no ramping',
-                                        trigger_option='TriggerOnePulseTrain', n_triggers=3)
+                                        trigger_option='TriggerOnePulseTrain', n_triggers=3,
+                                        slots=[])
 
         with pytest.raises(SystemExit):
             connected_instance.wait_for_trigger([fake_protocol], debug_info=False)
+
+    def test_logs_intensity_summary_before_arming(self, connected_instance, caplog, patch_config):
+        """GitHub #125: a researcher should see what's about to fire before going to trigger it
+        themselves and wait for the result."""
+        patch_config.set('Trigger', 'Option.pulse_train', 'TriggerOnePulseTrain')
+        patch_config.set('Trigger', 'Option.whole_protocol', 'TriggerWholeProtocol')
+        fake_protocol = SimpleNamespace(buffer_num=0, pulse_ramp_dur=0,
+                                        pulse_ramp_shape='Rectangular - no ramping',
+                                        trigger_option='TriggerOnePulseTrain', n_triggers=3,
+                                        slots=[_slot(serial='TRAN-A')])
+        connected_instance.sent_protocols = {0: {
+            'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
+            'intensity_lines': connected_instance._build_intensity_lines([fake_protocol])}}
+
+        with caplog.at_level('INFO'):
+            connected_instance.wait_for_trigger([fake_protocol], debug_info=False)
+
+        assert 'This will fire once triggered:' in caplog.text
+        assert 'TRAN-A: fake intensity summary' in caplog.text
+
+    def test_exits_when_given_protocol_does_not_match_sent(self, connected_instance, patch_config):
+        """is_protocol_sent(buffer_num) alone only proves *something* was sent to this buffer,
+        not that these specific protocol objects are it -- without _assert_matches_sent(), this
+        would silently compute exec_flags/trigger config from a protocol that has nothing to do
+        with what's physically on the buffer (GitHub #122/#125). Uses two differently-labeled
+        fake slots so a mismatch is unambiguous."""
+        patch_config.set('Trigger', 'Option.pulse_train', 'TriggerOnePulseTrain')
+        patch_config.set('Trigger', 'Option.whole_protocol', 'TriggerWholeProtocol')
+        sent_protocol = SimpleNamespace(buffer_num=0, slots=[_slot(serial='SENT-TRAN')])
+        connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
+                                                 'source_protocols': [sent_protocol],
+                                                 'intensity_lines': []}}
+        given_protocol = SimpleNamespace(buffer_num=0, pulse_ramp_dur=0,
+                                         pulse_ramp_shape='Rectangular - no ramping',
+                                         trigger_option='TriggerOnePulseTrain', n_triggers=3,
+                                         slots=[_slot(serial='GIVEN-TRAN')])
+
+        with pytest.raises(SystemExit):
+            connected_instance.wait_for_trigger([given_protocol], debug_info=False)
+
+        connected_instance.gen.prepareSequence.assert_not_called()
+
+    def test_exits_when_slot_reconfigured_after_send_without_resending(self, connected_instance,
+                                                                       patch_config):
+        """A researcher who calls slot.configure() again after send_protocol() but forgets to
+        resend must not have their new value silently ignored (GitHub #122/#125) -- the driving
+        system would still arm to fire whatever was baked in at send time. This must actually
+        block arming, not just log the discrepancy: log messages alone aren't a reliable enough
+        safeguard against a value a researcher doesn't carefully re-check."""
+        patch_config.set('Trigger', 'Option.pulse_train', 'TriggerOnePulseTrain')
+        patch_config.set('Trigger', 'Option.whole_protocol', 'TriggerWholeProtocol')
+        mutable_slot = SimpleNamespace(intensity_summary=lambda: mutable_slot.current_summary,
+                                       transducer=SimpleNamespace(serial='TRAN-A'),
+                                       oper_freq=500, dephasing_degree=None,
+                                       focus_wrt_mid_bowl=40.0, ampl=[30.0])
+        mutable_slot.current_summary = 'TRAN-A: 0.30 MPa'
+        protocol = SimpleNamespace(buffer_num=0, pulse_ramp_dur=0,
+                                   pulse_ramp_shape='Rectangular - no ramping',
+                                   trigger_option='TriggerOnePulseTrain', n_triggers=3,
+                                   slots=[mutable_slot])
+        connected_instance.sent_protocols = {0: {
+            'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
+            'source_protocols': [protocol],
+            'intensity_lines': connected_instance._build_intensity_lines([protocol]),
+            'protocol_fingerprints': connected_instance._build_protocol_fingerprints([protocol])}}
+
+        # Reconfigured after sending, without resending -- e.g. slot.configure(...) called again.
+        mutable_slot.current_summary = 'TRAN-A: 0.80 MPa'
+        mutable_slot.ampl = [80.0]
+
+        with pytest.raises(SystemExit):
+            connected_instance.wait_for_trigger([protocol], debug_info=False)
+
+        connected_instance.gen.prepareSequence.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -1546,17 +1901,63 @@ class TestWaitForTriggerResult:
     fired, to block until completion and check the listener's exec_error_code."""
 
     def test_exits_when_listener_reports_protocol_execution_error(self, connected_instance):
+        """exec_error_code causes sys.exit() before _log_intensity_summary() is ever reached, so
+        'intensity_lines' isn't needed here -- only 'armed' is, to get past the arming guard."""
+        connected_instance.sent_protocols[0] = {'armed': True}
         connected_instance.listener.exec_error_code = 2863311530
 
         with pytest.raises(SystemExit):
-            connected_instance.wait_for_trigger_result()
+            connected_instance.wait_for_trigger_result(0)
 
         connected_instance.listener.wait_protocol.assert_called_once_with(5.0)
 
     def test_does_not_exit_when_listener_reports_no_error(self, connected_instance):
-        connected_instance.wait_for_trigger_result(timeout_s=10.0)  # must not raise
+        connected_instance.sent_protocols[0] = {'intensity_lines': [], 'armed': True}
+
+        # must not raise
+        connected_instance.wait_for_trigger_result(0, timeout_s=10.0)
 
         connected_instance.listener.wait_protocol.assert_called_once_with(10.0)
+
+    def test_logs_intensity_summary_on_confirmed_success(self, connected_instance, caplog):
+        """GitHub #122/#125: confirms what was actually fired once the driving system reports
+        the triggered execution succeeded -- sourced from what send_protocol() actually sent to
+        this buffer, not from a caller-supplied protocol."""
+        sent_protocol = SimpleNamespace(buffer_num=0, slots=[_slot(serial='TRAN-A')])
+        connected_instance.sent_protocols[0] = {
+            'intensity_lines': connected_instance._build_intensity_lines([sent_protocol]),
+            'armed': True}
+
+        with caplog.at_level('INFO'):
+            connected_instance.wait_for_trigger_result(0, timeout_s=10.0)
+
+        assert 'Triggered protocol executed successfully:' in caplog.text
+        assert 'TRAN-A: fake intensity summary' in caplog.text
+
+    def test_exits_when_nothing_was_ever_sent_to_this_buffer(self, connected_instance):
+        """A buffer_num that was never actually sent to (e.g. a caller typo, or calling this
+        before wait_for_trigger() at all) is always a caller mistake -- wait_for_trigger() itself
+        can't have armed this buffer without send_protocol() having been called for it first, so
+        there's nothing to genuinely wait for. Exits before ever blocking on wait_protocol(),
+        rather than waiting out the full timeout only to report a misleading "success" with an
+        empty summary underneath it."""
+        with pytest.raises(SystemExit):
+            connected_instance.wait_for_trigger_result(99, timeout_s=10.0)
+
+        connected_instance.listener.wait_protocol.assert_not_called()
+
+    def test_exits_when_sent_but_never_armed(self, connected_instance):
+        """A buffer can be sent-to (send_protocol()) and even executed directly
+        (execute_protocol()) without wait_for_trigger() ever having been called for it -- there
+        is then nothing armed to wait a trigger result for, even though is_protocol_sent(buffer_
+        num) alone would say True. register_sent_protocol() always resets 'armed' to False on a
+        fresh send; only a real wait_for_trigger() call sets it back to True."""
+        connected_instance.sent_protocols[0] = {'intensity_lines': [], 'armed': False}
+
+        with pytest.raises(SystemExit):
+            connected_instance.wait_for_trigger_result(0, timeout_s=10.0)
+
+        connected_instance.listener.wait_protocol.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

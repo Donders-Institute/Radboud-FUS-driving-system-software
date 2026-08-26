@@ -1918,3 +1918,90 @@ def test_str_does_not_crash_on_a_genuinely_bare_slot():
     info = str(slot)
 
     assert info.count("not yet configured") == 2
+
+
+# --- chosen_focus_value / chosen_power_value / intensity_summary() ------------
+
+def test_chosen_focus_value_returns_none_when_not_yet_chosen():
+    slot = _bare_slot()
+    slot._chosen_focus = None
+
+    assert slot.chosen_focus_value is None
+
+
+def test_chosen_focus_value_returns_the_matching_field(patch_config):
+    patch_config.set('Focus', 'Option.exit', 'Focus wrt exit plane [mm]')
+    patch_config.set('Focus', 'Option.bowl', 'Focus wrt mid bowl [mm]')
+    slot = _bare_slot()
+    slot._chosen_focus = 'Focus wrt mid bowl [mm]'
+    slot._focus_wrt_mid_bowl = 42.0
+    slot._focus_wrt_exit_plane = 10.0
+
+    assert slot.chosen_focus_value == 42.0
+
+
+def test_chosen_power_value_returns_none_when_not_yet_chosen():
+    slot = _bare_slot()
+    slot._chosen_power = None
+
+    assert slot.chosen_power_value is None
+
+
+def test_chosen_power_value_returns_the_matching_field(patch_config):
+    patch_config.set('Power', 'Option.press', 'Max. pressure in free water [MPa]')
+    slot = _bare_slot()
+    slot._chosen_power = 'Max. pressure in free water [MPa]'
+    slot._press = 0.3
+    slot._ampl = [12.5]
+
+    assert slot.chosen_power_value == 0.3
+
+
+def test_chosen_power_value_returns_a_list_for_amplitude(patch_config):
+    patch_config.set('Power', 'Option.ampl', 'Amplitude [%]')
+    slot = _bare_slot()
+    slot._chosen_power = 'Amplitude [%]'
+    slot._ampl = [12.5, 13.0]
+
+    assert slot.chosen_power_value == [12.5, 13.0]
+
+
+def test_intensity_summary_reports_not_yet_configured_when_bare():
+    fake_driving_sys = SimpleNamespace(native_power_params=['Amplitude [%]'], serial='DS-1')
+    slot = TransducerSlot(fake_driving_sys, engineering_mode=False)
+
+    summary = slot.intensity_summary()
+
+    assert 'focus not yet configured' in summary
+    assert 'power not yet configured' in summary
+
+
+def test_intensity_summary_reports_scalar_focus_and_power(patch_config):
+    patch_config.set('Focus', 'Option.exit', 'Focus wrt exit plane [mm]')
+    patch_config.set('Power', 'Option.press', 'Max. pressure in free water [MPa]')
+    slot = _bare_slot()
+    slot._transducer = SimpleNamespace(serial='IS_PCD15287_01001')
+    slot._chosen_focus = 'Focus wrt exit plane [mm]'
+    slot._focus_wrt_exit_plane = 40.0
+    slot._chosen_power = 'Max. pressure in free water [MPa]'
+    slot._press = 0.3
+
+    summary = slot.intensity_summary()
+
+    assert summary == ('IS_PCD15287_01001: Focus wrt exit plane [mm] = 40.00, ' +
+                       'Max. pressure in free water [MPa] = 0.30')
+
+
+def test_intensity_summary_reports_a_list_for_amplitude(patch_config):
+    patch_config.set('Focus', 'Option.bowl', 'Focus wrt mid bowl [mm]')
+    patch_config.set('Power', 'Option.ampl', 'Amplitude [%]')
+    slot = _bare_slot()
+    slot._transducer = SimpleNamespace(serial='IS_PCD15287_01001')
+    slot._chosen_focus = 'Focus wrt mid bowl [mm]'
+    slot._focus_wrt_mid_bowl = 50.0
+    slot._chosen_power = 'Amplitude [%]'
+    slot._ampl = [12.5, 13.0]
+
+    summary = slot.intensity_summary()
+
+    assert "Amplitude [%] = ['12.50', '13.00']" in summary

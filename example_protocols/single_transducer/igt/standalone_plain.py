@@ -228,7 +228,7 @@ try:
         # other equipment), use the non-blocking has_execution_error() instead, in your own
         # polling loop, for real-time reaction instead of only finding out at the end -- see
         # standalone_wait_for_trigger_poll.py in this same folder for this pattern on its own.
-        igt_driving_sys.wait_for_trigger_result(timeout_s=5.0)
+        igt_driving_sys.wait_for_trigger_result(protocol.buffer_num, timeout_s=5.0)
 
     # If wait_for_trigger is false, the protocol is sent and can be executed directly using the
     # execute_protocol() function -- see standalone_direct_execute.py in this same folder for
