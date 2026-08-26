@@ -177,12 +177,6 @@ class TransducerSlot:
         elif self.chosen_power == opt_press:
             info += ("Maximum pressure in free water [MPa]: " +
                      f"{format_or_unavailable(self._press)} \n ")
-            info += ("Input pressure in free water [MPa]: " +
-                     f"{format_or_unavailable(self._input_press_mpa)} \n ")
-            info += ("Equalized pressure in free water [MPa]: " +
-                     f"{format_or_unavailable(self._eq_press_mpa)} \n ")
-            info += ("Calculated amplitude [%]: " +
-                     f"{format_or_unavailable(self._calculated_ampl)} \n ")
         elif self.chosen_power == opt_volt:
             info += f"Voltage [V]: {[format_or_unavailable(v) for v in self._volt]} \n "
         else:
@@ -201,39 +195,26 @@ class TransducerSlot:
         if self.chosen_power is not None:
             if self._combo_is_active():
 
-                if self.chosen_power != opt_press and len(self._ampl) == 1:
-                    info += ("Maximum pressure in free water [MPa]: " +
-                             f"{format_or_unavailable(self._press)} \n ")
-
-                if self.chosen_power != opt_volt:
-                    info += f"Voltage [V]: {[format_or_unavailable(v) for v in self._volt]} \n "
-
-                if self.chosen_power != opt_ampl:
-                    info += f"Amplitude [%]: {[format_or_unavailable(a) for a in self._ampl]} \n "
-
-                # Information about piecewise polynomial fits
-                info += "Conversion parameters using piecewise polynomial fits:\n "
-
-                if self._conv_param["volt_curve_pp"] is not None:
-                    info += ("- Voltage to amplitude conversion: Using piecewise polynomial " +
-                             f"fit of {self.volt_curve_file}\n ")
-
-                if self._conv_param["power_curve_pp"] is not None:
-                    info += ("- Pressure to amplitude conversion: Using piecewise polynomial " +
-                             f"fit of {self.power_curve_file}\n ")
-
-                if self._conv_param["focus_curve_pp"] is not None:
-                    info += ("- Focus conversion: Using piecewise polynomial fit of " +
-                             f"{self.focus_curve_file}\n ")
-
-                if self._conv_param["eq_curve_pp"] is not None:
-                    info += ("- Normalization factor calculation: Using piecewise polynomial " +
-                             f"fit of {self.eq_curve_file}\n ")
-
-                info += (
-                    "Normalized pressure [-] based on chosen focal depth wrt exit plane of " +
-                    f"{format_or_unavailable(self._focus_wrt_exit_plane, 'not yet configured')}"
-                    f" [mm]: {format_or_unavailable(self._eq_factor, 'not yet configured')} \n ")
+                # The sibling press/volt/ampl values derived here are not repeated below --
+                # whichever power setter actually ran (_set_press/_set_volt/_set_ampl) already
+                # logged them together, at configure() time, as its own debug line. Which curve
+                # files/order/pieces are loaded for this combo is likewise already logged once,
+                # when the transducer is assigned (see _set_transducer).
+                #
+                # Both the equalization factor and the equalized pressure it produces only mean
+                # something once a real focal-depth correction is actually being applied to reach
+                # the chosen power option's native representation -- if pressure itself were this
+                # driving system's native power parameter, there'd be nothing to correct it
+                # towards (pressure would already be exactly what's sent), and showing either one
+                # here would misleadingly suggest a conversion is happening, even though
+                # _set_press() still computes them (purely for logging -- see its own comment).
+                # So both are gated on opt_press and non-native, not on combo_is_active() alone.
+                if (self.chosen_power == opt_press
+                        and opt_press not in self.driving_sys.native_power_params):
+                    info += ("Equalized pressure in free water [MPa]: " +
+                             f"{format_or_unavailable(self._eq_press_mpa)} \n ")
+                    info += ("Equalization factor [-]: " +
+                             f"{format_or_unavailable(self._eq_factor, 'not yet configured')} \n ")
 
             elif self.chosen_power in self.driving_sys.native_power_params:
                 info += (f"{self.chosen_power} is already {self.driving_sys.serial}'s native " +
@@ -245,18 +226,14 @@ class TransducerSlot:
 
         info += f"Operating frequency [kHz]: {self._oper_freq} \n "
 
+        # Mirrors "Chosen power option: <option>: <value>" above -- shows the one value that was
+        # actually chosen (chosen_focus_value), not the full derived exit-plane/mid-bowl pair:
+        # whichever focus setter actually ran already logged that exact pair, at configure()
+        # time, as its own debug line.
         info += "Chosen focus option: "
         if self.chosen_focus is not None:
-            info += f"{self.chosen_focus} \n "
-            info += ("Focal depth wrt exit plane [mm]: " +
-                     f"{format_or_unavailable(self._focus_wrt_exit_plane, 'not yet configured')}"
-                     " \n ")
-            info += ("Focal depth wrt bowl middle [mm]: " +
-                     f"{format_or_unavailable(self._focus_wrt_mid_bowl, 'not yet configured')}"
-                     " \n ")
+            info += f"{self.chosen_focus}: {format_or_unavailable(self.chosen_focus_value)} \n "
         else:
-            # Mirrors chosen_power's else branch above: no focus values are shown at all when
-            # nothing has been chosen yet, rather than two "not yet configured" lines.
             info += "not yet configured \n "
 
         info += f"Dephasing degree (None = no dephasing): {self.dephasing_degree} \n "
@@ -356,15 +333,22 @@ class TransducerSlot:
         # reflect whatever this combo's own calibration curve overwrote them to, if any. The
         # conversion curves' own order/pieces (previously logged unconditionally by
         # extract_and_define_pp() on every load) are folded in here too, for the same reason.
+        # The file each curve was loaded from is included alongside its own summary here too --
+        # this is the one place that verification detail is logged at all, not repeated by
+        # __str__() below on every single protocol validation.
         if self._ds_tran_combo not in _logged_transducers:
             info = f'Transducer info:\n {self._transducer}'
             if self._combo_is_active():
                 info += (
                     'Conversion curves loaded for this combo:\n ' +
-                    f'- Equalization: {_pp_summary(self._conv_param["eq_curve_pp"])}\n ' +
-                    f'- Focus: {_pp_summary(self._conv_param["focus_curve_pp"])}\n ' +
-                    f'- Power: {_pp_summary(self._conv_param["power_curve_pp"])}\n ' +
-                    f'- Voltage: {_pp_summary(self._conv_param["volt_curve_pp"])}\n ')
+                    f'- Equalization: {_pp_summary(self._conv_param["eq_curve_pp"])} ' +
+                    f'({self.eq_curve_file})\n ' +
+                    f'- Focus: {_pp_summary(self._conv_param["focus_curve_pp"])} ' +
+                    f'({self.focus_curve_file})\n ' +
+                    f'- Power: {_pp_summary(self._conv_param["power_curve_pp"])} ' +
+                    f'({self.power_curve_file})\n ' +
+                    f'- Voltage: {_pp_summary(self._conv_param["volt_curve_pp"])} ' +
+                    f'({self.volt_curve_file})\n ')
             get_logger().debug(info)
             _logged_transducers.add(self._ds_tran_combo)
 
@@ -1152,7 +1136,7 @@ class TransducerSlot:
             self._focus_wrt_exit_plane = focus
 
             get_logger().debug(
-                f'Focus wrt exit plane [mm]: {self._focus_wrt_exit_plane:.2f} \n ' +
+                f'Focus wrt exit plane [mm]: {self._focus_wrt_exit_plane:.2f}, ' +
                 f'Focus wrt bowl middle [mm]: {self._focus_wrt_mid_bowl:.2f}')
 
             if self._combo_is_active():
@@ -1273,7 +1257,7 @@ class TransducerSlot:
             self._focus_wrt_mid_bowl = focus
 
             get_logger().debug(
-                f'Focus wrt exit plane [mm]: {self._focus_wrt_exit_plane:.2f} \n ' +
+                f'Focus wrt exit plane [mm]: {self._focus_wrt_exit_plane:.2f}, ' +
                 f'Focus wrt bowl middle [mm]: {self._focus_wrt_mid_bowl:.2f}')
 
             if self._combo_is_active():

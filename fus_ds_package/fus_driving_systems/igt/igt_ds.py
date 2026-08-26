@@ -172,8 +172,19 @@ class IGT(ds.ControlDrivingSystem):
         self.sent_protocols[buffer_num]['total_protocol_duration_ms'] = (
             total_protocol_duration_ms + wait_time_ms)
 
-        get_logger().debug(f"Stored protocol in buffer {buffer_num}: " +
-                           f"{self.sent_protocols[buffer_num]}")
+        # The dict this stores also holds a few internal bookkeeping fields (source_protocols,
+        # intensity_lines, protocol_fingerprints, phases) purely for later drift-detection/
+        # reporting use (see this method's own docstring) -- they're not printed here, since
+        # dumping them raw would just repeat what's already logged above (the validated
+        # parameters, the phases from compute_phases()) or show unhelpful object reprs. Only the
+        # pulse-train schedule actually derived by this call -- not visible anywhere else in the
+        # log -- is reported.
+        get_logger().debug(
+            f'Stored protocol in buffer {buffer_num}: {len(pulse_train_seq)} x Pulse, ' +
+            f'{n_pulse_train_rep} repetition(s), {pulse_train_delay} ms delay between pulse ' +
+            'trains, ' +
+            f'{self.sent_protocols[buffer_num]["total_protocol_duration_ms"]:.2f} ms total ' +
+            'protocol duration.')
 
     def connect(self, connect_info, log_dir=None, log_name=None, attempt=0):
         """

@@ -1841,6 +1841,56 @@ def test_str_reports_missing_correction_when_not_native_and_combo_inactive():
     assert "native power parameter" not in info
 
 
+def test_str_shows_equalized_pressure_when_press_is_non_native_and_combo_active(patch_config):
+    """Mirrors the non-native, combo-active case that motivates showing an equalized pressure at
+    all -- matches IGT, where pressure must be converted through the calibration curve to reach
+    the driving system's actual native parameter (amplitude)."""
+    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
+    slot = _str_ready_slot()
+    slot.driving_sys = SimpleNamespace(
+        power_options=['Max. pressure in free water [MPa]'],
+        native_power_params=['Amplitude [%]'], serial='DS-1')
+    slot._ds_tran_combo = 'combo1'
+    slot._conv_param = {
+        'power_curve_pp': _identity_pp(-10.0, 1000.0),
+        'volt_curve_pp': _identity_pp(-10.0, 200.0),
+    }
+    slot._eq_factor = 1.0
+
+    slot._set_press(50e-6)
+
+    info = str(slot)
+
+    assert "Equalized pressure in free water [MPa]" in info
+    assert "Equalization factor [-]: 1.00" in info
+
+
+def test_str_omits_equalized_pressure_and_factor_when_press_is_native_even_if_combo_active(
+        patch_config):
+    """If pressure is this driving system's native power parameter, _set_press() still computes
+    an equalized pressure/derived amplitude whenever a combo happens to be active (purely for
+    logging -- see _set_press()'s own comment) -- but there's nothing actually being corrected
+    towards, so __str__ must not display either as if a real conversion were happening."""
+    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
+    slot = _str_ready_slot()
+    slot.driving_sys = SimpleNamespace(
+        power_options=['Max. pressure in free water [MPa]'],
+        native_power_params=['Max. pressure in free water [MPa]'], serial='DS-1')
+    slot._ds_tran_combo = 'combo1'
+    slot._conv_param = {
+        'power_curve_pp': _identity_pp(-10.0, 1000.0),
+        'volt_curve_pp': _identity_pp(-10.0, 200.0),
+    }
+    slot._eq_factor = 1.0
+
+    slot._set_press(50e-6)
+
+    info = str(slot)
+
+    assert "Equalized pressure in free water [MPa]" not in info
+    assert "Equalization factor" not in info
+
+
 def test_str_reports_not_implemented_for_an_unrecognized_chosen_power(patch_config):
     """chosen_power holding a value that isn't None and doesn't match any of the four known
     option strings (e.g. a config-driven power option added/renamed without updating __str__)
@@ -1870,27 +1920,26 @@ def test_str_reports_no_pressure_correction_info_when_no_power_chosen_yet(patch_
     assert "Chosen power option: not yet configured" in info
     assert "Voltage [V]" not in info
     assert "Amplitude [%]" not in info
-    assert "Normalized pressure" not in info
+    assert "Equalization factor" not in info
     assert "native power parameter" not in info
     assert "not available in the configuration file" not in info
 
 
-def test_str_reports_focus_values_when_chosen():
-    """Mirrors chosen_power's own behavior: once a focus option has actually been chosen, both
-    derived focal depth values are shown."""
+def test_str_reports_chosen_focus_option():
+    """The derived focal depths (exit plane + mid bowl) are deliberately not repeated here --
+    whichever focus setter actually ran (_set_focus_wrt_exit_plane/_set_focus_wrt_mid_bowl)
+    already logged that exact pair, at configure() time, as its own debug line."""
     slot = _str_ready_slot()
     slot.driving_sys = SimpleNamespace(native_power_params=['Global power [mW]'], serial='DS-1')
 
     info = str(slot)
 
     assert "Chosen focus option: Focus wrt exit plane [mm]" in info
-    assert "Focal depth wrt exit plane [mm]: 40" in info
-    assert "Focal depth wrt bowl middle [mm]: 40" in info
+    assert "Focal depth wrt exit plane" not in info
+    assert "Focal depth wrt bowl middle" not in info
 
 
-def test_str_reports_no_focus_values_when_not_yet_chosen():
-    """Mirrors chosen_power's own else branch: when nothing has been chosen yet, no derived
-    focus value is shown at all, rather than two "not yet configured" lines."""
+def test_str_reports_not_yet_configured_when_no_focus_chosen():
     slot = _str_ready_slot()
     slot.driving_sys = SimpleNamespace(native_power_params=['Global power [mW]'], serial='DS-1')
     slot._chosen_focus = None
@@ -1898,8 +1947,6 @@ def test_str_reports_no_focus_values_when_not_yet_chosen():
     info = str(slot)
 
     assert "Chosen focus option: not yet configured" in info
-    assert "Focal depth wrt exit plane" not in info
-    assert "Focal depth wrt bowl middle" not in info
 
 
 def test_str_does_not_crash_on_a_genuinely_bare_slot():
