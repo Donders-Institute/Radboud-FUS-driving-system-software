@@ -1165,6 +1165,22 @@ class TestExecuteProtocol:
         connected_instance.gen.startSequence.assert_called_once()
         connected_instance.listener.wait_protocol.assert_called_once_with(0.5)
 
+    def test_exits_when_wait_protocol_times_out_without_a_result(self, connected_instance):
+        """GitHub #78: wait_protocol() returns False specifically on timeout (see its own
+        docstring) -- distinct from exec_error_code, which is only ever set once
+        onSequenceResult() actually fires. Without checking this return value, the method would
+        fall straight through to logging "executed successfully" on a protocol that never
+        actually fired."""
+        connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
+                                                 'total_protocol_duration_ms': 500.0}}
+        fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=0.5, pulse_ramp_dur=0,
+                                        pulse_ramp_shape='Rectangular - no ramping', slots=[])
+        connected_instance.listener.wait_protocol.return_value = False
+        connected_instance.listener.exec_error_code = None
+
+        with pytest.raises(SystemExit):
+            connected_instance.execute_protocol([fake_protocol], debug_info=False)
+
     def test_debug_info_true_sets_measure_channels_flag_for_long_pulse(self, connected_instance):
         """debug_info=True (the default) computes extra exec_flags based on
         pulse_dur, mirroring TestWaitForTrigger's identical coverage of
@@ -1910,6 +1926,19 @@ class TestWaitForTriggerResult:
             connected_instance.wait_for_trigger_result(0)
 
         connected_instance.listener.wait_protocol.assert_called_once_with(5.0)
+
+    def test_exits_when_wait_protocol_times_out_without_a_result(self, connected_instance):
+        """GitHub #78: wait_protocol() returns False specifically on timeout (see its own
+        docstring) -- distinct from exec_error_code, which is only ever set once
+        onSequenceResult() actually fires (e.g. the external trigger never arrived at all).
+        Without checking this return value, the method would fall straight through to logging
+        "executed successfully" on a protocol that never actually fired."""
+        connected_instance.sent_protocols[0] = {'armed': True}
+        connected_instance.listener.wait_protocol.return_value = False
+        connected_instance.listener.exec_error_code = None
+
+        with pytest.raises(SystemExit):
+            connected_instance.wait_for_trigger_result(0, timeout_s=10.0)
 
     def test_does_not_exit_when_listener_reports_no_error(self, connected_instance):
         connected_instance.sent_protocols[0] = {'intensity_lines': [], 'armed': True}

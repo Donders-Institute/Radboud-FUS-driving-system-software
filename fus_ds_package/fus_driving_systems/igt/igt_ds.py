@@ -1109,7 +1109,13 @@ class IGT(ds.ControlDrivingSystem):
     def wait_for_trigger_result(self, buffer_num, timeout_s=5.0):
         """
         Waits (blocking) for a previously armed triggered protocol to finish, and exits if the
-        driving system reports its execution failed.
+        driving system reports its execution failed -- or if timeout_s elapses without the
+        driving system ever reporting a result at all (GitHub #78), e.g. because the external
+        trigger never actually arrived (a disconnected trigger cable, a researcher who forgot to
+        press it). That second case is not an execution error (exec_error_code stays None --
+        onSequenceResult() is simply never called), so without an explicit timeout check this
+        would otherwise silently fall through to reporting success on a protocol that never
+        fired at all.
 
         wait_for_trigger() only arms the protocol to fire on the external trigger and returns
         immediately -- it does not wait for or observe the actual execution result (see GitHub
@@ -1137,7 +1143,17 @@ class IGT(ds.ControlDrivingSystem):
             get_logger().critical(message)
             sys.exit(message)
 
-        self.listener.wait_protocol(timeout_s)
+        # wait_protocol() returns False specifically on timeout (see its own docstring) --
+        # distinct from exec_error_code, which is only ever set once onSequenceResult() actually
+        # fires. A timeout means that never happened at all, so there is nothing to check
+        # exec_error_code for: the driving system never reported anything, successful or not.
+        if self.listener.wait_protocol(timeout_s) is False:
+            message = (f'Timed out after {timeout_s}s waiting for buffer {buffer_num}\'s ' +
+                       'triggered protocol to finish -- the driving system never reported a ' +
+                       'result. The external trigger may never have arrived. No confirmation ' +
+                       'that anything was emitted.')
+            get_logger().critical(message)
+            sys.exit(message)
 
         if self.listener.exec_error_code is not None:
             message = ('Protocol execution failed on the driving system (error ' +
@@ -1172,6 +1188,12 @@ class IGT(ds.ControlDrivingSystem):
         interleaving, the ramp-transient timing this computes is taken from only the first
         protocol given, matching send_protocol()'s own "ramping is a whole-group setting, not
         per interleaved protocol" behavior.
+
+        Exits with a clear message if the driving system reports execution failed, or if it
+        never reports a result at all within the protocol's own expected duration (GitHub #78)
+        -- that second case is not an execution error (exec_error_code stays None), so without
+        an explicit timeout check this would otherwise silently report success on a protocol
+        that never actually fired.
 
         Exits with a clear message if send_protocol() hasn't been called for this buffer yet --
         unlike a dropped connection (which reconnects and resends automatically, since that's an
@@ -1228,8 +1250,19 @@ class IGT(ds.ControlDrivingSystem):
                 self._log_intensity_summary(protocol0.buffer_num, 'About to execute:')
 
                 self.gen.startSequence()
-                self.listener.wait_protocol(
-                    sent_protocol_info.get('total_protocol_duration_ms') / 1000.0)
+                # wait_protocol() returns False specifically on timeout (see its own docstring
+                # and the matching check in wait_for_trigger_result(), GitHub #78) -- distinct
+                # from exec_error_code, which is only ever set once onSequenceResult() actually
+                # fires. A timeout here means the driving system never reported anything at all,
+                # successful or not, so this must not silently fall through to reporting success.
+                if self.listener.wait_protocol(
+                        sent_protocol_info.get('total_protocol_duration_ms') / 1000.0) is False:
+                    message = (
+                        f'Timed out waiting for buffer {protocol0.buffer_num}\'s protocol to ' +
+                        'finish -- the driving system never reported a result. No ' +
+                        'confirmation that anything was emitted.')
+                    get_logger().critical(message)
+                    sys.exit(message)
 
                 if self.listener.exec_error_code is not None:
                     message = ('Protocol execution failed on the driving system (error ' +
