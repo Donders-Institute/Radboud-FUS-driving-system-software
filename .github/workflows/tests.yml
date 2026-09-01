@@ -78,7 +78,7 @@ jobs:
 
       - name: Check duplicated code stays under 3%
         working-directory: fus_ds_package
-        run: python check_duplication.py
+        run: python dev_tools/check_duplication.py
 
       - name: Run tests (hardware-dependent tests excluded)
         working-directory: fus_ds_package
