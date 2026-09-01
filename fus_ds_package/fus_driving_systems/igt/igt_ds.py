@@ -33,6 +33,7 @@ from fus_driving_systems.igt import transducer_xyz
 from fus_driving_systems.igt import unifus
 from fus_driving_systems.utils import get_config_value
 from fus_driving_systems.calc_utils import validate_value
+from fus_driving_systems.transducer_slot import get_max_pressure
 
 # Access the logger
 from fus_driving_systems.config.logging_config import (enable_crash_detection, get_logger,
@@ -412,8 +413,14 @@ class IGT(ds.ControlDrivingSystem):
         max_n_pulses = int(get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
                                             'Max. pulses in pulse train', 64))
         if n_pulses > max_n_pulses:
-            error_messages.append("The maximum amount of pulses within a pulse train is " +
-                                  f"{max_n_pulses}. Currently, the amount is {n_pulses}.")
+            error_messages.append(
+                "The maximum amount of pulses within a pulse train is " +
+                f"{max_n_pulses}. Currently, the amount is {n_pulses}. If you need more " +
+                "pulses over a longer total duration, set pulse_train_dur equal to " +
+                "pulse_rep_int (one pulse per train) and use pulse_train_rep_int/" +
+                "pulse_train_rep_dur to repeat the train instead -- physically equivalent, " +
+                "since each pulse already carries its own pulse_rep_int - pulse_dur trailing " +
+                "gap, but not subject to this per-train pulse count limit.")
 
         return error_messages
 
@@ -1358,11 +1365,7 @@ class IGT(ds.ControlDrivingSystem):
 
         self._assert_duration_given_when_interleaving(protocols, total_alternating_duration_ms)
 
-        max_press = get_config_value(get_logger(), config, 'Power',
-                                     'Maximum pressure allowed in free water [MPa]',
-                                     'Not found')
-
-        get_logger().debug(f'Maximum allowed pressure is: {max_press} MPa')
+        get_logger().debug(f'Maximum allowed pressure is: {get_max_pressure()} MPa')
 
         get_logger().info('Executing protocol...')
 

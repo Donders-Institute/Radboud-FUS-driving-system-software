@@ -1189,6 +1189,23 @@ class TestExecuteProtocol:
         connected_instance.gen.startSequence.assert_called_once()
         connected_instance.listener.wait_protocol.assert_called_once_with(0.5)
 
+    def test_logs_the_actual_configured_max_pressure_not_a_stale_default(
+            self, connected_instance, caplog, patch_config):
+        """The pre-execution debug log and _enforce_max_pressure() must read the exact same
+        config value via get_max_pressure() -- they used to read the same key with two
+        different fallback defaults ('Not found' here vs. 1.4 in transducer_slot.py), which
+        could silently disagree if the config key were ever missing."""
+        patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '0.75')
+        connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
+                                                 'total_protocol_duration_ms': 500.0}}
+        fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=0.5, pulse_ramp_dur=0,
+                                        pulse_ramp_shape='Rectangular - no ramping', slots=[])
+
+        with caplog.at_level('DEBUG'):
+            connected_instance.execute_protocol([fake_protocol])
+
+        assert 'Maximum allowed pressure is: 0.75 MPa' in caplog.text
+
     def test_exits_when_wait_protocol_times_out_without_a_result(self, connected_instance):
         """GitHub #78: wait_protocol() returns False specifically on timeout (see its own
         docstring) -- distinct from exec_error_code, which is only ever set once

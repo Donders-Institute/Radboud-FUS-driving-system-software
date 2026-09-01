@@ -39,6 +39,21 @@ def _pp_summary(pp):
     return f'pp - order: {pp.c.shape[0]} - pieces: {pp.c.shape[1]}'
 
 
+def get_max_pressure():
+    """
+    Reads the configured 'Maximum pressure allowed in free water [MPa]' -- the one place this
+    value is derived from config, so _enforce_max_pressure()'s enforced limit and any other
+    reporting of it (e.g. IGT.execute_protocol()'s pre-execution debug log) can never silently
+    drift apart by reading the same key with a different fallback default.
+
+    Returns:
+        float: The configured maximum pressure in free water [MPa].
+    """
+
+    return float(get_config_value(get_logger(), config, 'Power',
+                                  'Maximum pressure allowed in free water [MPa]', 1.4))
+
+
 def _enforce_max_pressure(press_mpa):
     """
     The one, single-source-of-truth safety check for THE software pressure limit: sys.exit()s
@@ -55,8 +70,7 @@ def _enforce_max_pressure(press_mpa):
         press_mpa (float): The pressure [MPa] to check.
     """
 
-    max_press = float(get_config_value(get_logger(), config, 'Power',
-                                       'Maximum pressure allowed in free water [MPa]', 1.4))
+    max_press = get_max_pressure()
     if press_mpa > max_press:
         message = (f'The set maximum pressure in free water of {press_mpa:.2f} [MPa] is ' +
                    f'crossing the allowed limit of {max_press:.2f} [MPa]. Please change your ' +
