@@ -267,9 +267,7 @@ def test_send_protocol_calls_setters_in_order_and_marks_sent(mocker, connected_i
                         '_send_command')
 
     fake_protocol = mocker.Mock()
-    fake_protocol.oper_freq = 300
-    fake_protocol.focus_wrt_exit_plane = 50
-    fake_protocol.global_power = 2
+    fake_protocol.slots = [mocker.Mock(oper_freq=300, focus_wrt_exit_plane=50, global_power=2)]
     fake_protocol.pulse_dur = 1
     fake_protocol.pulse_rep_int = 2
     fake_protocol.pulse_train_dur = 10
@@ -326,6 +324,7 @@ def test_send_protocol_reconnects_when_not_connected(mocker):
 
     fake_protocol = mocker.Mock()
     fake_protocol.driving_sys.connect_info = 'COM7'
+    fake_protocol.slots = [mocker.Mock()]
     fake_protocol.pulse_dur = 1
     fake_protocol.pulse_rep_int = 2
     fake_protocol.pulse_train_dur = 10

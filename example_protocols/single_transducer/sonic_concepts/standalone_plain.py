@@ -30,8 +30,6 @@ README.md file of https://github.com/Donders-Institute/Radboud-FUS-driving-syste
 
 # Sonic Concepts example: a single transducer, built directly in Python (full manual control --
 # no YAML). See standalone_yaml.py in this same folder for the simpler, YAML-driven equivalent.
-# See standalone_plain_demo.py (also in this folder) for sending two different protocols to the
-# same driving system in sequence.
 # Note: you can click on each parameter to get more information
 
 ##############################################################################

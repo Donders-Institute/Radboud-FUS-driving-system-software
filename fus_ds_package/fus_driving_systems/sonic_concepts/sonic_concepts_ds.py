@@ -88,9 +88,10 @@ class SonicConcepts(ds.ControlDrivingSystem):
 
             self._reset_parameters()
 
-            self._set_operating_freq(protocol.oper_freq)
-            self._set_focus(protocol.focus_wrt_exit_plane)
-            self._set_global_power(protocol.global_power)
+            slot = protocol.slots[0]
+            self._set_operating_freq(slot.oper_freq)
+            self._set_focus(slot.focus_wrt_exit_plane)
+            self._set_global_power(slot.global_power)
             self._set_burst_and_period(protocol.pulse_dur, protocol.pulse_rep_int)
             self._set_timer(protocol.pulse_train_dur)
             self._set_ramping(protocol.pulse_ramp_shape, protocol.pulse_ramp_dur)
