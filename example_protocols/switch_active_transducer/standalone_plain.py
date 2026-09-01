@@ -144,16 +144,22 @@ protocol.configure_timing(
     # [s], pulse train repetition duration -- keeps repeating for 5 s in total, i.e. 5
     # repetitions of the whole train (5000 ms / 1000 ms)
     pulse_train_rep_dur=5,
-
-    # wait_for_trigger is derived from trigger_option -- there is no separate flag to set. Use
-    # 'None' (this template's default) to not use a trigger at all; 'TriggerOnePulseTrain' to
-    # fire one pulse train per trigger received (you must also give n_triggers below); or
-    # 'TriggerWholeProtocol' to fire the entire, already fully-timed protocol at once with a
-    # single trigger. To check available trigger options: print(protocol.get_trigger_options())
-    trigger_option='None',
-    # trigger_option='TriggerOnePulseTrain',
-    # trigger_option='TriggerWholeProtocol'
 )
+
+# Trigger configuration (trigger_option/n_triggers) is a call-level parameter of
+# IGT.wait_for_trigger(), not an attribute of the protocol itself -- defined here as plain
+# variables instead, reused below (both before and after the switch) when actually sending/
+# waiting for a trigger/executing. Use 'None' (this template's default) to not use a trigger at
+# all; 'TriggerOnePulseTrain' to fire one pulse train per trigger received (you must also give
+# N_TRIGGERS below); or
+# 'TriggerWholeProtocol' to fire the entire, already fully-timed protocol at once with a single
+# trigger. To check available trigger options: print(igt_driving_sys.get_trigger_options())
+TRIGGER_OPTION = 'None'
+# TRIGGER_OPTION = 'TriggerOnePulseTrain'
+# TRIGGER_OPTION = 'TriggerWholeProtocol'
+
+# Only applies (and is required) when TRIGGER_OPTION == 'TriggerOnePulseTrain' above.
+N_TRIGGERS = None  # e.g. 4 -- number of triggers expected, one pulse train fires per trigger
 
 # It is important to place your experimental code into a try-finally block, so if your code is
 # stopped abruptly, the driving system will be disconnected. Otherwise, there is a chance that
@@ -161,15 +167,15 @@ protocol.configure_timing(
 try:
     igt_driving_sys.send_protocol(protocol)
 
-    # If wait_for_trigger is true, only the protocol is sent and will be executed by the
-    # external trigger. If false (this template's default), the protocol is sent and can be
-    # executed directly using execute_protocol(). See
+    # If a trigger is configured (TRIGGER_OPTION != 'None'), only the protocol is sent and will
+    # be executed by the external trigger. If not (this template's default), the protocol is
+    # sent and can be executed directly using execute_protocol(). See
     # ../single_transducer/igt/standalone_wait_for_trigger.py/standalone_wait_for_trigger_poll.py
     # for the full wait_for_trigger_result()/has_execution_error() explanation this pattern
     # relies on.
-    if protocol.wait_for_trigger:
-        igt_driving_sys.wait_for_trigger(protocol)
-        igt_driving_sys.wait_for_trigger_result(protocol.buffer_num, timeout_s=5.0)
+    if TRIGGER_OPTION != 'None':
+        igt_driving_sys.wait_for_trigger(protocol, TRIGGER_OPTION, N_TRIGGERS)
+        igt_driving_sys.wait_for_trigger_result(timeout_s=5.0)
     else:
         igt_driving_sys.execute_protocol(protocol)
 
@@ -186,9 +192,9 @@ try:
     # The driving system already has the OLD configuration loaded -- send_protocol() must be
     # called again so it picks up what slot.configure() just changed above.
     igt_driving_sys.send_protocol(protocol)
-    if protocol.wait_for_trigger:
-        igt_driving_sys.wait_for_trigger(protocol)
-        igt_driving_sys.wait_for_trigger_result(protocol.buffer_num, timeout_s=5.0)
+    if TRIGGER_OPTION != 'None':
+        igt_driving_sys.wait_for_trigger(protocol, TRIGGER_OPTION, N_TRIGGERS)
+        igt_driving_sys.wait_for_trigger_result(timeout_s=5.0)
     else:
         igt_driving_sys.execute_protocol(protocol)
 

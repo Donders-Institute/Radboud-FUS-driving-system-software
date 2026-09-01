@@ -8,6 +8,13 @@
 
 driving_sys_serial: IGT-32-ch_comb_2x10-ch  # print(driving_system.get_ds_serials()) for options
 
+# Fires the entire, already fully-timed protocol at once with a single external trigger --
+# equivalent to execute_protocol(), just gated behind that one trigger. Use 'TriggerOnePulseTrain'
+# instead (together with n_triggers) if you want one pulse train to fire per trigger received,
+# rather than the whole protocol at once. trigger_option is whole-file, not per-protocol -- it's a
+# parameter of IGT.wait_for_trigger() itself, not of any one protocol below.
+trigger_option: TriggerWholeProtocol
+
 protocols:
   - slots:
       - transducer_serial: IS_PCD15287_01001  # print(transducer.get_tran_serials()) for options
@@ -35,12 +42,6 @@ protocols:
       pulse_ramp_dur: 0      # [ms], ramp duration
       pulse_rep_int: 50      # [ms], pulse repetition interval -- one pulse every 50 ms
       pulse_train_dur: 200   # [ms], pulse train duration -- 4 pulses per train (200 / 50)
-
-      # Fires the entire, already fully-timed protocol at once with a single external trigger --
-      # equivalent to execute_protocol(), just gated behind that one trigger. Use
-      # 'TriggerOnePulseTrain' instead (together with n_triggers) if you want one pulse train to
-      # fire per trigger received, rather than the whole protocol at once.
-      trigger_option: TriggerWholeProtocol
 
       # a new train starts every 400 ms (200 ms train, then a 200 ms gap before the next)
       pulse_train_rep_int: 400  # [ms]

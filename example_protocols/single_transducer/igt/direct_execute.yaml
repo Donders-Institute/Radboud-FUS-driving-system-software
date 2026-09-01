@@ -6,6 +6,13 @@
 
 driving_sys_serial: IGT-32-ch_comb_2x10-ch  # print(driving_system.get_ds_serials()) for options
 
+# 'None' means no trigger at all -- the protocol is executed directly via execute_protocol(),
+# which is exactly what this file is for. See wait_for_trigger.yaml (this same folder) for the
+# trigger-based alternative instead. trigger_option is whole-file, not per-protocol -- it's a
+# parameter of IGT.send_protocol()/wait_for_trigger()/execute_protocol() itself, not of any one
+# protocol below.
+trigger_option: None
+
 protocols:
   - slots:
       - transducer_serial: IS_PCD15287_01001  # print(transducer.get_tran_serials()) for options
@@ -41,11 +48,6 @@ protocols:
 
       pulse_rep_int: 50      # [ms], pulse repetition interval -- one pulse every 50 ms
       pulse_train_dur: 200   # [ms], pulse train duration -- 4 pulses per train (200 / 50)
-
-      # 'None' means no trigger at all -- the protocol is executed directly via
-      # execute_protocol(), which is exactly what this file is for. See wait_for_trigger.yaml
-      # (this same folder) for the trigger-based alternative instead.
-      trigger_option: None
 
       # pulse_train_rep_int/pulse_train_rep_dur (how many times the pulse train repeats) only
       # apply when trigger_option is not TriggerOnePulseTrain -- both optional; omitting both

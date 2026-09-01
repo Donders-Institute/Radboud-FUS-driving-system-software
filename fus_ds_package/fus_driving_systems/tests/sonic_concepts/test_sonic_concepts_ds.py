@@ -267,7 +267,6 @@ def test_send_protocol_calls_setters_in_order_and_marks_sent(mocker, connected_i
                         '_send_command')
 
     fake_protocol = mocker.Mock()
-    fake_protocol.wait_for_trigger = True
     fake_protocol.oper_freq = 300
     fake_protocol.focus_wrt_exit_plane = 50
     fake_protocol.global_power = 2
@@ -290,7 +289,6 @@ def test_send_protocol_calls_setters_in_order_and_marks_sent(mocker, connected_i
         mocker.call._set_burst_and_period(1, 2),
         mocker.call._set_timer(10),
         mocker.call._set_ramping('Linear', 1),
-        mocker.call._send_command('TRIGGERMODE=1\r\n'),
     ]
 
 
@@ -328,7 +326,6 @@ def test_send_protocol_reconnects_when_not_connected(mocker):
 
     fake_protocol = mocker.Mock()
     fake_protocol.driving_sys.connect_info = 'COM7'
-    fake_protocol.wait_for_trigger = False
     fake_protocol.pulse_dur = 1
     fake_protocol.pulse_rep_int = 2
     fake_protocol.pulse_train_dur = 10
@@ -339,6 +336,58 @@ def test_send_protocol_reconnects_when_not_connected(mocker):
 
     mock_connect.assert_called_once_with('COM7')
     assert instance.protocol_sent is True
+
+
+def test_wait_for_trigger_sends_triggermode_when_protocol_sent(mocker, connected_instance):
+    connected_instance.protocol_sent = True
+    mock_send_command = mocker.patch.object(connected_instance, '_send_command')
+
+    connected_instance.wait_for_trigger(None)
+
+    mock_send_command.assert_called_once_with('TRIGGERMODE=1\r\n')
+
+
+def test_wait_for_trigger_exits_when_not_yet_sent(mocker, connected_instance):
+    connected_instance.protocol_sent = False
+    mock_send_command = mocker.patch.object(connected_instance, '_send_command')
+    mock_send_protocol = mocker.patch.object(connected_instance, 'send_protocol')
+
+    with pytest.raises(SystemExit):
+        connected_instance.wait_for_trigger(mocker.Mock())
+
+    mock_send_protocol.assert_not_called()
+    mock_send_command.assert_not_called()
+
+
+def test_wait_for_trigger_reconnects_when_not_connected(mocker):
+    """wait_for_trigger() has its own reconnect-and-retry branch, separate from
+    send_protocol()'s (test_send_protocol_reconnects_when_not_connected above) -- not connected
+    here means connect() + send_protocol() + wait_for_trigger() all get retried. Only reached
+    once a protocol is already known to have been sent -- it recovers a dropped connection
+    after a real send, it doesn't fill in for a caller who never sent anything at all (see
+    test_wait_for_trigger_exits_when_not_yet_sent above)."""
+    from fus_driving_systems.sonic_concepts.sonic_concepts_ds import SonicConcepts
+    instance = SonicConcepts()
+    instance._connected = False
+    instance.protocol_sent = True
+    mock_send_command = mocker.patch.object(instance, '_send_command')
+
+    def fake_connect(connect_info):
+        instance._connected = True
+    mock_connect = mocker.patch.object(instance, 'connect', side_effect=fake_connect)
+    mock_send_protocol = mocker.patch.object(instance, 'send_protocol')
+
+    def fake_send_protocol(protocol):
+        instance.protocol_sent = True
+    mock_send_protocol.side_effect = fake_send_protocol
+
+    fake_protocol = mocker.Mock()
+    fake_protocol.driving_sys.connect_info = 'COM7'
+
+    instance.wait_for_trigger(fake_protocol)
+
+    mock_connect.assert_called_once_with('COM7')
+    mock_send_command.assert_called_once_with('TRIGGERMODE=1\r\n')
 
 
 def test_execute_protocol_writes_start_command_when_protocol_sent(connected_instance):
@@ -361,29 +410,29 @@ def test_execute_protocol_exits_on_exception(connected_instance):
         connected_instance.execute_protocol(None)
 
 
-def test_execute_protocol_sends_then_executes_when_not_yet_sent(mocker, connected_instance):
+def test_execute_protocol_exits_when_not_yet_sent(mocker, connected_instance):
     connected_instance.protocol_sent = False
-    connected_instance.gen.readline.return_value = b'OK\n'
+    mock_send_protocol = mocker.patch.object(connected_instance, 'send_protocol')
 
-    def fake_send_protocol(protocol):
-        connected_instance.protocol_sent = True
-    mock_send_protocol = mocker.patch.object(connected_instance, 'send_protocol',
-                                             side_effect=fake_send_protocol)
+    with pytest.raises(SystemExit):
+        connected_instance.execute_protocol(mocker.Mock())
 
-    connected_instance.execute_protocol(mocker.Mock())
-
-    mock_send_protocol.assert_called_once()
-    connected_instance.gen.write.assert_called_once_with(b'START\r')
+    mock_send_protocol.assert_not_called()
+    connected_instance.gen.write.assert_not_called()
 
 
 def test_execute_protocol_reconnects_when_not_connected(mocker):
     """execute_protocol() has its own reconnect-and-retry branch, separate
     from send_protocol()'s (test_send_protocol_reconnects_when_not_connected
     above) -- not connected here means connect() + send_protocol() +
-    execute_protocol() all get retried."""
+    execute_protocol() all get retried. Only reached once a protocol is already known to have
+    been sent -- it recovers a dropped connection after a real send, it doesn't fill in for a
+    caller who never sent anything at all (see test_execute_protocol_exits_when_not_yet_sent
+    above)."""
     from fus_driving_systems.sonic_concepts.sonic_concepts_ds import SonicConcepts
     instance = SonicConcepts()
     instance._connected = False
+    instance.protocol_sent = True
     instance.gen = mocker.Mock()
     instance.gen.readline.return_value = b'OK\n'
 

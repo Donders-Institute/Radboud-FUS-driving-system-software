@@ -47,13 +47,17 @@ from fus_driving_systems.protocol_loader import load_protocol
 # since this example doesn't need them. engineering_mode is only ever set here, in Python --
 # never in the YAML file itself.
 #
-# total_alternating_duration_ms (load_protocol()'s second return value) is only relevant when
-# interleaving more than one protocol -- ignored here (a single protocol), so there's nothing to
-# read or pass on to send_protocol()/execute_protocol() below.
+# load_protocol() returns a 5-tuple: (protocols, total_alternating_duration_ms, trigger_option,
+# n_triggers, buffer_num). total_alternating_duration_ms is only relevant when interleaving more
+# than one protocol, trigger_option/n_triggers only when waiting for an external trigger, and
+# buffer_num only for a driving system with more than one hardware buffer -- none of that
+# applies here (a single protocol, executed directly, on today's driving systems), so there's
+# nothing to read or pass on for any of the three.
 #
 # require_hash=False (the default) -- set to True once you have a real direct_execute.yaml you
 # don't want accidentally changed; see README.md's "Load a protocol from a YAML file" section.
-protocols, _ = load_protocol('direct_execute.yaml', require_hash=False)
+protocols, total_alternating_duration_ms, trigger_option, n_triggers, _ = load_protocol(
+    'direct_execute.yaml', require_hash=False)
 
 # The driving system serial only needs to live in direct_execute.yaml -- load_protocol() already
 # resolved it into a real DrivingSystem, reachable via the protocol's own driving_sys, so there's

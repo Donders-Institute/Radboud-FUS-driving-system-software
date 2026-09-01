@@ -273,10 +273,8 @@ config['Equipment'] = {}
 #######################################################################################
 
 SONIC_CONCEPTS = 'Sonic Concepts'
-CONFIG_FILE_FOLDER_SC_TRAN = 'igt\\config\\sonic_concepts_transducers'
 config['Equipment.Manufacturer.SC'] = {}
 config['Equipment.Manufacturer.SC']['Name'] = SONIC_CONCEPTS
-config['Equipment.Manufacturer.SC']['Config. file folder transducers'] = CONFIG_FILE_FOLDER_SC_TRAN
 
 config['Equipment.Manufacturer.SC']['Additional charac. discon. message'] = ('\n - the correct ' +
                                                                              'TRANSDUCER is ' +

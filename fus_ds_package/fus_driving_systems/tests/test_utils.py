@@ -73,11 +73,14 @@ def test_sys_exits_when_config_is_incomplete_and_is_sys_exit_true(config,
     logger.warning.assert_not_called()
 
 
-def test_falls_back_to_print_when_logger_is_none(capsys):
-    result = get_config_value(None, None, SECTION, KEY, DEFAULT)
+def test_falls_back_to_root_logger_when_logger_is_none(caplog):
+    """logger=None is only the bootstrap case (before initialize_logger()/sync_logger() has
+    run) -- logging.warning() (module-level, hits the root logger) is used instead of print(),
+    so this still goes through the logging framework rather than bypassing it."""
+    with caplog.at_level('WARNING'):
+        result = get_config_value(None, None, SECTION, KEY, DEFAULT)
     assert result == DEFAULT
-    captured = capsys.readouterr()
-    assert "Config not found" in captured.out
+    assert "Config not found" in caplog.text
 
 
 def test_get_config_folder():

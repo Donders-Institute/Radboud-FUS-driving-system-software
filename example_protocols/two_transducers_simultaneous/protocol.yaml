@@ -7,6 +7,11 @@
 
 driving_sys_serial: IGT-32-ch_comb_2x10-ch  # print(driving_system.get_ds_serials()) for options
 
+# 'None' (used here) means no trigger at all -- executed directly. 'TriggerOnePulseTrain' fires
+# one pulse train per trigger received (also requires n_triggers); 'TriggerWholeProtocol' fires
+# the entire, already fully-timed protocol at once with a single trigger.
+trigger_option: None
+
 protocols:
   - slots:
       # As many slots as this driving system's config allows (see DrivingSystem.max_tran_slots)
@@ -35,12 +40,6 @@ protocols:
       pulse_ramp_dur: 0      # [ms], ramp duration
       pulse_rep_int: 50      # [ms], pulse repetition interval -- one pulse every 50 ms
       pulse_train_dur: 200   # [ms], pulse train duration -- 4 pulses per train (200 / 50)
-
-      # 'None' (used here) means no trigger at all -- executed directly. 'TriggerOnePulseTrain'
-      # fires one pulse train per trigger received (also requires n_triggers);
-      # 'TriggerWholeProtocol' fires the entire, already fully-timed protocol at once with a
-      # single trigger.
-      trigger_option: None
 
       # a new train starts every 400 ms (200 ms train, then a 200 ms gap before the next)
       pulse_train_rep_int: 400  # [ms]

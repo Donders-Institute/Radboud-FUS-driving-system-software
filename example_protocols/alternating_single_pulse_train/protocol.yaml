@@ -8,14 +8,19 @@
 # See standalone_plain.py (also in this folder) if you want the full, manually-written Python
 # equivalent instead, or need something this file's fields don't cover.
 #
-# IMPORTANT: ramping (pulse_ramp_shape/pulse_ramp_dur) and trigger_option are whole-group
-# settings for the generator, not something each interleaved protocol configures independently
-# -- send_protocol()/wait_for_trigger() only ever read them from the FIRST protocol below, and
-# exit with a clear error if the protocols don't all declare the same values. There is no way in
-# YAML to share these values automatically between the two entries below, so they are repeated
-# on purpose -- make sure they stay identical if you ever change one.
+# IMPORTANT: ramping (pulse_ramp_shape/pulse_ramp_dur) is a whole-group setting for the
+# generator, not something each interleaved protocol configures independently -- send_protocol()
+# only ever reads it from the FIRST protocol below, and exits with a clear error if the protocols
+# don't all declare the same values. There is no way in YAML to share this value automatically
+# between the two entries below, so it is repeated on purpose -- make sure it stays identical if
+# you ever change one. trigger_option, by contrast, is whole-file (a parameter of
+# IGT.wait_for_trigger() itself, not of any one protocol), so it's declared only once, below.
 
 driving_sys_serial: IGT-32-ch_comb_2x10-ch  # print(driving_system.get_ds_serials()) for options
+
+# Fires the entire, already fully-timed alternating group at once with a single external
+# trigger -- see wait_for_trigger.yaml (single_transducer/igt/) for more on the available options.
+trigger_option: TriggerWholeProtocol
 
 protocols:
   # -- protocol A: transducer 1 active, transducer 2 off --
@@ -45,7 +50,6 @@ protocols:
       pulse_ramp_shape: Tukey  # must match protocol B's below exactly -- see note above
       pulse_ramp_dur: 5      # [ms], must match protocol B's below exactly -- see note above
       pulse_rep_int: 100     # [ms], pulse repetition interval
-      trigger_option: TriggerWholeProtocol  # must match protocol B's below exactly
 
   # -- protocol B: transducer 1 off, transducer 2 active --
   - slots:
@@ -68,7 +72,6 @@ protocols:
       pulse_ramp_shape: Tukey  # must match protocol A's above exactly
       pulse_ramp_dur: 5      # [ms], must match protocol A's above exactly
       pulse_rep_int: 100     # [ms], pulse repetition interval
-      trigger_option: TriggerWholeProtocol  # must match protocol A's above exactly
 
 # How long the alternating group as a whole keeps repeating [ms]. Required here, since there's
 # more than one protocol above -- unlike a single protocol, which derives its own repetition

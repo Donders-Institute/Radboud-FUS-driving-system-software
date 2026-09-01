@@ -90,10 +90,25 @@ slot2 = protocol.add_slot(
     oper_freq=300,  # [kHz], operating frequency
 )
 
-# configure_timing() sets every pulse/pulse-train/trigger parameter together, in one call --
-# it's the only way to set any of them, precisely because they cascade/interact with each other
-# and are prone to ordering hazards if set individually and out of order. Applies once, to the
-# whole protocol -- both slots above fire together, on this same timing.
+# Trigger configuration (trigger_option/n_triggers) is a call-level parameter of
+# IGT.wait_for_trigger(), not an attribute of the protocol itself -- defined here as plain
+# variables instead, reused below when actually sending/waiting for a trigger/executing.
+# Use 'None' (this template's default) to not use a trigger at all; 'TriggerOnePulseTrain' to
+# fire one pulse train per trigger received (you must also give N_TRIGGERS below); or
+# 'TriggerWholeProtocol' to fire the
+# entire, already fully-timed protocol at once with a single trigger. To check available trigger
+# options: print(igt_driving_sys.get_trigger_options())
+TRIGGER_OPTION = 'None'
+# TRIGGER_OPTION = 'TriggerOnePulseTrain'
+# TRIGGER_OPTION = 'TriggerWholeProtocol'
+
+# Only applies (and is required) when TRIGGER_OPTION == 'TriggerOnePulseTrain' above.
+N_TRIGGERS = None  # e.g. 4 -- number of triggers expected, one pulse train fires per trigger
+
+# configure_timing() sets every pulse/pulse-train parameter together, in one call -- it's the
+# only way to set any of them, precisely because they cascade/interact with each other and are
+# prone to ordering hazards if set individually and out of order. Applies once, to the whole
+# protocol -- both slots above fire together, on this same timing.
 protocol.configure_timing(
     # Each field below is deliberately a genuinely different value from the one before it (not
     # just mirroring the level below), to show the full timing hierarchy in one place: one
@@ -103,15 +118,6 @@ protocol.configure_timing(
     pulse_ramp_dur=0,  # [ms], ramp duration
     pulse_rep_int=50,  # [ms], pulse repetition interval -- one pulse every 50 ms
     pulse_train_dur=200,  # [ms], pulse train duration -- 4 pulses per train (200 / 50)
-
-    # wait_for_trigger is derived from trigger_option -- there is no separate flag to set. Use
-    # 'None' (this template's default) to not use a trigger at all; 'TriggerOnePulseTrain' to
-    # fire one pulse train per trigger received (you must also give n_triggers below); or
-    # 'TriggerWholeProtocol' to fire the entire, already fully-timed protocol at once with a
-    # single trigger. To check available trigger options: print(protocol.get_trigger_options())
-    trigger_option='None',
-    # trigger_option='TriggerOnePulseTrain',
-    # trigger_option='TriggerWholeProtocol'
 
     # a new train starts every 400 ms (200 ms train, then a 200 ms gap before the next)
     pulse_train_rep_int=400,  # [ms]
@@ -126,15 +132,15 @@ protocol.configure_timing(
 try:
     igt_driving_sys.send_protocol(protocol)
 
-    # If wait_for_trigger is true, only the protocol is sent and will be executed by the
-    # external trigger. If false (this template's default), the protocol is sent and can be
-    # executed directly using execute_protocol(). See
+    # If a trigger is configured (TRIGGER_OPTION != 'None'), only the protocol is sent and will
+    # be executed by the external trigger. If not (this template's default), the protocol is
+    # sent and can be executed directly using execute_protocol(). See
     # ../single_transducer/igt/standalone_wait_for_trigger.py/standalone_wait_for_trigger_poll.py
     # for the full wait_for_trigger_result()/has_execution_error() explanation this pattern
     # relies on.
-    if protocol.wait_for_trigger:
-        igt_driving_sys.wait_for_trigger(protocol)
-        igt_driving_sys.wait_for_trigger_result(protocol.buffer_num, timeout_s=5.0)
+    if TRIGGER_OPTION != 'None':
+        igt_driving_sys.wait_for_trigger(protocol, TRIGGER_OPTION, N_TRIGGERS)
+        igt_driving_sys.wait_for_trigger_result(timeout_s=5.0)
     else:
         igt_driving_sys.execute_protocol(protocol)
 finally:

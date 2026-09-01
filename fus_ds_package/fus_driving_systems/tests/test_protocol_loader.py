@@ -33,9 +33,10 @@ def _write_yaml(tmp_path, content, name='protocol.yaml'):
     return str(path)
 
 
-def _single_protocol_yaml(extra_slot_lines='', extra_timing_lines=''):
+def _single_protocol_yaml(extra_slot_lines='', extra_timing_lines='', extra_top_level_lines=''):
     return f"""
 driving_sys_serial: {DS_SERIAL}
+{extra_top_level_lines}
 protocols:
   - slots:
       - transducer_serial: {TRANSDUCER_1}
@@ -55,10 +56,11 @@ class TestValidFiles:
     def test_loads_single_protocol_with_all_fields(self, tmp_path):
         path = _write_yaml(tmp_path, _single_protocol_yaml(
             extra_slot_lines='oper_freq: 300\n        dephasing_degree: null',
-            extra_timing_lines=('pulse_rep_int: 100\n      trigger_option: '
-                                'TriggerWholeProtocol')))
+            extra_timing_lines='pulse_rep_int: 100',
+            extra_top_level_lines=('trigger_option: TriggerWholeProtocol\n'
+                                   'n_triggers: 1\nbuffer_num: 0')))
 
-        protocols, duration = load_protocol(path)
+        protocols, duration, trigger_option, n_triggers, buffer_num = load_protocol(path)
 
         assert len(protocols) == 1
         assert duration is None
@@ -66,25 +68,32 @@ class TestValidFiles:
         assert protocols[0].slots[0].press == 0.5
         assert protocols[0].pulse_dur == 45
         assert protocols[0].pulse_rep_int == 100
-        assert protocols[0].trigger_option == 'TriggerWholeProtocol'
+        assert trigger_option == 'TriggerWholeProtocol'
+        assert n_triggers == 1
+        assert buffer_num == 0
 
     def test_optional_slot_and_timing_fields_omitted_fall_back_to_library_defaults(
             self, tmp_path):
         """oper_freq/dephasing_degree (slot) and every timing field but pulse_dur are optional
         -- omitting them entirely (not even null) must flow through to add_slot()/
-        configure_timing()'s own cascade defaults, not raise."""
+        configure_timing()'s own cascade defaults, not raise. trigger_option/n_triggers/
+        buffer_num are also optional at the top level -- omitting them must not raise either."""
         path = _write_yaml(tmp_path, _single_protocol_yaml())
 
-        protocols, duration = load_protocol(path)
+        protocols, duration, trigger_option, n_triggers, buffer_num = load_protocol(path)
 
         assert duration is None
         # pulse_rep_int defaults to pulse_dur, pulse_train_dur to pulse_rep_int, etc.
         assert protocols[0].pulse_rep_int == 45
         assert protocols[0].pulse_train_dur == 45
+        assert trigger_option is None
+        assert n_triggers is None
+        assert buffer_num == 0
 
     def test_loads_multiple_protocols_and_returns_total_alternating_duration_ms(self, tmp_path):
         path = _write_yaml(tmp_path, f"""
 driving_sys_serial: {DS_SERIAL}
+trigger_option: TriggerWholeProtocol
 protocols:
   - slots:
       - transducer_serial: {TRANSDUCER_1}
@@ -95,7 +104,6 @@ protocols:
     timing:
       pulse_dur: 45
       pulse_rep_int: 100
-      trigger_option: TriggerWholeProtocol
   - slots:
       - transducer_serial: {TRANSDUCER_2}
         focus_option: {FOCUS_OPTION}
@@ -105,14 +113,14 @@ protocols:
     timing:
       pulse_dur: 45
       pulse_rep_int: 150
-      trigger_option: TriggerWholeProtocol
 total_alternating_duration_ms: 80000
 """)
 
-        protocols, duration = load_protocol(path)
+        protocols, duration, trigger_option, *_ = load_protocol(path)
 
         assert len(protocols) == 2
         assert duration == 80000
+        assert trigger_option == 'TriggerWholeProtocol'
         assert protocols[0].pulse_rep_int == 100
         assert protocols[1].pulse_rep_int == 150
 
@@ -133,7 +141,7 @@ protocols:
       pulse_dur: 45
 """)
 
-        protocols, _ = load_protocol(path, engineering_mode=True)
+        protocols, *_ = load_protocol(path, engineering_mode=True)
 
         assert protocols[0].slots[0].volt == [5]
 
@@ -432,7 +440,7 @@ class TestHashProtection:
     def test_loads_normally_with_no_sidecar_present(self, tmp_path):
         path = _write_yaml(tmp_path, _single_protocol_yaml())
 
-        protocols, _ = load_protocol(path)
+        protocols, *_ = load_protocol(path)
 
         assert len(protocols) == 1
 
@@ -440,7 +448,7 @@ class TestHashProtection:
         path = _write_yaml(tmp_path, _single_protocol_yaml())
         approve_protocol(path)
 
-        protocols, _ = load_protocol(path)
+        protocols, *_ = load_protocol(path)
 
         assert len(protocols) == 1
 
@@ -481,7 +489,7 @@ class TestHashProtection:
         _write_yaml(tmp_path, edited)
         approve_protocol(path)
 
-        protocols, _ = load_protocol(path)
+        protocols, *_ = load_protocol(path)
 
         assert protocols[0].slots[0].focus_wrt_exit_plane == 41
 
@@ -504,7 +512,7 @@ class TestRequireHash:
         path = _write_yaml(tmp_path, _single_protocol_yaml())
         approve_protocol(path)
 
-        protocols, _ = load_protocol(path, require_hash=True)
+        protocols, *_ = load_protocol(path, require_hash=True)
 
         assert len(protocols) == 1
 
@@ -533,6 +541,6 @@ class TestShippedExampleFiles:
         'yaml_path', _SHIPPED_EXAMPLE_YAML_FILES,
         ids=[str(p.relative_to(_EXAMPLE_PROTOCOLS_DIR)) for p in _SHIPPED_EXAMPLE_YAML_FILES])
     def test_shipped_example_loads_successfully(self, yaml_path):
-        protocols, _ = load_protocol(str(yaml_path))
+        protocols, *_ = load_protocol(str(yaml_path))
 
         assert len(protocols) >= 1

@@ -22,7 +22,12 @@ from fus_driving_systems.config.logging_config import get_logger
 
 
 _REQUIRED_TOP_LEVEL_KEYS = ('driving_sys_serial', 'protocols')
-_OPTIONAL_TOP_LEVEL_KEYS = ('total_alternating_duration_ms',)
+# trigger_option/n_triggers/buffer_num are top-level (whole-file), not per-protocol 'timing:'
+# fields -- they're parameters of IGT.send_protocol()/wait_for_trigger()/execute_protocol(), so
+# there is exactly one value for the whole file, the same way total_alternating_duration_ms
+# already is.
+_OPTIONAL_TOP_LEVEL_KEYS = ('total_alternating_duration_ms', 'trigger_option', 'n_triggers',
+                            'buffer_num')
 
 _REQUIRED_PROTOCOL_KEYS = ('slots', 'timing')
 
@@ -31,8 +36,8 @@ _REQUIRED_SLOT_KEYS = ('transducer_serial', 'focus_option', 'focus_value', 'powe
 _OPTIONAL_SLOT_KEYS = ('oper_freq', 'dephasing_degree')
 
 _REQUIRED_TIMING_KEYS = ('pulse_dur',)
-_OPTIONAL_TIMING_KEYS = ('pulse_rep_int', 'pulse_train_dur', 'trigger_option',
-                         'pulse_ramp_shape', 'pulse_ramp_dur', 'n_triggers',
+_OPTIONAL_TIMING_KEYS = ('pulse_rep_int', 'pulse_train_dur',
+                         'pulse_ramp_shape', 'pulse_ramp_dur',
                          'pulse_train_rep_int', 'pulse_train_rep_dur')
 
 
@@ -124,10 +129,8 @@ def _configure_timing(protocol, timing_def, protocol_index):
         pulse_dur,
         pulse_rep_int=timing_def.get('pulse_rep_int'),
         pulse_train_dur=timing_def.get('pulse_train_dur'),
-        trigger_option=timing_def.get('trigger_option'),
         pulse_ramp_shape=timing_def.get('pulse_ramp_shape'),
         pulse_ramp_dur=timing_def.get('pulse_ramp_dur'),
-        n_triggers=timing_def.get('n_triggers'),
         pulse_train_rep_int=timing_def.get('pulse_train_rep_int'),
         pulse_train_rep_dur=timing_def.get('pulse_train_rep_dur'),
     )
@@ -224,8 +227,13 @@ def load_protocol(yaml_path, engineering_mode=False, require_hash=False):
             sidecar -- a missing sidecar exits, instead of silently loading unchecked.
 
     Returns:
-        tuple(list(TUSProtocol), float or None): The protocol(s) described by the file, and
-            total_alternating_duration_ms (None if the file describes only one protocol).
+        tuple(list(TUSProtocol), float or None, str or None, int or None, int): The protocol(s)
+            described by the file; total_alternating_duration_ms (None if the file describes
+            only one protocol); trigger_option and n_triggers (None if the file omits them --
+            meant to be forwarded straight into IGT.wait_for_trigger(), see its own docstring for
+            why these live at the top level, not inside any one protocol's 'timing:'); and
+            buffer_num (0 if the file omits it), meant to be forwarded into
+            send_protocol()/wait_for_trigger()/execute_protocol() the same way.
     """
 
     try:
@@ -270,4 +278,5 @@ def load_protocol(yaml_path, engineering_mode=False, require_hash=False):
 
         protocols.append(protocol)
 
-    return protocols, data.get('total_alternating_duration_ms')
+    return (protocols, data.get('total_alternating_duration_ms'), data.get('trigger_option'),
+            data.get('n_triggers'), data.get('buffer_num', 0))

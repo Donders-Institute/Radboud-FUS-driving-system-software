@@ -4,6 +4,13 @@
 
 driving_sys_serial: 105-010  # print(driving_system.get_ds_serials()) for options
 
+# For SC specifically, this is effectively binary -- send_protocol()/execute_protocol() only ever
+# check whether a trigger is expected at all, never which kind, so 'TriggerOnePulseTrain' has no
+# meaningful effect over 'TriggerWholeProtocol' here. Unlike IGT's own 'TriggerWholeProtocol' (one
+# trigger arms every repetition at once), SC's driving system waits for a fresh external trigger
+# each time it needs to fire the pulse train. 'None' means no trigger at all -- executed directly.
+trigger_option: None
+
 protocols:
   - slots:
       - transducer_serial: CTX-500-026  # print(transducer.get_tran_serials()) for options
@@ -22,14 +29,6 @@ protocols:
       pulse_ramp_dur: 0      # [ms], ramp duration
       pulse_rep_int: 50      # [ms], pulse repetition interval -- one pulse every 50 ms
       pulse_train_dur: 200   # [ms], pulse train duration -- 4 pulses per train (200 / 50)
-
-      # For SC specifically, this is effectively binary -- send_protocol()/execute_protocol()
-      # only ever check whether a trigger is expected at all, never which kind, so
-      # 'TriggerOnePulseTrain' has no meaningful effect over 'TriggerWholeProtocol' here. Unlike
-      # IGT's own 'TriggerWholeProtocol' (one trigger arms every repetition at once), SC's
-      # driving system waits for a fresh external trigger each time it needs to fire the pulse
-      # train. 'None' means no trigger at all -- executed directly.
-      trigger_option: None
 
 # total_alternating_duration_ms is only needed when protocols above has more than one entry --
 # omit it entirely for a single protocol like this one.

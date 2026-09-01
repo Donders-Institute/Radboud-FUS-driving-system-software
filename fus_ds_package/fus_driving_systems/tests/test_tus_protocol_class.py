@@ -8,11 +8,12 @@ the instance with TUSProtocol.__new__(TUSProtocol) (bypassing __init__ entirely)
 the private attributes the method-under-test actually reads.
 
 Covers:
-- configure_timing() -- the only way to set any timing/trigger parameter (pulse_dur,
-  pulse_rep_int, pulse_train_dur, pulse_train_rep_int, pulse_train_rep_dur, pulse_ramp_shape,
-  pulse_ramp_dur, trigger_option, n_triggers all have getters only), including the cascade
-  defaults each level falls back to when not given, and the trigger_option-dependent choice
-  between n_triggers and pulse_train_rep_int/pulse_train_rep_dur.
+- configure_timing() -- the only way to set any timing parameter (pulse_dur, pulse_rep_int,
+  pulse_train_dur, pulse_train_rep_int, pulse_train_rep_dur, pulse_ramp_shape, pulse_ramp_dur
+  all have getters only), including the cascade defaults each level falls back to when not
+  given. buffer_num/trigger_option/n_triggers are NOT TUSProtocol attributes -- they're
+  parameters of IGT.send_protocol()/wait_for_trigger()/execute_protocol() instead (see
+  TUSProtocol's own class docstring for why), so their own tests live in test_igt_ds.py.
 - add_slot() and _validate_channel_count(). driving_sys itself is read-only (set once, at
   construction) -- see its getter's own docstring for why swapping it isn't supported at all.
   add_slot() itself delegates transducer/focus/power configuration entirely to
@@ -55,45 +56,27 @@ def test_get_ramp_shapes_splits_config_value_on_newline(patch_config):
     assert protocol.get_ramp_shapes() == ['Rectangular - no ramping', 'Linear', 'Tukey']
 
 
-# --- wait_for_trigger --------------------------------------------------------
-# Derived from trigger_option, not stored independently -- True whenever trigger_option is
-# anything other than the config's designated "no trigger" option (option.none).
-
-def test_wait_for_trigger_is_false_for_the_none_trigger_option(patch_config):
-    patch_config.set('Trigger', 'option.none', 'None')
-    protocol = _bare_protocol()
-    protocol._trigger_option = 'None'
-
-    assert protocol.wait_for_trigger is False
-
-
-def test_wait_for_trigger_is_true_for_any_other_trigger_option(patch_config):
-    patch_config.set('Trigger', 'option.none', 'None')
-    protocol = _bare_protocol()
-    protocol._trigger_option = 'TriggerOnePulseTrain'
-
-    assert protocol.wait_for_trigger is True
-
-
 # --- configure_timing --------------------------------------------------------
-# The only way to set any timing/trigger parameter -- pulse_dur, pulse_rep_int, pulse_train_dur,
-# pulse_train_rep_int, pulse_train_rep_dur, pulse_ramp_shape, pulse_ramp_dur, trigger_option and
-# n_triggers all have getters only. Applies every one of them in one fixed, always-safe internal
-# order (lowest cascade level first), regardless of the order its own keyword arguments were
-# given in. pulse_dur is the only required parameter: every level above it defaults to the level
-# directly below it when not given, so a single pulse train, repeated once, is already a
-# complete, self-consistent result. trigger_option/pulse_ramp_shape/pulse_ramp_dur left as None
-# reset to their own safe/off default EVERY call (the config's "no trigger" option; "no ramping"
-# and 0) rather than inheriting whatever an earlier, unrelated call left them at. There is no
-# wait_for_trigger parameter -- it's derived from trigger_option (see above).
+# The only way to set any timing parameter -- pulse_dur, pulse_rep_int, pulse_train_dur,
+# pulse_train_rep_int, pulse_train_rep_dur, pulse_ramp_shape, pulse_ramp_dur all have getters
+# only. Applies every one of them in one fixed, always-safe internal order (lowest cascade level
+# first), regardless of the order its own keyword arguments were given in. pulse_dur is the only
+# required parameter: every level above it defaults to the level directly below it when not
+# given, so a single pulse train, repeated once, is already a complete, self-consistent result.
+# pulse_ramp_shape/pulse_ramp_dur left as None reset to their own safe/off default EVERY call
+# ("no ramping" and 0) rather than inheriting whatever an earlier, unrelated call left them at.
+#
+# trigger_option/n_triggers are NOT parameters of this method -- they're parameters of
+# IGT.wait_for_trigger() itself instead (see TUSProtocol's own class docstring for why), so
+# their validation/mutual-exclusivity tests live in test_igt_ds.py's TestWaitForTrigger, not
+# here. pulse_train_rep_int/pulse_train_rep_dur below are resolved the same way regardless of
+# how (or whether) the protocol ends up triggered -- see this method's own docstring.
 
-def test_configure_timing_requires_only_pulse_dur(patch_config):
-    """pulse_dur is the only required parameter -- everything else, including trigger_option,
-    resets to its own safe/off default rather than requiring an explicit value."""
-    patch_config.set('Trigger', 'option.none', 'None')
+def test_configure_timing_requires_only_pulse_dur():
+    """pulse_dur is the only required parameter -- everything else resets to its own safe/off
+    default rather than requiring an explicit value."""
     protocol = _bare_protocol()
     protocol._timing_param = {}
-    protocol._n_triggers = 'unchanged'
 
     protocol.configure_timing(pulse_dur=10)
 
@@ -102,23 +85,6 @@ def test_configure_timing_requires_only_pulse_dur(patch_config):
     assert protocol.pulse_train_dur == 10
     assert protocol.pulse_train_rep_int == 10
     assert protocol.pulse_train_rep_dur == 10
-    assert protocol.trigger_option == 'None'
-    assert protocol._n_triggers == 'unchanged'  # left untouched -- n_triggers itself wasn't given
-
-
-def test_configure_timing_resets_trigger_option_to_none_when_not_given(patch_config):
-    """Unlike pulse_rep_int/pulse_train_dur/etc. (which are freshly re-derived from THIS call's
-    pulse_dur every time, so there's nothing stale to inherit), trigger_option has no such
-    cascade -- so leaving it out must reset to the safe "no trigger" default, not silently keep
-    whatever an earlier, unrelated call left it at."""
-    patch_config.set('Trigger', 'option.none', 'None')
-    protocol = _bare_protocol()
-    protocol._timing_param = {}
-    protocol._trigger_option = 'TriggerOnePulseTrain'  # a stale value from some earlier call
-
-    protocol.configure_timing(pulse_dur=10)
-
-    assert protocol.trigger_option == 'None'
 
 
 def test_configure_timing_resets_ramp_to_no_ramping_when_not_given(patch_config):
@@ -147,14 +113,6 @@ def test_configure_timing_rejects_negative_pulse_dur():
 
     with pytest.raises(SystemExit):
         protocol.configure_timing(pulse_dur=-5)
-
-
-def test_configure_timing_exits_for_unavailable_trigger_option():
-    protocol = _bare_protocol()
-    protocol._timing_param = {}
-
-    with pytest.raises(SystemExit):
-        protocol.configure_timing(pulse_dur=10, trigger_option='Something else')
 
 
 def test_configure_timing_pulse_rep_int_overrides_default_but_leaves_pulse_dur():
@@ -223,70 +181,24 @@ def test_configure_timing_rejects_negative_pulse_ramp_dur():
         protocol.configure_timing(pulse_dur=10, pulse_ramp_dur=-1)
 
 
-def test_configure_timing_forces_single_trigger_for_whole_protocol_option(patch_config):
-    patch_config.set('Trigger', 'option.whole_protocol', 'TriggerWholeProtocol')
+def test_configure_timing_sets_every_remaining_level_explicitly():
+    """Every parameter configure_timing() still has (now that trigger_option/n_triggers have
+    moved to IGT.wait_for_trigger(), see this module's own header) can be set explicitly in one
+    call."""
     protocol = _bare_protocol()
     protocol._timing_param = {}
-    protocol._trigger_option = 'None'
-    protocol._n_triggers = 5
-
-    protocol.configure_timing(pulse_dur=10, trigger_option='TriggerWholeProtocol')
-
-    assert protocol.n_triggers == 1
-
-
-def test_configure_timing_leaves_n_triggers_untouched_for_the_none_option(patch_config):
-    patch_config.set('Trigger', 'option.whole_protocol', 'TriggerWholeProtocol')
-    protocol = _bare_protocol()
-    protocol._timing_param = {}
-    protocol._trigger_option = 'TriggerOnePulseTrain'
-    protocol._n_triggers = 7
-
-    protocol.configure_timing(pulse_dur=10, trigger_option='None')
-
-    assert protocol.n_triggers == 7  # untouched -- forcing to 1 is specific to the ptr option
-
-
-def test_configure_timing_sets_every_level_via_n_triggers(patch_config):
-    patch_config.set('Trigger', 'option.whole_protocol', 'TriggerWholeProtocol')
-    protocol = _bare_protocol()
-    protocol._timing_param = {}
-    protocol._trigger_option = 'None'
-    protocol._n_triggers = 0
 
     protocol.configure_timing(pulse_dur=10, pulse_rep_int=200, pulse_train_dur=200,
-                              trigger_option='TriggerOnePulseTrain',
-                              pulse_ramp_shape='Linear', pulse_ramp_dur=5, n_triggers=4)
+                              pulse_ramp_shape='Linear', pulse_ramp_dur=5,
+                              pulse_train_rep_int=200, pulse_train_rep_dur=2)
 
     assert protocol.pulse_dur == 10
     assert protocol.pulse_rep_int == 200
     assert protocol.pulse_train_dur == 200
-    assert protocol.trigger_option == 'TriggerOnePulseTrain'
-    assert protocol.n_triggers == 4
     assert protocol.pulse_ramp_shape == 'Linear'
     assert protocol.pulse_ramp_dur == 5
-    # Don't apply to this trigger mode (n_triggers governs repetition instead), but still
-    # cascade to their own "repeat once" default rather than being left unset/stale.
-    assert protocol.pulse_train_rep_int == 200
-    assert protocol.pulse_train_rep_dur == 200
-
-
-def test_configure_timing_sets_every_level_via_duration(patch_config):
-    patch_config.set('Trigger', 'option.whole_protocol', 'TriggerWholeProtocol')
-    protocol = _bare_protocol()
-    protocol._timing_param = {}
-    protocol._trigger_option = 'None'
-    protocol._n_triggers = 0
-
-    protocol.configure_timing(pulse_dur=10, pulse_rep_int=200, pulse_train_dur=200,
-                              trigger_option='TriggerWholeProtocol',
-                              pulse_train_rep_int=200, pulse_train_rep_dur=2)
-
     assert protocol.pulse_train_rep_int == 200
     assert protocol.pulse_train_rep_dur == 2000  # stored in ms, setter takes seconds
-    # n_triggers isn't valid for this trigger mode -- forced to 1 regardless of what's given
-    # (nothing is given here), purely for ControlDrivingSystem implementations' own logging.
-    assert protocol.n_triggers == 1
 
 
 def test_configure_timing_is_order_independent():
@@ -330,104 +242,6 @@ def test_configure_timing_pulse_train_rep_dur_alone_repeats_back_to_back():
 
     assert protocol.pulse_train_rep_int == 10  # pulse_train_dur, unrelated to the given rep_dur
     assert protocol.pulse_train_rep_dur == 300  # stored in ms -- 0.3 s * 1e3, kept as given
-
-
-def test_configure_timing_exits_when_both_trigger_modes_given(patch_config):
-    patch_config.set('Trigger', 'option.pulse_train', 'TriggerOnePulseTrain')
-    protocol = _bare_protocol()
-    protocol._timing_param = {}
-    protocol._trigger_option = 'None'
-
-    with pytest.raises(SystemExit):
-        protocol.configure_timing(pulse_dur=10, pulse_rep_int=200, pulse_train_dur=200,
-                                  trigger_option='TriggerOnePulseTrain',
-                                  n_triggers=4, pulse_train_rep_int=200, pulse_train_rep_dur=2)
-
-
-def test_configure_timing_exits_when_n_triggers_given_for_non_pulse_train_trigger_option(
-        patch_config):
-    """n_triggers only applies when trigger_option is the "trigger per pulse train" option --
-    giving it alongside any other trigger_option (the default, 'None', here) is a mismatch,
-    not silently corrected."""
-    patch_config.set('Trigger', 'option.pulse_train', 'TriggerOnePulseTrain')
-    protocol = _bare_protocol()
-    protocol._timing_param = {}
-
-    with pytest.raises(SystemExit):
-        protocol.configure_timing(pulse_dur=10, n_triggers=4)
-
-
-def test_configure_timing_exits_when_duration_given_for_pulse_train_trigger_option(patch_config):
-    """pulse_train_rep_int/pulse_train_rep_dur don't apply when trigger_option is the "trigger
-    per pulse train" option -- give n_triggers instead."""
-    patch_config.set('Trigger', 'option.pulse_train', 'TriggerOnePulseTrain')
-    protocol = _bare_protocol()
-    protocol._timing_param = {}
-    protocol._trigger_option = 'None'
-
-    with pytest.raises(SystemExit):
-        protocol.configure_timing(pulse_dur=10, trigger_option='TriggerOnePulseTrain',
-                                  pulse_train_rep_int=200, pulse_train_rep_dur=2)
-
-
-def test_configure_timing_exits_when_n_triggers_omitted_for_pulse_train_trigger_option(
-        patch_config):
-    """One pulse train fires per trigger under 'TriggerOnePulseTrain' -- the driving system
-    genuinely needs to know in advance how many triggers to expect, so unlike every other
-    parameter in this method, n_triggers has no sensible default to silently fall back to."""
-    patch_config.set('Trigger', 'option.pulse_train', 'TriggerOnePulseTrain')
-    protocol = _bare_protocol()
-    protocol._timing_param = {}
-
-    with pytest.raises(SystemExit):
-        protocol.configure_timing(pulse_dur=10, trigger_option='TriggerOnePulseTrain')
-
-
-# --- buffer_num ---------------------------------------------------------------
-# Which of the driving system's hardware buffers this protocol targets -- only meaningful for a
-# driving system that actually has more than one (see DrivingSystem.max_buffers); a driving
-# system with none at all (max_buffers == 1, the default) only ever accepts buffer_num == 0.
-
-def test_buffer_num_defaults_to_zero():
-    protocol = _bare_protocol()
-    protocol._buffer_num = 0
-
-    assert protocol.buffer_num == 0
-
-
-def test_buffer_num_setter_accepts_value_within_range():
-    protocol = _bare_protocol()
-    protocol._driving_sys = SimpleNamespace(serial='DS1', max_buffers=2)
-
-    protocol.buffer_num = 1
-
-    assert protocol.buffer_num == 1
-
-
-def test_buffer_num_setter_rejects_negative_value():
-    protocol = _bare_protocol()
-    protocol._driving_sys = SimpleNamespace(serial='DS1', max_buffers=2)
-
-    with pytest.raises(SystemExit):
-        protocol.buffer_num = -1
-
-
-def test_buffer_num_setter_exits_when_at_or_above_max_buffers():
-    protocol = _bare_protocol()
-    protocol._driving_sys = SimpleNamespace(serial='DS1', max_buffers=2)
-
-    with pytest.raises(SystemExit):
-        protocol.buffer_num = 2  # only 0 and 1 are valid when max_buffers == 2
-
-
-def test_buffer_num_setter_exits_for_any_nonzero_value_when_driving_system_has_no_buffers():
-    """max_buffers defaults to 1 for a driving system with no real buffer concept at all --
-    buffer_num can then only ever be 0."""
-    protocol = _bare_protocol()
-    protocol._driving_sys = SimpleNamespace(serial='DS1', max_buffers=1)
-
-    with pytest.raises(SystemExit):
-        protocol.buffer_num = 1
 
 
 # --- driving_sys ------------------------------------------------------------

@@ -118,14 +118,21 @@ POWER_OPTION = 'Max. pressure in free water [MPa]'
 TRANSDUCER_1 = 'IS_PCD15287_01001'
 TRANSDUCER_2 = 'IS_PCD15287_01002'
 
-# Ramping and the trigger configuration are both whole-group settings for the generator, not
-# something each interleaved protocol configures independently -- send_protocol()/
-# wait_for_trigger() below only ever read them from the first protocol given (protocol_a), and
-# exit with a clear error if the interleaved protocols don't all declare the same values.
-# Defined once here and reused for both protocols so they can never accidentally drift apart.
+# Ramping is a whole-group setting for the generator, not something each interleaved protocol
+# configures independently -- send_protocol() below only ever reads it from the first protocol
+# given (protocol_a), and exits with a clear error if the interleaved protocols don't all declare
+# the same values. Defined once here and reused for both protocols' own configure_timing() calls
+# below so they can never accidentally drift apart.
 RAMP_SHAPE = 'Tukey'
 RAMP_DUR = 5  # [ms], with at least 70 us between ramping up and down
+
+# Trigger configuration (trigger_option/n_triggers) is a call-level parameter of
+# IGT.wait_for_trigger() now, not of any one TUSProtocol (see TUSProtocol's own docstring for
+# why) -- there is exactly one trigger event for the whole interleaved group, so these live here
+# as plain variables instead of on either protocol, reused below when actually sending/waiting
+# on the group.
 TRIGGER_OPTION = 'TriggerWholeProtocol'
+N_TRIGGERS = None  # only applies (and is required) when TRIGGER_OPTION == 'TriggerOnePulseTrain'
 
 protocol_a = tus_protocol.TUSProtocol('IGT-32-ch_comb_2x10-ch')
 slot_a1 = protocol_a.add_slot(
@@ -145,12 +152,11 @@ protocol_a.configure_timing(
     pulse_ramp_shape=RAMP_SHAPE,
     pulse_ramp_dur=RAMP_DUR,
     pulse_rep_int=100,  # [ms], pulse repetition interval
-    trigger_option=TRIGGER_OPTION,
 )
 
-# Ramping and trigger_option must match protocol_a's exactly (send_protocol()/wait_for_trigger()
-# enforce this) -- reusing the same RAMP_SHAPE/RAMP_DUR/TRIGGER_OPTION constants above, rather
-# than repeating the values, makes that impossible to get wrong by accident.
+# Ramping must match protocol_a's exactly (send_protocol() enforces this) -- reusing the same
+# RAMP_SHAPE/RAMP_DUR constants above, rather than repeating the values, makes that impossible to
+# get wrong by accident.
 protocol_b = tus_protocol.TUSProtocol('IGT-32-ch_comb_2x10-ch')
 slot_b1 = protocol_b.add_slot(
     TRANSDUCER_1,
@@ -169,7 +175,6 @@ protocol_b.configure_timing(
     pulse_ramp_shape=RAMP_SHAPE,
     pulse_ramp_dur=RAMP_DUR,
     pulse_rep_int=100,  # [ms], pulse repetition interval
-    trigger_option=TRIGGER_OPTION,
 )
 
 # How long the alternating group as a whole keeps repeating [ms]. Required whenever more than
@@ -191,7 +196,8 @@ try:
     #igt_driving_sys.execute_protocol([protocol_a, protocol_b], total_alternating_duration_ms)
 
     # or even better wait for trigger
-    igt_driving_sys.wait_for_trigger([protocol_a, protocol_b], total_alternating_duration_ms)
+    igt_driving_sys.wait_for_trigger([protocol_a, protocol_b], TRIGGER_OPTION, N_TRIGGERS,
+                                     total_alternating_duration_ms)
 
     # wait_for_trigger() above only arms the protocol to fire on the external trigger and
     # returns immediately -- it does NOT wait for, or check, the actual execution result. The
@@ -225,8 +231,7 @@ try:
     # instead of wait_for_trigger_result(), make sure you have your own way of confirming the
     # protocol actually finished (e.g. also call wait_for_trigger_result() once you expect it
     # to have) before disconnecting.
-    igt_driving_sys.wait_for_trigger_result(protocol_a.buffer_num,
-                                            timeout_s=total_alternating_duration_ms / 1000.0)
+    igt_driving_sys.wait_for_trigger_result(timeout_s=total_alternating_duration_ms / 1000.0)
 
 finally:
     # By the time we reach here, the protocol has actually finished executing either way:

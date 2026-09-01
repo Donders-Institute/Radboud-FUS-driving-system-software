@@ -8,6 +8,11 @@
 
 driving_sys_serial: IGT-32-ch_comb_2x10-ch  # print(driving_system.get_ds_serials()) for options
 
+# 'None' (used here) means no trigger at all -- executed directly. 'TriggerOnePulseTrain' fires
+# one pulse train per trigger received (also requires n_triggers); 'TriggerWholeProtocol' fires
+# the entire, already fully-timed protocol at once with a single trigger.
+trigger_option: None
+
 protocols:
   - slots:
       # Both transducers are physically connected for the whole session -- slot 0 starts
@@ -35,12 +40,6 @@ protocols:
       pulse_train_rep_int: 1000  # [ms]
       # keeps repeating for 5 s in total, i.e. 5 repetitions of the whole train
       pulse_train_rep_dur: 5    # [s]
-
-      # 'None' (used here) means no trigger at all -- executed directly. 'TriggerOnePulseTrain'
-      # fires one pulse train per trigger received (also requires n_triggers);
-      # 'TriggerWholeProtocol' fires the entire, already fully-timed protocol at once with a
-      # single trigger.
-      trigger_option: None
 
 # total_alternating_duration_ms is only needed when protocols above has more than one entry --
 # omit it entirely for a single protocol like this one.

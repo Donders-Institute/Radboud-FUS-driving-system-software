@@ -45,10 +45,11 @@ class DrivingSystem:
             simultaneously (see TUSProtocol.add_slot()). Default 1 -- a driving system that
             doesn't declare a higher value is single-transducer-only.
         max_buffers (int): The number of hardware buffers this driving system can hold a
-            protocol in at once (see TUSProtocol.buffer_num) -- each buffer can be pre-loaded
-            with its own protocol ahead of time and triggered/executed independently. Default 1 --
-            a driving system that doesn't declare a higher value has no real buffer concept at
-            all (buffer_num is then only ever 0).
+            protocol in at once (see the buffer_num parameter of IGT.send_protocol()/
+            wait_for_trigger()/execute_protocol()) -- each buffer can be pre-loaded with its own
+            protocol ahead of time and triggered/executed independently. Default 1 -- a driving
+            system that doesn't declare a higher value has no real buffer concept at all
+            (buffer_num is then only ever 0).
         is_active (Boolean): Indication if the driving system is used with the code.
     """
 

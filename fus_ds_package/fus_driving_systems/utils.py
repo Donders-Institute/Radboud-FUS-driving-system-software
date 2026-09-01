@@ -99,9 +99,13 @@ def get_config_value(logger, config, section, key, default, is_sys_exit=False):
         message = (f"{message}, using default: {default} "
                    f"(called from {file_name}, {function_name} at line {line_number})")
 
-        # Log the warning
+        # Log the warning -- logger is None only in a bootstrap context, before
+        # initialize_logger()/sync_logger() has run. logging.warning() (module-level, hits the
+        # root logger) is used instead of print() so this still goes through the logging
+        # framework and lands on stderr (via the root logger's default "last resort" handler)
+        # rather than stdout, matching where a warning belongs.
         if logger is None:
-            print(message)
+            logging.warning(message)
         else:
             logger.warning(message)
 

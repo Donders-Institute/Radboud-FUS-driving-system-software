@@ -97,9 +97,6 @@ class SonicConcepts(ds.ControlDrivingSystem):
 
             self.protocol_sent = True
 
-            if protocol.wait_for_trigger:
-                self._send_command('TRIGGERMODE=1\r\n')
-
         else:
             get_logger().error("No connection with driving system.")
             get_logger().error("Reconnecting with driving system...")
@@ -108,34 +105,75 @@ class SonicConcepts(ds.ControlDrivingSystem):
             self.connect(protocol.driving_sys.connect_info)
             self.send_protocol(protocol)
 
+    def wait_for_trigger(self, protocol):
+        """
+        Arms the previously sent protocol to fire on an external trigger, instead of firing
+        immediately via execute_protocol().
+
+        Exits with a clear message if send_protocol() hasn't been called yet -- unlike a
+        dropped connection (which reconnects and resends automatically, since that's an
+        external failure rather than a caller mistake), this method never sends on the
+        caller's behalf.
+
+        Parameters:
+            protocol(Object): Same protocol already passed to send_protocol().
+        """
+
+        get_logger().info('Waiting for trigger...')
+
+        # Checked regardless of connection state, and before it: a protocol that was never
+        # sent is a caller mistake either way (never connected at all, or connected but
+        # forgot to call send_protocol()) -- not something to silently paper over here.
+        if not self.is_protocol_sent():
+            message = ('No protocol has been sent yet -- call send_protocol() before ' +
+                       'wait_for_trigger().')
+            get_logger().critical(message)
+            sys.exit(message)
+
+        if self.is_connected():
+            self._send_command('TRIGGERMODE=1\r\n')
+        else:
+            get_logger().warning("No connection with driving system.")
+            get_logger().warning("Reconnecting with driving system...")
+
+            # if no connection can be made, program stops preventing infinite loop
+            self.connect(protocol.driving_sys.connect_info)
+            self.send_protocol(protocol)
+            self.wait_for_trigger(protocol)
+
     def execute_protocol(self, protocol):
         """
         Executes the previously sent protocol on the Sonic Concepts ultrasound driving system.
+
+        Exits with a clear message if send_protocol() hasn't been called yet -- unlike a
+        dropped connection (which reconnects and resends automatically, since that's an
+        external failure rather than a caller mistake), this method never sends on the
+        caller's behalf.
         """
 
         get_logger().info('Executing protocol...')
 
+        # Checked regardless of connection state, and before it: a protocol that was never
+        # sent is a caller mistake either way (never connected at all, or connected but
+        # forgot to call send_protocol()) -- not something to silently paper over here.
+        if not self.is_protocol_sent():
+            message = ('No protocol has been sent yet -- call send_protocol() before ' +
+                       'execute_protocol().')
+            get_logger().critical(message)
+            sys.exit(message)
+
         if self.is_connected():
-            if self.is_protocol_sent():
-                try:
-                    cmd = 'START\r'
-                    self.gen.write(cmd.encode('ascii'))
-                    time.sleep(0.05)
-                    line = self.gen.readline()
-                    get_logger().debug('START: %s', line)
+            try:
+                cmd = 'START\r'
+                self.gen.write(cmd.encode('ascii'))
+                time.sleep(0.05)
+                line = self.gen.readline()
+                get_logger().debug('START: %s', line)
 
-                except serial.SerialException as why:
-                    message = f"Exception: {why}"
-                    get_logger().critical(message)
-                    sys.exit(message)
-            else:
-                get_logger().warning(
-                    'The protocol has to be sent first using send_protocol() before ' +
-                    'the driving system can execute a protocol.')
-                get_logger().warning('Sending protocol...')
-
-                self.send_protocol(protocol)
-                self.execute_protocol(protocol)
+            except serial.SerialException as why:
+                message = f"Exception: {why}"
+                get_logger().critical(message)
+                sys.exit(message)
 
         else:
             get_logger().warning("No connection with driving system.")

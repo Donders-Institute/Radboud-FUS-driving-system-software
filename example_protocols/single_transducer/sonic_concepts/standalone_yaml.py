@@ -41,10 +41,21 @@ logger = initialize_logger(log_dir, filename)
 from fus_driving_systems.sonic_concepts import sonic_concepts_ds
 from fus_driving_systems.protocol_loader import load_protocol
 
+# load_protocol() returns a 5-tuple: (protocols, total_alternating_duration_ms, trigger_option,
+# n_triggers, buffer_num). total_alternating_duration_ms/n_triggers/buffer_num don't apply here
+# -- SonicConcepts has no interleaving, per-trigger-count, or buffer concept. trigger_option is
+# used below to decide whether to arm for an external trigger (wait_for_trigger()) or execute
+# directly (execute_protocol()).
+#
 # require_hash=False (the default) -- set to True once you have a real protocol.yaml you don't
 # want accidentally changed; see README.md's "Load a protocol from a YAML file" section.
-protocols, _ = load_protocol('protocol.yaml', require_hash=False)
+protocols, total_alternating_duration_ms, trigger_option, n_triggers, _ = load_protocol(
+    'protocol.yaml', require_hash=False)
 protocol = protocols[0]
+
+# trigger_option is None when protocol.yaml omits the key entirely, or the literal string 'None'
+# when it's set explicitly (as protocol.yaml does here) -- either way means no trigger at all.
+wait_for_trigger = trigger_option not in (None, 'None')
 
 # The driving system serial only needs to live in protocol.yaml -- load_protocol() already
 # resolved it into a real DrivingSystem, reachable via the protocol's own driving_sys. The COM
@@ -60,16 +71,17 @@ sc_ds.connect(protocol.driving_sys.connect_info)
 sc_ds.check_tran_sel()
 
 try:
-    # If wait_for_trigger is true, only the protocol is sent and will be executed by the
-    # external trigger. If false, the protocol is sent and executed directly.
-    if protocol.wait_for_trigger:
-        sc_ds.send_protocol(protocol)
+    sc_ds.send_protocol(protocol)
+
+    # If wait_for_trigger is true, the protocol is armed and will be executed by the external
+    # trigger. If false, the protocol is executed directly.
+    if wait_for_trigger:
+        sc_ds.wait_for_trigger(protocol)
     else:
-        sc_ds.send_protocol(protocol)
         sc_ds.execute_protocol(protocol)
 
 finally:
     # When the protocol is executed using execute_protocol(), the system is disconnected
     # automatically -- when using the external trigger instead, disconnect it yourself.
-    if not protocol.wait_for_trigger:
+    if not wait_for_trigger:
         sc_ds.disconnect()

@@ -39,6 +39,32 @@ def _pp_summary(pp):
     return f'pp - order: {pp.c.shape[0]} - pieces: {pp.c.shape[1]}'
 
 
+def _enforce_max_pressure(press_mpa):
+    """
+    The one, single-source-of-truth safety check for THE software pressure limit: sys.exit()s
+    if press_mpa exceeds the configured 'Maximum pressure allowed in free water [MPa]'. Shared
+    by every code path that can ever produce a pressure value (_set_press()'s direct input,
+    _convert_ampl_to_press()'s derived result) specifically so a future reviewer -- or a future
+    third pressure-producing path, e.g. once GitHub #147's more generic power-parameter
+    conversion lands -- can grep for calls to this one function to verify the limit is actually
+    enforced everywhere it needs to be, instead of having to separately verify the same
+    comparison logic wherever it happens to be copy-pasted. The check is strict '>' (not '>='):
+    a value exactly at the limit is accepted.
+
+    Parameters:
+        press_mpa (float): The pressure [MPa] to check.
+    """
+
+    max_press = float(get_config_value(get_logger(), config, 'Power',
+                                       'Maximum pressure allowed in free water [MPa]', 1.4))
+    if press_mpa > max_press:
+        message = (f'The set maximum pressure in free water of {press_mpa:.2f} [MPa] is ' +
+                   f'crossing the allowed limit of {max_press:.2f} [MPa]. Please change your ' +
+                   'value.')
+        get_logger().critical(message)
+        sys.exit(message)
+
+
 class TransducerSlot:
     """
     Class representing a single transducer, and everything about how it's driven, within a
@@ -645,15 +671,7 @@ class TransducerSlot:
             validate_value(press, 'Maximum pressure in free water [MPa] (press)',
                            True, True, False, False)
 
-            max_press = float(get_config_value(get_logger(), config, 'Power',
-                                               'Maximum pressure allowed in free water [MPa]',
-                                               1.4))
-            if press > max_press:
-                message = (f'The set maximum pressure in free water of {press:.2f} [MPa] is ' +
-                           f'crossing the allowed limit of {max_press:.2f} [MPa]. Please change' +
-                           ' your value.')
-                get_logger().critical(message)
-                sys.exit(message)
+            _enforce_max_pressure(press)
 
             self._press = press
 
@@ -1678,15 +1696,7 @@ class TransducerSlot:
 
         if status:
             press_mpa = (press_pa_with_eq_fact / eq_factor) * 1e-6
-            max_press = float(get_config_value(
-                get_logger(), config, 'Power',
-                'Maximum pressure allowed in free water [MPa]', 1.4))
-            if press_mpa > max_press:
-                message = (f'The set maximum pressure in free water of {press_mpa:.2f} [MPa] ' +
-                           f'is crossing the allowed limit of {max_press:.2f} [MPa]. Please ' +
-                           'change your value.')
-                get_logger().critical(message)
-                sys.exit(message)
+            _enforce_max_pressure(press_mpa)
 
             return press_mpa  # MPa
 

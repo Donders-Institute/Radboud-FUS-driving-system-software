@@ -44,17 +44,17 @@ class TUSProtocol():
     several, so a script is never in doubt about which access style applies to a given driving
     system.
 
+    buffer_num and trigger_option/n_triggers are not attributes of this class. There is exactly
+    one hardware buffer and one trigger event per send_protocol()/wait_for_trigger()/
+    execute_protocol() call, whether it's given a single protocol or several interleaved ones --
+    so these are call-level parameters of those methods instead (see their own docstrings), not
+    per-protocol properties. Ramping stays here, since some driving system could in principle
+    support per-protocol ramping even while interleaving -- IGT specifically doesn't, but that's
+    a fact about IGT's hardware, not a reason to model ramping as call-level for every driving
+    system.
+
     Attributes:
-        _buffer_num (int): Which of the driving system's hardware buffers this protocol targets,
-                        starting at 0. Only used by IGT, to pre-load a protocol into a specific
-                        buffer ahead of time and send/trigger it independently later -- see
-                        DrivingSystem.max_buffers for how many buffers a given driving system
-                        actually has (only 0 is valid for a driving system with no real buffer
-                        concept at all, i.e. max_buffers == 1).
         _driving_sys (DrivingSystem): The driving system associated with the protocol.
-        _trigger_option (str): chosen trigger option -- wait_for_trigger is derived from this,
-                               not stored separately (see the wait_for_trigger property).
-        _n_triggers (int): number of times a trigger will be sent.
         _slots (list(TransducerSlot)): The transducer slot(s) of this protocol -- see add_slot().
         _timing_param (dict.):
             _pulse_dur (float): Pulse duration of the protocol [ms].
@@ -69,10 +69,10 @@ class TUSProtocol():
         info(): Returns a formatted string containing information about the protocol.
         get_ds_serials(): Returns a list of serial numbers for available driving systems.
         get_tran_serials(): Returns a list of serial numbers for available transducers.
-        getters (attribute name without _) for above attributes. Every _timing_param field, plus
-        _trigger_option/_n_triggers, has a getter only -- configure_timing() is the only way to
-        set any of them, precisely because they cascade/interact with each other and are prone to
-        ordering hazards if set individually and out of order.
+        getters (attribute name without _) for above attributes. Every _timing_param field has a
+        getter only -- configure_timing() is the only way to set any of them, precisely because
+        they cascade/interact with each other and are prone to ordering hazards if set
+        individually and out of order.
     """
 
     def __init__(self, driving_sys_serial, engineering_mode=False):
@@ -90,8 +90,6 @@ class TUSProtocol():
 
         self._engineering_mode = engineering_mode
 
-        self._buffer_num = 0
-
         self._driving_sys = ds.DrivingSystem()
         self._driving_sys.set_ds_info(driving_sys_serial)
 
@@ -104,15 +102,6 @@ class TUSProtocol():
         if driving_sys_serial not in _logged_driving_systems:
             get_logger().debug(f'Driving system info:\n {self._driving_sys}')
             _logged_driving_systems.add(driving_sys_serial)
-
-        back_up_trigger_option = get_config_value(get_logger(), config, 'Trigger', 'Options',
-                                                  '').split('\n')[0]
-
-        self._trigger_option = get_config_value(get_logger(), config, 'Trigger', 'Default option',
-                                                back_up_trigger_option)
-
-        self._n_triggers = int(get_config_value(
-            get_logger(), config, 'Trigger', 'Default n_triggers', 0))
 
         # Transducer slot(s) -- see add_slot(). Call it at least once before using this protocol.
         self._slots = []
@@ -154,12 +143,6 @@ class TUSProtocol():
         """
         info = ''
 
-        info += f"Buffer number (for IGT purposes): {self._buffer_num} \n "
-
-        info += f"Wait for trigger: {self.wait_for_trigger} \n "
-        info += f"Trigger option: {self._trigger_option} \n "
-        info += f"Number of times a trigger is sent: {self._n_triggers} \n "
-
         for i, slot in enumerate(self._slots):
             info += f"--- Transducer slot {i} (counting from 0, i.e. slots[{i}]) --- \n "
             info += str(slot)
@@ -181,42 +164,6 @@ class TUSProtocol():
         return info
 
     @property
-    def buffer_num(self):
-        """
-        Getter method for the buffer number.
-
-        Returns:
-            int: Which of the driving system's hardware buffers this protocol targets,
-                 starting at 0. See DrivingSystem.max_buffers for how many this driving system
-                 actually has.
-        """
-
-        return self._buffer_num
-
-    @buffer_num.setter
-    def buffer_num(self, buffer_num):
-        """
-        Sets the buffer number.
-
-        Parameters:
-            buffer_num (int): Which of the driving system's hardware buffers this protocol
-                              targets, starting at 0. Must be within
-                              [0, driving_sys.max_buffers).
-        """
-
-        validate_value(buffer_num, 'Buffer number (buffer_num)', True, True, False, False)
-
-        if buffer_num >= self._driving_sys.max_buffers:
-            message = (f'Buffer number {buffer_num} is not valid for driving system ' +
-                       f'{self._driving_sys.serial} -- it has {self._driving_sys.max_buffers} ' +
-                       'buffer(s), so buffer_num must be between 0 and ' +
-                       f'{self._driving_sys.max_buffers - 1}.')
-            get_logger().critical(message)
-            sys.exit(message)
-
-        self._buffer_num = buffer_num
-
-    @property
     def driving_sys(self):
         """
         Getter method for the driving system. Read-only -- set once, at construction, and never
@@ -232,51 +179,6 @@ class TUSProtocol():
         """
 
         return self._driving_sys
-
-    @property
-    def wait_for_trigger(self):
-        """
-        Gets the wait_for_trigger parameter -- derived from trigger_option, not stored
-        independently: True whenever trigger_option is anything other than the config's
-        designated "no trigger" option (option.none). There is no setter -- to stop waiting for
-        a trigger, set trigger_option to that "no trigger" option instead (mirroring how there is
-        no separate "is ramping enabled" flag either, see pulse_ramp_shape).
-
-        Returns:
-            bool: Whether the driving system is currently configured to wait for a trigger.
-        """
-        none_option = get_config_value(get_logger(), config, 'Trigger', 'option.none', 'None')
-        return self._trigger_option != none_option
-
-    def get_trigger_options(self):
-        """
-        Returns a list of available trigger options.
-
-        Returns:
-            List[str]: Available trigger options.
-        """
-
-        return get_config_value(get_logger(), config, 'Trigger', 'Options', '').split('\n')
-
-    @property
-    def trigger_option(self):
-        """
-        Gets the trigger_option parameter -- see configure_timing(), the only way to set it.
-
-        Returns:
-            str: The chosen trigger option.
-        """
-        return self._trigger_option
-
-    @property
-    def n_triggers(self):
-        """
-        Gets the n_triggers parameter -- see configure_timing(), the only way to set it.
-
-        Returns:
-            int: The number of times a trigger will be sent.
-        """
-        return self._n_triggers
 
     @property
     def slots(self):
@@ -488,51 +390,34 @@ class TUSProtocol():
         return self._timing_param['pulse_train_rep_dur']
 
     def configure_timing(self, pulse_dur, pulse_rep_int=None, pulse_train_dur=None,
-                         trigger_option=None, pulse_ramp_shape=None, pulse_ramp_dur=None,
-                         n_triggers=None, pulse_train_rep_int=None, pulse_train_rep_dur=None):
+                         pulse_ramp_shape=None, pulse_ramp_dur=None,
+                         pulse_train_rep_int=None, pulse_train_rep_dur=None):
         """
-        The only way to set any timing/trigger parameter -- pulse_dur, pulse_rep_int,
-        pulse_train_dur, pulse_train_rep_int, pulse_train_rep_dur, pulse_ramp_shape,
-        pulse_ramp_dur, trigger_option and n_triggers all have getters only. There used to be a
-        separate setter per parameter, each cascading its own value forward to every level above
-        it (pulse_dur -> pulse_rep_int -> pulse_train_dur -> pulse_train_rep_int ->
-        pulse_train_rep_dur), so calling them in the wrong order (e.g. pulse_train_dur before
-        pulse_dur) silently clobbered an earlier value -- plus a second, easy-to-miss ordering
-        hazard between trigger_option and pulse_train_rep_dur specifically (see n_triggers
-        below). Funneling every change through this one method removes both hazards at the
-        source, rather than chasing each new ordering combination as it turns up.
+        The only way to set any timing parameter -- pulse_dur, pulse_rep_int, pulse_train_dur,
+        pulse_train_rep_int, pulse_train_rep_dur, pulse_ramp_shape and pulse_ramp_dur all have
+        getters only. There used to be a separate setter per parameter, each cascading its own
+        value forward to every level above it (pulse_dur -> pulse_rep_int -> pulse_train_dur ->
+        pulse_train_rep_int -> pulse_train_rep_dur), so calling them in the wrong order (e.g.
+        pulse_train_dur before pulse_dur) silently clobbered an earlier value. Funneling every
+        change through this one method removes that hazard at the source, rather than chasing
+        each new ordering combination as it turns up.
+
+        Trigger configuration (trigger_option/n_triggers) is not part of this method -- it's a
+        parameter of IGT.wait_for_trigger() instead. pulse_train_rep_int/pulse_train_rep_dur
+        below describe how many
+        times this protocol's own pulse train repeats as a purely internal timing fact,
+        independent of how the whole thing eventually gets triggered -- when trigger_option ends
+        up being 'TriggerOnePulseTrain' at execute time, wait_for_trigger() overrides the actual
+        repetition count from n_triggers instead and these two are simply not used for anything,
+        harmless whether set here or not.
 
         pulse_dur is the only required parameter. Every level above it defaults to the level
         directly below it when not given (pulse_rep_int defaults to pulse_dur, pulse_train_dur to
         pulse_rep_int), so a single pulse train, repeated once, is already a complete,
-        self-consistent result without giving anything else. trigger_option/pulse_ramp_shape/
-        pulse_ramp_dur left as None do NOT inherit whatever was configured before -- they reset
-        to their own safe/off default (the config's "no trigger" option; "no ramping" and a ramp
-        duration of 0) every single call, exactly like pulse_dur's own family resets to "repeat
-        once" rather than reusing a stale value. This matters most for trigger_option: since it
-        decides whether the driving system waits for an external trigger at all (see
-        wait_for_trigger), silently inheriting whatever an earlier, unrelated call (or an
-        institution's own config default) happened to leave it at would be a real behavior
-        change hiding behind an omitted argument -- resetting to "no trigger" instead means
-        omitting it is always the same, safe, predictable choice. Pass trigger_option explicitly
-        every time a trigger is actually wanted.
-
-        n_triggers and (pulse_train_rep_int and/or pulse_train_rep_dur) are two mutually
-        exclusive ways of saying "how many times does the pulse train repeat", and which one
-        applies is decided by trigger_option, not left for the caller to match up.
-        'TriggerOnePulseTrain' fires exactly one pulse train per external trigger received -- the
-        driving system needs to know in advance how many triggers to expect, so n_triggers is
-        required (not optional) for this option specifically, and pulse_train_rep_int/
-        pulse_train_rep_dur don't apply at all. Every other trigger_option -- 'None' (no trigger
-        at all) or 'TriggerWholeProtocol' (one trigger fires the entire, already
-        fully-timed protocol at once, equivalent to executing it directly but gated behind a
-        single external trigger) alike -- uses pulse_train_rep_int/pulse_train_rep_dur instead;
-        n_triggers isn't valid here and is instead forced to 1 for
-        'TriggerWholeProtocol' specifically (exactly one trigger is what that option
-        needs), purely for ControlDrivingSystem implementations' own logging of "how many
-        triggers are expected" -- it's never read to decide anything else on the hardware side
-        for that trigger mode. Giving n_triggers together with either duration argument, or
-        omitting n_triggers under 'TriggerOnePulseTrain', exits with a clear message.
+        self-consistent result without giving anything else. pulse_ramp_shape/pulse_ramp_dur left
+        as None do NOT inherit whatever was configured before -- they reset to their own safe/off
+        default ("no ramping" and a ramp duration of 0) every single call, exactly like
+        pulse_dur's own family resets to "repeat once" rather than reusing a stale value.
 
         pulse_train_rep_int/pulse_train_rep_dur may be given together, or just one of the two,
         or neither -- resolved in that order, not independently: pulse_train_rep_int defaults to
@@ -549,20 +434,11 @@ class TUSProtocol():
             pulse_dur (float): Pulse duration [ms].
             pulse_rep_int (float): Pulse repetition interval [ms].
             pulse_train_dur (float): Pulse train duration [ms].
-            trigger_option (str): The chosen trigger option, e.g. one of
-                                  self.get_trigger_options(). Defaults to the config's "no
-                                  trigger" option when not given -- never inherited from an
-                                  earlier call.
             pulse_ramp_shape (str): Selected pulse ramp shape, e.g. one of
                                     self.get_ramp_shapes(). Defaults to "no ramping" when not
                                     given.
             pulse_ramp_dur (float): Ramp duration [ms]. Defaults to 0 when not given.
-            n_triggers (int): Number of times a trigger will be sent -- required when
-                              trigger_option is 'TriggerOnePulseTrain' (one pulse train fires per
-                              trigger), not valid for any other trigger_option.
-            pulse_train_rep_int (float): Pulse train repetition interval [ms] -- only valid when
-                                        trigger_option is anything other than
-                                        'TriggerOnePulseTrain'.
+            pulse_train_rep_int (float): Pulse train repetition interval [ms].
             pulse_train_rep_dur (float): Pulse train repetition duration [s] -- see
                                         pulse_train_rep_int above.
         """
@@ -600,81 +476,22 @@ class TUSProtocol():
                        True, True, True, False)
         self._timing_param['pulse_train_dur'] = pulse_train_dur
 
-        # --- how the pulse train itself repeats -- decided by which trigger mode applies ---
-        # wait_for_trigger is derived from trigger_option, not set separately -- see its property.
-        none_trigger = get_config_value(get_logger(), config, 'Trigger', 'option.none', 'None')
-        if trigger_option is None:
-            trigger_option = none_trigger
-        if trigger_option not in self.get_trigger_options():
-            message = f'{trigger_option} is not an available trigger option.'
-            get_logger().critical(message)
-            sys.exit(message)
-        self._trigger_option = trigger_option
-
-        rep_int_given = pulse_train_rep_int is not None
-        rep_dur_given = pulse_train_rep_dur is not None
-
-        pulse_train_trigger = get_config_value(get_logger(), config, 'Trigger',
-                                               'option.pulse_train', 'TriggerOnePulseTrain')
-        if self._trigger_option == pulse_train_trigger:
-            # Triggering per whole pulse train: n_triggers says how many times the trigger fires.
-            # pulse_train_rep_int/pulse_train_rep_dur don't apply to this mode at all -- they
-            # simply default to pulse_train_dur below, matching the "repeat once" default.
-            if rep_int_given or rep_dur_given:
-                message = ("pulse_train_rep_int/pulse_train_rep_dur don't apply when " +
-                           f"trigger_option is '{pulse_train_trigger}' -- give n_triggers " +
-                           'instead.')
-                get_logger().critical(message)
-                sys.exit(message)
-            # n_triggers is required here, unlike everywhere else in this method -- one pulse
-            # train fires per trigger received, so the driving system genuinely needs to know in
-            # advance how many triggers to expect; there is no sensible default to fall back to.
-            if n_triggers is None:
-                message = ("n_triggers is required when trigger_option is " +
-                           f"'{pulse_train_trigger}' -- it tells the driving system how many " +
-                           'triggers to expect (one pulse train fires per trigger).')
-                get_logger().critical(message)
-                sys.exit(message)
-            validate_value(n_triggers, 'Number of anticipated triggers (n_triggers)',
-                           True, True, True, False)
-            self._n_triggers = n_triggers
+        # --- how the pulse train itself repeats -- a purely internal timing fact, independent
+        # of how (or whether) the whole thing ends up externally triggered (see this method's
+        # own docstring). pulse_train_rep_int is resolved FIRST, then pulse_train_rep_dur is
+        # resolved using whatever pulse_train_rep_int turned out to be. Four cases:
+        #   - neither given: both default to pulse_train_dur -> repeats exactly once.
+        #   - only pulse_train_rep_int given: pulse_train_rep_dur defaults to match it ->
+        #     still exactly once, just at that interval instead of pulse_train_dur.
+        #   - only pulse_train_rep_dur given: pulse_train_rep_int defaults to
+        #     pulse_train_dur, so the pulse train repeats back-to-back until it fills that
+        #     total duration (e.g. pulse_train_rep_dur=5 s with pulse_train_dur=200 ms means
+        #     25 repetitions, not 1).
+        #   - both given: used exactly as given.
+        if pulse_train_rep_int is None:
             pulse_train_rep_int = pulse_train_dur
-            pulse_train_rep_dur = pulse_train_dur / 1e3  # seconds -- this parameter's own unit
-        else:
-            # Every other trigger_option -- 'None' (no trigger at all) or
-            # 'TriggerWholeProtocol' alike -- decides how many pulse train repetitions
-            # happen via pulse_train_rep_int/pulse_train_rep_dur instead; n_triggers doesn't
-            # apply here.
-            if n_triggers is not None:
-                message = ("n_triggers only applies when trigger_option is " +
-                           f"'{pulse_train_trigger}' -- give pulse_train_rep_int/" +
-                           'pulse_train_rep_dur instead.')
-                get_logger().critical(message)
-                sys.exit(message)
-
-            # pulse_train_rep_int is resolved FIRST, then pulse_train_rep_dur is resolved using
-            # whatever pulse_train_rep_int turned out to be. Four cases:
-            #   - neither given: both default to pulse_train_dur -> repeats exactly once.
-            #   - only pulse_train_rep_int given: pulse_train_rep_dur defaults to match it ->
-            #     still exactly once, just at that interval instead of pulse_train_dur.
-            #   - only pulse_train_rep_dur given: pulse_train_rep_int defaults to
-            #     pulse_train_dur, so the pulse train repeats back-to-back until it fills that
-            #     total duration (e.g. pulse_train_rep_dur=5 s with pulse_train_dur=200 ms means
-            #     25 repetitions, not 1).
-            #   - both given: used exactly as given.
-            if pulse_train_rep_int is None:
-                pulse_train_rep_int = pulse_train_dur
-            if pulse_train_rep_dur is None:
-                pulse_train_rep_dur = pulse_train_rep_int / 1e3
-
-            whole_protocol_trigger = get_config_value(get_logger(), config, 'Trigger',
-                                                      'option.whole_protocol',
-                                                      'TriggerWholeProtocol')
-            if self._trigger_option == whole_protocol_trigger:
-                # Purely for ControlDrivingSystem implementations' own logging of "how many
-                # triggers are expected" -- never used to decide anything on the hardware side
-                # for this trigger mode.
-                self._n_triggers = 1
+        if pulse_train_rep_dur is None:
+            pulse_train_rep_dur = pulse_train_rep_int / 1e3
 
         validate_value(pulse_train_rep_int,
                        'Pulse train repetition interval [ms] (pulse_train_rep_int)',

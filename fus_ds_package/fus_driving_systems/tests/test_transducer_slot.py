@@ -261,6 +261,20 @@ def test_convert_ampl_to_press_computes_pressure_within_limit(patch_config):
     assert press == pytest.approx(5e-5)
 
 
+def test_convert_ampl_to_press_accepts_pressure_exactly_at_the_configured_max(patch_config):
+    """The check is strict '>' (see _convert_ampl_to_press's own code), not '>=' -- a derived
+    pressure exactly at the configured limit must be accepted, not rejected. The two tests
+    around this one only ever use comfortably-within or well-over values; this is the one that
+    actually proves the boundary itself, for THE software safety limit."""
+    patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', str(5e-5))
+    slot = _bare_slot()
+    slot._conv_param = {'power_curve_pp': _identity_pp(-10.0, 1000.0)}
+
+    press = slot._convert_ampl_to_press([50], 1.0)  # produces exactly 5e-5 MPa
+
+    assert press == pytest.approx(5e-5)
+
+
 def test_convert_ampl_to_press_exits_when_result_exceeds_configured_max(patch_config):
     patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '1')
     slot = _bare_slot()
@@ -536,6 +550,23 @@ def test_press_setter_exits_when_above_configured_max(patch_config):
         slot._set_press(5)
 
 
+def test_press_setter_accepts_pressure_exactly_at_the_configured_max(patch_config):
+    """The check is strict '>' (see _set_press's own code), not '>=' -- a value exactly at the
+    configured limit must be accepted, not rejected. Every other test around this check uses a
+    value comfortably within or well over the limit; this is the one that actually proves the
+    intentional boundary semantics, for THE software safety limit."""
+    patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '1')
+    slot = _bare_slot()
+    slot.driving_sys = SimpleNamespace(
+        power_options=['Max. pressure in free water [MPa]'],
+        native_power_params=['Max. pressure in free water [MPa]'])
+    slot._ds_tran_combo = None  # native power option -- no active combo needed
+
+    slot._set_press(1)  # exactly at the configured max -- must not raise
+
+    assert slot._press == 1
+
+
 def test_press_setter_reports_missing_calibration_before_value_specific_errors(patch_config):
     """Fail fast: whether this driving system can accept press at all is checked before
     anything about the specific value (is_validated, the max-pressure limit) -- so a value
@@ -726,6 +757,30 @@ def test_volt_setter_with_multiple_values_skips_press_calculation(patch_config):
 
     assert slot._volt == [50, 60]
     assert slot._ampl == pytest.approx([50.0, 60.0])
+    assert slot._press is None
+
+
+def test_ampl_setter_with_multiple_values_skips_press_calculation(patch_config):
+    """Mirrors test_volt_setter_with_multiple_values_skips_press_calculation -- when more than
+    one amplitude is given, _convert_ampl_to_press_for_logging() is deliberately not called
+    (pressure cannot be derived from a per-element amplitude array), so self._press stays at
+    the None every power setter resets it to upfront, rather than being computed."""
+    patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
+    slot = _bare_slot()
+    slot._engineering_mode = True
+    slot.driving_sys = SimpleNamespace(
+        power_options=['Amplitude [%]'], native_power_params=['Amplitude [%]'], available_ch=2)
+    slot._ds_tran_combo = 'combo1'
+    slot._conv_param = {
+        'volt_curve_pp': _identity_pp(-10.0, 200.0),
+        'power_curve_pp': _identity_pp(-10.0, 1000.0),
+    }
+    slot._eq_factor = 1.0
+
+    slot._set_ampl([50, 60])
+
+    assert slot._ampl == [50, 60]
+    assert slot._volt == pytest.approx([50.0, 60.0])
     assert slot._press is None
 
 

@@ -42,9 +42,15 @@ logger = initialize_logger(log_dir, filename)
 from fus_driving_systems.igt import igt_ds
 from fus_driving_systems.protocol_loader import load_protocol
 
+# load_protocol() returns a 5-tuple: (protocols, total_alternating_duration_ms, trigger_option,
+# n_triggers, buffer_num). trigger_option/n_triggers are used below, forwarded straight into
+# wait_for_trigger() -- protocol.yaml sets trigger_option to 'TriggerWholeProtocol' and omits
+# n_triggers (not needed for that trigger_option). buffer_num is unused here.
+#
 # require_hash=False (the default) -- set to True once you have a real protocol.yaml you don't
 # want accidentally changed; see README.md's "Load a protocol from a YAML file" section.
-protocols, total_alternating_duration_ms = load_protocol('protocol.yaml', require_hash=False)
+protocols, total_alternating_duration_ms, trigger_option, n_triggers, _ = load_protocol(
+    'protocol.yaml', require_hash=False)
 
 # The driving system serial only needs to live in protocol.yaml -- load_protocol() already
 # resolved it into a real DrivingSystem, reachable via either protocol's own driving_sys (both
@@ -57,9 +63,10 @@ try:
 
     # wait for the external trigger rather than executing directly -- see standalone_plain.py
     # for the has_execution_error()/wait_for_trigger_result() explanation this pattern relies on.
-    igt_driving_sys.wait_for_trigger(protocols, total_alternating_duration_ms)
-    igt_driving_sys.wait_for_trigger_result(protocols[0].buffer_num,
-                                            timeout_s=total_alternating_duration_ms / 1000.0)
+    igt_driving_sys.wait_for_trigger(protocols, trigger_option, n_triggers,
+                                     total_alternating_duration_ms)
+
+    igt_driving_sys.wait_for_trigger_result(timeout_s=total_alternating_duration_ms / 1000.0)
 
 finally:
     # By the time we reach here, the protocol has actually finished executing: wait_for_trigger_

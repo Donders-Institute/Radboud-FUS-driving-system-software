@@ -114,10 +114,24 @@ slot = protocol.add_slot(
 # you can use the TUS Calculator to visualize the timing parameters:
 # https://www.itrusst.com/tus-calculator
 
-# configure_timing() sets every pulse/pulse-train/trigger parameter together, in one call --
-# it's the only way to set any of them (pulse_dur, pulse_rep_int, pulse_ramp_shape, ...,
-# trigger_option, n_triggers all have getters only), precisely because they cascade/interact
-# with each other and are prone to ordering hazards if set individually and out of order.
+# Whether to arm the driving system to wait for an external trigger (wait_for_trigger()) instead
+# of executing directly (execute_protocol()). For SC specifically, this is effectively binary:
+# send_protocol()/wait_for_trigger() only ever check whether a trigger is expected at all, never
+# which kind -- so 'TriggerOnePulseTrain' has no meaningful effect over 'TriggerWholeProtocol'
+# here. Unlike IGT's own 'TriggerWholeProtocol' (one trigger arms every repetition at once), SC's
+# driving system waits for a fresh external trigger each time it needs to fire the pulse train.
+# 'None' (this template's default) means no trigger at all -- executed directly. SonicConcepts
+# has no get_trigger_options() lookup of its own -- 'None' and 'TriggerWholeProtocol' (see
+# ds_config.ini's [Trigger] section for the full list shared with IGT) are the only two that make
+# an actual difference for SC.
+TRIGGER_OPTION = 'None'
+# TRIGGER_OPTION = 'TriggerWholeProtocol'
+WAIT_FOR_TRIGGER = TRIGGER_OPTION != 'None'
+
+# configure_timing() sets every pulse/pulse-train parameter together, in one call -- it's the
+# only way to set any of them (pulse_dur, pulse_rep_int, pulse_ramp_shape, ... all have getters
+# only), precisely because they cascade/interact with each other and are prone to ordering
+# hazards if set individually and out of order.
 protocol.configure_timing(
     # ## pulse ## #
     pulse_dur=10,  # [ms], pulse duration
@@ -135,18 +149,6 @@ protocol.configure_timing(
     # if you only want one pulse train, you don't need to set this at all -- it defaults to
     # pulse_rep_int. Set explicitly here for clarity.
     pulse_train_dur=200,  # [ms], pulse train duration -- 4 pulses per train (200 / 50)
-
-    # wait_for_trigger is derived from trigger_option -- there is no separate flag to set. For
-    # SC specifically, this is effectively binary: send_protocol()/execute_protocol() only ever
-    # check whether a trigger is expected at all (protocol.wait_for_trigger), never which kind --
-    # so 'TriggerOnePulseTrain' has no meaningful effect over 'TriggerWholeProtocol' here. Unlike
-    # IGT's own 'TriggerWholeProtocol' (one trigger arms every repetition at once), SC's driving
-    # system waits for a fresh external trigger each time it needs to fire the pulse train.
-    # 'None' (this template's default) means no trigger at all -- executed directly. To check
-    # available trigger options:
-    # print(protocol.get_trigger_options())
-    trigger_option='None',
-    # trigger_option='TriggerWholeProtocol'
 )
 
 # to get a summary of your entered protocol: print(protocol)
@@ -170,14 +172,14 @@ logger.info(f'The following protocol is used: {protocol}')
 # keeps on firing ultrasound protocols.
 
 try:
-    # If wait_for_trigger is true, only the protocol is sent and will be executed by the external trigger
-    if protocol.wait_for_trigger:
-        # currently, triggermode is set to 1. Triggermode of 2 is not supported yet.
-        sc_ds.send_protocol(protocol)
+    sc_ds.send_protocol(protocol)
 
-    # If wait_for_trigger is false, the protocol is sent and can be executed directly using the execute_protocol() function
+    # If WAIT_FOR_TRIGGER is true, the protocol is armed and will be executed by the external
+    # trigger. If false, the protocol is executed directly.
+    if WAIT_FOR_TRIGGER:
+        # currently, triggermode is set to 1. Triggermode of 2 is not supported yet.
+        sc_ds.wait_for_trigger(protocol)
     else:
-        sc_ds.send_protocol(protocol)
         sc_ds.execute_protocol(protocol)
 
 finally:
@@ -185,5 +187,5 @@ finally:
     # In the case your code is stopped abruptly, the driving system will be disconnected. Otherwise, there
     # is a change that it keeps on firing ultrasound protocols.
     # When using the external trigger, disconnect the driving system yourself.
-    if not protocol.wait_for_trigger:
+    if not WAIT_FOR_TRIGGER:
         sc_ds.disconnect()

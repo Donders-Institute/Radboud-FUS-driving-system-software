@@ -32,6 +32,7 @@ from fus_driving_systems.igt.utils import (ExecListener, VoltageFeedbackDispatch
 from fus_driving_systems.igt import transducer_xyz
 from fus_driving_systems.igt import unifus
 from fus_driving_systems.utils import get_config_value
+from fus_driving_systems.calc_utils import validate_value
 
 # Access the logger
 from fus_driving_systems.config.logging_config import (enable_crash_detection, get_logger,
@@ -86,7 +87,7 @@ class IGT(ds.ControlDrivingSystem):
         Checks whether a protocol has been sent to the given hardware buffer.
 
         Parameters:
-            buffer_num (int): Which hardware buffer to check (see TUSProtocol.buffer_num).
+            buffer_num (int): Which hardware buffer to check (starting at 0).
 
         Returns:
             bool: True if a protocol has been sent to that buffer, False otherwise.
@@ -122,7 +123,7 @@ class IGT(ds.ControlDrivingSystem):
         """
         Records the sent protocol under its buffer number in the sent protocol list.
             buffer_num: which hardware buffer this protocol was sent to (see
-                TUSProtocol.buffer_num)
+                starting at 0)
             protocols (list(TUSProtocol)): The protocol(s) actually given to send_protocol() for
                 this buffer. Stored three ways, for three different reasons: _build_
                 intensity_lines() snapshots it into plain, human-readable strings for reporting
@@ -150,7 +151,7 @@ class IGT(ds.ControlDrivingSystem):
         self.sent_protocols[buffer_num] = {}
         self.sent_protocols[buffer_num]['source_protocols'] = protocols
         self.sent_protocols[buffer_num]['intensity_lines'] = self._build_intensity_lines(
-            protocols)
+            protocols, buffer_num)
         self.sent_protocols[buffer_num]['protocol_fingerprints'] = (
             self._build_protocol_fingerprints(protocols))
         self.sent_protocols[buffer_num]['total_alternating_duration_ms'] = (
@@ -467,6 +468,26 @@ class IGT(ds.ControlDrivingSystem):
             get_logger().critical(message)
             sys.exit(message)
 
+    def _assert_valid_buffer_num(self, driving_sys, buffer_num):
+        """
+        Exits with a clear message unless buffer_num is a valid buffer for driving_sys.
+
+        Parameters:
+            driving_sys (DrivingSystem): The driving system buffer_num is being validated
+                against (protocols[0].driving_sys -- every protocol in a group already targets
+                the same driving system by construction).
+            buffer_num (int): Which hardware buffer to validate.
+        """
+
+        validate_value(buffer_num, 'Buffer number (buffer_num)', True, True, False, False)
+
+        if buffer_num >= driving_sys.max_buffers:
+            message = (f'Buffer number {buffer_num} is not valid for driving system ' +
+                       f'{driving_sys.serial} -- it has {driving_sys.max_buffers} buffer(s), ' +
+                       f'so buffer_num must be between 0 and {driving_sys.max_buffers - 1}.')
+            get_logger().critical(message)
+            sys.exit(message)
+
     def _assert_matches_sent(self, protocols, buffer_num):
         """
         Exits with a clear message unless `protocols` are (by identity, via the default list/
@@ -483,7 +504,7 @@ class IGT(ds.ControlDrivingSystem):
 
         Parameters:
             protocols (list(TUSProtocol)): The protocol(s) this call was actually given.
-            buffer_num (int): Which hardware buffer to check against (see TUSProtocol.buffer_num)
+            buffer_num (int): Which hardware buffer to check against (starting at 0)
                 -- caller must already have confirmed is_protocol_sent(buffer_num) is True.
         """
 
@@ -518,7 +539,7 @@ class IGT(ds.ControlDrivingSystem):
 
         Parameters:
             protocols (list(TUSProtocol)): The protocol(s) this call was actually given.
-            buffer_num (int): Which hardware buffer to check against (see TUSProtocol.buffer_num)
+            buffer_num (int): Which hardware buffer to check against (starting at 0)
                 -- caller must already have confirmed is_protocol_sent(buffer_num) is True.
         """
 
@@ -555,7 +576,7 @@ class IGT(ds.ControlDrivingSystem):
 
         Parameters:
             protocols (list(TUSProtocol)): The protocol(s) this call was actually given.
-            buffer_num (int): Which hardware buffer to check against (see TUSProtocol.buffer_num)
+            buffer_num (int): Which hardware buffer to check against (starting at 0)
                 -- caller must already have confirmed is_protocol_sent(buffer_num) is True.
             total_alternating_duration_ms (float or None): The value this call was actually
                 given.
@@ -587,7 +608,7 @@ class IGT(ds.ControlDrivingSystem):
 
         Parameters:
             protocols (list(TUSProtocol)): The protocol(s) this call was actually given.
-            buffer_num (int): Which hardware buffer to check against (see TUSProtocol.buffer_num).
+            buffer_num (int): Which hardware buffer to check against (starting at 0).
             total_alternating_duration_ms (float or None): The value this call was actually
                 given.
             caller (str): Name of the calling method, purely to name it in the "nothing sent"
@@ -604,7 +625,7 @@ class IGT(ds.ControlDrivingSystem):
         self._assert_not_reconfigured_since_send(protocols, buffer_num)
         self._assert_duration_matches_sent(protocols, buffer_num, total_alternating_duration_ms)
 
-    def _build_intensity_lines(self, protocols):
+    def _build_intensity_lines(self, protocols, buffer_num):
         """
         One line per transducer slot across the given protocol(s), naming its chosen focus/power
         (TransducerSlot.intensity_summary()) -- computed once, at send_protocol() time, and
@@ -620,12 +641,13 @@ class IGT(ds.ControlDrivingSystem):
 
         Parameters:
             protocols (list(TUSProtocol)): The protocol(s) just given to send_protocol().
+            buffer_num (int): Which hardware buffer these protocols were sent to.
 
         Returns:
             list(str): One formatted line per transducer slot.
         """
 
-        return [f'  Buffer {protocol.buffer_num}, slot {i}: {slot.intensity_summary()}'
+        return [f'  Buffer {buffer_num}, slot {i}: {slot.intensity_summary()}'
                 for protocol in protocols for i, slot in enumerate(protocol.slots)]
 
     def _build_slot_fingerprints(self, protocols):
@@ -648,7 +670,7 @@ class IGT(ds.ControlDrivingSystem):
         """
 
         return [
-            (protocol.buffer_num, i, slot.transducer.serial, slot.oper_freq,
+            (i, slot.transducer.serial, slot.oper_freq,
              tuple(slot.dephasing_degree) if slot.dephasing_degree is not None else None,
              slot.focus_wrt_mid_bowl,
              tuple(slot.ampl) if slot.ampl is not None else None)
@@ -683,7 +705,6 @@ class IGT(ds.ControlDrivingSystem):
         timing_fields = ('pulse_dur', 'pulse_rep_int', 'pulse_train_dur', 'pulse_train_rep_int',
                          'pulse_train_rep_dur', 'pulse_ramp_shape', 'pulse_ramp_dur')
         return [
-            (protocol.buffer_num,) +
             tuple(getattr(protocol, field, None) for field in timing_fields) +
             (tuple(self._build_slot_fingerprints([protocol])),)
             for protocol in protocols]
@@ -699,14 +720,14 @@ class IGT(ds.ControlDrivingSystem):
         as re-reading the TUSProtocol/TransducerSlot objects live at this later point.
 
         Parameters:
-            buffer_num (int): Which hardware buffer to report on (see TUSProtocol.buffer_num).
+            buffer_num (int): Which hardware buffer to report on (starting at 0).
             header (str): One-line description of the moment this is being logged at.
         """
 
         lines = self.sent_protocols.get(buffer_num, {}).get('intensity_lines', [])
         get_logger().info(header + '\n' + '\n'.join(lines))
 
-    def send_protocol(self, protocols, total_alternating_duration_ms=None):
+    def send_protocol(self, protocols, total_alternating_duration_ms=None, buffer_num=0):
         """
         Validates and sends one or more ultrasound protocols to the IGT ultrasound driving
         system. More than one protocol means they are interleaved: sent as one alternating group,
@@ -716,6 +737,10 @@ class IGT(ds.ControlDrivingSystem):
         interleaved protocol can configure independently, so every protocol given must declare
         the same ramping (enforced below) even though only the first one's value is actually
         used.
+
+        buffer_num applies to the whole group: one protocol, or several interleaved, is always
+        sent to exactly one hardware buffer. Defaults to 0 -- the only valid value for a driving
+        system with no real multi-buffer concept (max_buffers == 1).
 
         When interleaving, each protocol contributes exactly one pulse per round of the
         alternating group -- not a repeated pulse train of its own. pulse_dur/pulse_rep_int
@@ -735,27 +760,18 @@ class IGT(ds.ControlDrivingSystem):
             total_alternating_duration_ms (float): Required (must be > 0) when interleaving more
                 than one protocol -- total duration [ms] the alternating group repeats for.
                 Unused, and safe to leave at its default, for a single protocol.
+            buffer_num (int): Which of the driving system's hardware buffers to send to, starting
+                at 0. Must be within [0, driving_sys.max_buffers].
         """
 
         if isinstance(protocols, TUSProtocol):
             protocols = [protocols]
 
         self._assert_duration_given_when_interleaving(protocols, total_alternating_duration_ms)
+        self._assert_valid_buffer_num(protocols[0].driving_sys, buffer_num)
 
         for protocol in protocols:
             self._assert_ready_to_send(protocol)
-
-        # Only protocols[0].buffer_num is ever actually read below (the whole interleaved group
-        # is sent to that one buffer, not one buffer per protocol) -- but a caller giving
-        # different buffer_num values across the group almost certainly means they mixed up
-        # protocols that were never meant to be interleaved together, so reject it explicitly
-        # instead of silently going with whichever one happens to be first.
-        if len(protocols) > 1 and any(protocol.buffer_num != protocols[0].buffer_num
-                                      for protocol in protocols[1:]):
-            message = ('All protocols given to interleave must target the same buffer -- got ' +
-                       f'{[protocol.buffer_num for protocol in protocols]}.')
-            get_logger().critical(message)
-            sys.exit(message)
 
         # Only protocols[0].pulse_ramp_shape/pulse_ramp_dur are ever actually applied to the
         # generator below (ramping is a whole-group setting, not something each interleaved
@@ -777,7 +793,7 @@ class IGT(ds.ControlDrivingSystem):
         for protocol in protocols:
             tran_serials = ', '.join(slot.transducer.serial for slot in protocol.slots)
             get_logger().info(
-                f'Validating protocol for buffer {protocol.buffer_num} '
+                f'Validating protocol for buffer {buffer_num} '
                 f'({len(protocol.slots)} slot(s): {tran_serials})...')
             get_logger().debug(
                 'Protocol with the following parameters is validated before sending: \n ' +
@@ -802,16 +818,20 @@ class IGT(ds.ControlDrivingSystem):
                 n_pulse_train_rep = math.floor(
                     protocol0.pulse_train_rep_dur / protocol0.pulse_train_rep_int)
             else:
-                get_logger().debug(
-                    f'Interleaving {len(protocols)} protocols -- each contributes one pulse '
-                    'train per round.')
-
                 # One pulse per protocol, not a repeated pulse train per protocol -- unlike the
                 # N=1 branch above (_define_pulse_train()), each interleaved protocol's own
                 # pulse_train_dur/pulse_train_rep_int/pulse_train_rep_dur have no effect here
-                # (see this method's own docstring). Theoretically possible to support, but not
-                # yet designed: would need a real decision on what "interleaved pulse trains"
-                # (as opposed to interleaved single pulses) should actually mean here.
+                # (see this method's own docstring). A researcher may well have set these via
+                # configure_timing() expecting them to matter (e.g. reusing a protocol that
+                # already worked standalone), so this is a warning, not a debug line.
+                # Theoretically possible to support, but not yet designed: would need a real
+                # decision on what "interleaved pulse trains" (as opposed to interleaved single
+                # pulses) should actually mean here.
+                get_logger().warning(
+                    f'Interleaving {len(protocols)} protocols -- each contributes one pulse '
+                    'per round, not a repeated pulse train of its own. pulse_train_dur/'
+                    'pulse_train_rep_int/pulse_train_rep_dur are ignored for every protocol in '
+                    'this group; only pulse_dur/pulse_rep_int apply.')
                 pulse_train_seq = [pulse for pulse, _ in pulses]
                 phases = [protocol_phases for _, protocol_phases in pulses]
                 pulse_train_delay = 0
@@ -849,9 +869,9 @@ class IGT(ds.ControlDrivingSystem):
             # gen.setParam (unifus.GenParam.MultiplexerValue, 3);
 
             # Upload the protocol
-            self.gen.sendSequence(protocol0.buffer_num, pulse_train_seq)
+            self.gen.sendSequence(buffer_num, pulse_train_seq)
 
-            self.register_sent_protocol(protocol0.buffer_num, protocols, pulse_train_seq,
+            self.register_sent_protocol(buffer_num, protocols, pulse_train_seq,
                                         n_pulse_train_rep, pulse_train_delay, phases,
                                         total_alternating_duration_ms)
 
@@ -861,7 +881,7 @@ class IGT(ds.ControlDrivingSystem):
 
             # if no connection can be made, program stops preventing infinite loop
             self.connect(protocols[0].driving_sys.connect_info)
-            self.send_protocol(protocols, total_alternating_duration_ms)
+            self.send_protocol(protocols, total_alternating_duration_ms, buffer_num)
 
     def _define_pulse_group(self, protocol):
         """
@@ -1067,15 +1087,28 @@ class IGT(ds.ControlDrivingSystem):
             for protocol in protocols]
         self.listener.voltage_feedback = VoltageFeedbackDispatcher(trackers)
 
-    def wait_for_trigger(self, protocols, total_alternating_duration_ms=None):
+    def get_trigger_options(self):
+        """
+        Returns a list of available trigger options, for wait_for_trigger()'s own trigger_option
+        parameter.
+
+        Returns:
+            List[str]: Available trigger options.
+        """
+
+        return get_config_value(get_logger(), config, 'Trigger', 'Options', '').split('\n')
+
+    def wait_for_trigger(self, protocols, trigger_option, n_triggers=None,
+                         total_alternating_duration_ms=None, buffer_num=0):
         """
         Activates the listener on the IGT ultrasound driving system to wait for the trigger to
         execute the previously sent protocol(s). When interleaving, the ramp-transient timing
         this computes is taken from only the first protocol given, matching send_protocol()'s
-        own "ramping is a whole-group setting, not per interleaved protocol" behavior. The same
-        is true for trigger_option/n_triggers below -- every protocol given must declare the
-        same trigger configuration (enforced below) even though only the first one's value is
-        actually used.
+        own "ramping is a whole-group setting, not per interleaved protocol" behavior.
+
+        trigger_option/n_triggers/buffer_num apply to the whole group being waited on: there is
+        exactly one trigger event and one hardware buffer, whether it's a single protocol or
+        several interleaved ones.
 
         Exits with a clear message if send_protocol() hasn't been called for this buffer yet --
         unlike a dropped connection (which reconnects and resends automatically, since that's an
@@ -1085,8 +1118,19 @@ class IGT(ds.ControlDrivingSystem):
         Parameters:
             protocols (TUSProtocol or list(TUSProtocol)): Same protocol(s) already passed to
                 send_protocol().
+            trigger_option (str): The chosen trigger option, e.g. one of
+                                  self.get_trigger_options() -- 'TriggerOnePulseTrain' or
+                                  'TriggerWholeProtocol' (the "no trigger" option makes no sense
+                                  here, since calling this method at all means a trigger is
+                                  wanted -- use execute_protocol() directly instead when it
+                                  isn't).
+            n_triggers (int): Number of times a trigger will be sent -- required when
+                              trigger_option is 'TriggerOnePulseTrain' (one pulse train fires per
+                              trigger, so the driving system needs to know in advance how many to
+                              expect), not valid for any other trigger_option.
             total_alternating_duration_ms (float): Same value already passed to send_protocol()
                 -- required (must be > 0) when interleaving more than one protocol.
+            buffer_num (int): Same value already passed to send_protocol() for these protocols.
         """
 
         if isinstance(protocols, TUSProtocol):
@@ -1095,21 +1139,6 @@ class IGT(ds.ControlDrivingSystem):
 
         self._assert_duration_given_when_interleaving(protocols, total_alternating_duration_ms)
 
-        # Only protocol0.trigger_option/n_triggers are ever actually read below -- a caller
-        # giving different trigger settings across the group almost certainly expected every
-        # protocol's own trigger configuration to take effect, so reject it explicitly instead
-        # of silently going with whichever one happens to be first.
-        if len(protocols) > 1 and any(
-                (protocol.trigger_option, protocol.n_triggers)
-                != (protocol0.trigger_option, protocol0.n_triggers)
-                for protocol in protocols[1:]):
-            trigger_settings = [(protocol.trigger_option, protocol.n_triggers)
-                                for protocol in protocols]
-            message = ('All protocols given to interleave must use the same trigger ' +
-                       f'configuration -- got {trigger_settings}.')
-            get_logger().critical(message)
-            sys.exit(message)
-
         # Checked regardless of connection state, and before it: a protocol that was never sent
         # is a caller mistake either way (never connected at all, or connected but forgot to
         # call send_protocol()) -- not something to silently paper over here, especially since
@@ -1117,7 +1146,7 @@ class IGT(ds.ControlDrivingSystem):
         # caller actually intended to send, which nothing here can verify. Only once a protocol
         # is known to have been sent successfully at least once does losing the connection
         # afterward count as an external failure worth automatically recovering from (below).
-        self._assert_ready_to_run(protocols, protocol0.buffer_num, total_alternating_duration_ms,
+        self._assert_ready_to_run(protocols, buffer_num, total_alternating_duration_ms,
                                   'wait_for_trigger')
 
         if self.is_connected():
@@ -1127,49 +1156,79 @@ class IGT(ds.ControlDrivingSystem):
                 # To use trigger, add one of unifus::ExecFlag::Trigger*
                 exec_flags = self._compute_exec_flags(protocols)
 
-                sent_protocol_info = self.sent_protocols.get(protocol0.buffer_num, {})
+                sent_protocol_info = self.sent_protocols.get(buffer_num, {})
                 n_pulse_train_rep = sent_protocol_info.get('n_pulse_train_rep')
                 pulse_train_delay = sent_protocol_info.get('pulse_train_delay')
 
-                # Determining trigger flag
+                # Determining trigger flag.
                 pulse_train_trigger = get_config_value(get_logger(), config, 'Trigger',
                                                        'Option.pulse_train',
                                                        'TriggerOnePulseTrain')
                 whole_protocol_trigger = get_config_value(get_logger(), config, 'Trigger',
                                                           'Option.whole_protocol',
                                                           'TriggerWholeProtocol')
-                if protocol0.trigger_option == pulse_train_trigger:
+                if trigger_option == pulse_train_trigger:
+                    # One pulse train fires per trigger received, so the driving system
+                    # genuinely needs to know in advance how many triggers to expect -- there is
+                    # no sensible default to fall back to.
+                    if n_triggers is None:
+                        message = ("n_triggers is required when trigger_option is " +
+                                   f"'{pulse_train_trigger}' -- it tells the driving system how " +
+                                   'many triggers to expect (one pulse train fires per trigger).')
+                        get_logger().critical(message)
+                        sys.exit(message)
+                    validate_value(n_triggers, 'Number of anticipated triggers (n_triggers)',
+                                   True, True, True, False)
                     exec_flags |= unifus.ExecFlag.TriggerOneSequence
-                    n_pulse_train_rep = protocol0.n_triggers
+
+                    # n_triggers overrides whatever send_protocol() already derived for this
+                    # buffer (from protocol0's own pulse_train_rep_int/pulse_train_rep_dur for a
+                    # single protocol, or from total_alternating_duration_ms/pulse_rep_int when
+                    # interleaving) -- warn explicitly, since a researcher may well have set
+                    # those expecting them to determine the actual repetition count.
+                    get_logger().warning(
+                        f"trigger_option '{pulse_train_trigger}' overrides the repetition "
+                        f'count/delay already computed for buffer {buffer_num} '
+                        f'({n_pulse_train_rep} repetition(s), {pulse_train_delay} ms delay) -- '
+                        f'using n_triggers={n_triggers} instead.')
+                    n_pulse_train_rep = n_triggers
                     pulse_train_delay = 0  # trigger will determine delay
 
-                elif protocol0.trigger_option == whole_protocol_trigger:
+                elif trigger_option == whole_protocol_trigger:
+                    if n_triggers is not None:
+                        message = ("n_triggers only applies when trigger_option is " +
+                                   f"'{pulse_train_trigger}' -- '{whole_protocol_trigger}' " +
+                                   'always fires exactly one trigger for the whole protocol.')
+                        get_logger().critical(message)
+                        sys.exit(message)
+                    # Purely for the "Waiting for a total of N trigger(s)" log line below --
+                    # never used to decide anything on the hardware side for this trigger mode.
+                    n_triggers = 1
                     exec_flags |= unifus.ExecFlag.TriggerAllSequences
 
                 else:
                     message = (
-                        f'Trigger option {protocol0.trigger_option} is not identical to ' +
-                        f'implemented trigger options: {protocol0.get_trigger_options()}.')
+                        f'Trigger option {trigger_option} is not identical to implemented ' +
+                        f'trigger options: {self.get_trigger_options()}.')
                     get_logger().critical(message)
                     sys.exit(message)
 
-                get_logger().info(
-                    f"Waiting for a total of {protocol0.n_triggers} trigger(s)...")
+                get_logger().info(f"Waiting for a total of {n_triggers} trigger(s)...")
 
                 # Logged before arming, so a researcher knows what will fire once the external
                 # trigger comes in, before they go trigger it themselves (GitHub #125).
-                self._log_intensity_summary(protocol0.buffer_num, 'This will fire once triggered:')
+                self._log_intensity_summary(buffer_num, 'This will fire once triggered:')
 
                 self._configure_voltage_feedback(protocols, sent_protocol_info)
-                self.gen.prepareSequence(protocol0.buffer_num, n_pulse_train_rep,
-                                         pulse_train_delay, exec_flags)
+                self.gen.prepareSequence(buffer_num, n_pulse_train_rep, pulse_train_delay,
+                                         exec_flags)
 
                 self.gen.startSequence()
 
                 # Only set once arming has actually succeeded -- read back by
                 # wait_for_trigger_result() (see its own docstring) to confirm it's being called
                 # for a buffer that's genuinely armed, not merely sent.
-                self.sent_protocols[protocol0.buffer_num]['armed'] = True
+                self.sent_protocols[buffer_num]['armed'] = True
 
             except Exception as why:
                 message = f"Exception: {why}"
@@ -1187,10 +1246,11 @@ class IGT(ds.ControlDrivingSystem):
 
             # if no connection can be made, program stops preventing infinite loop
             self.connect(protocol0.driving_sys.connect_info)
-            self.send_protocol(protocols, total_alternating_duration_ms)
-            self.wait_for_trigger(protocols, total_alternating_duration_ms)
+            self.send_protocol(protocols, total_alternating_duration_ms, buffer_num)
+            self.wait_for_trigger(protocols, trigger_option, n_triggers,
+                                  total_alternating_duration_ms, buffer_num)
 
-    def wait_for_trigger_result(self, buffer_num, timeout_s=5.0):
+    def wait_for_trigger_result(self, buffer_num=0, timeout_s=5.0):
         """
         Waits (blocking) for a previously armed triggered protocol to finish, and exits if the
         driving system reports its execution failed -- or if timeout_s elapses without the
@@ -1212,7 +1272,7 @@ class IGT(ds.ControlDrivingSystem):
         real arm behind it is always a caller mistake, never something to silently wait out.
 
         Parameters:
-            buffer_num (int): Which hardware buffer to report on (see TUSProtocol.buffer_num) --
+            buffer_num (int): Which hardware buffer to report on (starting at 0) --
                 looks up what send_protocol() actually sent to it for the confirmation log below
                 (GitHub #122/#125), rather than trusting a protocols argument re-supplied here,
                 which would have no actual bearing on what's armed on the driving system.
@@ -1266,7 +1326,7 @@ class IGT(ds.ControlDrivingSystem):
 
         return self.listener.exec_error_code
 
-    def execute_protocol(self, protocols, total_alternating_duration_ms=None):
+    def execute_protocol(self, protocols, total_alternating_duration_ms=None, buffer_num=0):
         """
         Executes the previously sent protocol(s) on the IGT ultrasound driving system. When
         interleaving, the ramp-transient timing this computes is taken from only the first
@@ -1289,6 +1349,7 @@ class IGT(ds.ControlDrivingSystem):
                 send_protocol().
             total_alternating_duration_ms (float): Same value already passed to send_protocol()
                 -- required (must be > 0) when interleaving more than one protocol.
+            buffer_num (int): Same value already passed to send_protocol() for these protocols.
         """
 
         if isinstance(protocols, TUSProtocol):
@@ -1312,7 +1373,7 @@ class IGT(ds.ControlDrivingSystem):
         # caller actually intended to send, which nothing here can verify. Only once a protocol
         # is known to have been sent successfully at least once does losing the connection
         # afterward count as an external failure worth automatically recovering from (below).
-        self._assert_ready_to_run(protocols, protocol0.buffer_num, total_alternating_duration_ms,
+        self._assert_ready_to_run(protocols, buffer_num, total_alternating_duration_ms,
                                   'execute_protocol')
 
         if self.is_connected():
@@ -1322,16 +1383,16 @@ class IGT(ds.ControlDrivingSystem):
                 # To use trigger, add one of unifus::ExecFlag::Trigger*
                 exec_flags = self._compute_exec_flags(protocols)
 
-                sent_protocol_info = self.sent_protocols.get(protocol0.buffer_num, {})
+                sent_protocol_info = self.sent_protocols.get(buffer_num, {})
                 self._configure_voltage_feedback(protocols, sent_protocol_info)
-                self.gen.prepareSequence(protocol0.buffer_num,
+                self.gen.prepareSequence(buffer_num,
                                          sent_protocol_info.get('n_pulse_train_rep'),
                                          sent_protocol_info.get('pulse_train_delay'),
                                          exec_flags)
 
                 # Logged right before the (potentially long) blocking wait below, so a
                 # researcher watching the log knows what they're waiting for (GitHub #125).
-                self._log_intensity_summary(protocol0.buffer_num, 'About to execute:')
+                self._log_intensity_summary(buffer_num, 'About to execute:')
 
                 self.gen.startSequence()
                 # wait_protocol() returns False specifically on timeout (see its own docstring
@@ -1342,7 +1403,7 @@ class IGT(ds.ControlDrivingSystem):
                 if self.listener.wait_protocol(
                         sent_protocol_info.get('total_protocol_duration_ms') / 1000.0) is False:
                     message = (
-                        f'Timed out waiting for buffer {protocol0.buffer_num}\'s protocol to ' +
+                        f'Timed out waiting for buffer {buffer_num}\'s protocol to ' +
                         'finish -- the driving system never reported a result. No ' +
                         'confirmation that anything was emitted.')
                     get_logger().critical(message)
@@ -1359,8 +1420,7 @@ class IGT(ds.ControlDrivingSystem):
                 # fired (GitHub #125) -- distinct from "About to execute" above even though the
                 # values are identical, since the two log points confirm different things:
                 # intent, and actual outcome.
-                self._log_intensity_summary(protocol0.buffer_num,
-                                            'Protocol executed successfully:')
+                self._log_intensity_summary(buffer_num, 'Protocol executed successfully:')
 
             except Exception as why:
                 message = f"Exception: {why}"
@@ -1379,8 +1439,8 @@ class IGT(ds.ControlDrivingSystem):
 
             # if no connection can be made, program stops preventing infinite loop
             self.connect(protocol0.driving_sys.connect_info)
-            self.send_protocol(protocols, total_alternating_duration_ms)
-            self.execute_protocol(protocols, total_alternating_duration_ms)
+            self.send_protocol(protocols, total_alternating_duration_ms, buffer_num)
+            self.execute_protocol(protocols, total_alternating_duration_ms, buffer_num)
 
     def disconnect(self):
         """

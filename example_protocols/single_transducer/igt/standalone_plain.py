@@ -132,8 +132,26 @@ slot1 = protocol.add_slot(
 # you can use the TUS Calculator to visualize the timing parameters:
 # https://www.itrusst.com/tus-calculator
 
-# configure_timing() sets every pulse/pulse-train/trigger parameter together, in one call --
-# each individual setter (pulse_dur, pulse_rep_int, ...) cascades its own value forward to every
+# Trigger configuration (trigger_option/n_triggers) is a call-level parameter of
+# IGT.wait_for_trigger(), not an attribute of the protocol itself -- defined here as plain
+# variables instead, reused below when actually sending/waiting for a trigger/executing.
+# Use 'None' (this template's default) to not use a trigger at all; 'TriggerOnePulseTrain' to
+# fire one pulse train per trigger received (you must also give N_TRIGGERS below -- how many
+# triggers to expect);
+# 'TriggerWholeProtocol' to fire the entire, already fully-timed protocol at once with a single
+# trigger (equivalent to executing it directly, just gated behind that one trigger). To check
+# available trigger options: print(igt_driving_sys.get_trigger_options())
+TRIGGER_OPTION = 'None'
+# TRIGGER_OPTION = 'TriggerOnePulseTrain'
+# TRIGGER_OPTION = 'TriggerWholeProtocol'
+
+# Required when (and only settable when) TRIGGER_OPTION == 'TriggerOnePulseTrain' above --
+# pulse_train_rep_int/pulse_train_rep_dur don't apply in that mode at all (they apply to every
+# other trigger_option instead, may be given together or just one of the two).
+N_TRIGGERS = None  # e.g. 4 -- number of triggers expected, one pulse train fires per trigger
+
+# configure_timing() sets every pulse/pulse-train parameter together, in one call -- each
+# individual setter (pulse_dur, pulse_rep_int, ...) cascades its own value forward to every
 # level above it, so calling them one by one in the wrong order can silently overwrite an
 # earlier one (e.g. setting pulse_train_dur before pulse_dur). Passing everything to
 # configure_timing() at once avoids relying on any particular calling order.
@@ -157,22 +175,6 @@ protocol.configure_timing(
     # if you only want one pulse train, you don't need to set this at all -- it defaults to
     # pulse_rep_int. Set explicitly here for clarity.
     pulse_train_dur=200,  # [ms], pulse train duration -- 4 pulses per train (200 / 50)
-
-    # wait_for_trigger is derived from trigger_option -- there is no separate flag to set. Use
-    # 'None' (this template's default) to not use a trigger at all; 'TriggerOnePulseTrain' to
-    # fire one pulse train per trigger received (you must also give n_triggers below -- how many
-    # triggers to expect); 'TriggerWholeProtocol' to fire the entire, already fully-timed
-    # protocol at once with a single trigger (equivalent to executing it directly, just gated
-    # behind that one trigger). To check available trigger options:
-    # print(protocol.get_trigger_options())
-    trigger_option='None',
-    # trigger_option='TriggerOnePulseTrain',
-    # trigger_option='TriggerWholeProtocol'
-
-    # Required when (and only settable when) trigger_option='TriggerOnePulseTrain' above --
-    # pulse_train_rep_int/pulse_train_rep_dur don't apply in that mode at all (they apply to
-    # every other trigger_option instead, may be given together or just one of the two).
-    # n_triggers=4,  # number of triggers expected -- one pulse train fires per trigger
 
     # ## pulse train repetition ## #
     # if you only want one pulse train repetition, you don't need to set either of these at all --
@@ -202,10 +204,10 @@ protocol.configure_timing(
 try:
     igt_driving_sys.send_protocol(protocol)
 
-    # If wait_for_trigger is true, only the protocol is sent and will be executed by the external
-    # trigger
-    if protocol.wait_for_trigger:
-        igt_driving_sys.wait_for_trigger(protocol)
+    # If a trigger is configured (TRIGGER_OPTION != 'None'), only the protocol is sent and will
+    # be executed by the external trigger.
+    if TRIGGER_OPTION != 'None':
+        igt_driving_sys.wait_for_trigger(protocol, TRIGGER_OPTION, N_TRIGGERS)
 
         # wait_for_trigger() above only arms the protocol to fire on the external trigger and
         # returns immediately -- it does NOT wait for, or check, the actual execution result.
@@ -228,9 +230,9 @@ try:
         # other equipment), use the non-blocking has_execution_error() instead, in your own
         # polling loop, for real-time reaction instead of only finding out at the end -- see
         # standalone_wait_for_trigger_poll.py in this same folder for this pattern on its own.
-        igt_driving_sys.wait_for_trigger_result(protocol.buffer_num, timeout_s=5.0)
+        igt_driving_sys.wait_for_trigger_result(timeout_s=5.0)
 
-    # If wait_for_trigger is false, the protocol is sent and can be executed directly using the
+    # If no trigger is configured, the protocol is sent and can be executed directly using the
     # execute_protocol() function -- see standalone_direct_execute.py in this same folder for
     # this pattern on its own.
     else:

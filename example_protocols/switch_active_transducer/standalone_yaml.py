@@ -43,11 +43,21 @@ logger = initialize_logger(log_dir, filename)
 from fus_driving_systems.igt import igt_ds
 from fus_driving_systems.protocol_loader import load_protocol
 
+# load_protocol() returns a 5-tuple: (protocols, total_alternating_duration_ms, trigger_option,
+# n_triggers, buffer_num). total_alternating_duration_ms is only relevant when interleaving more
+# than one protocol -- ignored here (a single protocol, even with 2 slots). trigger_option/
+# n_triggers are used below (both before and after the switch). buffer_num is unused here.
+#
 # require_hash=False (the default) -- set to True once you have a real protocol.yaml you don't
 # want accidentally changed; see README.md's "Load a protocol from a YAML file" section.
-protocols, _ = load_protocol('protocol.yaml', require_hash=False)
+protocols, total_alternating_duration_ms, trigger_option, n_triggers, _ = load_protocol(
+    'protocol.yaml', require_hash=False)
 protocol = protocols[0]
 slot1, slot2 = protocol.slots
+
+# trigger_option is None when protocol.yaml omits the key entirely, or the literal string 'None'
+# when it's set explicitly (as protocol.yaml does here) -- either way means no trigger at all.
+wait_for_trigger = trigger_option not in (None, 'None')
 
 # The driving system serial only needs to live in protocol.yaml -- load_protocol() already
 # resolved it into a real DrivingSystem, reachable via the protocol's own driving_sys.
@@ -68,9 +78,9 @@ try:
     # ../single_transducer/igt/standalone_wait_for_trigger.py/standalone_wait_for_trigger_poll.py
     # for the full wait_for_trigger_result()/has_execution_error() explanation this pattern
     # relies on.
-    if protocol.wait_for_trigger:
-        igt_driving_sys.wait_for_trigger(protocol)
-        igt_driving_sys.wait_for_trigger_result(protocol.buffer_num, timeout_s=5.0)
+    if wait_for_trigger:
+        igt_driving_sys.wait_for_trigger(protocol, trigger_option, n_triggers)
+        igt_driving_sys.wait_for_trigger_result(timeout_s=5.0)
     else:
         igt_driving_sys.execute_protocol(protocol)
 
@@ -87,9 +97,9 @@ try:
     # The driving system already has the OLD configuration loaded -- send_protocol() must be
     # called again so it picks up what slot.configure() just changed above.
     igt_driving_sys.send_protocol(protocol)
-    if protocol.wait_for_trigger:
-        igt_driving_sys.wait_for_trigger(protocol)
-        igt_driving_sys.wait_for_trigger_result(protocol.buffer_num, timeout_s=5.0)
+    if wait_for_trigger:
+        igt_driving_sys.wait_for_trigger(protocol, trigger_option, n_triggers)
+        igt_driving_sys.wait_for_trigger_result(timeout_s=5.0)
     else:
         igt_driving_sys.execute_protocol(protocol)
 
