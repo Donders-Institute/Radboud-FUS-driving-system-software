@@ -27,7 +27,8 @@ import pandas as pd
 from fus_driving_systems import control_driving_system as ds
 from fus_driving_systems.tus_protocol import TUSProtocol
 
-from fus_driving_systems.igt.utils import ExecListener
+from fus_driving_systems.igt.utils import (ExecListener, VoltageFeedbackDispatcher,
+                                           VoltageFeedbackTracker)
 from fus_driving_systems.igt import transducer_xyz
 from fus_driving_systems.igt import unifus
 from fus_driving_systems.utils import get_config_value
@@ -996,6 +997,76 @@ class IGT(ds.ControlDrivingSystem):
 
         return exec_flags
 
+    @staticmethod
+    def _build_transducer_channel_ranges(protocol):
+        """One entry per slot in protocol.slots (see VoltageFeedbackTracker's own docstring for
+        the shape), in slot order -- matching _define_pulse_group()'s own channel numbering, so
+        channel N here always means the same physical channel _define_pulse_group() sent."""
+
+        channel_start = 0
+        channel_ranges = []
+        for slot in protocol.slots:
+            elements = slot.transducer.elements
+            # slot.volt is only ever populated once a combo is active (see TransducerSlot's own
+            # power setters) -- None here means there's nothing to compare measured voltage
+            # against for this slot; VoltageFeedbackTracker still reports its measured average,
+            # it just skips the deviation/margin/warning logic (see its own docstring). A slot's
+            # own volt can be a single shared value or one per element -- either way, averaged
+            # down to one representative expected value here, matching how the tracker also
+            # only ever compares a transducer-wide average, never per channel.
+            expected_volt = sum(slot.volt) / len(slot.volt) if slot.volt else None
+            channel_ranges.append({
+                'serial': slot.transducer.serial,
+                'channel_start': channel_start,
+                'channel_end': channel_start + elements,
+                'expected_volt': expected_volt,
+            })
+            channel_start += elements
+        return channel_ranges
+
+    def _configure_voltage_feedback(self, protocols, sent_protocol_info):
+        """
+        Builds and attaches a fresh VoltageFeedbackDispatcher to self.listener for the
+        execution about to start (GitHub #137) -- called right before startSequence() by both
+        wait_for_trigger() and execute_protocol(). One VoltageFeedbackTracker per protocol (see
+        VoltageFeedbackDispatcher's own docstring for why -- each interleaved protocol's own
+        grouping/reporting must stay independent of how the others' pulses interleave with it),
+        each with its own channel ranges/expected voltages (see
+        _build_transducer_channel_ranges()) but otherwise identically configured: every protocol
+        in the group shares the same wall-clock duration and fires exactly once per round, so
+        total_pulses/num_groups/margin/consecutive_for_warning are the same for all of them.
+
+        Parameters:
+            protocols (list(TUSProtocol)): Every protocol passed to send_protocol().
+            sent_protocol_info (dict): send_protocol()'s own bookkeeping for this buffer (see
+                register_sent_protocol()) -- 'n_pulse_train_rep' (how many pulses *each*
+                protocol in the group contributes -- one per round) and
+                'total_protocol_duration_ms' size every tracker's groups identically.
+        """
+
+        total_pulses = sent_protocol_info.get('n_pulse_train_rep') or 0
+        total_duration_s = (sent_protocol_info.get('total_protocol_duration_ms') or 0) / 1000.0
+
+        config_groups = int(get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
+                                             'Voltage feedback groups', 5))
+        # At least once a minute, however few groups Voltage feedback groups asks for -- a long
+        # protocol split into only config_groups groups could otherwise go many minutes between
+        # updates, defeating the "researcher sees the system is doing something" goal.
+        num_groups = max(config_groups, math.ceil(total_duration_s / 60)) if total_duration_s \
+            else config_groups
+
+        margin_v = float(get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
+                                          'Voltage feedback margin [V]', 3.0))
+        consecutive_for_warning = int(get_config_value(
+            get_logger(), config, 'Equipment.Manufacturer.IGT',
+            'Voltage feedback consecutive groups for warning', 2))
+
+        trackers = [
+            VoltageFeedbackTracker(self._build_transducer_channel_ranges(protocol), total_pulses,
+                                   num_groups, margin_v, consecutive_for_warning)
+            for protocol in protocols]
+        self.listener.voltage_feedback = VoltageFeedbackDispatcher(trackers)
+
     def wait_for_trigger(self, protocols, total_alternating_duration_ms=None):
         """
         Activates the listener on the IGT ultrasound driving system to wait for the trigger to
@@ -1089,6 +1160,7 @@ class IGT(ds.ControlDrivingSystem):
                 # trigger comes in, before they go trigger it themselves (GitHub #125).
                 self._log_intensity_summary(protocol0.buffer_num, 'This will fire once triggered:')
 
+                self._configure_voltage_feedback(protocols, sent_protocol_info)
                 self.gen.prepareSequence(protocol0.buffer_num, n_pulse_train_rep,
                                          pulse_train_delay, exec_flags)
 
@@ -1251,6 +1323,7 @@ class IGT(ds.ControlDrivingSystem):
                 exec_flags = self._compute_exec_flags(protocols)
 
                 sent_protocol_info = self.sent_protocols.get(protocol0.buffer_num, {})
+                self._configure_voltage_feedback(protocols, sent_protocol_info)
                 self.gen.prepareSequence(protocol0.buffer_num,
                                          sent_protocol_info.get('n_pulse_train_rep'),
                                          sent_protocol_info.get('pulse_train_delay'),

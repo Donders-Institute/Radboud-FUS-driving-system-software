@@ -324,6 +324,16 @@ config['Equipment.Manufacturer.IGT']['Pulse dur. flag level MeasureChannels [ms]
 config['Equipment.Manufacturer.IGT']['Pulse dur. flag level MeasureBoards [ms]'] = str(0.035)
 config['Equipment.Manufacturer.IGT']['Pulse dur. flag level MeasureTimings [ms]'] = str(0.001)
 
+# Live, in-progress feedback (GitHub #137) on each transducer's own measured onPulseResult
+# voltage vs. its configured/expected value -- grouped into batches (not per-pulse, too noisy)
+# so a researcher watching the log sees regular progress without being flooded. A fixed volt
+# margin (not a percentage) so a transducer that's deliberately at/near 0% amplitude never
+# triggers this -- see VoltageFeedbackTracker's own docstring. Starting estimates based on the
+# one real log analysed so far -- revisit once more real data comes in.
+config['Equipment.Manufacturer.IGT']['Voltage feedback margin [V]'] = str(3.0)
+config['Equipment.Manufacturer.IGT']['Voltage feedback groups'] = str(5)
+config['Equipment.Manufacturer.IGT']['Voltage feedback consecutive groups for warning'] = str(2)
+
 config['Equipment.Manufacturer.IGT']['Min. temporal ramping resolution [ms]'] = str(0.005)
 config['Equipment.Manufacturer.IGT']['Max. amount of ramping steps'] = str(1023)
 

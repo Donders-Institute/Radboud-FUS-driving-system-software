@@ -42,11 +42,13 @@ def _slot(elements=1, ampl=_UNSET, serial='TRAN-A', **overrides):
     distinguishable serial per slot. intensity_summary defaults to a fixed, serial-identifying
     string -- see TransducerSlot.intensity_summary(), used by _log_intensity_summary().
     oper_freq/dephasing_degree/focus_wrt_mid_bowl are minimal, fixed defaults -- see
-    IGT._build_slot_fingerprints(), used by _assert_not_reconfigured_since_send()."""
+    IGT._build_slot_fingerprints(), used by _assert_not_reconfigured_since_send(). volt defaults
+    to None (no active calibration) -- see IGT._configure_voltage_feedback(), which then drops
+    this slot from voltage feedback entirely rather than needing a real expected value here."""
     values = dict(ampl=[50.0] if ampl is _UNSET else ampl,
                   transducer=SimpleNamespace(elements=elements, serial=serial),
                   intensity_summary=lambda: f'{serial}: fake intensity summary',
-                  oper_freq=500, dephasing_degree=None, focus_wrt_mid_bowl=50.0)
+                  oper_freq=500, dephasing_degree=None, focus_wrt_mid_bowl=50.0, volt=None)
     values.update(overrides)
     return SimpleNamespace(**values)
 
@@ -1572,6 +1574,144 @@ class TestExecuteProtocol:
             connected_instance.execute_protocol([protocol])
 
         connected_instance.gen.prepareSequence.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# _configure_voltage_feedback
+# ---------------------------------------------------------------------------
+
+class TestConfigureVoltageFeedback:
+    """IGT._configure_voltage_feedback() (GitHub #137) -- called by both execute_protocol() and
+    wait_for_trigger() right before startSequence(), building the VoltageFeedbackDispatcher
+    (one VoltageFeedbackTracker per protocol) attached to self.listener.voltage_feedback. Only
+    exercised via execute_protocol() here, mirroring how TestExecuteProtocol above already
+    covers _compute_exec_flags() the same way -- VoltageFeedbackTracker's/
+    VoltageFeedbackDispatcher's own grouping/warning/routing logic has its own direct tests in
+    test_igt_utils.py."""
+
+    def test_builds_channel_ranges_from_slots_in_order(self, connected_instance):
+        connected_instance.sent_protocols = {0: {
+            'n_pulse_train_rep': 10, 'pulse_train_delay': 0.0,
+            'total_protocol_duration_ms': 1000.0}}
+        slot_a = _slot(elements=3, serial='TRAN-A', volt=[10.0])
+        slot_b = _slot(elements=2, serial='TRAN-B', volt=[0.5, 0.6])
+        fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=0.5, pulse_ramp_dur=0,
+                                        pulse_ramp_shape='Rectangular - no ramping',
+                                        slots=[slot_a, slot_b])
+
+        connected_instance.execute_protocol([fake_protocol])
+
+        # A single protocol -> one tracker, at index 0 of the dispatcher (see
+        # VoltageFeedbackDispatcher's own docstring).
+        # pylint: disable=protected-access
+        ranges = connected_instance.listener.voltage_feedback._trackers[0]._channel_ranges
+        assert [c['serial'] for c in ranges] == ['TRAN-A', 'TRAN-B']
+        assert (ranges[0]['channel_start'], ranges[0]['channel_end']) == (0, 3)
+        assert (ranges[1]['channel_start'], ranges[1]['channel_end']) == (3, 5)
+        assert ranges[0]['expected_volt'] == 10.0
+        assert ranges[1]['expected_volt'] == 0.55  # mean of [0.5, 0.6]
+
+    def test_builds_a_none_expected_volt_when_no_active_calibration(self, connected_instance):
+        """volt=None (see _slot()'s own default) means no active calibration -- the slot still
+        gets a channel range, just with expected_volt=None, so VoltageFeedbackTracker still
+        reports its measured average (see its own docstring) instead of dropping it."""
+        connected_instance.sent_protocols = {0: {
+            'n_pulse_train_rep': 10, 'pulse_train_delay': 0.0,
+            'total_protocol_duration_ms': 1000.0}}
+        fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=0.5, pulse_ramp_dur=0,
+                                        pulse_ramp_shape='Rectangular - no ramping',
+                                        slots=[_slot(serial='TRAN-OFF')])
+
+        connected_instance.execute_protocol([fake_protocol])
+
+        # pylint: disable=protected-access
+        ranges = connected_instance.listener.voltage_feedback._trackers[0]._channel_ranges
+        assert len(ranges) == 1
+        assert ranges[0]['serial'] == 'TRAN-OFF'
+        assert ranges[0]['expected_volt'] is None
+
+    def test_num_groups_uses_the_configured_value_for_a_short_protocol(self, connected_instance,
+                                                                       patch_config):
+        patch_config.set('Equipment.Manufacturer.IGT', 'Voltage feedback groups', '5')
+        connected_instance.sent_protocols = {0: {
+            'n_pulse_train_rep': 10, 'pulse_train_delay': 0.0,
+            'total_protocol_duration_ms': 1000.0}}  # 1 s -- the 60s floor never kicks in
+        fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=0.5, pulse_ramp_dur=0,
+                                        pulse_ramp_shape='Rectangular - no ramping', slots=[])
+
+        connected_instance.execute_protocol([fake_protocol])
+
+        # 10 pulses / 5 groups = 2 pulses per group.
+        # pylint: disable-next=protected-access
+        assert connected_instance.listener.voltage_feedback._trackers[0]._pulses_per_group == 2
+
+    def test_num_groups_is_raised_to_stay_within_the_one_minute_floor_for_a_long_protocol(
+            self, connected_instance, patch_config):
+        """A long protocol split into only 'Voltage feedback groups' groups could otherwise go
+        many minutes between updates -- the num_groups formula raises the group count (never
+        lowers it) so a report is still logged at least once a minute."""
+        patch_config.set('Equipment.Manufacturer.IGT', 'Voltage feedback groups', '5')
+        connected_instance.sent_protocols = {0: {
+            'n_pulse_train_rep': 1000, 'pulse_train_delay': 0.0,
+            'total_protocol_duration_ms': 600000.0}}  # 10 minutes
+        fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=0.5, pulse_ramp_dur=0,
+                                        pulse_ramp_shape='Rectangular - no ramping', slots=[])
+
+        connected_instance.execute_protocol([fake_protocol])
+
+        # 10 min / 60s floor -> 10 groups (not the configured 5), so 1000 / 10 = 100/group.
+        # pylint: disable-next=protected-access
+        assert connected_instance.listener.voltage_feedback._trackers[0]._pulses_per_group == 100
+
+    def test_margin_and_consecutive_for_warning_are_config_driven(self, connected_instance,
+                                                                  patch_config):
+        patch_config.set('Equipment.Manufacturer.IGT', 'Voltage feedback margin [V]', '7.5')
+        patch_config.set('Equipment.Manufacturer.IGT',
+                         'Voltage feedback consecutive groups for warning', '3')
+        connected_instance.sent_protocols = {0: {
+            'n_pulse_train_rep': 10, 'pulse_train_delay': 0.0,
+            'total_protocol_duration_ms': 1000.0}}
+        fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=0.5, pulse_ramp_dur=0,
+                                        pulse_ramp_shape='Rectangular - no ramping', slots=[])
+
+        connected_instance.execute_protocol([fake_protocol])
+
+        tracker = connected_instance.listener.voltage_feedback._trackers[0]
+        # pylint: disable=protected-access
+        assert tracker._margin_v == 7.5
+        assert tracker._consecutive_for_warning == 3
+
+    def test_builds_one_independent_tracker_per_interleaved_protocol(
+            self, connected_instance, mocker):
+        """GitHub #137 follow-up: each protocol in an interleaved group gets its own tracker
+        (with its own channel ranges), not one shared tracker built from protocols[0] only --
+        otherwise every other protocol's pulses would be compared against the wrong protocol's
+        expected voltages (e.g. the exact "one transducer active, the other at 0%, alternating"
+        pattern this whole feature exists to report on)."""
+        connected_instance.sent_protocols = {0: {
+            'n_pulse_train_rep': 10, 'pulse_train_delay': 0.0,
+            'total_protocol_duration_ms': 1000.0}}
+        protocol_a = SimpleNamespace(buffer_num=0, pulse_dur=0.5, pulse_ramp_dur=0,
+                                     pulse_ramp_shape='Rectangular - no ramping',
+                                     pulse_rep_int=0.5, trigger_option='None', n_triggers=None,
+                                     slots=[_slot(serial='TRAN-A', volt=[20.0])])
+        protocol_b = SimpleNamespace(buffer_num=0, pulse_dur=0.5, pulse_ramp_dur=0,
+                                     pulse_ramp_shape='Rectangular - no ramping',
+                                     pulse_rep_int=0.5, trigger_option='None', n_triggers=None,
+                                     slots=[_slot(serial='TRAN-B', volt=[0.4])])
+        mocker.patch.object(connected_instance, '_assert_duration_given_when_interleaving')
+        mocker.patch.object(connected_instance, '_assert_ready_to_run')
+
+        connected_instance.execute_protocol([protocol_a, protocol_b],
+                                            total_alternating_duration_ms=1000)
+
+        # pylint: disable=protected-access
+        dispatcher = connected_instance.listener.voltage_feedback
+        assert len(dispatcher._trackers) == 2
+        assert dispatcher._trackers[0]._channel_ranges[0]['serial'] == 'TRAN-A'
+        assert dispatcher._trackers[0]._channel_ranges[0]['expected_volt'] == 20.0
+        assert dispatcher._trackers[1]._channel_ranges[0]['serial'] == 'TRAN-B'
+        assert dispatcher._trackers[1]._channel_ranges[0]['expected_volt'] == 0.4
 
 
 # ---------------------------------------------------------------------------
