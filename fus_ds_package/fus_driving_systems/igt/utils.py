@@ -18,7 +18,7 @@ import time
 from fus_driving_systems.igt import unifus
 
 # Access the logger
-from fus_driving_systems.config.logging_config import get_logger
+from fus_driving_systems.config.logging_config import get_logger, get_measurements_logger
 
 
 class ExecListener(unifus.FUSListener):
@@ -67,21 +67,28 @@ class ExecListener(unifus.FUSListener):
                            f"delay: {delay:g})")
 
     def onPulseResult(self, result):  # pylint: disable=invalid-name
+        # Routed through get_measurements_logger() (not get_logger()), and always populated now
+        # that debug_info no longer exists as an opt-out (see execute_protocol()/
+        # wait_for_trigger()) -- this is real per-pulse, per-channel hardware data, potentially
+        # thousands of lines for a protocol with many repetitions, kept out of the main info/
+        # debug files for exactly that reason (see _measurements_logger's own comment).
         self.pulse_results.append(result)
-        get_logger().debug(f"Listener: PULS RESULT (exec: {result.execIndex()}, "
-                           f"pulse: {result.pulseIndex()}, duration: {result.duration():g} ms, "
-                           f"elapsed: {result.msFromStart():g} ms)")
+        get_measurements_logger().debug(
+            f"Listener: PULS RESULT (exec: {result.execIndex()}, "
+            f"pulse: {result.pulseIndex()}, duration: {result.duration():g} ms, "
+            f"elapsed: {result.msFromStart():g} ms)")
         measures = result.sharedMeasurements()
         if measures is not None:
-            get_logger().debug(f"          Available: {measures.boardMeasureCount()} measures for "
-                               f"{measures.boardCount()} board(s), "
-                               f"{measures.channelMeasureCount()} measures for "
-                               f"{measures.channelCount()} channel(s)")
+            get_measurements_logger().debug(
+                f"          Available: {measures.boardMeasureCount()} measures for "
+                f"{measures.boardCount()} board(s), "
+                f"{measures.channelMeasureCount()} measures for "
+                f"{measures.channelCount()} channel(s)")
             for channel in range(measures.channelCount()):
                 # Note: it is advised to call measures.physicalChannelMeasureAvailable(measure) to
                 # check before calling .channelPhysicalValue (channel, measure).
                 if measures.channelMeasureCount() == 5:
-                    get_logger().debug(
+                    get_measurements_logger().debug(
                         f"    ch[{channel}] "
                         f"V={measures.channelPhysicalValue(channel, 0):#4.3g} V, "
                         f"I={measures.channelPhysicalValue(channel, 1):#4.3g} A, "
@@ -90,7 +97,7 @@ class ExecListener(unifus.FUSListener):
                         f"Freq={measures.channelRawValue(channel, 4):7d} Hz, "
                         f"Pow={measures.power(channel):#g} W")
                 else:
-                    get_logger().debug(
+                    get_measurements_logger().debug(
                         f"    ch[{channel}] "
                         f"Vfwd={measures.channelPhysicalValue(channel, 0):#4.3g} V, "
                         f"Vrev={measures.channelPhysicalValue(channel, 1):#4.3g} V, "

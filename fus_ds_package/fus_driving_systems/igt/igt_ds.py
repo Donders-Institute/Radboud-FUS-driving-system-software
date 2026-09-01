@@ -35,6 +35,7 @@ from fus_driving_systems.utils import get_config_value
 # Access the logger
 from fus_driving_systems.config.logging_config import (enable_crash_detection, get_logger,
                                                        get_session_log_dir,
+                                                       get_session_log_filename,
                                                        is_crash_detection_enabled)
 from fus_driving_systems.config.config import config_info as config
 
@@ -261,8 +262,15 @@ class IGT(ds.ControlDrivingSystem):
             log_dir = session_log_dir
 
         if log_name is None:
-            log_name = get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
-                                        'Default log filename prefix', 'standalone_igt')
+            # Prefer the FDS log's own filename (e.g. "standalone_plain"), so the native IGT log
+            # is named consistently with it by default -- callers no longer need to pass the
+            # same filename twice. Falls back to the config default only when
+            # initialize_logger() hasn't run in this process (e.g. a host application using
+            # sync_logger() instead, which doesn't track a session filename).
+            log_name = get_session_log_filename()
+            if log_name is None:
+                log_name = get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
+                                            'Default log filename', 'standalone_igt')
 
         # When no connection, it is assumed that all sent protocols aren't available (anymore)
         self.sent_protocols = {}
@@ -280,9 +288,13 @@ class IGT(ds.ControlDrivingSystem):
             sys.exit(message)
 
         try:
-            suffix = get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
-                                      'Default log filename suffix', '_igt_ds_log')
-            unifus.setLogPath(log_dir, log_name + suffix)
+            # A prefix so the native IGT log sorts and reads alongside this package's
+            # own log_info_*/log_debug_*/log_measurements_* files in the same session
+            # folder, all starting with the same recognizable "log_..." pattern.
+            native_log_prefix = get_config_value(get_logger(), config,
+                                                 'Equipment.Manufacturer.IGT',
+                                                 'Native IGT log filename prefix', 'log_igt_')
+            unifus.setLogPath(log_dir, native_log_prefix + log_name)
             unifus.setLogLevel(unifus.LogLevel.Debug)
 
             get_logger().debug('After setting logging....')
@@ -915,29 +927,31 @@ class IGT(ds.ControlDrivingSystem):
 
         return pulse, phases
 
-    def _compute_exec_flags(self, protocols, debug_info):
+    def _compute_exec_flags(self, protocols):
         """
         Computes the base unifus.ExecFlag for executing or arming a previously sent protocol --
         shared by wait_for_trigger() and execute_protocol(), which were previously byte-for-byte
         identical here (issue #51).
 
-        When debug_info, adds a flag reflecting how measurable the group's pulses are
-        (MeasureChannels/MeasureBoards/MeasureTimings, depending on configured thresholds).
-        Per unifus.ExecFlag's own docs, these three are a strict superset hierarchy, not
-        independent bits -- MeasureChannels = MeasureBoards + channel measurements =
-        MeasureTimings + board + channel measurements -- so this is really "pick the most
-        detailed mode the pulse can support", each tier needing a progressively longer pulse.
-        When interleaving, that has to be judged against the *shortest* pulse_dur across the
-        whole group, not an arbitrary protocol's: a mode chosen for a longer pulse elsewhere in
-        the round could be more than the shortest one can actually support. Ramping, by
-        contrast, genuinely is a single whole-group setting (see send_protocol()'s own
-        docstring) -- so the extra ramp-transient time it needs is still read from protocols[0]
-        only, the same protocol whose ramp settings actually took effect for the whole group.
+        Always adds a flag reflecting how measurable the group's pulses are (MeasureChannels/
+        MeasureBoards/MeasureTimings, depending on configured thresholds) -- there used to be a
+        debug_info opt-out for this, removed so the hardware measurements onPulseResult()
+        receives as a result are never silently unavailable (GitHub #78/#137; see
+        get_measurements_logger() for where that data actually ends up). Per unifus.ExecFlag's
+        own docs, these three are a strict superset hierarchy, not independent bits --
+        MeasureChannels = MeasureBoards + channel measurements = MeasureTimings + board +
+        channel measurements -- so this is really "pick the most detailed mode the pulse can
+        support", each tier needing a progressively longer pulse. When interleaving, that has to
+        be judged against the *shortest* pulse_dur across the whole group, not an arbitrary
+        protocol's: a mode chosen for a longer pulse elsewhere in the round could be more than
+        the shortest one can actually support. Ramping, by contrast, genuinely is a single
+        whole-group setting (see send_protocol()'s own docstring) -- so the extra ramp-transient
+        time it needs is still read from protocols[0] only, the same protocol whose ramp
+        settings actually took effect for the whole group.
 
         Parameters:
             protocols (list(TUSProtocol)): Every protocol passed to send_protocol() (a single
                 protocol is still a length-1 list here).
-            debug_info (bool): Whether to compute and add the extra measurement-related flags.
 
         Returns:
             unifus.ExecFlag: The computed flags.
@@ -947,43 +961,42 @@ class IGT(ds.ControlDrivingSystem):
         exec_flags = (unifus.ExecFlag.DisableMonitoringChannelCombiner |
                       unifus.ExecFlag.DisableMonitoringChannelCurrentOut)
 
-        if debug_info:
-            protocol0 = protocols[0]
-            min_pulse_dur = min(protocol.pulse_dur for protocol in protocols)
+        protocol0 = protocols[0]
+        min_pulse_dur = min(protocol.pulse_dur for protocol in protocols)
 
-            ramp_transient_t = 0
-            rect_ramp = get_config_value(get_logger(), config, 'Ramp', 'Option.rect',
-                                         'Rectangular - no ramping')
-            if protocol0.pulse_ramp_dur > 0 and protocol0.pulse_ramp_shape != rect_ramp:
-                ramp_transient_t = float(
-                    get_config_value(
-                        get_logger(), config, 'Equipment.Manufacturer.IGT',
-                        'Min. time in between ramping up and down [ms]', 0.070))  # [ms]
+        ramp_transient_t = 0
+        rect_ramp = get_config_value(get_logger(), config, 'Ramp', 'Option.rect',
+                                     'Rectangular - no ramping')
+        if protocol0.pulse_ramp_dur > 0 and protocol0.pulse_ramp_shape != rect_ramp:
+            ramp_transient_t = float(
+                get_config_value(
+                    get_logger(), config, 'Equipment.Manufacturer.IGT',
+                    'Min. time in between ramping up and down [ms]', 0.070))  # [ms]
 
-            measure_ch_level = float(
-                get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
-                                 'Pulse dur. flag level MeasureChannels [ms]', 4.570))
+        measure_ch_level = float(
+            get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
+                             'Pulse dur. flag level MeasureChannels [ms]', 4.570))
 
-            measure_boards_level = float(
-                get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
-                                 'Pulse dur. flag level MeasureBoards [ms]', 0.035))
+        measure_boards_level = float(
+            get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
+                             'Pulse dur. flag level MeasureBoards [ms]', 0.035))
 
-            measure_time_level = float(
-                get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
-                                 'Pulse dur. flag level MeasureTimings [ms]', 0.001))
+        measure_time_level = float(
+            get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
+                             'Pulse dur. flag level MeasureTimings [ms]', 0.001))
 
-            if min_pulse_dur > measure_ch_level + ramp_transient_t:  # [ms]
-                exec_flags |= unifus.ExecFlag.MeasureChannels
+        if min_pulse_dur > measure_ch_level + ramp_transient_t:  # [ms]
+            exec_flags |= unifus.ExecFlag.MeasureChannels
 
-            elif min_pulse_dur >= measure_boards_level + ramp_transient_t:  # [ms]
-                exec_flags |= unifus.ExecFlag.MeasureBoards
+        elif min_pulse_dur >= measure_boards_level + ramp_transient_t:  # [ms]
+            exec_flags |= unifus.ExecFlag.MeasureBoards
 
-            elif min_pulse_dur >= measure_time_level + ramp_transient_t:  # [ms]:
-                exec_flags |= unifus.ExecFlag.MeasureTimings  # or NONE
+        elif min_pulse_dur >= measure_time_level + ramp_transient_t:  # [ms]:
+            exec_flags |= unifus.ExecFlag.MeasureTimings  # or NONE
 
         return exec_flags
 
-    def wait_for_trigger(self, protocols, total_alternating_duration_ms=None, debug_info=True):
+    def wait_for_trigger(self, protocols, total_alternating_duration_ms=None):
         """
         Activates the listener on the IGT ultrasound driving system to wait for the trigger to
         execute the previously sent protocol(s). When interleaving, the ramp-transient timing
@@ -1003,7 +1016,6 @@ class IGT(ds.ControlDrivingSystem):
                 send_protocol().
             total_alternating_duration_ms (float): Same value already passed to send_protocol()
                 -- required (must be > 0) when interleaving more than one protocol.
-            debug_info (bool): Whether to compute and set additional execution flags.
         """
 
         if isinstance(protocols, TUSProtocol):
@@ -1042,7 +1054,7 @@ class IGT(ds.ControlDrivingSystem):
                 # Use unifus.ExecFlag.NONE if nothing special, or simply don't pass the
                 # exec_flags argument. Use '|' to combine multiple flags: flag1 | flag2 | flag3
                 # To use trigger, add one of unifus::ExecFlag::Trigger*
-                exec_flags = self._compute_exec_flags(protocols, debug_info)
+                exec_flags = self._compute_exec_flags(protocols)
 
                 sent_protocol_info = self.sent_protocols.get(protocol0.buffer_num, {})
                 n_pulse_train_rep = sent_protocol_info.get('n_pulse_train_rep')
@@ -1104,7 +1116,7 @@ class IGT(ds.ControlDrivingSystem):
             # if no connection can be made, program stops preventing infinite loop
             self.connect(protocol0.driving_sys.connect_info)
             self.send_protocol(protocols, total_alternating_duration_ms)
-            self.wait_for_trigger(protocols, total_alternating_duration_ms, debug_info)
+            self.wait_for_trigger(protocols, total_alternating_duration_ms)
 
     def wait_for_trigger_result(self, buffer_num, timeout_s=5.0):
         """
@@ -1182,7 +1194,7 @@ class IGT(ds.ControlDrivingSystem):
 
         return self.listener.exec_error_code
 
-    def execute_protocol(self, protocols, total_alternating_duration_ms=None, debug_info=True):
+    def execute_protocol(self, protocols, total_alternating_duration_ms=None):
         """
         Executes the previously sent protocol(s) on the IGT ultrasound driving system. When
         interleaving, the ramp-transient timing this computes is taken from only the first
@@ -1205,7 +1217,6 @@ class IGT(ds.ControlDrivingSystem):
                 send_protocol().
             total_alternating_duration_ms (float): Same value already passed to send_protocol()
                 -- required (must be > 0) when interleaving more than one protocol.
-            debug_info (bool): Whether to compute and set additional execution flags.
         """
 
         if isinstance(protocols, TUSProtocol):
@@ -1237,7 +1248,7 @@ class IGT(ds.ControlDrivingSystem):
                 # Use unifus.ExecFlag.NONE if nothing special, or simply don't pass the
                 # exec_flags argument. Use '|' to combine multiple flags: flag1 | flag2 | flag3
                 # To use trigger, add one of unifus::ExecFlag::Trigger*
-                exec_flags = self._compute_exec_flags(protocols, debug_info)
+                exec_flags = self._compute_exec_flags(protocols)
 
                 sent_protocol_info = self.sent_protocols.get(protocol0.buffer_num, {})
                 self.gen.prepareSequence(protocol0.buffer_num,
@@ -1296,7 +1307,7 @@ class IGT(ds.ControlDrivingSystem):
             # if no connection can be made, program stops preventing infinite loop
             self.connect(protocol0.driving_sys.connect_info)
             self.send_protocol(protocols, total_alternating_duration_ms)
-            self.execute_protocol(protocols, total_alternating_duration_ms, debug_info)
+            self.execute_protocol(protocols, total_alternating_duration_ms)
 
     def disconnect(self):
         """

@@ -62,8 +62,15 @@ def test_initialize_logger_creates_log_dir_if_missing(patch_config, tmp_path,
 
 def test_initialize_logger_writes_log_messages_to_a_file(patch_config, tmp_path,
                                                          test_logger_name):
-    """The log file lives inside the timestamped session folder (get_session_log_dir()), not
-    directly in log_dir -- see test_initialize_logger_creates_a_timestamped_session_folder."""
+    """The log files live inside the timestamped session folder (get_session_log_dir()), not
+    directly in log_dir -- see test_initialize_logger_creates_a_timestamped_session_folder.
+    Only 'info' (mirrors the console level) and 'debug' (everything -- the one to always share
+    when reporting a problem) receive this INFO-level message (DEBUG captures INFO too). The
+    third file, 'measurements' (IGT's high-volume hardware data, kept separate -- see
+    get_measurements_logger()), uses delay=True and is never even created here, since nothing
+    writes to it via the main logger -- see
+    test_initialize_logger_creates_measurements_file_only_once_something_is_logged_to_it for the
+    case where something does."""
     _configure_logging(patch_config, test_logger_name)
     logger = logging_config.initialize_logger(str(tmp_path), "testrun")
 
@@ -73,8 +80,32 @@ def test_initialize_logger_writes_log_messages_to_a_file(patch_config, tmp_path,
 
     session_log_dir = Path(logging_config.get_session_log_dir())
     log_files = list(session_log_dir.glob("*.txt"))
-    assert len(log_files) == 1
-    assert "hello from the test suite" in log_files[0].read_text()
+    assert len(log_files) == 2
+    info_file = next(f for f in log_files if 'info' in f.name)
+    debug_file = next(f for f in log_files if 'debug' in f.name)
+    assert "hello from the test suite" in info_file.read_text()
+    assert "hello from the test suite" in debug_file.read_text()
+    assert not any('measurements' in f.name for f in log_files)
+
+
+def test_initialize_logger_creates_measurements_file_only_once_something_is_logged_to_it(
+        patch_config, tmp_path, test_logger_name):
+    """The flip side of the test above -- delay=True defers opening the file, not creating the
+    handler, so once something actually logs through get_measurements_logger() (only IGT's
+    onPulseResult() does today), the file appears on disk with that content, for whichever
+    driving system's session actually needs it."""
+    _configure_logging(patch_config, test_logger_name)
+    logging_config.initialize_logger(str(tmp_path), "testrun")
+
+    measurements_logger = logging_config.get_measurements_logger()
+    measurements_logger.debug("a measurement line")
+    for handler in measurements_logger.handlers:
+        handler.flush()
+
+    session_log_dir = Path(logging_config.get_session_log_dir())
+    measurements_files = list(session_log_dir.glob("*measurements*.txt"))
+    assert len(measurements_files) == 1
+    assert "a measurement line" in measurements_files[0].read_text()
 
 
 def test_initialize_logger_creates_a_timestamped_session_folder(patch_config, tmp_path,
@@ -205,34 +236,49 @@ def test_initialize_logger_writes_log_messages_to_the_console(patch_config, tmp_
 
 def test_initialize_logger_sets_logger_level_to_min_of_file_and_console(
         patch_config, tmp_path, test_logger_name):
+    """'info' mirrors the console level (both ERROR here); 'debug' mirrors the configured file
+    level (WARNING) -- see initialize_logger()'s own comment on why. logger.level is still the
+    min of the two underlying config values, unchanged from before the file/level split."""
     _configure_logging(patch_config, test_logger_name, file_level='WARNING',
                        console_level='ERROR')
     logger = logging_config.initialize_logger(str(tmp_path), "testrun")
 
     assert logger.level == logging.WARNING
 
-    file_handlers = [h for h in logger.handlers if isinstance(h, logging.FileHandler)]
+    file_handlers = {Path(h.baseFilename).name: h for h in logger.handlers
+                     if isinstance(h, logging.FileHandler)}
     console_handlers = [h for h in logger.handlers
                         if isinstance(h, logging.StreamHandler)
                         and not isinstance(h, logging.FileHandler)]
-    assert file_handlers[0].level == logging.WARNING
+    info_handler = next(h for name, h in file_handlers.items() if 'info' in name)
+    debug_handler = next(h for name, h in file_handlers.items() if 'debug' in name)
+    assert info_handler.level == logging.ERROR
+    assert debug_handler.level == logging.WARNING
     assert console_handlers[0].level == logging.ERROR
 
 
 def test_initialize_logger_does_not_accumulate_handlers_on_repeated_calls(
         patch_config, tmp_path, test_logger_name):
+    """logger (the main _logger) ends up with 3 handlers: console, 'info' file, 'debug' file.
+    The 'measurements' file lives on the separate _measurements_logger instead (see
+    get_measurements_logger()) -- checked here too, so its own handler-reset logic (mirroring
+    _logger's) is covered by the same repeated-calls test."""
     _configure_logging(patch_config, test_logger_name)
     logging_config.initialize_logger(str(tmp_path), "testrun")
     logger = logging_config.initialize_logger(str(tmp_path), "testrun")
 
-    assert len(logger.handlers) == 2
+    assert len(logger.handlers) == 3
     # type(h) is ... (not isinstance) because ZipRotatingFileHandler is itself a
     # StreamHandler subclass (via RotatingFileHandler -> FileHandler -> StreamHandler) --
     # isinstance(file_handler, StreamHandler) is True, which would silently double-count it
     # here.
     assert sum(type(h) is logging_config.ZipRotatingFileHandler
-               for h in logger.handlers) == 1
+               for h in logger.handlers) == 2
     assert sum(type(h) is logging.StreamHandler for h in logger.handlers) == 1
+
+    measurements_logger = logging_config.get_measurements_logger()
+    assert len(measurements_logger.handlers) == 1
+    assert type(measurements_logger.handlers[0]) is logging_config.ZipRotatingFileHandler
 
 
 def test_initialize_logger_rotates_and_zips_when_max_size_is_exceeded(patch_config, tmp_path,
@@ -241,7 +287,12 @@ def test_initialize_logger_rotates_and_zips_when_max_size_is_exceeded(patch_conf
     content is zipped under a unique name and a fresh, empty file continues receiving new log
     messages -- instead of the file growing forever. The tiny configured size below triggers
     several rollovers (not just one) across 50 messages, each producing its own .zip file --
-    exercising both the truncate-on-reopen behavior and the per-rollover unique naming."""
+    exercising both the truncate-on-reopen behavior and the per-rollover unique naming.
+
+    Only the 'debug' file is checked here -- 'info' receives the identical INFO-level content
+    (same maxBytes, so it rotates in lockstep) and 'measurements' receives nothing at all in
+    this test (nothing writes to get_measurements_logger() here), so restricting the glob to
+    'debug' keeps this test's counts deterministic regardless of the other two files."""
     _configure_logging(patch_config, test_logger_name)
     patch_config.set('Logging', 'Max log file size [MB]', str(200 / (1024 * 1024)))  # ~200 B
     logger = logging_config.initialize_logger(str(tmp_path), "testrun")
@@ -252,8 +303,8 @@ def test_initialize_logger_rotates_and_zips_when_max_size_is_exceeded(patch_conf
         handler.flush()
 
     session_log_dir = Path(logging_config.get_session_log_dir())
-    txt_files = list(session_log_dir.glob("*.txt"))
-    zip_files = list(session_log_dir.glob("*.zip"))
+    txt_files = list(session_log_dir.glob("*debug*.txt"))
+    zip_files = list(session_log_dir.glob("*debug*.zip"))
 
     assert len(txt_files) == 1  # the fresh file that kept logging after the last rollover
     assert len(zip_files) > 1  # several rollovers, each its own (uniquely named) .zip file

@@ -355,8 +355,10 @@ Adjust these settings to control what information is recorded and where. Increas
 - **filename faulthandler**: Name of the file for recording critical errors
 - **timestamp format**: How dates/times appear in logs (Year-Month-Day_Hour-Minute-Second)
 - **log level console**: Minimum severity level shown on screen (WARNING shows warnings and errors)
-- **log level file**: Minimum severity level saved to file (INFO includes informational messages)
-- **initial part of log filename**: Prefix for all log files
+- **log level file**: Minimum severity level saved to the `debug`/`measurements` files (see below)
+- **initial part of log filename**: Shared prefix for all log files
+
+Each session writes two FDS log files into its own timestamped session folder (alongside the faulthandler log): `info` (mirrors `log level console`'s severity -- the clean, researcher-facing record of what ran) and `debug` (mirrors `log level file` -- everything, including validation/curve/setter detail; this is the one to always share when reporting a problem). A third, separate `measurements` file (also at `log level file`'s severity) exists too, so a single protocol with many repetitions doesn't fill `debug` with thousands of measurement lines -- but it's only created if something is actually logged to it, which today only IGT's per-pulse/per-channel hardware measurements do; other driving systems' sessions never get this file at all. For an IGT driving system specifically, its own native (non-FDS) log is also written into this same session folder, alongside the others.
 
 ### Safety Setting
 

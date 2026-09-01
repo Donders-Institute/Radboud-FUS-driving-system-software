@@ -123,6 +123,26 @@ class TestSequenceCallbacks:
 
         assert listener.pulse_results == [result]
 
+    def test_on_pulse_result_logs_through_the_measurements_logger_not_the_main_one(
+            self, caplog):
+        """This is real per-pulse, per-channel hardware data -- potentially thousands of lines
+        for a protocol with many repetitions -- kept off the main info/debug logger so it
+        doesn't drown those out (GitHub #78/#137, see get_measurements_logger()'s own
+        comment)."""
+        listener = ExecListener()
+        measures = _FakeMeasures(channel_measure_count=5)
+        result = _fake_pulse_result(shared_measurements=measures)
+
+        with caplog.at_level('DEBUG'):
+            listener.onPulseResult(result)
+
+        main_logger_records = [r for r in caplog.records if r.name == 'driving_system']
+        measurements_logger_records = [r for r in caplog.records
+                                       if r.name == 'driving_system.measurements']
+        assert not main_logger_records
+        assert measurements_logger_records
+        assert any('PULS RESULT' in r.message for r in measurements_logger_records)
+
     def test_on_sequence_result_clears_running_flag_on_success(self):
         listener = ExecListener()
         listener._running = True

@@ -309,8 +309,10 @@ config['Equipment.Manufacturer.IGT']['Config. file folder driving sys.'] = (
     CONFIG_FILE_FOLDER_IGT_DS)
 config['Equipment.Manufacturer.IGT']['Additional charac. discon. message'] = ''
 
-config['Equipment.Manufacturer.IGT']['Default log filename prefix'] = 'standalone_igt'
-config['Equipment.Manufacturer.IGT']['Default log filename suffix'] = '_igt_ds_log'
+config['Equipment.Manufacturer.IGT']['Default log filename'] = 'standalone_igt'
+# Prepended to the FDS session filename to name the native IGT log, so it sorts and reads
+# alongside this package's own log_info_*/log_debug_*/log_measurements_* files.
+config['Equipment.Manufacturer.IGT']['Native IGT log filename prefix'] = 'log_igt_'
 
 config['Equipment.Manufacturer.IGT']['Wait time before responsive [ms]'] = str(100)
 config['Equipment.Manufacturer.IGT']['Min. pulse duration [ms]'] = str(0.001)

@@ -213,6 +213,43 @@ class TestConnect:
         set_log_path_mock.assert_called_once()
         assert set_log_path_mock.call_args[0][0] == str(session_dir)
 
+    def test_connect_names_native_log_after_the_session_filename_by_default(
+            self, mocker, mock_fus_system, tmp_path):
+        """When log_name isn't given, the native IGT log is named consistently with the main
+        FDS log by default (get_session_log_filename()) rather than a generic,
+        session-independent config default -- callers no longer need to pass the same filename
+        twice."""
+        mocker.patch("fus_driving_systems.igt.igt_ds.get_session_log_filename",
+                     return_value='standalone_plain')
+        set_log_path_mock = mocker.patch("fus_driving_systems.igt.igt_ds.unifus.setLogPath")
+        mock_fus_system.isConnected.return_value = True
+        fake_gen = mocker.Mock()
+        fake_gen.getParam.return_value = 8
+        mock_fus_system.gen.return_value = fake_gen
+        instance = IGT(log_dir=str(tmp_path))
+
+        instance.connect('igt/config/gen_test.json', log_dir=str(tmp_path))
+
+        assert set_log_path_mock.call_args[0][1] == 'log_igt_standalone_plain'
+
+    def test_connect_falls_back_to_config_default_when_no_session_filename_is_tracked(
+            self, mocker, mock_fus_system, tmp_path):
+        """No initialize_logger() call happened in this process (e.g. a host application using
+        sync_logger() instead) -- get_session_log_filename() returns None, so this falls back to
+        the config-driven default rather than crashing on a None + str concatenation."""
+        mocker.patch("fus_driving_systems.igt.igt_ds.get_session_log_filename",
+                     return_value=None)
+        set_log_path_mock = mocker.patch("fus_driving_systems.igt.igt_ds.unifus.setLogPath")
+        mock_fus_system.isConnected.return_value = True
+        fake_gen = mocker.Mock()
+        fake_gen.getParam.return_value = 8
+        mock_fus_system.gen.return_value = fake_gen
+        instance = IGT(log_dir=str(tmp_path))
+
+        instance.connect('igt/config/gen_test.json', log_dir=str(tmp_path))
+
+        assert set_log_path_mock.call_args[0][1] == 'log_igt_standalone_igt'
+
     def test_connect_success_sets_connected_and_channel_count(self, mocker, mock_fus_system,
                                                               tmp_path):
         mock_fus_system.isConnected.return_value = True
@@ -1150,8 +1187,7 @@ class TestExecuteProtocol:
         fake_protocol2 = SimpleNamespace(buffer_num=0)
 
         with pytest.raises(SystemExit):
-            connected_instance.execute_protocol([fake_protocol1, fake_protocol2],
-                                                debug_info=False)
+            connected_instance.execute_protocol([fake_protocol1, fake_protocol2])
 
     def test_starts_protocol_and_waits_when_already_sent(self, mocker, connected_instance):
         connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
@@ -1159,7 +1195,7 @@ class TestExecuteProtocol:
         fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=0.5, pulse_ramp_dur=0,
                                         pulse_ramp_shape='Rectangular - no ramping', slots=[])
 
-        connected_instance.execute_protocol([fake_protocol], debug_info=False)
+        connected_instance.execute_protocol([fake_protocol])
 
         connected_instance.gen.prepareSequence.assert_called_once_with(0, 2, 5.0, mocker.ANY)
         connected_instance.gen.startSequence.assert_called_once()
@@ -1179,19 +1215,18 @@ class TestExecuteProtocol:
         connected_instance.listener.exec_error_code = None
 
         with pytest.raises(SystemExit):
-            connected_instance.execute_protocol([fake_protocol], debug_info=False)
+            connected_instance.execute_protocol([fake_protocol])
 
-    def test_debug_info_true_sets_measure_channels_flag_for_long_pulse(self, connected_instance):
-        """debug_info=True (the default) computes extra exec_flags based on
-        pulse_dur, mirroring TestWaitForTrigger's identical coverage of
-        this same logic. execute_protocol has no trigger_option flag
-        addition, so no extra flag needs to be added to `expected` here."""
+    def test_sets_measure_channels_flag_for_long_pulse(self, connected_instance):
+        """Extra exec_flags are always computed based on pulse_dur, mirroring
+        TestWaitForTrigger's identical coverage of this same logic. execute_protocol has no
+        trigger_option flag addition, so no extra flag needs to be added to `expected` here."""
         connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
                                                  'total_protocol_duration_ms': 500.0}}
         fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=5.0, pulse_ramp_dur=0,
                                         pulse_ramp_shape='Rectangular - no ramping', slots=[])
 
-        connected_instance.execute_protocol([fake_protocol], debug_info=True)
+        connected_instance.execute_protocol([fake_protocol])
 
         exec_flags = connected_instance.gen.prepareSequence.call_args.args[3]
         expected = (unifus.ExecFlag.DisableMonitoringChannelCombiner |
@@ -1214,7 +1249,7 @@ class TestExecuteProtocol:
         fake_protocol2 = SimpleNamespace(buffer_num=0, pulse_dur=0.01, slots=[])
 
         connected_instance.execute_protocol([fake_protocol1, fake_protocol2],
-                                            total_alternating_duration_ms=100, debug_info=True)
+                                            total_alternating_duration_ms=100)
 
         exec_flags = connected_instance.gen.prepareSequence.call_args.args[3]
         expected = (unifus.ExecFlag.DisableMonitoringChannelCombiner |
@@ -1222,7 +1257,7 @@ class TestExecuteProtocol:
                     unifus.ExecFlag.MeasureTimings)
         assert int(exec_flags) == int(expected)
 
-    def test_debug_info_true_sets_measure_boards_flag_for_medium_pulse(self, connected_instance):
+    def test_sets_measure_boards_flag_for_medium_pulse(self, connected_instance):
         """Same as above, one threshold down: pulse_dur between the
         MeasureBoards (0.035 ms) and MeasureChannels (4.570 ms) defaults."""
         connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
@@ -1230,7 +1265,7 @@ class TestExecuteProtocol:
         fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=1.0, pulse_ramp_dur=0,
                                         pulse_ramp_shape='Rectangular - no ramping', slots=[])
 
-        connected_instance.execute_protocol([fake_protocol], debug_info=True)
+        connected_instance.execute_protocol([fake_protocol])
 
         exec_flags = connected_instance.gen.prepareSequence.call_args.args[3]
         expected = (unifus.ExecFlag.DisableMonitoringChannelCombiner |
@@ -1238,7 +1273,7 @@ class TestExecuteProtocol:
                     unifus.ExecFlag.MeasureBoards)
         assert int(exec_flags) == int(expected)
 
-    def test_debug_info_true_sets_measure_timings_flag_for_short_pulse(self, connected_instance):
+    def test_sets_measure_timings_flag_for_short_pulse(self, connected_instance):
         """Same as above, lowest threshold: pulse_dur between the
         MeasureTimings (0.001 ms) and MeasureBoards (0.035 ms) defaults."""
         connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
@@ -1246,7 +1281,7 @@ class TestExecuteProtocol:
         fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=0.01, pulse_ramp_dur=0,
                                         pulse_ramp_shape='Rectangular - no ramping', slots=[])
 
-        connected_instance.execute_protocol([fake_protocol], debug_info=True)
+        connected_instance.execute_protocol([fake_protocol])
 
         exec_flags = connected_instance.gen.prepareSequence.call_args.args[3]
         expected = (unifus.ExecFlag.DisableMonitoringChannelCombiner |
@@ -1266,7 +1301,7 @@ class TestExecuteProtocol:
             buffer_num=0, driving_sys=SimpleNamespace(connect_info='igt/config/gen_test.json'))
 
         with pytest.raises(SystemExit):
-            instance.execute_protocol([fake_protocol], debug_info=False)
+            instance.execute_protocol([fake_protocol])
 
         mock_connect.assert_not_called()
         mock_send.assert_not_called()
@@ -1279,14 +1314,7 @@ class TestExecuteProtocol:
         have been sent (buffer 0 pre-populated in sent_protocols below) -- it recovers a
         dropped connection after a real send, it doesn't fill in for a caller who never sent
         anything at all (see test_exits_when_not_yet_sent for that case, which must not
-        reconnect or send).
-
-        Regression test: the retry call used to not forward debug_info, so
-        it always reconnected-and-retried with the True default. fake_protocol
-        deliberately has no pulse_dur/pulse_ramp_dur/pulse_ramp_shape: if
-        debug_info ever silently reverts to True again, this test fails with
-        an AttributeError instead of passing (see TestWaitForTrigger's
-        identical regression test for how this bug was originally found)."""
+        reconnect or send)."""
         instance = IGT(log_dir=str(tmp_path))
         instance.sent_protocols[0] = {'n_pulse_train_rep': 1, 'pulse_train_delay': 0.0,
                                       'total_protocol_duration_ms': 10.0}
@@ -1306,9 +1334,10 @@ class TestExecuteProtocol:
 
         fake_protocol = SimpleNamespace(
             buffer_num=0, driving_sys=SimpleNamespace(connect_info='igt/config/gen_test.json'),
+            pulse_dur=0.5, pulse_ramp_dur=0, pulse_ramp_shape='Rectangular - no ramping',
             slots=[])
 
-        instance.execute_protocol([fake_protocol], debug_info=False)
+        instance.execute_protocol([fake_protocol])
 
         mock_connect.assert_called_once_with('igt/config/gen_test.json')
         mock_send.assert_called_once()
@@ -1340,10 +1369,10 @@ class TestExecuteProtocol:
 
         fake_protocol = SimpleNamespace(
             buffer_num=0, driving_sys=SimpleNamespace(connect_info='igt/config/gen_test.json'),
+            pulse_dur=0.5, pulse_ramp_dur=0, pulse_ramp_shape='Rectangular - no ramping',
             slots=[])
 
-        instance.execute_protocol([fake_protocol], total_alternating_duration_ms=5000,
-                                  debug_info=False)
+        instance.execute_protocol([fake_protocol], total_alternating_duration_ms=5000)
 
         mock_send.assert_called_once_with([fake_protocol], 5000)
 
@@ -1358,7 +1387,7 @@ class TestExecuteProtocol:
                                         pulse_ramp_shape='Rectangular - no ramping', slots=[])
 
         with pytest.raises(SystemExit):
-            connected_instance.execute_protocol([fake_protocol], debug_info=False)
+            connected_instance.execute_protocol([fake_protocol])
 
     def test_exits_when_listener_reports_protocol_execution_error(self, connected_instance):
         """GitHub issue #112: unifus.FUSListener's onSequenceResult callback used to only log
@@ -1378,7 +1407,7 @@ class TestExecuteProtocol:
                                         pulse_ramp_shape='Rectangular - no ramping', slots=[])
 
         with pytest.raises(SystemExit):
-            connected_instance.execute_protocol([fake_protocol], debug_info=False)
+            connected_instance.execute_protocol([fake_protocol])
 
     def test_does_not_exit_when_listener_reports_no_error(self, connected_instance):
         """Mirrors the test above: a successful execution (exec_error_code left at None by
@@ -1388,7 +1417,7 @@ class TestExecuteProtocol:
         fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=0.5, pulse_ramp_dur=0,
                                         pulse_ramp_shape='Rectangular - no ramping', slots=[])
 
-        connected_instance.execute_protocol([fake_protocol], debug_info=False)  # must not raise
+        connected_instance.execute_protocol([fake_protocol])  # must not raise
 
         connected_instance.listener.wait_protocol.assert_called_once()
 
@@ -1405,7 +1434,7 @@ class TestExecuteProtocol:
             'intensity_lines': connected_instance._build_intensity_lines([fake_protocol])}}
 
         with caplog.at_level('INFO'):
-            connected_instance.execute_protocol([fake_protocol], debug_info=False)
+            connected_instance.execute_protocol([fake_protocol])
 
         assert 'About to execute:' in caplog.text
         assert 'Protocol executed successfully:' in caplog.text
@@ -1427,7 +1456,7 @@ class TestExecuteProtocol:
                                          slots=[_slot(serial='GIVEN-TRAN')])
 
         with pytest.raises(SystemExit):
-            connected_instance.execute_protocol([given_protocol], debug_info=False)
+            connected_instance.execute_protocol([given_protocol])
 
         connected_instance.gen.prepareSequence.assert_not_called()
 
@@ -1456,7 +1485,7 @@ class TestExecuteProtocol:
         mutable_slot.ampl = [80.0]
 
         with pytest.raises(SystemExit):
-            connected_instance.execute_protocol([protocol], debug_info=False)
+            connected_instance.execute_protocol([protocol])
 
         connected_instance.gen.prepareSequence.assert_not_called()
 
@@ -1483,8 +1512,7 @@ class TestExecuteProtocol:
 
         with pytest.raises(SystemExit):
             connected_instance.execute_protocol([protocol1, protocol2],
-                                                total_alternating_duration_ms=5000,
-                                                debug_info=False)
+                                                total_alternating_duration_ms=5000)
 
         connected_instance.gen.prepareSequence.assert_not_called()
 
@@ -1511,7 +1539,7 @@ class TestExecuteProtocol:
         slot.oper_freq = 750
 
         with pytest.raises(SystemExit):
-            connected_instance.execute_protocol([protocol], debug_info=False)
+            connected_instance.execute_protocol([protocol])
 
         connected_instance.gen.prepareSequence.assert_not_called()
 
@@ -1541,7 +1569,7 @@ class TestExecuteProtocol:
         protocol.pulse_dur = 2.0
 
         with pytest.raises(SystemExit):
-            connected_instance.execute_protocol([protocol], debug_info=False)
+            connected_instance.execute_protocol([protocol])
 
         connected_instance.gen.prepareSequence.assert_not_called()
 
@@ -1558,12 +1586,12 @@ class TestWaitForTrigger:
         patch_config.set('Trigger', 'Option.pulse_train', 'TriggerOnePulseTrain')
         patch_config.set('Trigger', 'Option.whole_protocol', 'TriggerWholeProtocol')
         connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0}}
-        fake_protocol = SimpleNamespace(buffer_num=0, pulse_ramp_dur=0,
+        fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=0.5, pulse_ramp_dur=0,
                                         pulse_ramp_shape='Rectangular - no ramping',
                                         trigger_option='TriggerOnePulseTrain', n_triggers=3,
                                         slots=[])
 
-        connected_instance.wait_for_trigger([fake_protocol], debug_info=False)
+        connected_instance.wait_for_trigger([fake_protocol])
 
         connected_instance.gen.prepareSequence.assert_called_once_with(0, 3, 0, mocker.ANY)
         connected_instance.gen.startSequence.assert_called_once()
@@ -1576,12 +1604,12 @@ class TestWaitForTrigger:
         patch_config.set('Trigger', 'Option.whole_protocol', 'TriggerWholeProtocol')
         connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
                                                  'armed': False}}
-        fake_protocol = SimpleNamespace(buffer_num=0, pulse_ramp_dur=0,
+        fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=0.5, pulse_ramp_dur=0,
                                         pulse_ramp_shape='Rectangular - no ramping',
                                         trigger_option='TriggerOnePulseTrain', n_triggers=3,
                                         slots=[])
 
-        connected_instance.wait_for_trigger([fake_protocol], debug_info=False)
+        connected_instance.wait_for_trigger([fake_protocol])
 
         assert connected_instance.sent_protocols[0]['armed'] is True
 
@@ -1600,8 +1628,7 @@ class TestWaitForTrigger:
                                          n_triggers=0)
 
         with pytest.raises(SystemExit):
-            connected_instance.wait_for_trigger([fake_protocol1, fake_protocol2],
-                                                debug_info=False)
+            connected_instance.wait_for_trigger([fake_protocol1, fake_protocol2])
 
     def test_exits_when_total_alternating_duration_ms_omitted_for_interleaved_protocols(
             self, connected_instance):
@@ -1613,18 +1640,14 @@ class TestWaitForTrigger:
         fake_protocol2 = SimpleNamespace(buffer_num=0)
 
         with pytest.raises(SystemExit):
-            connected_instance.wait_for_trigger([fake_protocol1, fake_protocol2],
-                                                debug_info=False)
+            connected_instance.wait_for_trigger([fake_protocol1, fake_protocol2])
 
-    def test_debug_info_true_sets_measure_channels_flag_for_long_pulse(self, connected_instance,
-                                                                       patch_config):
-        """debug_info=True (the default) computes extra exec_flags based on
-        pulse_dur -- a separate code path from the reconnect-retry
-        forwarding logic above, so it needs its own direct coverage.
-        pulse_dur above the MeasureChannels threshold (default 4.570 ms)
-        sets that flag. Note: MeasureChannels/MeasureBoards/MeasureTimings
-        are not independent bits (3/2/1), so the resulting flags are
-        compared for exact equality rather than checked with '&'."""
+    def test_sets_measure_channels_flag_for_long_pulse(self, connected_instance, patch_config):
+        """Extra exec_flags are always computed based on pulse_dur -- a separate code path from
+        the reconnect-retry forwarding logic above, so it needs its own direct coverage.
+        pulse_dur above the MeasureChannels threshold (default 4.570 ms) sets that flag. Note:
+        MeasureChannels/MeasureBoards/MeasureTimings are not independent bits (3/2/1), so the
+        resulting flags are compared for exact equality rather than checked with '&'."""
         patch_config.set('Trigger', 'Option.pulse_train', 'TriggerOnePulseTrain')
         patch_config.set('Trigger', 'Option.whole_protocol', 'TriggerWholeProtocol')
         connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0}}
@@ -1633,7 +1656,7 @@ class TestWaitForTrigger:
                                         trigger_option='TriggerOnePulseTrain', n_triggers=3,
                                         slots=[])
 
-        connected_instance.wait_for_trigger([fake_protocol], debug_info=True)
+        connected_instance.wait_for_trigger([fake_protocol])
 
         exec_flags = connected_instance.gen.prepareSequence.call_args.args[3]
         expected = (unifus.ExecFlag.DisableMonitoringChannelCombiner |
@@ -1642,8 +1665,7 @@ class TestWaitForTrigger:
                     unifus.ExecFlag.MeasureChannels)
         assert int(exec_flags) == int(expected)
 
-    def test_debug_info_true_sets_measure_boards_flag_for_medium_pulse(self, connected_instance,
-                                                                       patch_config):
+    def test_sets_measure_boards_flag_for_medium_pulse(self, connected_instance, patch_config):
         """Same as above, one threshold down: pulse_dur between the
         MeasureBoards (0.035 ms) and MeasureChannels (4.570 ms) defaults."""
         patch_config.set('Trigger', 'Option.pulse_train', 'TriggerOnePulseTrain')
@@ -1654,7 +1676,7 @@ class TestWaitForTrigger:
                                         trigger_option='TriggerOnePulseTrain', n_triggers=3,
                                         slots=[])
 
-        connected_instance.wait_for_trigger([fake_protocol], debug_info=True)
+        connected_instance.wait_for_trigger([fake_protocol])
 
         exec_flags = connected_instance.gen.prepareSequence.call_args.args[3]
         expected = (unifus.ExecFlag.DisableMonitoringChannelCombiner |
@@ -1663,8 +1685,7 @@ class TestWaitForTrigger:
                     unifus.ExecFlag.MeasureBoards)
         assert int(exec_flags) == int(expected)
 
-    def test_debug_info_true_sets_measure_timings_flag_for_short_pulse(self, connected_instance,
-                                                                       patch_config):
+    def test_sets_measure_timings_flag_for_short_pulse(self, connected_instance, patch_config):
         """Same as above, lowest threshold: pulse_dur between the
         MeasureTimings (0.001 ms) and MeasureBoards (0.035 ms) defaults."""
         patch_config.set('Trigger', 'Option.pulse_train', 'TriggerOnePulseTrain')
@@ -1675,7 +1696,7 @@ class TestWaitForTrigger:
                                         trigger_option='TriggerOnePulseTrain', n_triggers=3,
                                         slots=[])
 
-        connected_instance.wait_for_trigger([fake_protocol], debug_info=True)
+        connected_instance.wait_for_trigger([fake_protocol])
 
         exec_flags = connected_instance.gen.prepareSequence.call_args.args[3]
         expected = (unifus.ExecFlag.DisableMonitoringChannelCombiner |
@@ -1690,12 +1711,12 @@ class TestWaitForTrigger:
         patch_config.set('Trigger', 'Option.pulse_train', 'TriggerOnePulseTrain')
         patch_config.set('Trigger', 'Option.whole_protocol', 'TriggerWholeProtocol')
         connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0}}
-        fake_protocol = SimpleNamespace(buffer_num=0, pulse_ramp_dur=0,
+        fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=0.5, pulse_ramp_dur=0,
                                         pulse_ramp_shape='Rectangular - no ramping',
                                         trigger_option='TriggerWholeProtocol',
                                         n_triggers=0, slots=[])
 
-        connected_instance.wait_for_trigger([fake_protocol], debug_info=False)
+        connected_instance.wait_for_trigger([fake_protocol])
 
         connected_instance.gen.prepareSequence.assert_called_once_with(0, 2, 5.0, mocker.ANY)
 
@@ -1709,7 +1730,7 @@ class TestWaitForTrigger:
                                         get_trigger_options=lambda: [], slots=[])
 
         with pytest.raises(SystemExit):
-            connected_instance.wait_for_trigger([fake_protocol], debug_info=False)
+            connected_instance.wait_for_trigger([fake_protocol])
 
     def test_exits_when_never_sent_regardless_of_connection_state(self, mocker, tmp_path):
         """A protocol that was never sent is a caller mistake either way -- is_protocol_sent()
@@ -1724,38 +1745,22 @@ class TestWaitForTrigger:
             trigger_option='None', n_triggers=0)
 
         with pytest.raises(SystemExit):
-            instance.wait_for_trigger([fake_protocol], debug_info=False)
+            instance.wait_for_trigger([fake_protocol])
 
         mock_connect.assert_not_called()
         mock_send.assert_not_called()
 
     def test_reconnects_sends_and_waits_when_not_connected(self, mocker, tmp_path, patch_config):
-        """
-        Mirrors execute_protocol's reconnect test -- wait_for_trigger has
-        the identical 'not connected -> connect(), then retry' shape.
+        """Mirrors execute_protocol's reconnect test -- wait_for_trigger has the identical 'not
+        connected -> connect(), then retry' shape.
 
-        Regression test: the retry call in this branch used to be
-        `self.wait_for_trigger(protocol1, protocol2, protocol3, protocol4, duration_ms)` --
-        debug_info was NOT forwarded, so the retry always used debug_info's
-        default (True) regardless of what the original caller passed. This
-        was discovered because passing debug_info=False here (as every
-        other test in this class does, with a minimal fake_protocol) still
-        required a full `pulse_dur` attribute below -- the retry's
-        debug_info=True path read it even though the caller asked for
-        debug_info=False. Fixed by forwarding debug_info on the retry call.
-        fake_protocol deliberately has no pulse_dur/pulse_ramp_dur/
-        pulse_ramp_shape: if debug_info ever silently reverts to True again,
-        this test fails with an AttributeError instead of passing, same as
-        how the bug was originally found. Same bug shape existed in
-        execute_protocol's identical reconnect branch, fixed there too.
-        """
+        This reconnect-and-resend path is only reached once a protocol is already known to have
+        been sent (pre-populated here) -- it recovers a dropped connection after a real send, it
+        doesn't fill in for a caller who never sent anything at all (see
+        test_exits_when_not_yet_sent for that case, which must not reconnect or send)."""
         patch_config.set('Trigger', 'Option.pulse_train', 'TriggerOnePulseTrain')
         patch_config.set('Trigger', 'Option.whole_protocol', 'TriggerWholeProtocol')
         instance = IGT(log_dir=str(tmp_path))
-        # This reconnect-and-resend path is only reached once a protocol is already known to
-        # have been sent (pre-populated here) -- it recovers a dropped connection after a real
-        # send, it doesn't fill in for a caller who never sent anything at all (see
-        # test_exits_when_not_yet_sent for that case, which must not reconnect or send).
         instance.sent_protocols[0] = {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0}
 
         def fake_connect(connect_info):
@@ -1772,9 +1777,10 @@ class TestWaitForTrigger:
 
         fake_protocol = SimpleNamespace(
             buffer_num=0, driving_sys=SimpleNamespace(connect_info='igt/config/gen_test.json'),
+            pulse_dur=0.5, pulse_ramp_dur=0, pulse_ramp_shape='Rectangular - no ramping',
             trigger_option='TriggerOnePulseTrain', n_triggers=3, slots=[])
 
-        instance.wait_for_trigger([fake_protocol], debug_info=False)
+        instance.wait_for_trigger([fake_protocol])
 
         mock_connect.assert_called_once_with('igt/config/gen_test.json')
         mock_send.assert_called_once()
@@ -1807,10 +1813,10 @@ class TestWaitForTrigger:
 
         fake_protocol = SimpleNamespace(
             buffer_num=0, driving_sys=SimpleNamespace(connect_info='igt/config/gen_test.json'),
+            pulse_dur=0.5, pulse_ramp_dur=0, pulse_ramp_shape='Rectangular - no ramping',
             trigger_option='TriggerOnePulseTrain', n_triggers=3, slots=[])
 
-        instance.wait_for_trigger([fake_protocol], total_alternating_duration_ms=5000,
-                                  debug_info=False)
+        instance.wait_for_trigger([fake_protocol], total_alternating_duration_ms=5000)
 
         mock_send.assert_called_once_with([fake_protocol], 5000)
 
@@ -1822,20 +1828,20 @@ class TestWaitForTrigger:
         patch_config.set('Trigger', 'Option.whole_protocol', 'TriggerWholeProtocol')
         connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0}}
         connected_instance.gen.prepareSequence.side_effect = RuntimeError('hardware fault')
-        fake_protocol = SimpleNamespace(buffer_num=0, pulse_ramp_dur=0,
+        fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=0.5, pulse_ramp_dur=0,
                                         pulse_ramp_shape='Rectangular - no ramping',
                                         trigger_option='TriggerOnePulseTrain', n_triggers=3,
                                         slots=[])
 
         with pytest.raises(SystemExit):
-            connected_instance.wait_for_trigger([fake_protocol], debug_info=False)
+            connected_instance.wait_for_trigger([fake_protocol])
 
     def test_logs_intensity_summary_before_arming(self, connected_instance, caplog, patch_config):
         """GitHub #125: a researcher should see what's about to fire before going to trigger it
         themselves and wait for the result."""
         patch_config.set('Trigger', 'Option.pulse_train', 'TriggerOnePulseTrain')
         patch_config.set('Trigger', 'Option.whole_protocol', 'TriggerWholeProtocol')
-        fake_protocol = SimpleNamespace(buffer_num=0, pulse_ramp_dur=0,
+        fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=0.5, pulse_ramp_dur=0,
                                         pulse_ramp_shape='Rectangular - no ramping',
                                         trigger_option='TriggerOnePulseTrain', n_triggers=3,
                                         slots=[_slot(serial='TRAN-A')])
@@ -1844,7 +1850,7 @@ class TestWaitForTrigger:
             'intensity_lines': connected_instance._build_intensity_lines([fake_protocol])}}
 
         with caplog.at_level('INFO'):
-            connected_instance.wait_for_trigger([fake_protocol], debug_info=False)
+            connected_instance.wait_for_trigger([fake_protocol])
 
         assert 'This will fire once triggered:' in caplog.text
         assert 'TRAN-A: fake intensity summary' in caplog.text
@@ -1867,7 +1873,7 @@ class TestWaitForTrigger:
                                          slots=[_slot(serial='GIVEN-TRAN')])
 
         with pytest.raises(SystemExit):
-            connected_instance.wait_for_trigger([given_protocol], debug_info=False)
+            connected_instance.wait_for_trigger([given_protocol])
 
         connected_instance.gen.prepareSequence.assert_not_called()
 
@@ -1900,7 +1906,7 @@ class TestWaitForTrigger:
         mutable_slot.ampl = [80.0]
 
         with pytest.raises(SystemExit):
-            connected_instance.wait_for_trigger([protocol], debug_info=False)
+            connected_instance.wait_for_trigger([protocol])
 
         connected_instance.gen.prepareSequence.assert_not_called()
 

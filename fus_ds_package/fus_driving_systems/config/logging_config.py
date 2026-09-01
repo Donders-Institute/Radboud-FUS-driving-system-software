@@ -36,6 +36,19 @@ from fus_driving_systems.utils import get_config_value
 _logger = logging.getLogger(
     get_config_value(None, config, 'Logging', 'Logger name', 'driving_system'))
 
+# A dedicated child logger (dotted-name hierarchy, e.g. 'driving_system.measurements') for the
+# high-volume per-pulse/per-channel hardware measurements IGT's ExecListener.onPulseResult()
+# receives -- kept off _logger's own handlers so they don't drown out the info/debug files in
+# noise (thousands of lines for a protocol with many repetitions). initialize_logger() gives it
+# its own file handler and sets propagate=False, so it's genuinely separate there; sync_logger()
+# (the host-application integration point, e.g. SonoRover One) deliberately leaves it alone --
+# with no handlers of its own and propagate left at its default (True), records logged to it
+# bubble up to _logger's own handlers instead, i.e. wherever the host's own logger sends them --
+# matching this package's previous behavior (get_logger().debug(...)) for that integration path,
+# since the host has no knowledge of this package's own file-splitting scheme.
+_measurements_logger = logging.getLogger(
+    get_config_value(None, config, 'Logging', 'Logger name', 'driving_system') + '.measurements')
+
 # The timestamped subfolder initialize_logger() creates for the main FDS log file, exposed via
 # get_session_log_dir() below so other log files created later in the same session (e.g. the
 # faulthandler log and IGT.connect()'s native IGT log, see enable_crash_detection() below) land
@@ -43,6 +56,12 @@ _logger = logging.getLogger(
 # one session couldn't be recognized/shared together as a single unit (e.g. with IGT for a bug
 # report, GitHub issue #126).
 _session_log_dir = None  # pylint: disable=invalid-name
+
+# The `filename` argument most recently passed to initialize_logger() (e.g. "standalone_plain"),
+# exposed via get_session_log_filename() below so IGT.connect() can name its own native log
+# consistently with the main FDS log by default, instead of falling back to a generic,
+# session-independent config default (see connect()'s own log_name resolution).
+_session_log_filename = None  # pylint: disable=invalid-name
 
 # The open file faulthandler is currently targeting, kept here (not e.g. an instance attribute
 # on IGT) since faulthandler itself is a single, process-wide facility -- there is only ever
@@ -66,6 +85,35 @@ def get_logger():
     """
 
     return _logger
+
+
+def get_measurements_logger():
+    """
+    Returns the currently active shared logger for high-volume hardware measurements (e.g.
+    IGT's per-pulse/per-channel onPulseResult() data) -- see the module-level comment above
+    _measurements_logger for why this is a separate logger rather than get_logger() itself.
+    For a host application using sync_logger() instead of initialize_logger(), see that
+    function's own docstring for how to keep this data out of its own main log too.
+
+    Returns:
+        logging.Logger: The currently active shared measurements logger.
+    """
+
+    return _measurements_logger
+
+
+def get_session_log_filename():
+    """
+    Returns the `filename` argument most recently passed to initialize_logger(), or None if
+    initialize_logger() hasn't run yet in this process (e.g. a host application using
+    sync_logger() instead).
+
+    Returns:
+        str or None: The current session's FDS log filename (see the module-level comment above
+        _session_log_filename), or None if unavailable.
+    """
+
+    return _session_log_filename
 
 
 def get_session_log_dir():
@@ -271,23 +319,22 @@ class ZipRotatingFileHandler(RotatingFileHandler):
 
 
 def initialize_logger(log_dir, filename):
-    global _logger, _session_log_dir
+    global _logger, _measurements_logger, _session_log_dir, _session_log_filename
 
     # reset logging
     logger_name = get_config_value(None, config, 'Logging', 'Logger name', 'driving_system')
     _logger = logging.getLogger(logger_name)
-    handlers = _logger.handlers[:]
-    for handler in handlers:
-        _logger.removeHandler(handler)
-        handler.close()
+    _measurements_logger = logging.getLogger(logger_name + '.measurements')
+    for logger in (_logger, _measurements_logger):
+        handlers = logger.handlers[:]
+        for handler in handlers:
+            logger.removeHandler(handler)
+            handler.close()
 
     file_log_level = getattr(logging, get_config_value(None, config, 'Logging', 'Log level file',
                                                        'DEBUG').upper())
     console_log_level = getattr(logging, get_config_value(None, config, 'Logging',
                                                           'Log level console', 'INFO').upper())
-
-    # create logger
-    _logger = logging.getLogger(logger_name)
 
     # Get current date and time for logging
     date_time = datetime.now()
@@ -303,35 +350,56 @@ def initialize_logger(log_dir, filename):
     # log_dir itself if it didn't already exist.
     _session_log_dir = os.path.join(log_dir, f'{timestamp}_FDS_logs')
     Path(_session_log_dir).mkdir(parents=True, exist_ok=True)
+    _session_log_filename = filename
 
     enable_crash_detection(log_dir, _session_log_dir)
 
-    # create file handler
     initial_part_log_filename = get_config_value(None, config, 'Logging',
                                                  'Initial part of log filename', 'log_')
     max_log_file_size_mb = float(get_config_value(None, config, 'Logging',
                                                   'Max log file size [MB]', 10))
-    file_handler = ZipRotatingFileHandler(
-        os.path.join(_session_log_dir, initial_part_log_filename + filename + '.txt'),
-        mode='w', maxBytes=int(max_log_file_size_mb * 1024 * 1024), backupCount=0)
+    max_bytes = int(max_log_file_size_mb * 1024 * 1024)
 
-    # create console handler
+    def _make_file_handler(infix, level, delay=False):
+        handler = ZipRotatingFileHandler(
+            os.path.join(_session_log_dir, initial_part_log_filename + infix + filename + '.txt'),
+            mode='w', maxBytes=max_bytes, backupCount=0, delay=delay)
+        handler.setLevel(level)
+        return handler
+
+    # Three files: 'info' mirrors the console (same level, same clean researcher-facing content
+    # -- what's about to run, what actually ran); 'debug' is everything (the file to always
+    # share when reporting a problem, GitHub issue #126); 'measurements' is IGT's high-volume
+    # per-pulse/per-channel hardware data (see _measurements_logger's own comment), kept
+    # separate so it doesn't drown out 'debug' in noise. 'measurements' uses delay=True (the
+    # underlying logging.FileHandler defers actually opening/creating the file until its first
+    # emit()) since this package is manufacturer-agnostic here -- it has no way to know in
+    # advance whether the driving system used this session will ever write to it (only IGT's
+    # onPulseResult() does, see get_measurements_logger()) -- so a session using e.g. Sonic
+    # Concepts or CITRUS never gets an empty, always-unused 'measurements' file on disk.
+    info_file_handler = _make_file_handler('info_', console_log_level)
+    debug_file_handler = _make_file_handler('debug_', file_log_level)
+    measurements_file_handler = _make_file_handler('measurements_', file_log_level, delay=True)
+
     console_handler = logging.StreamHandler(sys.stdout)
-
-    # create formatter and add it to the handlers
-    formatter_compact = logging.Formatter("%(asctime)s - %(levelname)s - %(module)s - " +
-                                          "%(funcName)s line %(lineno)d %(message)s")
-    file_handler.setFormatter(formatter_compact)
-    console_handler.setFormatter(formatter_compact)
-
-    # add the handlers to the logger
-    file_handler.setLevel(file_log_level)
     console_handler.setLevel(console_log_level)
 
-    _logger.setLevel(min(file_log_level, console_log_level))
+    formatter_compact = logging.Formatter("%(asctime)s - %(levelname)s - %(module)s - " +
+                                          "%(funcName)s line %(lineno)d %(message)s")
+    for handler in (info_file_handler, debug_file_handler, measurements_file_handler,
+                    console_handler):
+        handler.setFormatter(formatter_compact)
 
+    _logger.setLevel(min(file_log_level, console_log_level))
     _logger.addHandler(console_handler)
-    _logger.addHandler(file_handler)
+    _logger.addHandler(info_file_handler)
+    _logger.addHandler(debug_file_handler)
+
+    # Kept off _logger's own handlers (see _measurements_logger's own module-level comment) --
+    # propagate=False so records logged here don't also land in the three handlers above.
+    _measurements_logger.setLevel(file_log_level)
+    _measurements_logger.addHandler(measurements_file_handler)
+    _measurements_logger.propagate = False
 
     return _logger
 
@@ -351,6 +419,16 @@ def sync_logger(new_logger, log_dir=None):
     process -- the other of the two whole-package hooks (see enable_crash_detection()),
     covering host applications (e.g. SonoRover One) that use sync_logger() instead of
     initialize_logger() to set up logging.
+
+    _measurements_logger (see get_measurements_logger()) is deliberately left untouched here --
+    no handlers of its own, propagate at its default True -- so its high-volume per-pulse/
+    per-channel records keep bubbling up into new_logger's own handlers, matching this
+    package's pre-split behavior for a host application that has no knowledge of the file
+    split initialize_logger() does. If the host wants this data kept out of its own main log
+    the way initialize_logger() keeps it out of the debug file, it can attach its own handler
+    directly to logging.getLogger(new_logger.name + '.measurements') and set that logger's own
+    propagate = False -- the same mechanism initialize_logger() uses internally, just applied
+    from the host's side of the split instead of this package's.
 
     Parameters:
         new_logger (logging.Logger): The externally provided logger to mirror.
