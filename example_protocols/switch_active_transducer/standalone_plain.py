@@ -49,7 +49,10 @@ README.md file of https://github.com/Donders-Institute/Radboud-FUS-driving-syste
 # initialize logging.
 ##############################################################################
 
+import sys
+
 from fus_driving_systems.config.logging_config import initialize_logger
+from fus_driving_systems.exceptions import FDSError
 
 log_dir = "C:\\Temp"
 filename = "standalone_plain"
@@ -67,141 +70,145 @@ logger = initialize_logger(log_dir, filename)
 # from fus_driving_systems.config.logging_config import sync_logger
 # sync_logger(logger)  # logger needs to be created with logging.getLogger()
 
-##############################################################################
-# connect with the driving system
-##############################################################################
-
-# Connecting doesn't require a protocol to exist yet. In practice, you typically connect once
-# when your experiment starts, then build/adapt protocols iteratively as it progresses -- so
-# look up the driving system's connection info directly via DrivingSystem, rather than through
-# a TUSProtocol.
-
-from fus_driving_systems import driving_system, transducer
-from fus_driving_systems import tus_protocol
-from fus_driving_systems.igt import igt_ds
-
-# to check available driving systems: print(driving_system.get_ds_serials())
-# choose one driving system from that list as input
-ds_info = driving_system.DrivingSystem()
-ds_info.set_ds_info('IGT-32-ch_comb_2x10-ch')
-
-igt_driving_sys = igt_ds.IGT(log_dir)
-
-# connect() is a no-op (besides logging) if already connected, so calling it again later in
-# your experiment (e.g. before re-sending the reconfigured protocol below) won't tear down and
-# recreate the connection unnecessarily.
-igt_driving_sys.connect(ds_info.connect_info, log_dir, filename)
-
-# you can check if the system is still connected by using the following:
-# print(igt_driving_sys.is_connected())
-
-##############################################################################
-# protocol -- transducer 1 active, transducer 2 off
-##############################################################################
-
-# to check available options for this driving system (no need to add a slot first):
-# print(protocol.get_focus_options()) / print(protocol.get_power_options())
-FOCUS_OPTION = 'Focus wrt exit plane [mm]'
-POWER_OPTION = 'Max. pressure in free water [MPa]'
-
-# Both transducers below are physically connected for the whole session -- defined once here so
-# the transducer_1/transducer_2 mapping used in the switch further down can't drift apart from
-# the one used here.
-# to check available transducers: print(transducer.get_tran_serials())
-# choose transducers from that list as input
-TRANSDUCER_1 = 'IS_PCD15287_01001'
-TRANSDUCER_2 = 'IS_PCD15287_01002'
-ACTIVE_PRESS = 0.5  # [MPa], maximum pressure in free water for whichever transducer is active
-INACTIVE_PRESS = 0  # [MPa], off -- physically connected, but not firing
-
-protocol = tus_protocol.TUSProtocol('IGT-32-ch_comb_2x10-ch')
-slot1 = protocol.add_slot(
-    TRANSDUCER_1,
-    FOCUS_OPTION, 40,  # [mm], focal depth w.r.t. the exit plane and FWHM middle
-    POWER_OPTION, ACTIVE_PRESS,
-    oper_freq=300,  # [kHz], operating frequency
-)
-slot2 = protocol.add_slot(
-    TRANSDUCER_2,
-    FOCUS_OPTION, 80,  # [mm], focal depth w.r.t. the exit plane and FWHM middle
-    POWER_OPTION, INACTIVE_PRESS,
-    oper_freq=300,  # [kHz], operating frequency
-)
-
-# configure_timing() only requires pulse_dur -- every other parameter here could be left out and
-# would fall back to a sensible default (see its own docstring). They're all given explicitly
-# below instead, each set to a genuinely different value (not just mirroring the level below
-# it), to show the full timing hierarchy in one place: one pulse, repeated into a pulse train,
-# itself repeated some number of times.
-protocol.configure_timing(
-    pulse_dur=45,  # [ms], pulse duration
-    pulse_ramp_shape='Rectangular - no ramping',
-    pulse_rep_int=100,  # [ms], pulse repetition interval -- one pulse every 100 ms
-    pulse_train_dur=500,  # [ms], pulse train duration -- 5 pulses per train (500 / 100)
-    # [ms], pulse train repetition interval -- a new train starts every 1000 ms (500 ms train,
-    # then a 500 ms gap before the next one starts)
-    pulse_train_rep_int=1000,
-    # [s], pulse train repetition duration -- keeps repeating for 5 s in total, i.e. 5
-    # repetitions of the whole train (5000 ms / 1000 ms)
-    pulse_train_rep_dur=5,
-)
-
-# Trigger configuration (trigger_option/n_triggers) is a call-level parameter of
-# IGT.wait_for_trigger(), not an attribute of the protocol itself -- defined here as plain
-# variables instead, reused below (both before and after the switch) when actually sending/
-# waiting for a trigger/executing. Use 'None' (this template's default) to not use a trigger at
-# all; 'TriggerOnePulseTrain' to fire one pulse train per trigger received (you must also give
-# N_TRIGGERS below); or
-# 'TriggerWholeProtocol' to fire the entire, already fully-timed protocol at once with a single
-# trigger. To check available trigger options: print(igt_driving_sys.get_trigger_options())
-TRIGGER_OPTION = 'None'
-# TRIGGER_OPTION = 'TriggerOnePulseTrain'
-# TRIGGER_OPTION = 'TriggerWholeProtocol'
-
-# Only applies (and is required) when TRIGGER_OPTION == 'TriggerOnePulseTrain' above.
-N_TRIGGERS = None  # e.g. 4 -- number of triggers expected, one pulse train fires per trigger
-
-# It is important to place your experimental code into a try-finally block, so if your code is
-# stopped abruptly, the driving system will be disconnected. Otherwise, there is a chance that
-# it keeps on firing ultrasound protocols.
 try:
-    igt_driving_sys.send_protocol(protocol)
+    ##############################################################################
+    # connect with the driving system
+    ##############################################################################
 
-    # If a trigger is configured (TRIGGER_OPTION != 'None'), only the protocol is sent and will
-    # be executed by the external trigger. If not (this template's default), the protocol is
-    # sent and can be executed directly using execute_protocol(). See
-    # ../single_transducer/igt/standalone_wait_for_trigger.py/standalone_wait_for_trigger_poll.py
-    # for the full wait_for_trigger_result()/has_execution_error() explanation this pattern
-    # relies on.
-    if TRIGGER_OPTION != 'None':
-        igt_driving_sys.wait_for_trigger(protocol, TRIGGER_OPTION, N_TRIGGERS)
-        igt_driving_sys.wait_for_trigger_result(timeout_s=5.0)
-    else:
-        igt_driving_sys.execute_protocol(protocol)
+    # Connecting doesn't require a protocol to exist yet. In practice, you typically connect once
+    # when your experiment starts, then build/adapt protocols iteratively as it progresses -- so
+    # look up the driving system's connection info directly via DrivingSystem, rather than through
+    # a TUSProtocol.
 
-    ##########################################################################
-    # ... later in your experiment: switch which transducer is active ...
-    ##########################################################################
+    from fus_driving_systems import driving_system, transducer
+    from fus_driving_systems import tus_protocol
+    from fus_driving_systems.igt import igt_ds
 
-    # slot.configure() changes an already-added slot's focus/power in place -- no new protocol,
-    # no new slots, just the same two transducers with their power values swapped. Focus stays
-    # the same here (still the current slot value), only power changes.
-    slot1.configure(FOCUS_OPTION, slot1.focus_wrt_exit_plane, POWER_OPTION, INACTIVE_PRESS)
-    slot2.configure(FOCUS_OPTION, slot2.focus_wrt_exit_plane, POWER_OPTION, ACTIVE_PRESS)
+    # to check available driving systems: print(driving_system.get_ds_serials())
+    # choose one driving system from that list as input
+    ds_info = driving_system.DrivingSystem()
+    ds_info.set_ds_info('IGT-32-ch_comb_2x10-ch')
 
-    # The driving system already has the OLD configuration loaded -- send_protocol() must be
-    # called again so it picks up what slot.configure() just changed above.
-    igt_driving_sys.send_protocol(protocol)
-    if TRIGGER_OPTION != 'None':
-        igt_driving_sys.wait_for_trigger(protocol, TRIGGER_OPTION, N_TRIGGERS)
-        igt_driving_sys.wait_for_trigger_result(timeout_s=5.0)
-    else:
-        igt_driving_sys.execute_protocol(protocol)
+    igt_driving_sys = igt_ds.IGT(log_dir)
 
-finally:
-    # By the time we reach here, the protocol has actually finished executing either way:
-    # execute_protocol()/wait_for_trigger_result() only return once it's done. So it's always
-    # safe to disconnect here -- if your code stops abruptly before this point instead (like a
-    # kernel death/crash), make sure to disconnect the driving system yourself, otherwise it may
-    # keep firing ultrasound protocols.
-    igt_driving_sys.disconnect()
+    # connect() is a no-op (besides logging) if already connected, so calling it again later in
+    # your experiment (e.g. before re-sending the reconfigured protocol below) won't tear down and
+    # recreate the connection unnecessarily.
+    igt_driving_sys.connect(ds_info.connect_info, log_dir, filename)
+
+    # you can check if the system is still connected by using the following:
+    # print(igt_driving_sys.is_connected())
+
+    ##############################################################################
+    # protocol -- transducer 1 active, transducer 2 off
+    ##############################################################################
+
+    # to check available options for this driving system (no need to add a slot first):
+    # print(protocol.get_focus_options()) / print(protocol.get_power_options())
+    FOCUS_OPTION = 'Focus wrt exit plane [mm]'
+    POWER_OPTION = 'Max. pressure in free water [MPa]'
+
+    # Both transducers below are physically connected for the whole session -- defined once here so
+    # the transducer_1/transducer_2 mapping used in the switch further down can't drift apart from
+    # the one used here.
+    # to check available transducers: print(transducer.get_tran_serials())
+    # choose transducers from that list as input
+    TRANSDUCER_1 = 'IS_PCD15287_01001'
+    TRANSDUCER_2 = 'IS_PCD15287_01002'
+    ACTIVE_PRESS = 0.5  # [MPa], maximum pressure in free water for whichever transducer is active
+    INACTIVE_PRESS = 0  # [MPa], off -- physically connected, but not firing
+
+    protocol = tus_protocol.TUSProtocol('IGT-32-ch_comb_2x10-ch')
+    slot1 = protocol.add_slot(
+        TRANSDUCER_1,
+        FOCUS_OPTION, 40,  # [mm], focal depth w.r.t. the exit plane and FWHM middle
+        POWER_OPTION, ACTIVE_PRESS,
+        oper_freq=300,  # [kHz], operating frequency
+    )
+    slot2 = protocol.add_slot(
+        TRANSDUCER_2,
+        FOCUS_OPTION, 80,  # [mm], focal depth w.r.t. the exit plane and FWHM middle
+        POWER_OPTION, INACTIVE_PRESS,
+        oper_freq=300,  # [kHz], operating frequency
+    )
+
+    # configure_timing() only requires pulse_dur -- every other parameter here could be left out and
+    # would fall back to a sensible default (see its own docstring). They're all given explicitly
+    # below instead, each set to a genuinely different value (not just mirroring the level below
+    # it), to show the full timing hierarchy in one place: one pulse, repeated into a pulse train,
+    # itself repeated some number of times.
+    protocol.configure_timing(
+        pulse_dur=45,  # [ms], pulse duration
+        pulse_ramp_shape='Rectangular - no ramping',
+        pulse_rep_int=100,  # [ms], pulse repetition interval -- one pulse every 100 ms
+        pulse_train_dur=500,  # [ms], pulse train duration -- 5 pulses per train (500 / 100)
+        # [ms], pulse train repetition interval -- a new train starts every 1000 ms (500 ms train,
+        # then a 500 ms gap before the next one starts)
+        pulse_train_rep_int=1000,
+        # [s], pulse train repetition duration -- keeps repeating for 5 s in total, i.e. 5
+        # repetitions of the whole train (5000 ms / 1000 ms)
+        pulse_train_rep_dur=5,
+    )
+
+    # Trigger configuration (trigger_option/n_triggers) is a call-level parameter of
+    # IGT.wait_for_trigger(), not an attribute of the protocol itself -- defined here as plain
+    # variables instead, reused below (both before and after the switch) when actually sending/
+    # waiting for a trigger/executing. Use 'None' (this template's default) to not use a trigger at
+    # all; 'TriggerOnePulseTrain' to fire one pulse train per trigger received (you must also give
+    # N_TRIGGERS below); or
+    # 'TriggerWholeProtocol' to fire the entire, already fully-timed protocol at once with a single
+    # trigger. To check available trigger options: print(igt_driving_sys.get_trigger_options())
+    TRIGGER_OPTION = 'None'
+    # TRIGGER_OPTION = 'TriggerOnePulseTrain'
+    # TRIGGER_OPTION = 'TriggerWholeProtocol'
+
+    # Only applies (and is required) when TRIGGER_OPTION == 'TriggerOnePulseTrain' above.
+    N_TRIGGERS = None  # e.g. 4 -- number of triggers expected, one pulse train fires per trigger
+
+    # It is important to place your experimental code into a try-finally block, so if your code is
+    # stopped abruptly, the driving system will be disconnected. Otherwise, there is a chance that
+    # it keeps on firing ultrasound protocols.
+    try:
+        igt_driving_sys.send_protocol(protocol)
+
+        # If a trigger is configured (TRIGGER_OPTION != 'None'), only the protocol is sent and will
+        # be executed by the external trigger. If not (this template's default), the protocol is
+        # sent and can be executed directly using execute_protocol(). See
+        # ../single_transducer/igt/standalone_wait_for_trigger.py/standalone_wait_for_trigger_poll.py
+        # for the full wait_for_trigger_result()/has_execution_error() explanation this pattern
+        # relies on.
+        if TRIGGER_OPTION != 'None':
+            igt_driving_sys.wait_for_trigger(protocol, TRIGGER_OPTION, N_TRIGGERS)
+            igt_driving_sys.wait_for_trigger_result(timeout_s=5.0)
+        else:
+            igt_driving_sys.execute_protocol(protocol)
+
+        ##########################################################################
+        # ... later in your experiment: switch which transducer is active ...
+        ##########################################################################
+
+        # slot.configure() changes an already-added slot's focus/power in place -- no new protocol,
+        # no new slots, just the same two transducers with their power values swapped. Focus stays
+        # the same here (still the current slot value), only power changes.
+        slot1.configure(FOCUS_OPTION, slot1.focus_wrt_exit_plane, POWER_OPTION, INACTIVE_PRESS)
+        slot2.configure(FOCUS_OPTION, slot2.focus_wrt_exit_plane, POWER_OPTION, ACTIVE_PRESS)
+
+        # The driving system already has the OLD configuration loaded -- send_protocol() must be
+        # called again so it picks up what slot.configure() just changed above.
+        igt_driving_sys.send_protocol(protocol)
+        if TRIGGER_OPTION != 'None':
+            igt_driving_sys.wait_for_trigger(protocol, TRIGGER_OPTION, N_TRIGGERS)
+            igt_driving_sys.wait_for_trigger_result(timeout_s=5.0)
+        else:
+            igt_driving_sys.execute_protocol(protocol)
+
+    finally:
+        # By the time we reach here, the protocol has actually finished executing either way:
+        # execute_protocol()/wait_for_trigger_result() only return once it's done. So it's always
+        # safe to disconnect here -- if your code stops abruptly before this point instead (like a
+        # kernel death/crash), make sure to disconnect the driving system yourself, otherwise it may
+        # keep firing ultrasound protocols.
+        igt_driving_sys.disconnect()
+
+except FDSError as e:
+    sys.exit(str(e))

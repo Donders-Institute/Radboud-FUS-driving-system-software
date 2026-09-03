@@ -12,6 +12,7 @@ systems happen to be listed in ds_config.ini.
 import pytest
 
 from fus_driving_systems import driving_system
+from fus_driving_systems.exceptions import FDSConfigError
 
 
 def _configure_driving_system_section_only(patch_config, serial, name='Test DS',
@@ -151,6 +152,47 @@ def test_set_ds_info_reads_max_buffers_when_configured(patch_config):
     assert ds.max_buffers == 2
 
 
+def test_set_ds_info_raises_when_available_channels_config_key_missing(patch_config):
+    """raise_on_missing=True: 0 available channels is physically meaningless (every real driving
+    system has at least one), so a typo'd or deleted key must never silently produce that."""
+    from fus_driving_systems.config.config import config_info
+
+    _configure_driving_system(patch_config, 'UNITTEST_DS')
+    del config_info['Equipment.Driving system.UNITTEST_DS']['Available channels']
+
+    ds = driving_system.DrivingSystem()
+    with pytest.raises(FDSConfigError):
+        ds.set_ds_info('UNITTEST_DS')
+
+
+def test_set_ds_info_treats_missing_active_key_as_inactive(patch_config):
+    """Active? fails closed: a section missing this key entirely (not just set to 'False') is
+    treated as inactive, not active, so an incomplete/unreviewed section can't silently become
+    selectable/connectable. Real, generated ds_config.ini sections always write this key
+    explicitly (see create_config.py), so this only matters for a hand-edited config."""
+    from fus_driving_systems.config.config import config_info
+
+    _configure_driving_system(patch_config, 'UNITTEST_DS')
+    del config_info['Equipment.Driving system.UNITTEST_DS']['Active?']
+
+    ds = driving_system.DrivingSystem()
+    ds.set_ds_info('UNITTEST_DS')
+
+    assert ds.is_active is False
+
+
+def test_get_ds_serials_treats_missing_active_key_as_inactive(patch_config):
+    """Same fail-closed default as set_ds_info() above -- the only active-looking serial here
+    drops out entirely once its 'Active?' key is missing, leaving none active."""
+    from fus_driving_systems.config.config import config_info
+
+    _configure_driving_system(patch_config, 'UNITTEST_DS')
+    del config_info['Equipment.Driving system.UNITTEST_DS']['Active?']
+
+    with pytest.raises(SystemExit):
+        driving_system.get_ds_serials()
+
+
 def test_set_ds_info_supports_more_than_one_native_parameter(patch_config):
     """native_power_params/native_focus_params are lists, not a single value -- a driving
     system whose hardware genuinely accepts more than one power or focus representation
@@ -167,7 +209,7 @@ def test_set_ds_info_supports_more_than_one_native_parameter(patch_config):
 
 def test_set_ds_info_exits_with_clear_message_for_unknown_serial(patch_config):
     """GitHub issue #133: a serial with no matching config section used to fall through to
-    individual fields (e.g. 'Connection info', which has is_sys_exit=True) before exiting,
+    individual fields (e.g. 'Connection info', which has raise_on_missing=True) before exiting,
     surfacing a confusing "Config key 'Connection info' not found" message that didn't point
     at the actual problem. Now checked explicitly upfront with a clear message."""
     ds = driving_system.DrivingSystem()

@@ -44,14 +44,19 @@ def get_max_pressure():
     Reads the configured 'Maximum pressure allowed in free water [MPa]' -- the one place this
     value is derived from config, so _enforce_max_pressure()'s enforced limit and any other
     reporting of it (e.g. IGT.execute_protocol()'s pre-execution debug log) can never silently
-    drift apart by reading the same key with a different fallback default.
+    drift apart by reading the same key with a different fallback default. raise_on_missing so a
+    typo'd or deleted key can never silently fall back to the 1.4 [MPa] placeholder instead of
+    the institution's actually configured limit.
 
     Returns:
         float: The configured maximum pressure in free water [MPa].
+
+    Raises:
+        FDSConfigError: If the config key is missing.
     """
 
     return float(get_config_value(get_logger(), config, 'Power',
-                                  'Maximum pressure allowed in free water [MPa]', 1.4))
+                                  'Maximum pressure allowed in free water [MPa]', 1.4, True))
 
 
 def _enforce_max_pressure(press_mpa):

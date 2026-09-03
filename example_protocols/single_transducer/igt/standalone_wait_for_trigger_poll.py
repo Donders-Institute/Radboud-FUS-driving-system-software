@@ -34,55 +34,61 @@ README.md file of https://github.com/Donders-Institute/Radboud-FUS-driving-syste
 # it polls has_execution_error() in its own loop instead, so it can do other work (e.g. waiting
 # on other equipment) while the trigger hasn't fired yet.
 
+import sys
 import time
 
 from fus_driving_systems.config.logging_config import initialize_logger
+from fus_driving_systems.exceptions import FDSError
 
 log_dir = "C://Temp"
 filename = "standalone_wait_for_trigger_poll"
 logger = initialize_logger(log_dir, filename)
 
-from fus_driving_systems.igt import igt_ds
-from fus_driving_systems.protocol_loader import load_protocol
-
-# load_protocol() returns a 5-tuple: (protocols, total_alternating_duration_ms, trigger_option,
-# n_triggers, buffer_num). total_alternating_duration_ms is only relevant when interleaving more
-# than one protocol -- ignored here (a single protocol). trigger_option/n_triggers are used
-# below, forwarded straight into wait_for_trigger() -- wait_for_trigger.yaml sets trigger_option
-# to 'TriggerWholeProtocol' and omits n_triggers (not needed for that trigger_option). buffer_num
-# is unused here.
-#
-# require_hash=False (the default) -- set to True once you have a real wait_for_trigger.yaml you
-# don't want accidentally changed; see README.md's "Load a protocol from a YAML file" section.
-protocols, total_alternating_duration_ms, trigger_option, n_triggers, _ = load_protocol(
-    'wait_for_trigger.yaml', require_hash=False)
-
-# The driving system serial only needs to live in wait_for_trigger.yaml -- load_protocol()
-# already resolved it into a real DrivingSystem, reachable via the protocol's own driving_sys.
-igt_driving_sys = igt_ds.IGT(log_dir)
-igt_driving_sys.connect(protocols[0].driving_sys.connect_info, log_dir, filename)
-
 try:
-    igt_driving_sys.send_protocol(protocols)
-    igt_driving_sys.wait_for_trigger(protocols, trigger_option, n_triggers)
+    from fus_driving_systems.igt import igt_ds
+    from fus_driving_systems.protocol_loader import load_protocol
 
-    # has_execution_error() only tells you whether an error has occurred SO FAR -- not whether
-    # the protocol has finished. Replace the time-based condition below with your own (e.g.
-    # "still waiting on the stimuli").
-    deadline = time.time() + 5.0
-    while time.time() < deadline:
-        if igt_driving_sys.has_execution_error() is not None:
-            break  # react immediately (log, stop other equipment, sys.exit(), ...)
-        time.sleep(0.1)  # <do other work here instead, in a real experiment>
+    # load_protocol() returns a 5-tuple: (protocols, total_alternating_duration_ms, trigger_option,
+    # n_triggers, buffer_num). total_alternating_duration_ms is only relevant when interleaving more
+    # than one protocol -- ignored here (a single protocol). trigger_option/n_triggers are used
+    # below, forwarded straight into wait_for_trigger() -- wait_for_trigger.yaml sets trigger_option
+    # to 'TriggerWholeProtocol' and omits n_triggers (not needed for that trigger_option). buffer_num
+    # is unused here.
+    #
+    # require_hash=False (the default) -- set to True once you have a real wait_for_trigger.yaml you
+    # don't want accidentally changed; see README.md's "Load a protocol from a YAML file" section.
+    protocols, total_alternating_duration_ms, trigger_option, n_triggers, _ = load_protocol(
+        'wait_for_trigger.yaml', require_hash=False)
 
-    # Your own loop condition above isn't necessarily tied to the protocol's actual completion,
-    # so disconnecting right after it can cut off a still-running protocol -- call
-    # wait_for_trigger_result() once you expect the trigger to have fired, to confirm the
-    # protocol actually finished (and exit if it reports failure) before disconnecting below.
-    igt_driving_sys.wait_for_trigger_result(timeout_s=5.0)
+    # The driving system serial only needs to live in wait_for_trigger.yaml -- load_protocol()
+    # already resolved it into a real DrivingSystem, reachable via the protocol's own driving_sys.
+    igt_driving_sys = igt_ds.IGT(log_dir)
+    igt_driving_sys.connect(protocols[0].driving_sys.connect_info, log_dir, filename)
 
-finally:
-    # Safe to disconnect here: wait_for_trigger_result() above confirmed the protocol actually
-    # finished. If your code stops abruptly before this point instead (e.g. a crash), disconnect
-    # the driving system yourself, otherwise it may keep firing ultrasound protocols.
-    igt_driving_sys.disconnect()
+    try:
+        igt_driving_sys.send_protocol(protocols)
+        igt_driving_sys.wait_for_trigger(protocols, trigger_option, n_triggers)
+
+        # has_execution_error() only tells you whether an error has occurred SO FAR -- not whether
+        # the protocol has finished. Replace the time-based condition below with your own (e.g.
+        # "still waiting on the stimuli").
+        deadline = time.time() + 5.0
+        while time.time() < deadline:
+            if igt_driving_sys.has_execution_error() is not None:
+                break  # react immediately (log, stop other equipment, sys.exit(), ...)
+            time.sleep(0.1)  # <do other work here instead, in a real experiment>
+
+        # Your own loop condition above isn't necessarily tied to the protocol's actual completion,
+        # so disconnecting right after it can cut off a still-running protocol -- call
+        # wait_for_trigger_result() once you expect the trigger to have fired, to confirm the
+        # protocol actually finished (and exit if it reports failure) before disconnecting below.
+        igt_driving_sys.wait_for_trigger_result(timeout_s=5.0)
+
+    finally:
+        # Safe to disconnect here: wait_for_trigger_result() above confirmed the protocol actually
+        # finished. If your code stops abruptly before this point instead (e.g. a crash), disconnect
+        # the driving system yourself, otherwise it may keep firing ultrasound protocols.
+        igt_driving_sys.disconnect()
+
+except FDSError as e:
+    sys.exit(str(e))

@@ -76,7 +76,7 @@ class CITRUS(ds.ControlDrivingSystem):
 
         get_logger().info('Validating protocol...')
 
-        self._validate_or_exit(protocol)
+        self._validate_or_raise(protocol)
 
         get_logger().info('Sending protocol...')
 

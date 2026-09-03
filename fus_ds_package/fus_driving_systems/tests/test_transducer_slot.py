@@ -17,7 +17,8 @@ from types import SimpleNamespace
 import pytest
 from scipy.interpolate import PPoly
 
-from fus_driving_systems.transducer_slot import TransducerSlot
+from fus_driving_systems.exceptions import FDSConfigError
+from fus_driving_systems.transducer_slot import TransducerSlot, get_max_pressure
 
 
 def _bare_slot():
@@ -245,6 +246,20 @@ def test_convert_volt_to_ampl_clamps_to_0_without_exiting_when_calculated_below_
     ampl = slot._convert_volt_to_ampl([20], 1.0)  # in range -> calc_ampl = 20 - 50 = -30 < 0
 
     assert ampl == [0.0]
+
+
+# --- get_max_pressure -------------------------------------------------------------
+
+def test_get_max_pressure_raises_when_config_key_missing(patch_config):
+    """raise_on_missing=True: a typo'd or deleted key must never silently fall back to the
+    1.4 [MPa] placeholder instead of the institution's actually configured limit."""
+    from fus_driving_systems.config.config import config_info
+
+    patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '10')
+    del config_info['Power']['Maximum pressure allowed in free water [MPa]']
+
+    with pytest.raises(FDSConfigError):
+        get_max_pressure()
 
 
 # --- _convert_ampl_to_press -----------------------------------------------------------

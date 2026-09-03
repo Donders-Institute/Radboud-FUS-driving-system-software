@@ -80,7 +80,7 @@ class DrivingSystem:
         Called by TUSProtocol.driving_sys's setter and get_ds_list() -- both can be given a
         serial that isn't actually in the configuration file (e.g. a typo). That is checked
         explicitly below, rather than relying on incidentally hitting one of the individual
-        is_sys_exit=True fields further down and having to track down why that one field
+        raise_on_missing=True fields further down and having to track down why that one field
         failed.
 
         Parameters:
@@ -100,7 +100,7 @@ class DrivingSystem:
         self.manufact = get_config_value(get_logger(), config, section, 'Manufacturer',
                                          'Unknown driving system manufacturer')
         self.available_ch = int(get_config_value(get_logger(), config, section,
-                                                 'Available channels', 0))
+                                                 'Available channels', 0, True))
         self.connect_info = get_config_value(get_logger(), config, section, 'Connection info',
                                              None, True)
         self.tran_comp = get_config_value(
@@ -117,8 +117,12 @@ class DrivingSystem:
             get_logger(), config, section, 'Max. transducer slots', 1))
         self.max_buffers = int(get_config_value(
             get_logger(), config, section, 'Max. buffers', 1))
+        # Fails closed: a driving system config section missing 'Active?' entirely is treated as
+        # inactive rather than active, so an incomplete/unreviewed section can't silently become
+        # selectable/connectable. Real, generated ds_config.ini sections always write this key
+        # explicitly (see create_config.py), so this only ever matters for a hand-edited config.
         self.is_active = get_config_value(
-            get_logger(), config, section, 'Active?', 'True') == 'True'
+            get_logger(), config, section, 'Active?', 'False') == 'True'
 
     def __str__(self):
         """
@@ -181,9 +185,10 @@ def get_ds_serials():
 
     active_serials = []
     for serial in serial_ds:
-        # only extract active driving systems
+        # only extract active driving systems -- fails closed, see set_ds_info()'s own comment
+        # on this same default.
         section = 'Equipment.Driving system.' + serial
-        if get_config_value(get_logger(), config, section, 'Active?', 'True') == 'True':
+        if get_config_value(get_logger(), config, section, 'Active?', 'False') == 'True':
             active_serials.append(serial)
 
     if len(active_serials) < 1:

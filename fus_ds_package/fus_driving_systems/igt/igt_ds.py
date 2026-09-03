@@ -381,20 +381,20 @@ class IGT(ds.ControlDrivingSystem):
         error_messages = super().validate_protocol(protocol)
 
         min_pulse_dur = float(get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
-                                               'Min. pulse duration [ms]', 0.001))
+                                               'Min. pulse duration [ms]', 0.001, True))
         if protocol.pulse_dur < min_pulse_dur:  # [ms]:
             error_messages.append('Pulse duration is not allowed to be smaller than 1 us.')
 
         min_pulse_rep_int = float(get_config_value(
             get_logger(), config, 'Equipment.Manufacturer.IGT',
-            'Min. pulse rep. interval [ms]', 0.170))
+            'Min. pulse rep. interval [ms]', 0.170, True))
         if protocol.pulse_rep_int < min_pulse_rep_int:  # [ms]
             error_messages.append('Pulse repetition interval is not allowed to be smaller than' +
                                   ' 170 us.')
 
         min_time_between_ramps = float(
             get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
-                             'Min. time in between ramping up and down [ms]', 0.070))
+                             'Min. time in between ramping up and down [ms]', 0.070, True))
 
         rect_ramp = get_config_value(get_logger(), config, 'Ramp', 'Option.rect',
                                      'Rectangular - no ramping')
@@ -411,7 +411,7 @@ class IGT(ds.ControlDrivingSystem):
 
         n_pulses = protocol.pulse_train_dur/protocol.pulse_rep_int
         max_n_pulses = int(get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
-                                            'Max. pulses in pulse train', 64))
+                                            'Max. pulses in pulse train', 64, True))
         if n_pulses > max_n_pulses:
             error_messages.append(
                 "The maximum amount of pulses within a pulse train is " +
@@ -806,7 +806,7 @@ class IGT(ds.ControlDrivingSystem):
                 'Protocol with the following parameters is validated before sending: \n ' +
                 '%s', protocol)
 
-            self._validate_or_exit(protocol)
+            self._validate_or_raise(protocol)
 
         get_logger().info('Sending protocol...')
         if self.is_connected():
@@ -1000,7 +1000,7 @@ class IGT(ds.ControlDrivingSystem):
             ramp_transient_t = float(
                 get_config_value(
                     get_logger(), config, 'Equipment.Manufacturer.IGT',
-                    'Min. time in between ramping up and down [ms]', 0.070))  # [ms]
+                    'Min. time in between ramping up and down [ms]', 0.070, True))  # [ms]
 
         measure_ch_level = float(
             get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
@@ -1618,9 +1618,9 @@ class IGT(ds.ControlDrivingSystem):
         min_ramp_temp_res = float(get_config_value(
             get_logger(), config, 'Equipment.Manufacturer.IGT',
             'Min. temporal ramping resolution [ms]',
-            0.005))  # [ms]
+            0.005, True))  # [ms]
         max_ramp_steps = float(get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
-                                                'Max. amount of ramping steps', 1023))
+                                                'Max. amount of ramping steps', 1023, True))
 
         ramp_n_steps = int(protocol.pulse_ramp_dur/min_ramp_temp_res)
         if ramp_n_steps > max_ramp_steps:

@@ -12,6 +12,7 @@ from unittest.mock import Mock
 
 import pytest
 
+from fus_driving_systems.exceptions import FDSConfigError
 from fus_driving_systems.utils import (CustomFormatter, get_config_file,
                                        get_config_folder, get_config_value)
 
@@ -64,13 +65,15 @@ def test_returns_default_and_warns_when_config_is_incomplete(config, expected_me
     (_config_missing_section(), f"Config section '{SECTION}' not found"),
     (_config_missing_key(), f"Config key '{KEY}' not found in section '{SECTION}'"),
 ])
-def test_sys_exits_when_config_is_incomplete_and_is_sys_exit_true(config,
-                                                                  expected_message_fragment):
+def test_raises_fds_config_error_when_config_is_incomplete_and_raise_on_missing_true(
+        config, expected_message_fragment):
     logger = Mock()
-    with pytest.raises(SystemExit) as exc_info:
-        get_config_value(logger, config, SECTION, KEY, DEFAULT, is_sys_exit=True)
+    with pytest.raises(FDSConfigError) as exc_info:
+        get_config_value(logger, config, SECTION, KEY, DEFAULT, raise_on_missing=True)
     assert expected_message_fragment in str(exc_info.value)
     logger.warning.assert_not_called()
+    logger.critical.assert_called_once()
+    assert expected_message_fragment in logger.critical.call_args[0][0]
 
 
 def test_falls_back_to_root_logger_when_logger_is_none(caplog):

@@ -303,7 +303,8 @@ def test_send_protocol_exits_when_validation_produces_errors(mocker, connected_i
     fake_protocol.pulse_train_rep_int = 10
     fake_protocol.pulse_train_rep_dur = 10
 
-    with pytest.raises(SystemExit):
+    from fus_driving_systems.exceptions import FDSValidationError
+    with pytest.raises(FDSValidationError):
         connected_instance.send_protocol(fake_protocol)
 
 

@@ -13,6 +13,7 @@ from types import SimpleNamespace
 import pytest
 
 from fus_driving_systems.citrus.citrus_ds import CITRUS
+from fus_driving_systems.exceptions import FDSValidationError
 
 
 def _valid_protocol(**overrides):
@@ -77,7 +78,7 @@ def test_send_protocol_exits_when_validation_produces_errors():
     accepted instead of failing loudly like IGT/SonicConcepts already do."""
     citrus = CITRUS()
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSValidationError):
         citrus.send_protocol(_valid_protocol(pulse_train_dur=11))
 
 

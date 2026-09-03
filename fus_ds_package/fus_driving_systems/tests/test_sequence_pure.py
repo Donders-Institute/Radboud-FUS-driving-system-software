@@ -14,6 +14,7 @@ from scipy.interpolate import PPoly
 
 from fus_driving_systems.calc_utils import (_check_parameter, find_x_for_y_in_pp,
                                             safe_evaluate_pp, validate_value)
+from fus_driving_systems.exceptions import FDSValidationError
 
 
 # --- _check_parameter -------------------------------------------------
@@ -75,23 +76,26 @@ def test_validate_value_returns_true_when_valid():
                           check_nonzero=True, check_bool=False) is True
 
 
-def test_validate_value_exits_when_invalid():
-    with pytest.raises(SystemExit) as exc_info:
+def test_validate_value_raises_when_invalid():
+    """validate_value raises with the real, specific message(s) -- not a generic placeholder --
+    so a caller catching FDSValidationError has something useful to show without needing to dig
+    through the log file."""
+    with pytest.raises(FDSValidationError) as exc_info:
         validate_value('not-a-number', 'Param', check_num=True, check_pos=False,
                        check_nonzero=False, check_bool=False)
-    assert 'Validation of input parameters failed.' in str(exc_info.value)
+    assert 'should be a number' in str(exc_info.value)
 
 
-def test_validate_value_logs_every_message_before_exiting(caplog):
+def test_validate_value_logs_every_message_before_raising(caplog):
     """
     validate_value's for-loop logs every collected message via
-    logger.critical BEFORE calling sys.exit -- pick a value that fails two
+    logger.critical BEFORE raising -- pick a value that fails two
     independent checks at once (0 with check_nonzero+check_bool) so this
     actually proves "every message", not just "a message".
     """
     caplog.set_level(logging.CRITICAL)
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSValidationError):
         validate_value(0, 'Param', check_num=False, check_pos=False,
                        check_nonzero=True, check_bool=True)
 
@@ -105,14 +109,14 @@ def test_validate_value_checks_each_item_when_check_list():
                           check_nonzero=True, check_bool=False, check_list=True) is True
 
 
-def test_validate_value_exits_when_check_list_and_not_a_list():
-    with pytest.raises(SystemExit):
+def test_validate_value_raises_when_check_list_and_not_a_list():
+    with pytest.raises(FDSValidationError):
         validate_value(5, 'Param', check_num=True, check_pos=False,
                        check_nonzero=False, check_bool=False, check_list=True)
 
 
-def test_validate_value_exits_when_check_list_and_item_invalid():
-    with pytest.raises(SystemExit):
+def test_validate_value_raises_when_check_list_and_item_invalid():
+    with pytest.raises(FDSValidationError):
         validate_value([1, 'bad', 3], 'Param', check_num=True, check_pos=False,
                        check_nonzero=False, check_bool=False, check_list=True)
 

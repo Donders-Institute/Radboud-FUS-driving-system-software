@@ -143,7 +143,7 @@ def test_set_transducer_info_exits_when_can_3d_steer_true_with_non_ini_steer_inf
 
 def test_set_transducer_info_exits_with_clear_message_for_unknown_serial(patch_config):
     """GitHub issue #133: a serial with no matching config section used to fall through to
-    individual fields (e.g. 'Elements', which has is_sys_exit=True) before exiting, surfacing
+    individual fields (e.g. 'Elements', which has raise_on_missing=True) before exiting, surfacing
     a confusing "Config key 'Elements' not found" message that didn't point at the actual
     problem. Now checked explicitly upfront with a clear message."""
     tran = transducer.Transducer()
@@ -151,6 +151,22 @@ def test_set_transducer_info_exits_with_clear_message_for_unknown_serial(patch_c
     with pytest.raises(SystemExit, match='No transducer with serial number '
                                          'UNKNOWN_SERIAL found in configuration file.'):
         tran.set_transducer_info('UNKNOWN_SERIAL')
+
+
+def test_set_transducer_info_treats_missing_active_key_as_inactive(patch_config):
+    """Active? fails closed: a section missing this key entirely (not just set to 'False') is
+    treated as inactive, not active, so an incomplete/unreviewed section can't silently become
+    selectable. Real, generated ds_config.ini sections always write this key explicitly (see
+    create_config.py), so this only matters for a hand-edited config."""
+    from fus_driving_systems.config.config import config_info
+
+    _configure_transducer(patch_config, 'UNITTEST_TRAN')
+    del config_info['Equipment.Transducer.UNITTEST_TRAN']['Active?']
+
+    tran = transducer.Transducer()
+    tran.set_transducer_info('UNITTEST_TRAN')
+
+    assert tran.is_active is False
 
 
 def test_get_tran_serials_returns_only_active_serials(patch_config):
@@ -169,6 +185,18 @@ def test_get_tran_serials_exits_when_none_active(patch_config):
     with pytest.raises(SystemExit) as exc_info:
         transducer.get_tran_serials()
     assert 'No active tranducers' in str(exc_info.value)
+
+
+def test_get_tran_serials_treats_missing_active_key_as_inactive(patch_config):
+    """Same fail-closed default as set_transducer_info() above -- the only active-looking serial
+    here drops out entirely once its 'Active?' key is missing, leaving none active."""
+    from fus_driving_systems.config.config import config_info
+
+    _configure_transducer(patch_config, 'UNITTEST_TRAN')
+    del config_info['Equipment.Transducer.UNITTEST_TRAN']['Active?']
+
+    with pytest.raises(SystemExit):
+        transducer.get_tran_serials()
 
 
 def test_get_tran_names_excludes_inactive_transducers(patch_config):

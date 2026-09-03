@@ -31,6 +31,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from fus_driving_systems.exceptions import FDSValidationError
 from fus_driving_systems.tus_protocol import TUSProtocol
 
 
@@ -103,7 +104,7 @@ def test_configure_timing_rejects_zero_pulse_dur():
     protocol = _bare_protocol()
     protocol._timing_param = {}
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSValidationError):
         protocol.configure_timing(pulse_dur=0)
 
 
@@ -111,7 +112,7 @@ def test_configure_timing_rejects_negative_pulse_dur():
     protocol = _bare_protocol()
     protocol._timing_param = {}
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSValidationError):
         protocol.configure_timing(pulse_dur=-5)
 
 
@@ -177,7 +178,7 @@ def test_configure_timing_rejects_negative_pulse_ramp_dur():
     protocol = _bare_protocol()
     protocol._timing_param = {}
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSValidationError):
         protocol.configure_timing(pulse_dur=10, pulse_ramp_dur=-1)
 
 

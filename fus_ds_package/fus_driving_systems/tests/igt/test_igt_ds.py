@@ -26,6 +26,7 @@ import pandas as pd
 import pytest
 
 from fus_driving_systems.config import logging_config
+from fus_driving_systems.exceptions import FDSConfigError, FDSValidationError
 from fus_driving_systems.igt import transducer_xyz, unifus
 from fus_driving_systems.igt.igt_ds import IGT
 
@@ -534,6 +535,20 @@ class TestValidateProtocol:
         assert any('slot 1 (counting from 0' in e and 'TRAN-B' in e for e in errors)
         assert not any('TRAN-A' in e for e in errors)
 
+    def test_raises_when_min_pulse_duration_config_key_missing(self, igt_instance, patch_config):
+        """raise_on_missing=True: a typo'd or deleted hardware-limit key must never silently
+        fall back to the hardcoded placeholder instead of the real configured limit -- the
+        other hardware-limit keys in this method (Min. pulse rep. interval, Min. time in
+        between ramping, Max. pulses in pulse train) were converted identically."""
+        from fus_driving_systems.config.config import config_info
+
+        patch_config.set('Ramp', 'Option.rect', 'Rectangular - no ramping')
+        patch_config.set('Equipment.Manufacturer.IGT', 'Min. pulse duration [ms]', '0.5')
+        del config_info['Equipment.Manufacturer.IGT']['Min. pulse duration [ms]']
+
+        with pytest.raises(FDSConfigError):
+            igt_instance.validate_protocol(_valid_protocol())
+
     def test_too_many_pulses_in_pulse_train_is_flagged(self, igt_instance, patch_config):
         patch_config.set('Ramp', 'Option.rect', 'Rectangular - no ramping')
         patch_config.set('Equipment.Manufacturer.IGT', 'Max. pulses in pulse train', '4')
@@ -596,6 +611,24 @@ class TestApplyRamping:
         assert down_res == pytest.approx(2.0)
         assert ramp_down == [0, 25, 50, 75, 100]  # linspace(0,1,5) * 100, int()
         assert ramp_up == list(reversed(ramp_down))  # "ramp up descends" per the source comment
+
+    def test_raises_when_max_ramping_steps_config_key_missing(self, connected_instance,
+                                                              patch_config):
+        """raise_on_missing=True: a typo'd or deleted hardware-limit key must never silently
+        fall back to the hardcoded placeholder instead of the real configured limit -- the
+        sibling 'Min. temporal ramping resolution [ms]' key was converted identically."""
+        from fus_driving_systems.config.config import config_info
+
+        patch_config.set('Equipment.Manufacturer.IGT', 'Min. temporal ramping resolution [ms]',
+                         '2')
+        patch_config.set('Equipment.Manufacturer.IGT', 'Max. amount of ramping steps', '1023')
+        del config_info['Equipment.Manufacturer.IGT']['Max. amount of ramping steps']
+        patch_config.set('Ramp', 'Option.lin', 'Linear')
+        patch_config.set('Ramp', 'Option.tuk', 'Tukey')
+        protocol = SimpleNamespace(pulse_ramp_shape='Linear', pulse_ramp_dur=10.0)
+
+        with pytest.raises(FDSConfigError):
+            connected_instance._apply_ramping(protocol)
 
     def test_clamps_temporal_resolution_when_step_count_exceeds_max(self, connected_instance,
                                                                     patch_config):
@@ -974,7 +1007,7 @@ class TestSendProtocol:
                             return_value=['something is wrong'])
         fake_protocol = SimpleNamespace(buffer_num=0, **_ready(_slot()))
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSValidationError):
             connected_instance.send_protocol([fake_protocol])
 
     def test_reconnects_and_retries_when_not_connected(self, mocker, tmp_path):

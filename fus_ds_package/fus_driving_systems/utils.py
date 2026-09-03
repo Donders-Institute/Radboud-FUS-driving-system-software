@@ -10,10 +10,11 @@ If you use this kit in your research or project, please cite it -- see CITATION.
 https://github.com/Donders-Institute/Radboud-FUS-driving-system-software.
 """
 
-import sys
 import logging
 import inspect
 import time
+
+from fus_driving_systems.exceptions import FDSConfigError
 
 # Get the start time
 wall_t0 = time.time()
@@ -68,7 +69,7 @@ class CustomFormatter(logging.Formatter):
         return f"{log_info} - {formatted_record}"
 
 
-def get_config_value(logger, config, section, key, default, is_sys_exit=False):
+def get_config_value(logger, config, section, key, default, raise_on_missing=False):
     """
     Retrieve a configuration value from a given section and key.
 
@@ -80,60 +81,62 @@ def get_config_value(logger, config, section, key, default, is_sys_exit=False):
     - section (str): The section in the configuration file.
     - key (str): The key within the section to retrieve.
     - default (any): The default value to return if the section or key is missing.
+    - raise_on_missing (bool): If True, raise FDSConfigError instead of returning default when the
+      config/section/key is missing.
 
     Returns:
     - any: The retrieved value or the default if missing.
+
+    Raises:
+    - FDSConfigError: If raise_on_missing is True and the config/section/key is missing.
     """
 
-    # Function to log the warning message with additional context (caller function details)
-    def log_warning(message):
-        # Get the stack and retrieve information about the caller (the function that called
-        # get_config_value)
+    # Logs the given message with caller-context (file/function/line of whoever called
+    # get_config_value) added, at critical level when raise_on_missing (about to raise, no
+    # default is being used) or warning level otherwise (falling back to default) -- returns the
+    # formatted message either way, so the raise_on_missing branch can reuse it for the exception
+    # without a second caller-context lookup.
+    def log_missing(message):
         stack = inspect.stack()
         caller_frame = stack[2]  # The function that called get_config_value is two levels up
-        file_name = caller_frame.filename  # File name of the caller
-        line_number = caller_frame.lineno  # Line number of the caller
-        function_name = caller_frame.function  # Function name of the caller
+        file_name = caller_frame.filename
+        line_number = caller_frame.lineno
+        function_name = caller_frame.function
+        location = f"(called from {file_name}, {function_name} at line {line_number})"
 
-        # Add file, line, and function information to the message
-        message = (f"{message}, using default: {default} "
-                   f"(called from {file_name}, {function_name} at line {line_number})")
-
-        # Log the warning -- logger is None only in a bootstrap context, before
-        # initialize_logger()/sync_logger() has run. logging.warning() (module-level, hits the
-        # root logger) is used instead of print() so this still goes through the logging
-        # framework and lands on stderr (via the root logger's default "last resort" handler)
-        # rather than stdout, matching where a warning belongs.
-        if logger is None:
-            logging.warning(message)
+        if raise_on_missing:
+            message = f"{message} {location}"
+            log = logging.critical if logger is None else logger.critical
         else:
-            logger.warning(message)
+            message = f"{message}, using default: {default} {location}"
+            # logger is None only in a bootstrap context, before initialize_logger()/
+            # sync_logger() has run. logging.warning() (module-level, hits the root logger) is
+            # used instead of print() so this still goes through the logging framework and lands
+            # on stderr (via the root logger's default "last resort" handler) rather than stdout,
+            # matching where a warning belongs.
+            log = logging.warning if logger is None else logger.warning
+        log(message)
+        return message
 
     # Check if the config is None
     if config is None:
-        message = "Config not found"
-        if is_sys_exit:
-            sys.exit(message)
-
-        log_warning(message)
+        message = log_missing("Config not found")
+        if raise_on_missing:
+            raise FDSConfigError(message)
         return default
 
     # Check if the section exists in the config
     if section not in config:
-        message = f"Config section '{section}' not found"
-        if is_sys_exit:
-            sys.exit(message)
-
-        log_warning(message)
+        message = log_missing(f"Config section '{section}' not found")
+        if raise_on_missing:
+            raise FDSConfigError(message)
         return default
 
     # Check if the key exists in the section
     if key not in config[section]:
-        message = f"Config key '{key}' not found in section '{section}'"
-        if is_sys_exit:
-            sys.exit(message)
-
-        log_warning(message)
+        message = log_missing(f"Config key '{key}' not found in section '{section}'")
+        if raise_on_missing:
+            raise FDSConfigError(message)
         return default
 
     # Return the config value if found

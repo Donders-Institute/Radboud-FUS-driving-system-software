@@ -75,7 +75,7 @@ class Transducer:
         Called by TransducerSlot.transducer's setter and get_tran_list() -- both can be given a
         serial that isn't actually in the configuration file (e.g. a typo). That is checked
         explicitly below, rather than relying on incidentally hitting one of the individual
-        is_sys_exit=True fields further down and having to track down why that one field
+        raise_on_missing=True fields further down and having to track down why that one field
         failed.
 
         Parameters:
@@ -121,8 +121,12 @@ class Transducer:
                        'only possible for the transducer_xyz.Transducer (.ini) steer path.')
             get_logger().critical(message)
             sys.exit(message)
+        # Fails closed: a transducer config section missing 'Active?' entirely is treated as
+        # inactive rather than active, so an incomplete/unreviewed section can't silently become
+        # selectable. Real, generated ds_config.ini sections always write this key explicitly
+        # (see create_config.py), so this only ever matters for a hand-edited config.
         self.is_active = get_config_value(
-            get_logger(), config, section, 'Active?', 'True') == 'True'
+            get_logger(), config, section, 'Active?', 'False') == 'True'
 
     def __str__(self):
         """
@@ -177,9 +181,10 @@ def get_tran_serials():
 
     active_serials = []
     for serial in serial_trans:
-        # only extract active tranducers
+        # only extract active tranducers -- fails closed, see set_transducer_info()'s own
+        # comment on this same default.
         section = 'Equipment.Transducer.' + serial
-        if get_config_value(get_logger(), config, section, 'Active?', 'True') == 'True':
+        if get_config_value(get_logger(), config, section, 'Active?', 'False') == 'True':
             active_serials.append(serial)
 
     if len(active_serials) < 1:
