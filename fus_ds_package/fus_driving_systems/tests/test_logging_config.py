@@ -13,6 +13,7 @@ afterwards regardless of test outcome.
 """
 from datetime import datetime
 import faulthandler
+import importlib.metadata
 import logging
 from pathlib import Path
 import zipfile
@@ -86,6 +87,24 @@ def test_initialize_logger_writes_log_messages_to_a_file(patch_config, tmp_path,
     assert "hello from the test suite" in info_file.read_text()
     assert "hello from the test suite" in debug_file.read_text()
     assert not any('measurements' in f.name for f in log_files)
+
+
+def test_initialize_logger_logs_the_package_version(patch_config, tmp_path, test_logger_name,
+                                                    mocker):
+    """Reproducing a result later needs to know which version of the software produced it --
+    logged once per session, into both the info and debug files, so it's always in whatever log
+    a researcher already has lying around."""
+    mocker.patch('fus_driving_systems.config.logging_config.importlib.metadata.version',
+                 return_value='9.9.9')
+    _configure_logging(patch_config, test_logger_name)
+    logging_config.initialize_logger(str(tmp_path), "testrun")
+
+    session_log_dir = Path(logging_config.get_session_log_dir())
+    log_files = list(session_log_dir.glob("*.txt"))
+    info_file = next(f for f in log_files if 'info' in f.name)
+    debug_file = next(f for f in log_files if 'debug' in f.name)
+    assert 'fus_driving_systems version: 9.9.9' in info_file.read_text()
+    assert 'fus_driving_systems version: 9.9.9' in debug_file.read_text()
 
 
 def test_initialize_logger_creates_measurements_file_only_once_something_is_logged_to_it(
@@ -351,6 +370,15 @@ def test_zip_rotating_file_handler_rollover_produces_a_valid_zip_file(tmp_path):
         handler.close()
 
 
+def test_get_package_version_returns_unknown_when_metadata_missing(mocker):
+    """A source checkout that was never `pip install`ed has no package metadata to read --
+    degrades to a clear 'unknown' instead of crashing logger setup entirely."""
+    mocker.patch('fus_driving_systems.config.logging_config.importlib.metadata.version',
+                 side_effect=importlib.metadata.PackageNotFoundError)
+
+    assert logging_config._get_package_version() == 'unknown'
+
+
 def test_sync_logger_mutates_in_place_instead_of_rebinding(tmp_path):
     """
     SOLVED: sync_logger() is the public integration point used by the SonoRover One host
@@ -385,6 +413,42 @@ def test_sync_logger_mutates_in_place_instead_of_rebinding(tmp_path):
         assert logging_config._logger.handlers == [marker_handler]
         assert logging_config._logger.level == logging.DEBUG
         assert logging_config._logger.propagate is False
+    finally:
+        original_logger.handlers = original_handlers
+        original_logger.setLevel(original_level)
+        original_logger.propagate = original_propagate
+
+
+def test_sync_logger_logs_the_package_version(tmp_path, mocker):
+    """A host application (e.g. SonoRover One) using sync_logger() instead of
+    initialize_logger() must get the same version-logging benefit -- it's routed through
+    new_logger's own handlers here, same as everything else sync_logger() logs."""
+    mocker.patch('fus_driving_systems.config.logging_config.importlib.metadata.version',
+                 return_value='9.9.9')
+    original_logger = logging_config._logger
+    original_handlers = original_logger.handlers
+    original_level = original_logger.level
+    original_propagate = original_logger.propagate
+    stand_in_logger = logging.getLogger("unittest.sync_logger_version_marker")
+
+    class _CapturingHandler(logging.Handler):
+        def __init__(self):
+            super().__init__()
+            self.messages = []
+
+        def emit(self, record):
+            self.messages.append(record.getMessage())
+
+    capturing_handler = _CapturingHandler()
+    stand_in_logger.addHandler(capturing_handler)
+    stand_in_logger.setLevel(logging.DEBUG)
+    stand_in_logger.propagate = False
+
+    try:
+        logging_config.sync_logger(stand_in_logger, log_dir=str(tmp_path))
+
+        assert any('fus_driving_systems version: 9.9.9' in message
+                   for message in capturing_handler.messages)
     finally:
         original_logger.handlers = original_handlers
         original_logger.setLevel(original_level)

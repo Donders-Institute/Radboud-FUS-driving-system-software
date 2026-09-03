@@ -17,6 +17,7 @@ import sys
 # Miscellaneous packages
 from datetime import datetime
 import faulthandler
+import importlib.metadata
 import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -318,6 +319,23 @@ class ZipRotatingFileHandler(RotatingFileHandler):
             self.stream = self._open()
 
 
+def _get_package_version():
+    """
+    Returns the installed fus_driving_systems package version (e.g. '2.2.3'), read from
+    package metadata rather than a separately-maintained constant, so it can never drift out
+    of sync with what's actually installed. 'unknown' if metadata isn't available (e.g. a
+    source checkout that was never `pip install`ed).
+
+    Returns:
+        str: The installed package version, or 'unknown'.
+    """
+
+    try:
+        return importlib.metadata.version('fus_driving_systems')
+    except importlib.metadata.PackageNotFoundError:
+        return 'unknown'
+
+
 def initialize_logger(log_dir, filename):
     global _logger, _measurements_logger, _session_log_dir, _session_log_filename
 
@@ -401,6 +419,8 @@ def initialize_logger(log_dir, filename):
     _measurements_logger.addHandler(measurements_file_handler)
     _measurements_logger.propagate = False
 
+    _logger.info(f'fus_driving_systems version: {_get_package_version()}')
+
     return _logger
 
 
@@ -418,7 +438,10 @@ def sync_logger(new_logger, log_dir=None):
     Also enables crash detection (GitHub issue #126) if it hasn't already been enabled this
     process -- the other of the two whole-package hooks (see enable_crash_detection()),
     covering host applications (e.g. SonoRover One) that use sync_logger() instead of
-    initialize_logger() to set up logging.
+    initialize_logger() to set up logging. Also logs the installed package version, same
+    reason: reproducing a result later needs to know which version produced it, and logging
+    it here too guarantees that regardless of which of the two entry points a caller used,
+    the version ends up in the log.
 
     _measurements_logger (see get_measurements_logger()) is deliberately left untouched here --
     no handlers of its own, propagate at its default True -- so its high-volume per-pulse/
@@ -440,6 +463,8 @@ def sync_logger(new_logger, log_dir=None):
     _logger.handlers = list(new_logger.handlers)
     _logger.setLevel(new_logger.level)
     _logger.propagate = new_logger.propagate
+
+    _logger.info(f'fus_driving_systems version: {_get_package_version()}')
 
     if log_dir is None:
         log_dir = get_config_value(None, config, 'Logging', 'Temporary logging path', 'C:\\Temp')
