@@ -1448,6 +1448,139 @@ def test_focus_setters_both_work_without_calibration_when_both_are_native():
     assert slot._volt == 'untouched'
 
 
+# --- _set_focus_xyz ------------------------------------------------------------
+
+def test_set_focus_xyz_exits_when_point_is_not_length_3():
+    slot = _bare_slot()
+
+    with pytest.raises(SystemExit, match='3-tuple'):
+        slot._set_focus_xyz('Focus xyz wrt mid bowl [mm]', (1, 2))
+
+
+def test_set_focus_xyz_exits_when_transducer_not_3d_capable():
+    slot = _bare_slot()
+    slot._transducer = SimpleNamespace(can_3d_steer=False, serial='TRAN-A')
+
+    with pytest.raises(SystemExit, match='can_3d_steer'):
+        slot._set_focus_xyz('Focus xyz wrt mid bowl [mm]', (1, 2, 30))
+
+
+def test_set_focus_xyz_exits_when_not_available_for_driving_system():
+    """can_3d_steer alone isn't enough, this driving system also has to actually offer the
+    xyz option in its own focus_options (mirrors every other focus/power setter's own gate)."""
+    slot = _bare_slot()
+    slot._engineering_mode = True
+    slot._transducer = SimpleNamespace(can_3d_steer=True, serial='TRAN-A')
+    slot.driving_sys = SimpleNamespace(
+        focus_options=['Focus wrt exit plane [mm]'],
+        native_focus_params=['Focus wrt exit plane [mm]'])
+
+    with pytest.raises(SystemExit):
+        slot._set_focus_xyz('Focus xyz wrt mid bowl [mm]', (0, 0, 30))
+
+
+def test_set_focus_xyz_mid_bowl_raises_when_engineering_mode_disabled(patch_config):
+    """Xyz-mid-bowl inherits scalar mid bowl's own engineering-only gate."""
+    patch_config.set('Focus', 'Engineering-only options', 'Focus xyz wrt mid bowl [mm]')
+    slot = _bare_slot()
+    slot._engineering_mode = False
+    slot._transducer = SimpleNamespace(can_3d_steer=True, serial='TRAN-A')
+    slot.driving_sys = SimpleNamespace(
+        focus_options=['Focus xyz wrt mid bowl [mm]'],
+        native_focus_params=['Focus xyz wrt mid bowl [mm]'])
+
+    with pytest.raises(RuntimeError):
+        slot._set_focus_xyz('Focus xyz wrt mid bowl [mm]', (0, 0, 30))
+
+
+def test_set_focus_xyz_exit_plane_does_not_require_engineering_mode(patch_config):
+    """Unlike xyz-mid-bowl, xyz-exit-plane is not engineering-only by default, proven here
+    with engineering_mode left False."""
+    patch_config.set('Focus', 'Engineering-only options', 'Focus xyz wrt mid bowl [mm]')
+    slot = _bare_slot()
+    slot._engineering_mode = False
+    slot._transducer = SimpleNamespace(can_3d_steer=True, exit_plane_dist=5, min_foc=0,
+                                       max_foc=100, name='tran')
+    slot.driving_sys = SimpleNamespace(
+        focus_options=['Focus xyz wrt exit plane [mm]', 'Focus xyz wrt mid bowl [mm]'],
+        native_focus_params=['Focus xyz wrt exit plane [mm]'])
+    slot._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
+
+    slot._set_focus_xyz('Focus xyz wrt exit plane [mm]', (0, 0, 30))  # must not raise
+
+
+def test_set_focus_xyz_mid_bowl_native_sets_x_y_z_and_derived_exit_plane(patch_config):
+    """Xyz-mid-bowl is IGT's native focus parameter, no 3D calibration is needed at all to
+    set it, exactly like scalar mid bowl."""
+    slot = _bare_slot()
+    slot._engineering_mode = True
+    slot._transducer = SimpleNamespace(can_3d_steer=True, exit_plane_dist=5, min_foc=0,
+                                       max_foc=100, name='tran')
+    slot.driving_sys = SimpleNamespace(
+        focus_options=['Focus xyz wrt exit plane [mm]', 'Focus xyz wrt mid bowl [mm]'],
+        native_focus_params=['Focus xyz wrt mid bowl [mm]'])
+    slot._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
+
+    slot._set_focus_xyz('Focus xyz wrt mid bowl [mm]', (2.0, -3.0, 30.0))
+
+    assert slot.focus_offset_x == 2.0
+    assert slot.focus_offset_y == -3.0
+    assert slot.focus_wrt_mid_bowl == 30.0
+    assert slot.focus_wrt_exit_plane == 25.0  # 30 - exit_plane_dist
+    assert slot.chosen_focus == 'Focus xyz wrt mid bowl [mm]'
+
+
+def test_set_focus_xyz_exit_plane_native_sets_x_y_z_and_derived_mid_bowl(patch_config):
+    """Mirrors the mid-bowl-native test above, using a driving system where xyz-exit-plane is
+    native instead, the dispatch logic doesn't hardcode IGT's own choice of mid bowl."""
+    patch_config.set('Focus', 'Engineering-only options', 'Focus xyz wrt mid bowl [mm]')
+    slot = _bare_slot()
+    slot._engineering_mode = False
+    slot._transducer = SimpleNamespace(can_3d_steer=True, exit_plane_dist=5, min_foc=0,
+                                       max_foc=100, name='tran')
+    slot.driving_sys = SimpleNamespace(
+        focus_options=['Focus xyz wrt exit plane [mm]', 'Focus xyz wrt mid bowl [mm]'],
+        native_focus_params=['Focus xyz wrt exit plane [mm]'])
+    slot._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
+
+    slot._set_focus_xyz('Focus xyz wrt exit plane [mm]', (1.0, 1.5, 40.0))
+
+    assert slot.focus_offset_x == 1.0
+    assert slot.focus_offset_y == 1.5
+    assert slot.focus_wrt_exit_plane == 40.0
+    assert slot.focus_wrt_mid_bowl == 45.0  # focus + exit_plane_dist
+    assert slot.chosen_focus == 'Focus xyz wrt exit plane [mm]'
+
+
+def test_set_focus_xyz_mid_bowl_native_exits_when_derived_exit_plane_out_of_range(patch_config):
+    slot = _bare_slot()
+    slot._engineering_mode = True
+    slot._transducer = SimpleNamespace(can_3d_steer=True, exit_plane_dist=5, min_foc=50,
+                                       max_foc=100, name='tran')
+    slot.driving_sys = SimpleNamespace(
+        focus_options=['Focus xyz wrt mid bowl [mm]'],
+        native_focus_params=['Focus xyz wrt mid bowl [mm]'])
+    slot._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
+
+    with pytest.raises(SystemExit):
+        slot._set_focus_xyz('Focus xyz wrt mid bowl [mm]', (0, 0, 10))  # 10-5=5 < min_foc=50
+
+
+def test_set_focus_xyz_non_native_exits_when_combo_inactive(patch_config):
+    """Xyz-exit-plane is non-native here (xyz-mid-bowl is), converting it requires an active
+    3D calibration."""
+    slot = _bare_slot()
+    slot._engineering_mode = True
+    slot._transducer = SimpleNamespace(can_3d_steer=True, serial='TRAN-A')
+    slot.driving_sys = SimpleNamespace(
+        focus_options=['Focus xyz wrt exit plane [mm]', 'Focus xyz wrt mid bowl [mm]'],
+        native_focus_params=['Focus xyz wrt mid bowl [mm]'])
+    slot._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
+
+    with pytest.raises(SystemExit, match='3D calibration data'):
+        slot._set_focus_xyz('Focus xyz wrt exit plane [mm]', (0, 0, 30))
+
+
 # --- transducer ---------------------------------------------------------------
 
 def test_transducer_setter_exits_when_not_compatible(patch_config):
@@ -1471,7 +1604,7 @@ def test_transducer_setter_sets_default_oper_freq_and_resets_focus_and_power(pat
     slot.driving_sys = SimpleNamespace(serial='DS1', tran_comp=['TRAN-A'])
     slot._transducer = SimpleNamespace(
         serial='', set_transducer_info=lambda serial: setattr(slot._transducer, 'serial', serial),
-        fund_freq=300, min_foc=40)
+        fund_freq=300, min_foc=40, can_3d_steer=False)
     # Stale values from a previous transducer -- must not survive.
     slot._chosen_focus = 'Focus wrt exit plane [mm]'
     slot._focus_wrt_exit_plane = 20
@@ -1524,7 +1657,7 @@ def test_transducer_setter_loads_real_curves_when_combo_active(tmp_path, patch_c
     slot.driving_sys = SimpleNamespace(serial='DS1', tran_comp=['TRAN-A'])
     slot._transducer = SimpleNamespace(
         serial='', set_transducer_info=lambda serial: setattr(slot._transducer, 'serial', serial),
-        fund_freq=300, min_foc=40)
+        fund_freq=300, min_foc=40, can_3d_steer=False)
 
     slot._set_transducer('TRAN-A')  # must not raise
 
@@ -1774,7 +1907,7 @@ def test_update_conv_param_populates_all_four_curves_and_updates_transducer_rang
     fresh-slot default) to prove it's genuinely never touched, not just correct by coincidence."""
     slot = _bare_slot()
     slot._ds_tran_combo = 'combo1'
-    slot._transducer = SimpleNamespace(min_foc=0, max_foc=0)
+    slot._transducer = SimpleNamespace(min_foc=0, max_foc=0, can_3d_steer=False)
     slot._eq_factor = 'untouched'
 
     eq_file = _write_identity_fit_json(tmp_path, 'eq.json', 0.0, 100.0)
@@ -1802,6 +1935,22 @@ def test_update_conv_param_populates_all_four_curves_and_updates_transducer_rang
     assert slot._eq_factor == 'untouched'
 
 
+def test_transducer_setter_leaves_combo_inactive_for_3d_transducer_with_no_3d_combo(
+        patch_config):
+    """A can_3d_steer=True transducer with no 'Equipment.Combination.*' section at all degrades
+    safely: _combo_is_active() stays False, exactly like any other equipment that never needs
+    curve-based conversion, _update_conv_param() is never even called."""
+    slot = _bare_slot()
+    slot.driving_sys = SimpleNamespace(serial='DS1', tran_comp=['TRAN-A'])
+    slot._transducer = SimpleNamespace(
+        serial='', set_transducer_info=lambda serial: setattr(slot._transducer, 'serial', serial),
+        fund_freq=300, min_foc=40, can_3d_steer=True)
+
+    slot._set_transducer('TRAN-A')  # must not raise
+
+    assert slot._combo_is_active() is False
+
+
 def test_update_conv_param_warns_when_focus_curve_domain_exceeds_eq_curve_domain(
         tmp_path, patch_config, caplog):
     """focus_curve_pp and eq_curve_pp share the same x-axis (focus wrt exit plane) -- if their
@@ -1811,7 +1960,7 @@ def test_update_conv_param_warns_when_focus_curve_domain_exceeds_eq_curve_domain
     calibration-data problem worth flagging early."""
     slot = _bare_slot()
     slot._ds_tran_combo = 'combo1'
-    slot._transducer = SimpleNamespace(min_foc=0, max_foc=0)
+    slot._transducer = SimpleNamespace(min_foc=0, max_foc=0, can_3d_steer=False)
 
     eq_file = _write_identity_fit_json(tmp_path, 'eq.json', 0.0, 50.0)
     focus_file = _write_identity_fit_json(tmp_path, 'focus.json', 0.0, 100.0)  # wider than eq
@@ -1835,7 +1984,7 @@ def test_update_conv_param_does_not_warn_when_focus_curve_domain_matches_eq_curv
     """Mirrors the mismatch test above -- identical domains, no warning."""
     slot = _bare_slot()
     slot._ds_tran_combo = 'combo1'
-    slot._transducer = SimpleNamespace(min_foc=0, max_foc=0)
+    slot._transducer = SimpleNamespace(min_foc=0, max_foc=0, can_3d_steer=False)
 
     eq_file = _write_identity_fit_json(tmp_path, 'eq.json', 0.0, 100.0)
     focus_file = _write_identity_fit_json(tmp_path, 'focus.json', 0.0, 100.0)
@@ -2042,6 +2191,20 @@ def test_chosen_focus_value_returns_the_matching_field(patch_config):
     assert slot.chosen_focus_value == 42.0
 
 
+def test_chosen_focus_value_returns_xyz_tuple_for_xyz_option(patch_config):
+    """Unlike the scalar options, chosen_focus_value returns an (x, y, z) tuple for either xyz
+    option, there is no single number that represents a 3D target."""
+    patch_config.set('Focus', 'Option.xyz_bowl', 'Focus xyz wrt mid bowl [mm]')
+    slot = _bare_slot()
+    slot._chosen_focus = 'Focus xyz wrt mid bowl [mm]'
+    slot._focus_offset_x = 2.0
+    slot._focus_offset_y = -3.0
+    slot._focus_wrt_mid_bowl = 30.0
+    slot._focus_wrt_exit_plane = 25.0
+
+    assert slot.chosen_focus_value == (2.0, -3.0, 30.0)
+
+
 def test_chosen_power_value_returns_none_when_not_yet_chosen():
     slot = _bare_slot()
     slot._chosen_power = None
@@ -2107,3 +2270,20 @@ def test_intensity_summary_reports_a_list_for_amplitude(patch_config):
     summary = slot.intensity_summary()
 
     assert "Amplitude [%] = ['12.50', '13.00']" in summary
+
+
+def test_intensity_summary_reports_xyz_focus_as_a_tuple(patch_config):
+    patch_config.set('Focus', 'Option.xyz_bowl', 'Focus xyz wrt mid bowl [mm]')
+    patch_config.set('Power', 'Option.ampl', 'Amplitude [%]')
+    slot = _bare_slot()
+    slot._transducer = SimpleNamespace(serial='CLOVER')
+    slot._chosen_focus = 'Focus xyz wrt mid bowl [mm]'
+    slot._focus_offset_x = 2.0
+    slot._focus_offset_y = -3.0
+    slot._focus_wrt_mid_bowl = 30.0
+    slot._chosen_power = 'Amplitude [%]'
+    slot._ampl = [50.0]
+
+    summary = slot.intensity_summary()
+
+    assert 'Focus xyz wrt mid bowl [mm] = (2.00, -3.00, 30.00)' in summary

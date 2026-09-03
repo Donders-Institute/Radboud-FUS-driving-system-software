@@ -56,6 +56,7 @@ def test_init_sets_expected_defaults(patch_config):
     assert tran.min_foc == 5.0
     assert tran.max_foc == 200.0
     assert tran.steer_info is None
+    assert tran.can_3d_steer is False
     assert tran.is_active is True
 
 
@@ -70,6 +71,7 @@ def test_str_includes_all_fields():
     tran.min_foc = 20.0
     tran.max_foc = 80.0
     tran.steer_info = 'igt/config/steer.xlsx'
+    tran.can_3d_steer = True
 
     text = str(tran)
     assert '12345' in text
@@ -81,6 +83,7 @@ def test_str_includes_all_fields():
     assert '20.0' in text
     assert '80.0' in text
     assert 'igt/config/steer.xlsx' in text
+    assert 'Transducer can 3D steer: True' in text
 
 
 def test_clone_returns_independent_deep_copy():
@@ -112,7 +115,30 @@ def test_set_transducer_info_populates_fields_from_config(patch_config):
     assert tran.min_foc == 20.0
     assert tran.max_foc == 80.0
     assert tran.steer_info == 'igt/config/steer.xlsx'
+    assert tran.can_3d_steer is False
     assert tran.is_active is True
+
+
+def test_set_transducer_info_reads_can_3d_steer_true_for_ini_steer_info(patch_config):
+    _configure_transducer(patch_config, 'UNITTEST_TRAN',
+                          steer_info='igt/config/imasonic_transducers/transducer.ini')
+    patch_config.set('Equipment.Transducer.UNITTEST_TRAN', 'Can 3D steer?', 'True')
+
+    tran = transducer.Transducer()
+    tran.set_transducer_info('UNITTEST_TRAN')
+
+    assert tran.can_3d_steer is True
+
+
+def test_set_transducer_info_exits_when_can_3d_steer_true_with_non_ini_steer_info(patch_config):
+    """can_3d_steer is only meaningful for the transducer_xyz.Transducer (.ini) steer path --
+    a .xlsx-based lookup table has no x/y concept at all (see igt_ds.py's _set_phases())."""
+    _configure_transducer(patch_config, 'UNITTEST_TRAN', steer_info='igt/config/steer.xlsx')
+    patch_config.set('Equipment.Transducer.UNITTEST_TRAN', 'Can 3D steer?', 'True')
+
+    tran = transducer.Transducer()
+    with pytest.raises(SystemExit, match='can_3d_steer=True'):
+        tran.set_transducer_info('UNITTEST_TRAN')
 
 
 def test_set_transducer_info_exits_with_clear_message_for_unknown_serial(patch_config):

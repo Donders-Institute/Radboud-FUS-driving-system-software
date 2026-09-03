@@ -709,7 +709,8 @@ class TestDefinePulseGroupSingleSlot:
             steer_info='igt/config/imasonic_transducers/transducer_15287_10_300kHz.ini',
         )
         slot = SimpleNamespace(oper_freq=300, ampl=[50] * 10, dephasing_degree=None,
-                               transducer=fake_transducer, focus_wrt_mid_bowl=75)
+                               transducer=fake_transducer, focus_wrt_mid_bowl=75,
+                               focus_offset_x=0.0, focus_offset_y=0.0)
         protocol = SimpleNamespace(pulse_dur=1.0, pulse_rep_int=2.0, slots=[slot])
 
         pulse, phases = connected_instance._define_pulse_group(protocol)
@@ -738,7 +739,7 @@ class TestSetPhasesIniBranch:
         pulse.setFrequencies([300_000])
 
         phases = connected_instance._set_phases(
-            pulse, focus=75,
+            pulse, focus_wrt_mid_bowl=75,
             steer_info='igt/config/imasonic_transducers/transducer_15287_10_300kHz.ini',
             dephasing_degree=None)
 
@@ -766,11 +767,11 @@ class TestSetPhasesIniBranch:
 
         mocker.patch.object(transducer_xyz.Transducer, 'load', make_fake_load(75.0))
         phases_a = connected_instance._set_phases(
-            pulse, focus=40, steer_info='fake.ini', dephasing_degree=None)
+            pulse, focus_wrt_mid_bowl=40, steer_info='fake.ini', dephasing_degree=None)
 
         mocker.patch.object(transducer_xyz.Transducer, 'load', make_fake_load(100.0))
         phases_b = connected_instance._set_phases(
-            pulse, focus=40, steer_info='fake.ini', dephasing_degree=None)
+            pulse, focus_wrt_mid_bowl=40, steer_info='fake.ini', dephasing_degree=None)
 
         assert phases_a != phases_b
 
@@ -795,7 +796,7 @@ class TestSetPhasesExcelBranch:
         mocker.patch('fus_driving_systems.igt.igt_ds.pd.read_excel', return_value=df)
         mocker.patch('fus_driving_systems.igt.igt_ds.os.path.exists', return_value=True)
 
-        phases = connected_instance._set_phases(mocker.Mock(), focus=50.0,
+        phases = connected_instance._set_phases(mocker.Mock(), focus_wrt_mid_bowl=50.0,
                                                 steer_info='some_table.xlsx',
                                                 dephasing_degree=None)
 
@@ -806,8 +807,8 @@ class TestSetPhasesExcelBranch:
         mocker.patch('fus_driving_systems.igt.igt_ds.os.path.exists', return_value=False)
 
         with pytest.raises(SystemExit):
-            connected_instance._set_phases(mocker.Mock(), focus=50.0, steer_info='missing.xlsx',
-                                           dephasing_degree=None)
+            connected_instance._set_phases(mocker.Mock(), focus_wrt_mid_bowl=50.0,
+                                           steer_info='missing.xlsx', dephasing_degree=None)
 
     def test_exits_when_steer_info_is_neither_ini_nor_xlsx(self, mocker, connected_instance):
         """DUMMY/CITRUS transducers configure an empty 'Steer information'
@@ -817,7 +818,7 @@ class TestSetPhasesExcelBranch:
         connected_instance.n_channels = 2
 
         with pytest.raises(SystemExit):
-            connected_instance._set_phases(mocker.Mock(), focus=50.0, steer_info='',
+            connected_instance._set_phases(mocker.Mock(), focus_wrt_mid_bowl=50.0, steer_info='',
                                            dephasing_degree=None)
 
     def test_exits_when_more_than_one_dephasing_entry_given(self, mocker, connected_instance):
@@ -832,7 +833,7 @@ class TestSetPhasesExcelBranch:
         mocker.patch('fus_driving_systems.igt.igt_ds.os.path.exists', return_value=True)
 
         with pytest.raises(SystemExit):
-            connected_instance._set_phases(mocker.Mock(), focus=50.0,
+            connected_instance._set_phases(mocker.Mock(), focus_wrt_mid_bowl=50.0,
                                            steer_info='some_table.xlsx',
                                            dephasing_degree=[10.0, 20.0])
 

@@ -79,7 +79,9 @@ This project is facilitated by the Radboud FUS Centre. For more information, ple
 
 If you use this package in your research or project, please cite it as follows (see also [`CITATION.cff`](CITATION.cff)):
 
-Margely Cornelissen, Stein Fekkes (FUS Centre, Radboud University, Nijmegen, The Netherlands), Erik Dumont (Image Guided Therapy, Pessac, France) & Lennart Verhagen (FUS Centre, Radboud University, Nijmegen, The Netherlands) (2024-2026), Radboud FUS Driving System Software (version 2.2.3)
+Cornelissen, M., Fekkes, S., Dumont, E., & Verhagen, L. (2024–2026). Radboud FUS Driving System Software (version 2.2.3) [Computer software]. https://github.com/Donders-Institute/Radboud-FUS-driving-system-software
+
+If you used a different version than the one currently listed above, replace the version number with the one you actually used (see the [releases page](https://github.com/Donders-Institute/Radboud-FUS-driving-system-software/releases) for the full list), since reproducing a result later needs to know exactly which version produced it. There is no DOI for this software yet; the repository URL above is the citable reference in the meantime.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -625,9 +627,9 @@ The driving system identifier must match one of the identifiers defined in the '
 - **available channels**: Number of channels the system provides
 - **connection info**: COM port, IP address, or path to configuration file
 - **power options**: Power options supported by this system at all, which must be chosen from the Power section of the config. Setting a power option this system doesn't list here exits with a clear "not available" error.
-- **focus options**: Same idea, for focus -- one or both of `Focus wrt exit plane [mm]`/`Focus wrt mid bowl [mm]`, whichever this system supports at all (e.g. a system that never has a focus-conversion calibration should only list its native option here).
+- **focus options**: Same idea, for focus, one or more of `Focus wrt exit plane [mm]`/`Focus wrt mid bowl [mm]` and their 3D (x/y/z) variants `Focus xyz wrt exit plane [mm]`/`Focus xyz wrt mid bowl [mm]` (see "3D (lateral) steering" below), whichever this system supports at all (e.g. a system that never has a focus-conversion calibration should only list its native option here).
 - **native power parameters**: Which of *power options* this system's hardware accepts directly, without needing a calibration curve to convert it (e.g. amplitude for IGT, global power for Sonic Concepts, voltage for CITRUS). A native parameter never needs an active calibration to be set (subject to the separate `engineering-only options` check below, if applicable); setting any other power option (that's still listed in *power options*) always requires an active `Equipment.Combination.*` entry (see step 4) to convert it, regardless of `engineering-only options`. Usually a single value, but if your system's hardware genuinely accepts more than one power representation directly, list them all, one per line (like *power options* above).
-- **native focus parameters**: Same idea, for focus -- one or more of `Focus wrt exit plane [mm]`/`Focus wrt mid bowl [mm]`, whichever this system's hardware accepts directly.
+- **native focus parameters**: Same idea, for focus, one or more of `Focus wrt exit plane [mm]`/`Focus wrt mid bowl [mm]`/their xyz variants, whichever this system's hardware accepts directly. For IGT this lists both `Focus wrt mid bowl [mm]` and `Focus xyz wrt mid bowl [mm]`, the xyz variant is native exactly when its scalar counterpart is, since it's the same reference frame with x/y added.
 - **transducer compatibility**: List of compatible transducer IDs. `TUSProtocol.add_slot()`/`protocol.slots[i].update_transducer()` exit with a clear error if you try to assign a transducer that isn't listed here for this driving system.
 - **max. transducer slots**: How many transducers this driving system can drive simultaneously. Defaults to `1` (single-transducer-only) when omitted -- only set this above `1` for a driving system that genuinely supports it (e.g. IGT's `_comb_2x10-ch`-style configs).
 - **max. buffers**: How many hardware buffers this driving system can hold a protocol in at once -- each buffer can be pre-loaded with its own protocol ahead of time and triggered/executed independently (see the `buffer_num` parameter of `IGT.send_protocol()`/`wait_for_trigger()`/`execute_protocol()`). Defaults to `1` (no real buffer concept, `buffer_num` is then only ever `0`) when omitted -- all current IGT systems declare `2` here.
@@ -648,6 +650,7 @@ _add_transducer(
     # only ever used for the informational side, never the value actually sent to
     # hardware.
     steer_information='path\\to\\steer\\info',  # only if applicable
+    can_3d_steer=False,  # see "3D (lateral) steering" below
     active=True,
 )
 ```
@@ -662,6 +665,7 @@ exit plane - first element dist. = 0
 min. focus = 0
 max. focus = 100
 steer information = path\to\steer\info
+can 3d steer? = False
 active? = True
 ```
 
@@ -674,6 +678,7 @@ The transducer identifier must match one of the identifiers defined in the '[Equ
 - **min. focus**: Minimum allowed focus with respect to exit plane in millimeters. Only used as-is when there's no active `Equipment.Combination.*` calibration for this transducer/driving-system pair -- once one is active, this value is overwritten (not merely defaulted) with the equalization curve's own minimum break, so the configured value becomes irrelevant.
 - **max. focus**: Maximum allowed focus with respect to exit plane in millimeters. Same overwrite behavior as *min. focus* above, once a calibration is active.
 - **steer information**: Path to steering information file if applicable
+- **can 3d steer?**: Whether this transducer's own element geometry supports lateral (x/y) steering, not just depth, see "3D (lateral) steering" below. Only valid for a `.ini`-based *steer information* (a `.xlsx` lookup table has no x/y concept). Defaults to `False`.
 - **active?**: Whether this transducer is active and available for use
 
 #### 4. Add Equipment Combinations (advanced feature, if needed)
@@ -700,6 +705,18 @@ active? = True
 - **active?**: Whether a calibration actually exists for this specific driving-system/transducer pair. `create_config.py` derives this automatically from whether the referenced calibration JSON files exist on disk. Setting a non-native power/focus parameter without an active combination for the current pair exits with a clear error, since there is no way to produce a value the hardware can actually accept.
 
 These combinations are only required if additional equations are needed to convert user input (e.g., pressure in free water and focus with respect to exit plane) to input the driving system understands (e.g., amplitude and focus with respect to mid bowl). This is required for combinations like IGT-Imasonic.
+
+For a `can_3d_steer=True` transducer, the same four `_add_combination(...)` filenames point at 3D calibration data instead of 1D, there's no separate set of keys for it, since the transducer's own `can_3d_steer` already determines how they're interpreted. See "3D (lateral) steering" below.
+
+#### 3D (lateral) steering
+
+IGT transducers with a `.ini`-based *steer information* can, in principle, be steered laterally (x/y) as well as in depth (z). `TUSProtocol.add_slot()`/`protocol.slots[i].configure()`/`update_transducer()` accept `Focus xyz wrt exit plane [mm]`/`Focus xyz wrt mid bowl [mm]` as a `focus_option`, taking an `(x, y, z)` tuple in millimeters as `focus_value` instead of a bare float. `x`/`y` are lateral offsets in the transducer's own coordinate space (the same frame `transducer_xyz.Transducer.compute_phases()`'s `point_mm` already uses); `z` is the focal depth in whichever reference frame (exit plane or mid bowl) you chose.
+
+This only works for a transducer with `can_3d_steer=True` (see step 3). Setting an xyz option on a transducer without `can_3d_steer=True` exits with a clear error.
+
+`Focus xyz wrt mid bowl [mm]` is native for IGT (no calibration needed at all, the same reason scalar mid bowl needs none), so it works for a `can_3d_steer=True` transducer even without any 3D calibration data. `Focus xyz wrt exit plane [mm]` is not native, and converting it requires 3D calibration data: setting it without an active one exits with a clear "requires 3D calibration data" error, the same way any other non-native parameter without an active calibration does.
+
+Of the four calibration curves (see step 4), only the equalization curve and the focus curve depend on where the target actually is: an off-axis (x/y) target changes both the achievable pressure (equalization) and the exit-plane/mid-bowl relationship (focus), so a 3D-capable transducer's combination needs 3D versions of those two. The power curve (amplitude vs. pressure) and voltage curve (amplitude vs. voltage) are purely electrical/hardware relationships that don't depend on the target's position, so they stay the same regardless of `can_3d_steer`.
 
 The four typical conversion equations are:
 - **equalization factor vs focus wrt exit plane**: Adjusts for the decreasing maximum pressure in free water that occurs with increasing focus distance. This compensates for beam attenuation at greater distances.

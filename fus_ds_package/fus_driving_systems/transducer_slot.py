@@ -104,11 +104,17 @@ class TransducerSlot:
         _press (float): [IGT] maximum pressure in free water [MPa].
         _volt (float): [IGT] voltage [V].
         _ampl (float): [IGT] amplitude [%].
-        _chosen_focus (str): The chosen focus parameter (wrt exit plane or mid bowl).
+        _chosen_focus (str): The chosen focus parameter (wrt exit plane, mid bowl, or one of
+                            their xyz variants).
         _focus_wrt_exit_plane (float): Focal depth of this slot w.r.t. exit plane respresenting
                                        the FWHM middle [mm].
         _focus_wrt_mid_bowl (float): Focal depth of this slot w.r.t. transducer bowl middle
                                      respresenting the FWHM middle [mm].
+        _focus_offset_x (float): Lateral x offset [mm] of this slot's target from the z axis,
+                                 only meaningful when chosen_focus is one of the two xyz options,
+                                 see _set_focus_xyz().
+        _focus_offset_y (float): Lateral y offset [mm] of this slot's target from the z axis,
+                                 same conditions as _focus_offset_x.
         _ds_tran_combo (str): combination of driving system and transducer serial numbers.
         _conv_param (dict): Conversion parameters using piecewise polynomial functions for pressure
                            compensation with increasing focal depth.
@@ -171,6 +177,8 @@ class TransducerSlot:
         self._chosen_focus = None
         self._focus_wrt_mid_bowl = None
         self._focus_wrt_exit_plane = None
+        self._focus_offset_x = 0.0
+        self._focus_offset_y = 0.0
 
         # If applicable, retrieve conversion parameters
         self._conv_param = {
@@ -272,7 +280,8 @@ class TransducerSlot:
         # time, as its own debug line.
         info += "Chosen focus option: "
         if self.chosen_focus is not None:
-            info += f"{self.chosen_focus}: {format_or_unavailable(self.chosen_focus_value)} \n "
+            focus_str = self._format_focus_value(self.chosen_focus_value)
+            info += f"{self.chosen_focus}: {focus_str} \n "
         else:
             info += "not yet configured \n "
 
@@ -297,7 +306,8 @@ class TransducerSlot:
         if self.chosen_focus is None:
             focus_str = 'focus not yet configured'
         else:
-            focus_str = f'{self.chosen_focus} = {format_or_unavailable(self.chosen_focus_value)}'
+            formatted_focus = self._format_focus_value(self.chosen_focus_value)
+            focus_str = f'{self.chosen_focus} = {formatted_focus}'
 
         power_value = self.chosen_power_value
         if self.chosen_power is None:
@@ -956,27 +966,34 @@ class TransducerSlot:
 
     def _set_focus(self, focus_option, focus_value):
         """
-        Sets focus_option's value on this slot, by forwarding to whichever of its two focus
+        Sets focus_option's value on this slot, by forwarding to whichever of its four focus
         properties focus_option actually names.
 
         Parameters:
-            focus_option (str): 'Focus wrt exit plane [mm]' or 'Focus wrt mid bowl [mm]'
-                                (whichever config value 'Option.exit'/'Option.bowl' resolve to).
-            focus_value (float): The focus value [mm].
+            focus_option (str): 'Focus wrt exit plane [mm]', 'Focus wrt mid bowl [mm]', or one
+                                of their xyz variants (whichever config value 'Option.exit'/
+                                'Option.bowl'/'Option.xyz_exit'/'Option.xyz_bowl' resolve to).
+            focus_value (float, or (x, y, z) tuple/list for the xyz options): The focus value.
         """
 
         exit_opt = get_config_value(get_logger(), config, 'Focus', 'Option.exit',
                                     'Focus wrt exit plane [mm]')
         bowl_opt = get_config_value(get_logger(), config, 'Focus', 'Option.bowl',
                                     'Focus wrt mid bowl [mm]')
+        xyz_exit_opt = get_config_value(get_logger(), config, 'Focus', 'Option.xyz_exit',
+                                        'Focus xyz wrt exit plane [mm]')
+        xyz_bowl_opt = get_config_value(get_logger(), config, 'Focus', 'Option.xyz_bowl',
+                                        'Focus xyz wrt mid bowl [mm]')
 
         if focus_option == exit_opt:
             self._set_focus_wrt_exit_plane(focus_value)
         elif focus_option == bowl_opt:
             self._set_focus_wrt_mid_bowl(focus_value)
+        elif focus_option in (xyz_exit_opt, xyz_bowl_opt):
+            self._set_focus_xyz(focus_option, focus_value)
         else:
             message = (f'{focus_option} is not a valid focus option. Use one of: ' +
-                       f'{exit_opt}, {bowl_opt}.')
+                       f'{exit_opt}, {bowl_opt}, {xyz_exit_opt}, {xyz_bowl_opt}.')
             get_logger().critical(message)
             sys.exit(message)
 
@@ -1048,7 +1065,8 @@ class TransducerSlot:
         "about to execute"/"executed successfully" summaries, GitHub #125/#122).
 
         Returns:
-            float or None: Focal depth [mm] for whichever focus option is chosen, or None.
+            float, (x, y, z) tuple, or None: Focal depth [mm] for a scalar focus option, an
+            (x, y, z) [mm] tuple for one of the two xyz options, or None if nothing chosen yet.
         """
 
         exit_opt = get_config_value(get_logger(), config, 'Focus', 'Option.exit',
@@ -1061,7 +1079,35 @@ class TransducerSlot:
         if self.chosen_focus == bowl_opt:
             return self._focus_wrt_mid_bowl
 
+        xyz_exit_opt = get_config_value(get_logger(), config, 'Focus', 'Option.xyz_exit',
+                                        'Focus xyz wrt exit plane [mm]')
+        if self.chosen_focus == xyz_exit_opt:
+            return (self._focus_offset_x, self._focus_offset_y, self._focus_wrt_exit_plane)
+
+        xyz_bowl_opt = get_config_value(get_logger(), config, 'Focus', 'Option.xyz_bowl',
+                                        'Focus xyz wrt mid bowl [mm]')
+        if self.chosen_focus == xyz_bowl_opt:
+            return (self._focus_offset_x, self._focus_offset_y, self._focus_wrt_mid_bowl)
+
         return None
+
+    @staticmethod
+    def _format_focus_value(value):
+        """
+        Formats a chosen_focus_value for a log line, a plain float (scalar focus options) via
+        format_or_unavailable(), or an (x, y, z) tuple (the two xyz options) as
+        "(x, y, z)", since format_or_unavailable() itself only knows how to format one number.
+
+        Parameters:
+            value (float, (x, y, z) tuple, or None): See chosen_focus_value.
+
+        Returns:
+            str: The formatted value.
+        """
+
+        if isinstance(value, tuple):
+            return f"({value[0]:.2f}, {value[1]:.2f}, {value[2]:.2f})"
+        return format_or_unavailable(value)
 
     @property
     def focus_wrt_exit_plane(self):
@@ -1096,97 +1142,97 @@ class TransducerSlot:
                 f'{focus_option} mode is disabled. Enable engineering_mode, or use one of ' +
                 f'the following options instead: {self._non_engineering_options("Focus")}.')
 
-        if focus_option in self.driving_sys.focus_options:
-            # Fail fast: check whether this driving system can accept focus_wrt_exit_plane
-            # right now, before validating anything about the specific value -- mid bowl is not
-            # exit plane's native focus parameter for every driving system, and converting to it
-            # requires an active calibration, since there's no other way to produce a value
-            # this driving system's hardware actually accepts.
-            if (focus_option not in self.driving_sys.native_focus_params
-                    and not self._combo_is_active()):
-                message = ('No active calibration available to convert focus wrt exit plane ' +
-                           f'to {self.driving_sys.native_focus_params} for ' +
-                           f'{self._ds_tran_combo}.')
-                get_logger().critical(message)
-                sys.exit(message)
-
-            validate_value(focus, 'Focus wrt exit plane [mm] (focus_wrt_exit_plane)',
-                           True, True, False, False)
-
-            if self._combo_is_active():
-                # Ask focus_curve_pp itself whether this value is within its calibrated range,
-                # rather than proxying via self._transducer.min_foc/max_foc -- those are
-                # overwritten from eq_curve_pp's breaks (see _update_conv_param()), a different
-                # curve. The two happen to have identical domains for every combo shipped today,
-                # but nothing enforces that, so ask the curve that's actually about to be
-                # evaluated (see issue #93).
-                calc_mid_bowl, range_status = safe_evaluate_pp(
-                    self._conv_param['focus_curve_pp'], focus)
-
-                if range_status != 'in_range':
-                    if focus_option not in self.driving_sys.native_focus_params:
-                        # Mid bowl is native here -- it's what's actually sent to hardware, so
-                        # an imprecise geometric approximation for it is not an acceptable
-                        # fallback (unlike the native case below, where mid bowl is purely
-                        # informational and never sent anywhere).
-                        x_min = self._conv_param['focus_curve_pp'].x[0]
-                        x_max = self._conv_param['focus_curve_pp'].x[-1]
-                        message = (
-                            f'Focus wrt exit plane of {focus:.2f} [mm] is outside of the ' +
-                            f"active calibration curve's limits ({x_min:.2f} - {x_max:.2f} " +
-                            f'[mm]), and {focus_option} is not native for ' +
-                            f'{self._ds_tran_combo} -- there is no way to accurately produce ' +
-                            f'{self.driving_sys.native_focus_params} from this focus value.')
-                        get_logger().critical(message)
-                        sys.exit(message)
-
-                    get_logger().warning(
-                        f'Focus wrt exit plane of {focus:.2f} [mm] is outside of the active ' +
-                        'calibration curve\'s range. Focus wrt mid bowl will be calculated ' +
-                        'based on exit plane distance of ' +
-                        f'{self._transducer.exit_plane_dist:.2f} [mm].')
-                    calc_mid_bowl = focus + self._transducer.exit_plane_dist
-
-                self._focus_wrt_mid_bowl = calc_mid_bowl
-            else:
-                # Check if focus is within the transducer's own physical range -- no curve to
-                # consult here.
-                if focus < self._transducer.min_foc or focus > self._transducer.max_foc:
-                    message = (f'Focus wrt exit plane of {focus:.2f} [mm] is not within the ' +
-                               f'set focus range of {self._transducer.min_foc:.2f} and ' +
-                               f'{self._transducer.max_foc:.2f} [mm] of transducer ' +
-                               f'{self._transducer.name}.')
-                    get_logger().critical(message)
-                    sys.exit(message)
-
-                # Native and no curve available -- fall back to the simple, always-valid
-                # geometric offset (only reached when native, since non-native + inactive
-                # exits above).
-                self._focus_wrt_mid_bowl = focus + self._transducer.exit_plane_dist
-
-            self._chosen_focus = focus_option
-            self._focus_wrt_exit_plane = focus
-
-            get_logger().debug(
-                f'Focus wrt exit plane [mm]: {self._focus_wrt_exit_plane:.2f}, ' +
-                f'Focus wrt bowl middle [mm]: {self._focus_wrt_mid_bowl:.2f}')
-
-            if self._combo_is_active():
-                # Needed as an input to _set_power()'s own calculation, which always runs right
-                # after this within the same configure() call. ampl/press/volt are deliberately
-                # not also recomputed/logged here (same reasoning already applied to
-                # _update_conv_param()) -- _set_focus() only ever runs from configure(), which
-                # always calls _set_power() immediately after, so any value computed here would
-                # only ever describe a transient state _set_power() is about to replace (or, for
-                # global_power, reset to None) regardless of which power option that turns out
-                # to be.
-                self._eq_factor = self._calc_eq_factor(self._focus_wrt_exit_plane)
-        else:
+        if focus_option not in self.driving_sys.focus_options:
             message = ('Focus wrt exit plane parameter is not available for ' +
                        'chosen driving system. Use one of the following options instead: ' +
                        f'{self.driving_sys.focus_options}.')
             get_logger().critical(message)
             sys.exit(message)
+
+        # Fail fast: check whether this driving system can accept focus_wrt_exit_plane
+        # right now, before validating anything about the specific value -- mid bowl is not
+        # exit plane's native focus parameter for every driving system, and converting to it
+        # requires an active calibration, since there's no other way to produce a value
+        # this driving system's hardware actually accepts.
+        if (focus_option not in self.driving_sys.native_focus_params
+                and not self._combo_is_active()):
+            message = ('No active calibration available to convert focus wrt exit plane ' +
+                       f'to {self.driving_sys.native_focus_params} for ' +
+                       f'{self._ds_tran_combo}.')
+            get_logger().critical(message)
+            sys.exit(message)
+
+        validate_value(focus, 'Focus wrt exit plane [mm] (focus_wrt_exit_plane)',
+                       True, True, False, False)
+
+        if self._combo_is_active():
+            # Ask focus_curve_pp itself whether this value is within its calibrated range,
+            # rather than proxying via self._transducer.min_foc/max_foc -- those are
+            # overwritten from eq_curve_pp's breaks (see _update_conv_param()), a different
+            # curve. The two happen to have identical domains for every combo shipped today,
+            # but nothing enforces that, so ask the curve that's actually about to be
+            # evaluated (see issue #93).
+            calc_mid_bowl, range_status = safe_evaluate_pp(
+                self._conv_param['focus_curve_pp'], focus)
+
+            if range_status != 'in_range':
+                if focus_option not in self.driving_sys.native_focus_params:
+                    # Mid bowl is native here -- it's what's actually sent to hardware, so
+                    # an imprecise geometric approximation for it is not an acceptable
+                    # fallback (unlike the native case below, where mid bowl is purely
+                    # informational and never sent anywhere).
+                    x_min = self._conv_param['focus_curve_pp'].x[0]
+                    x_max = self._conv_param['focus_curve_pp'].x[-1]
+                    message = (
+                        f'Focus wrt exit plane of {focus:.2f} [mm] is outside of the ' +
+                        f"active calibration curve's limits ({x_min:.2f} - {x_max:.2f} " +
+                        f'[mm]), and {focus_option} is not native for ' +
+                        f'{self._ds_tran_combo} -- there is no way to accurately produce ' +
+                        f'{self.driving_sys.native_focus_params} from this focus value.')
+                    get_logger().critical(message)
+                    sys.exit(message)
+
+                get_logger().warning(
+                    f'Focus wrt exit plane of {focus:.2f} [mm] is outside of the active ' +
+                    'calibration curve\'s range. Focus wrt mid bowl will be calculated ' +
+                    'based on exit plane distance of ' +
+                    f'{self._transducer.exit_plane_dist:.2f} [mm].')
+                calc_mid_bowl = focus + self._transducer.exit_plane_dist
+
+            self._focus_wrt_mid_bowl = calc_mid_bowl
+        else:
+            # Check if focus is within the transducer's own physical range -- no curve to
+            # consult here.
+            if focus < self._transducer.min_foc or focus > self._transducer.max_foc:
+                message = (f'Focus wrt exit plane of {focus:.2f} [mm] is not within the ' +
+                           f'set focus range of {self._transducer.min_foc:.2f} and ' +
+                           f'{self._transducer.max_foc:.2f} [mm] of transducer ' +
+                           f'{self._transducer.name}.')
+                get_logger().critical(message)
+                sys.exit(message)
+
+            # Native and no curve available -- fall back to the simple, always-valid
+            # geometric offset (only reached when native, since non-native + inactive
+            # exits above).
+            self._focus_wrt_mid_bowl = focus + self._transducer.exit_plane_dist
+
+        self._chosen_focus = focus_option
+        self._focus_wrt_exit_plane = focus
+
+        get_logger().debug(
+            f'Focus wrt exit plane [mm]: {self._focus_wrt_exit_plane:.2f}, ' +
+            f'Focus wrt bowl middle [mm]: {self._focus_wrt_mid_bowl:.2f}')
+
+        if self._combo_is_active():
+            # Needed as an input to _set_power()'s own calculation, which always runs right
+            # after this within the same configure() call. ampl/press/volt are deliberately
+            # not also recomputed/logged here (same reasoning already applied to
+            # _update_conv_param()) -- _set_focus() only ever runs from configure(), which
+            # always calls _set_power() immediately after, so any value computed here would
+            # only ever describe a transient state _set_power() is about to replace (or, for
+            # global_power, reset to None) regardless of which power option that turns out
+            # to be.
+            self._eq_factor = self._calc_eq_factor(self._focus_wrt_exit_plane)
 
     @property
     def focus_wrt_mid_bowl(self):
@@ -1222,92 +1268,253 @@ class TransducerSlot:
                 f'{focus_option} mode is disabled. Enable engineering_mode, or use one of ' +
                 f'the following options instead: {self._non_engineering_options("Focus")}.')
 
-        if focus_option in self.driving_sys.focus_options:
-            # Fail fast: check whether this driving system can accept focus_wrt_mid_bowl right
-            # now, before validating anything about the specific value -- exit plane is not mid
-            # bowl's native focus parameter for every driving system, and converting to it
-            # requires an active calibration, since there's no other way to produce a value
-            # this driving system's hardware actually accepts.
-            if (focus_option not in self.driving_sys.native_focus_params
-                    and not self._combo_is_active()):
-                message = ('No active calibration available to convert focus wrt mid bowl ' +
-                           f'to {self.driving_sys.native_focus_params} for ' +
-                           f'{self._ds_tran_combo}.')
-                get_logger().critical(message)
-                sys.exit(message)
-
-            validate_value(focus, 'Focus wrt mid bowl [mm] (focus_wrt_mid_bowl)',
-                           True, True, False, False)
-
-            if self._combo_is_active():
-                target_y_value = focus
-                self._focus_wrt_exit_plane, status = find_x_for_y_in_pp(
-                    self._conv_param['focus_curve_pp'], target_y_value)
-
-                if not status:
-                    if focus_option not in self.driving_sys.native_focus_params:
-                        # Mid bowl is not native here -- exit plane is what's actually native
-                        # and would be sent to hardware, so an imprecise geometric approximation
-                        # for it is not an acceptable fallback (unlike the native case below,
-                        # where exit plane is purely informational and never sent anywhere).
-                        message = (
-                            f'Could not find an x value for y = {target_y_value:.2f} in the ' +
-                            'active calibration curve, and ' +
-                            f'{focus_option} is not native for {self._ds_tran_combo} -- ' +
-                            'there is no way to accurately produce ' +
-                            f'{self.driving_sys.native_focus_params} from this focus value.')
-                        get_logger().critical(message)
-                        sys.exit(message)
-
-                    get_logger().warning(
-                        f"Could not find an x value for y = {target_y_value:.2f}. " +
-                        'Focus wrt exit plane will be calculated based on ' +
-                        'exit plane distance of ' +
-                        f'{self._transducer.exit_plane_dist:.2f} [mm].')
-
-                    self._focus_wrt_exit_plane = focus - self._transducer.exit_plane_dist
-            else:
-                # Native and no curve available -- fall back to the simple, always-valid
-                # geometric offset (only reached when native, since non-native + inactive
-                # exits above).
-                self._focus_wrt_exit_plane = focus - self._transducer.exit_plane_dist
-
-            # Check if focus is within range if compensation equations are not applicable
-            if (self._focus_wrt_exit_plane < self._transducer.min_foc
-                    or self._focus_wrt_exit_plane > self._transducer.max_foc):
-                message = (
-                    f'Focus wrt exit plane of {self._focus_wrt_exit_plane:.2f} [mm] is not ' +
-                    'within the set ' +
-                    f'focus range of {self._transducer.min_foc:.2f} and ' +
-                    f'{self._transducer.max_foc:.2f} [mm] of transducer ' +
-                    f'{self._transducer.name}.')
-                get_logger().critical(message)
-                sys.exit(message)
-
-            self._chosen_focus = focus_option
-
-            self._focus_wrt_mid_bowl = focus
-
-            get_logger().debug(
-                f'Focus wrt exit plane [mm]: {self._focus_wrt_exit_plane:.2f}, ' +
-                f'Focus wrt bowl middle [mm]: {self._focus_wrt_mid_bowl:.2f}')
-
-            if self._combo_is_active():
-                # Needed as an input to _set_power()'s own calculation, which always runs right
-                # after this within the same configure() call. ampl/press/volt are deliberately
-                # not also recomputed/logged here (same reasoning already applied to
-                # _update_conv_param()) -- _set_focus() only ever runs from configure(), which
-                # always calls _set_power() immediately after, so any value computed here would
-                # only ever describe a transient state _set_power() is about to replace (or, for
-                # global_power, reset to None) regardless of which power option that turns out
-                # to be.
-                self._eq_factor = self._calc_eq_factor(self._focus_wrt_exit_plane)
-        else:
+        if focus_option not in self.driving_sys.focus_options:
             message = ('Focus wrt mid bowl parameter is not available for ' +
                        'chosen driving system. Use one of the following options instead: ' +
                        f'{self.driving_sys.focus_options}.')
             get_logger().critical(message)
             sys.exit(message)
+
+        # Fail fast: check whether this driving system can accept focus_wrt_mid_bowl right
+        # now, before validating anything about the specific value -- exit plane is not mid
+        # bowl's native focus parameter for every driving system, and converting to it
+        # requires an active calibration, since there's no other way to produce a value
+        # this driving system's hardware actually accepts.
+        if (focus_option not in self.driving_sys.native_focus_params
+                and not self._combo_is_active()):
+            message = ('No active calibration available to convert focus wrt mid bowl ' +
+                       f'to {self.driving_sys.native_focus_params} for ' +
+                       f'{self._ds_tran_combo}.')
+            get_logger().critical(message)
+            sys.exit(message)
+
+        validate_value(focus, 'Focus wrt mid bowl [mm] (focus_wrt_mid_bowl)',
+                       True, True, False, False)
+
+        if self._combo_is_active():
+            target_y_value = focus
+            self._focus_wrt_exit_plane, status = find_x_for_y_in_pp(
+                self._conv_param['focus_curve_pp'], target_y_value)
+
+            if not status:
+                if focus_option not in self.driving_sys.native_focus_params:
+                    # Mid bowl is not native here -- exit plane is what's actually native
+                    # and would be sent to hardware, so an imprecise geometric approximation
+                    # for it is not an acceptable fallback (unlike the native case below,
+                    # where exit plane is purely informational and never sent anywhere).
+                    message = (
+                        f'Could not find an x value for y = {target_y_value:.2f} in the ' +
+                        'active calibration curve, and ' +
+                        f'{focus_option} is not native for {self._ds_tran_combo} -- ' +
+                        'there is no way to accurately produce ' +
+                        f'{self.driving_sys.native_focus_params} from this focus value.')
+                    get_logger().critical(message)
+                    sys.exit(message)
+
+                get_logger().warning(
+                    f"Could not find an x value for y = {target_y_value:.2f}. " +
+                    'Focus wrt exit plane will be calculated based on ' +
+                    'exit plane distance of ' +
+                    f'{self._transducer.exit_plane_dist:.2f} [mm].')
+
+                self._focus_wrt_exit_plane = focus - self._transducer.exit_plane_dist
+        else:
+            # Native and no curve available -- fall back to the simple, always-valid
+            # geometric offset (only reached when native, since non-native + inactive
+            # exits above).
+            self._focus_wrt_exit_plane = focus - self._transducer.exit_plane_dist
+
+        # Check if focus is within range if compensation equations are not applicable
+        if (self._focus_wrt_exit_plane < self._transducer.min_foc
+                or self._focus_wrt_exit_plane > self._transducer.max_foc):
+            message = (
+                f'Focus wrt exit plane of {self._focus_wrt_exit_plane:.2f} [mm] is not ' +
+                'within the set ' +
+                f'focus range of {self._transducer.min_foc:.2f} and ' +
+                f'{self._transducer.max_foc:.2f} [mm] of transducer ' +
+                f'{self._transducer.name}.')
+            get_logger().critical(message)
+            sys.exit(message)
+
+        self._chosen_focus = focus_option
+
+        self._focus_wrt_mid_bowl = focus
+
+        get_logger().debug(
+            f'Focus wrt exit plane [mm]: {self._focus_wrt_exit_plane:.2f}, ' +
+            f'Focus wrt bowl middle [mm]: {self._focus_wrt_mid_bowl:.2f}')
+
+        if self._combo_is_active():
+            # Needed as an input to _set_power()'s own calculation, which always runs right
+            # after this within the same configure() call. ampl/press/volt are deliberately
+            # not also recomputed/logged here (same reasoning already applied to
+            # _update_conv_param()) -- _set_focus() only ever runs from configure(), which
+            # always calls _set_power() immediately after, so any value computed here would
+            # only ever describe a transient state _set_power() is about to replace (or, for
+            # global_power, reset to None) regardless of which power option that turns out
+            # to be.
+            self._eq_factor = self._calc_eq_factor(self._focus_wrt_exit_plane)
+
+    @property
+    def focus_offset_x(self):
+        """
+        Getter method for the lateral x offset [mm] of this slot's target from the z axis. Only
+        meaningful when chosen_focus is one of the two xyz options -- 0.0 otherwise. Read-only --
+        see _set_focus()/configure(), the only way to set it.
+
+        Returns:
+            float: The lateral x offset [mm].
+        """
+
+        return self._focus_offset_x
+
+    @property
+    def focus_offset_y(self):
+        """
+        Getter method for the lateral y offset [mm] of this slot's target from the z axis. Same
+        conditions as focus_offset_x.
+
+        Returns:
+            float: The lateral y offset [mm].
+        """
+
+        return self._focus_offset_y
+
+    def _set_focus_xyz(self, focus_option, focus_xyz_value):
+        """
+        Sets a 3D (x, y, z) focus target, either 'Focus xyz wrt exit plane [mm]' or 'Focus xyz
+        wrt mid bowl [mm]'. Only called by _set_focus() (see configure()).
+
+        Does not delegate to _set_focus_wrt_exit_plane()/_set_focus_wrt_mid_bowl(): those
+        methods' non-native branch consults focus_curve_pp, a 1D (z-only) curve, so delegating
+        would silently apply that 1D curve to an off-axis 3D point. (x, y, z) are treated as one
+        target throughout this method instead.
+
+        Parameters:
+            focus_option (str): 'Focus xyz wrt exit plane [mm]' or 'Focus xyz wrt mid bowl [mm]'.
+            focus_xyz_value (tuple/list of 3 floats): (x, y, z) [mm], z in whichever reference
+                                                       frame focus_option selects.
+        """
+
+        bowl_opt = get_config_value(get_logger(), config, 'Focus', 'Option.bowl',
+                                    'Focus wrt mid bowl [mm]')
+        exit_opt = get_config_value(get_logger(), config, 'Focus', 'Option.exit',
+                                    'Focus wrt exit plane [mm]')
+        xyz_bowl_opt = get_config_value(get_logger(), config, 'Focus', 'Option.xyz_bowl',
+                                        'Focus xyz wrt mid bowl [mm]')
+
+        if len(focus_xyz_value) != 3:
+            message = ('Focus xyz value must be a 3-tuple (x, y, z) [mm], got ' +
+                       f'{focus_xyz_value}.')
+            get_logger().critical(message)
+            sys.exit(message)
+        x, y, z = focus_xyz_value
+        is_mid_bowl = focus_option == xyz_bowl_opt
+
+        if not self._transducer.can_3d_steer:
+            message = (f'{focus_option} is not available for transducer ' +
+                       f'{self._transducer.serial} -- it is not configured as 3D-steering-' +
+                       f'capable (can_3d_steer). Use {exit_opt}/{bowl_opt} instead.')
+            get_logger().critical(message)
+            sys.exit(message)
+
+        if self._requires_engineering_mode('Focus', focus_option) and not self._engineering_mode:
+            raise RuntimeError(
+                f'{focus_option} mode is disabled. Enable engineering_mode, or use one of ' +
+                f'the following options instead: {self._non_engineering_options("Focus")}.')
+
+        if focus_option not in self.driving_sys.focus_options:
+            message = (f'{focus_option} is not available for ' +
+                       'chosen driving system. Use one of the following options instead: ' +
+                       f'{self.driving_sys.focus_options}.')
+            get_logger().critical(message)
+            sys.exit(message)
+
+        validate_value(x, 'Focus x offset [mm] (x)', True, False, False, False)
+        validate_value(y, 'Focus y offset [mm] (y)', True, False, False, False)
+        validate_value(z, 'Focus z [mm] (z)', True, True, False, False)
+
+        # Set before anything below reads them, closing the same "read stale sibling state"
+        # ordering hazard already fixed repeatedly elsewhere in this class.
+        self._focus_offset_x = x
+        self._focus_offset_y = y
+
+        # z is always the direct value for whichever frame focus_option itself selects, the
+        # other frame is what needs deriving, either way below.
+        if is_mid_bowl:
+            self._focus_wrt_mid_bowl = z
+        else:
+            self._focus_wrt_exit_plane = z
+
+        is_native = focus_option in self.driving_sys.native_focus_params
+        if is_native:
+            # No conversion needed at all, direct pass-through for z; the other frame is a
+            # simple geometric offset (purely informational, since focus_option is native). This
+            # is why xyz-mid-bowl works today with zero 3D calibration data: IGT's native focus
+            # param is mid bowl.
+            if is_mid_bowl:
+                self._focus_wrt_exit_plane = z - self._transducer.exit_plane_dist
+            else:
+                self._focus_wrt_mid_bowl = z + self._transducer.exit_plane_dist
+
+            if (self._focus_wrt_exit_plane < self._transducer.min_foc
+                    or self._focus_wrt_exit_plane > self._transducer.max_foc):
+                message = (
+                    f'Focus wrt exit plane of {self._focus_wrt_exit_plane:.2f} [mm] (derived ' +
+                    f'from {focus_option} = {z:.2f}) is not within the set focus range of ' +
+                    f'{self._transducer.min_foc:.2f} and {self._transducer.max_foc:.2f} [mm] ' +
+                    f'of transducer {self._transducer.name}.')
+                get_logger().critical(message)
+                sys.exit(message)
+        else:
+            # The other frame genuinely needs an (x, y, z) -> native-frame conversion via a 3D
+            # curve, only possible with an active combo.
+            if not self._combo_is_active():
+                message = (f'{focus_option} requires 3D calibration data, which is not yet ' +
+                           f'available for {self._ds_tran_combo}. Use one of the following ' +
+                           f'options instead: {self.driving_sys.native_focus_params}.')
+                get_logger().critical(message)
+                sys.exit(message)
+            if is_mid_bowl:
+                self._focus_wrt_exit_plane = self._convert_xyz_to_exit_plane(x, y, z)
+            else:
+                self._focus_wrt_mid_bowl = self._convert_xyz_to_mid_bowl(x, y, z)
+
+        self._chosen_focus = focus_option
+
+        get_logger().debug(
+            f'{focus_option} [mm]: ({x:.2f}, {y:.2f}, {z:.2f}), Focus wrt exit plane [mm]: ' +
+            f'{self._focus_wrt_exit_plane:.2f}, Focus wrt bowl middle [mm]: ' +
+            f'{self._focus_wrt_mid_bowl:.2f}')
+
+        if self._combo_is_active():
+            self._eq_factor = self._calc_eq_factor_3d(x, y, z)
+
+    def _convert_xyz_to_mid_bowl(self, x, y, z):
+        """
+        Converts a 3D (x, y, z) exit-plane-referenced target to its mid-bowl-referenced
+        equivalent, using this combo's 3D focus calibration curve. The curve's format isn't
+        defined (see the 3D steering plan), so this always raises NotImplementedError.
+        """
+
+        raise NotImplementedError('3D focus curve evaluation is not implemented.')
+
+    def _convert_xyz_to_exit_plane(self, x, y, z):
+        """
+        Converts a 3D (x, y, z) mid-bowl-referenced target to its exit-plane-referenced
+        equivalent. Same status as _convert_xyz_to_mid_bowl(), the inverse direction, needed
+        only for a driving system whose native xyz focus parameter is mid bowl.
+        """
+
+        raise NotImplementedError('3D focus curve evaluation is not implemented.')
+
+    def _calc_eq_factor_3d(self, x, y, z):
+        """
+        Calculates the equalization factor for a 3D (x, y, z) target, using this combo's 3D
+        equalization calibration curve. Same status as _convert_xyz_to_mid_bowl().
+        """
+
+        raise NotImplementedError('3D equalization factor evaluation is not implemented.')
 
     @property
     def dephasing_degree(self):
@@ -1453,6 +1660,15 @@ class TransducerSlot:
 
         self.volt_curve_file = get_config_value(get_logger(), config, section_name,
                                                 'VoltageCurveFit json file', None, True)
+
+        if self._transducer.can_3d_steer:
+            # 3D calibration data is a function of (x, y, z), not z alone, so it needs a
+            # different interpolation object than extract_and_define_pp()'s 1D PPoly, e.g.
+            # RegularGridInterpolator or LinearNDInterpolator, depending on how the 3D
+            # calibration measurements are eventually taken. Format not decided yet, see the
+            # 3D steering plan. Not reachable today, since no can_3d_steer transducer has an
+            # active combo, extend this branch once real 3D calibration data exists.
+            raise NotImplementedError('3D calibration curve loading is not implemented.')
 
         eq_pp, eq_breaks = extract_and_define_pp(self.eq_curve_file, return_breaks=True)
         focus_pp = extract_and_define_pp(self.focus_curve_file)

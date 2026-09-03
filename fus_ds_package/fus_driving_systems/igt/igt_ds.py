@@ -941,7 +941,8 @@ class IGT(ds.ControlDrivingSystem):
             else:
                 computed_phases = self._set_phases(pulse, slot.focus_wrt_mid_bowl,
                                                    slot.transducer.steer_info,
-                                                   slot.dephasing_degree)
+                                                   slot.dephasing_degree,
+                                                   slot.focus_offset_x, slot.focus_offset_y)
                 phases = phases + computed_phases
 
         # set phase offset for all channels (angle in [0,360] degrees)
@@ -1495,17 +1496,25 @@ class IGT(ds.ControlDrivingSystem):
 
         return pulse_train_seq, pulse_train_delay
 
-    def _set_phases(self, pulse, focus, steer_info, dephasing_degree):
+    def _set_phases(self, pulse, focus_wrt_mid_bowl, steer_info, dephasing_degree,
+                    focus_offset_x=0.0, focus_offset_y=0.0):
         """
         Gets the phases for the IGT ultrasound driving system.
 
         Parameters:
             pulse (unifus.Pulse): The defined pulse.
-            focus (float): The focus value wrt the middle of the transducer bowl [mm].
+            focus_wrt_mid_bowl (float): The focus value wrt the middle of the transducer bowl
+                                        [mm].
             steer_info (str): Path to the steer information.
             dephasing_degree (list(float)): The degree used to dephase n elements in one cycle.
             None = no dephasing. If the list is equal to the number of elements, the phases
             based on the focus are overridden.
+            focus_offset_x (float): Lateral x offset [mm] of the target from the z axis, only
+                                    non-zero for a 3D-steering transducer
+                                    (TransducerSlot.focus_offset_x). Defaults to 0.0 (on-axis),
+                                    the only value ever reached via the .xlsx steer path (below).
+            focus_offset_y (float): Lateral y offset [mm] of the target from the z axis, same
+                                    conditions as focus_offset_x (TransducerSlot.focus_offset_y).
 
         Returns:
             list: List of phases.
@@ -1528,13 +1537,26 @@ class IGT(ds.ControlDrivingSystem):
             # never drift out of sync with the same file's element coordinates.
             # Calculate target focus with respect to natural focus: + is before natural focus,
             # - is after natural focus
-            aim_wrt_natural_focus = trans.focalLength - focus
+            aim_wrt_natural_focus = trans.focalLength - focus_wrt_mid_bowl
 
-            # Aim n mm away from the natural focal spot, on main axis (Z)
-            phases = trans.compute_phases(pulse, (0, 0, aim_wrt_natural_focus), focus,
-                                          dephasing_degree)
+            # Aim n mm away from the natural focal spot, on main axis (Z), offset laterally by
+            # (focus_offset_x, focus_offset_y), both 0.0 unless this slot's transducer is
+            # 3D-steering-capable (see TransducerSlot._set_focus_xyz()).
+            phases = trans.compute_phases(
+                pulse, (focus_offset_x, focus_offset_y, aim_wrt_natural_focus),
+                focus_wrt_mid_bowl, dephasing_degree)
 
         elif steer_info.endswith('.xlsx'):
+            # This lookup-table path has no x/y concept at all, Transducer.can_3d_steer's own
+            # consistency check (transducer.py) already prevents a .xlsx-based transducer from
+            # ever being configured as 3D-steering-capable, so this is unreachable via the
+            # public API. Guarded explicitly anyway.
+            if focus_offset_x != 0 or focus_offset_y != 0:
+                message = (f'Lateral steering (x={focus_offset_x}, y={focus_offset_y}) is not ' +
+                           'supported for the .xlsx steer information path.')
+                get_logger().critical(message)
+                sys.exit(message)
+
             # Import excel file containing phases per focal depth
             excel_path = str(importlib.resources.files(package_name).joinpath(steer_info))
 
@@ -1544,18 +1566,18 @@ class IGT(ds.ControlDrivingSystem):
                 data = pd.read_excel(excel_path, engine='openpyxl')
 
                 # Make sure both values have the same amount of decimals
-                focus = round(focus, 1)
-                match_row = data.loc[data['Distance'] == focus]
+                focus_wrt_mid_bowl = round(focus_wrt_mid_bowl, 1)
+                match_row = data.loc[data['Distance'] == focus_wrt_mid_bowl]
 
                 if match_row.empty:
                     message = (f'No focus in transducer phases file {excel_path}' +
-                               f' corresponds with {focus}')
+                               f' corresponds with {focus_wrt_mid_bowl}')
                     get_logger().critical(message)
                     sys.exit(message)
 
                 elif len(match_row) > 1:
-                    message = (f'Duplicate foci {focus} found in transducer phases file ' +
-                               f'{excel_path}. First found entry will be used.')
+                    message = (f'Duplicate foci {focus_wrt_mid_bowl} found in transducer ' +
+                               f'phases file {excel_path}. First found entry will be used.')
                     get_logger().error(message)
 
                     match_row = match_row[0]
@@ -1567,7 +1589,8 @@ class IGT(ds.ControlDrivingSystem):
                     phases = transducer_xyz.apply_cyclic_dephasing(phases, dephasing_degree)
 
                 phases_str = ', '.join([format(x, '.2f') for x in phases])
-                get_logger().debug(f'Computed phases for set focus of {focus}: {phases_str}')
+                get_logger().debug(
+                    f'Computed phases for set focus of {focus_wrt_mid_bowl}: {phases_str}')
 
             else:
                 message = ("Pipeline is cancelled. The following direction cannot be found: " +

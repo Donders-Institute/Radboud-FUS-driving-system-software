@@ -36,6 +36,12 @@ class Transducer:
         min_foc (float): Minimum focal depth of the transducer [mm].
         max_foc (float): Maximum focal depth of the transducer [mm].
         steer_info (str):  ONLY USED FOR IGT! Path to the steer information of the transducer.
+        can_3d_steer (Boolean): Whether this transducer's own element geometry supports lateral
+                                (x/y) steering in addition to depth (z), not just whether a
+                                driving system happens to accept a 3D focus option, see
+                                TransducerSlot._set_focus_xyz(). Only meaningful for a .ini-based
+                                steer_info (transducer_xyz.Transducer); a .xlsx-based lookup
+                                table has no x/y concept at all.
         is_active (Boolean): Indication if the transducer is used with the code.
     """
 
@@ -59,6 +65,7 @@ class Transducer:
         self.max_foc = float(get_config_value(get_logger(), config, 'Focus',
                                               'Default.maximum', 1000))  # [mm]
         self.steer_info = None
+        self.can_3d_steer = False
         self.is_active = True
 
     def set_transducer_info(self, serial):
@@ -106,6 +113,14 @@ class Transducer:
 
         self.steer_info = get_config_value(get_logger(), config, section, 'Steer information',
                                            None, True)
+        self.can_3d_steer = get_config_value(
+            get_logger(), config, section, 'Can 3D steer?', 'False') == 'True'
+        if self.can_3d_steer and not self.steer_info.endswith('.ini'):
+            message = (f'{serial} is configured with can_3d_steer=True, but its steer '
+                       f'information ({self.steer_info}) is not a .ini file -- 3D steering is ' +
+                       'only possible for the transducer_xyz.Transducer (.ini) steer path.')
+            get_logger().critical(message)
+            sys.exit(message)
         self.is_active = get_config_value(
             get_logger(), config, section, 'Active?', 'True') == 'True'
 
@@ -128,6 +143,7 @@ class Transducer:
         info += f"Transducer max. focus [mm]: {self.max_foc:.2f} \n "
         info += ("Transducer steer table (Note: only used i.c.w. IGT driving sys.):" +
                  f" {self.steer_info} \n ")
+        info += f"Transducer can 3D steer: {self.can_3d_steer} \n "
 
         return info
 

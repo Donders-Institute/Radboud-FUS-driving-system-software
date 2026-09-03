@@ -79,7 +79,7 @@ def _add_driving_system(serial, name, manufacturer, available_channels, connecti
 
 
 def _add_transducer(serial, name, manufacturer, elements, fund_freq, min_focus, max_focus,
-                    exit_plane_dist=0, steer_information='', active=True):
+                    exit_plane_dist=0, steer_information='', can_3d_steer=False, active=True):
     """
     Builds one '[Equipment.Transducer.<serial>]' section from keyword arguments.
 
@@ -102,6 +102,9 @@ def _add_transducer(serial, name, manufacturer, elements, fund_freq, min_focus, 
             native-ness checks in transducer_slot.py ensure this fallback is only ever used for
             the side that's purely informational, never for the value actually sent to hardware.
         steer_information (str): Path to steering information file, if applicable.
+        can_3d_steer (bool): Whether this transducer's own element geometry supports lateral
+            (x/y) steering, not just depth, see Transducer.can_3d_steer. Must be False unless
+            steer_information ends in '.ini' (checked at read time in transducer.py).
         active (bool): Whether this transducer is active and available for use.
     """
 
@@ -115,6 +118,7 @@ def _add_transducer(serial, name, manufacturer, elements, fund_freq, min_focus, 
     config[section]['Min. focus'] = str(min_focus)
     config[section]['Max. focus'] = str(max_focus)
     config[section]['Steer information'] = steer_information
+    config[section]['Can 3D steer?'] = str(can_3d_steer)
     config[section]['Active?'] = str(active)
 
 
@@ -125,6 +129,11 @@ def _add_combination(ds_serial, tran_serial, eq_curve_filename, focus_curve_file
     curves needed to convert a non-native power/focus parameter for this specific
     driving-system/transducer pair. 'Active?' is derived automatically from whether all four
     referenced calibration files actually exist on disk (see _combo_files_exist()).
+
+    The same four keys are used whether tran_serial's transducer has can_3d_steer True or False,
+    since TransducerSlot._update_conv_param() reads them unconditionally; the transducer's own
+    can_3d_steer already fully determines whether they're interpreted as 1D or 3D calibration
+    data, so there's nothing left for a second, differently-named set of keys to disambiguate.
 
     Parameters:
         ds_serial (str): Driving system serial.
@@ -226,14 +235,24 @@ config['Power'][MAX_PRESSURE_KEY] = str(MAX_ALLOWED_PRESSURE)
 # Focus options
 FOC_WRT_EXIT = 'Focus wrt exit plane [mm]'
 FOC_WRT_BOWL = 'Focus wrt mid bowl [mm]'
+# 3D (lateral x/y + depth z) variants of the exit-plane/mid-bowl focus options above, only
+# settable for a transducer with can_3d_steer=True (see _add_transducer()), regardless of which
+# driving system offers them in focus_options.
+FOC_XYZ_WRT_EXIT = 'Focus xyz wrt exit plane [mm]'
+FOC_XYZ_WRT_BOWL = 'Focus xyz wrt mid bowl [mm]'
 
 config['Focus'] = {}
-config['Focus']['Options'] = '\n'.join([FOC_WRT_EXIT, FOC_WRT_BOWL])
+config['Focus']['Options'] = '\n'.join([FOC_WRT_EXIT, FOC_WRT_BOWL, FOC_XYZ_WRT_EXIT,
+                                        FOC_XYZ_WRT_BOWL])
 config['Focus']['Default option'] = FOC_WRT_EXIT
 config['Focus']['Option.exit'] = FOC_WRT_EXIT
 config['Focus']['Option.bowl'] = FOC_WRT_BOWL
-# See the identical rationale on config['Power']['Engineering-only options'] above.
-config['Focus']['Engineering-only options'] = FOC_WRT_BOWL
+config['Focus']['Option.xyz_exit'] = FOC_XYZ_WRT_EXIT
+config['Focus']['Option.xyz_bowl'] = FOC_XYZ_WRT_BOWL
+# See the identical rationale on config['Power']['Engineering-only options'] above. Xyz-mid-bowl
+# inherits mid bowl's own gate (same reference frame, just with x/y added); xyz-exit-plane stays
+# non-engineering-only, matching scalar exit-plane.
+config['Focus']['Engineering-only options'] = '\n'.join([FOC_WRT_BOWL, FOC_XYZ_WRT_BOWL])
 
 # No Default.exit/Default.bowl keys here -- TransducerSlot.__init__ hardcodes
 # _focus_wrt_exit_plane/_focus_wrt_mid_bowl to None directly. Default.bowl used to be read there,
@@ -455,8 +474,10 @@ _add_driving_system(
     transducer_compatibility=DUMMIES,
     power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
     native_power_parameters=POW_AMPL,
-    focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL],
-    native_focus_parameters=FOC_WRT_BOWL,
+    focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL, FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
+    # Xyz-mid-bowl is native alongside scalar mid bowl, it's the same reference frame, just
+    # with x/y added, and needs no calibration to send as-is (see the 3D steering plan).
+    native_focus_parameters='\n'.join([FOC_WRT_BOWL, FOC_XYZ_WRT_BOWL]),
     max_transducer_slots=2,
     max_buffers=2,
     active=False,
@@ -472,8 +493,10 @@ _add_driving_system(
     transducer_compatibility=IS_TRANS + DUMMIES,
     power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
     native_power_parameters=POW_AMPL,
-    focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL],
-    native_focus_parameters=FOC_WRT_BOWL,
+    focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL, FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
+    # Xyz-mid-bowl is native alongside scalar mid bowl, it's the same reference frame, just
+    # with x/y added, and needs no calibration to send as-is (see the 3D steering plan).
+    native_focus_parameters='\n'.join([FOC_WRT_BOWL, FOC_XYZ_WRT_BOWL]),
     max_transducer_slots=2,
     max_buffers=2,
     active=False,
@@ -488,8 +511,10 @@ _add_driving_system(
     transducer_compatibility=IS_TRANS + DUMMIES,
     power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
     native_power_parameters=POW_AMPL,
-    focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL],
-    native_focus_parameters=FOC_WRT_BOWL,
+    focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL, FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
+    # Xyz-mid-bowl is native alongside scalar mid bowl, it's the same reference frame, just
+    # with x/y added, and needs no calibration to send as-is (see the 3D steering plan).
+    native_focus_parameters='\n'.join([FOC_WRT_BOWL, FOC_XYZ_WRT_BOWL]),
     max_transducer_slots=1,
     max_buffers=2,
     active=False,
@@ -504,8 +529,10 @@ _add_driving_system(
     transducer_compatibility=SC_TRAN_4CH + DUMMIES,
     power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
     native_power_parameters=POW_AMPL,
-    focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL],
-    native_focus_parameters=FOC_WRT_BOWL,
+    focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL, FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
+    # Xyz-mid-bowl is native alongside scalar mid bowl, it's the same reference frame, just
+    # with x/y added, and needs no calibration to send as-is (see the 3D steering plan).
+    native_focus_parameters='\n'.join([FOC_WRT_BOWL, FOC_XYZ_WRT_BOWL]),
     max_transducer_slots=1,
     max_buffers=2,
     active=False,
@@ -520,8 +547,10 @@ _add_driving_system(
     transducer_compatibility=SC_TRANS + DUMMIES,
     power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
     native_power_parameters=POW_AMPL,
-    focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL],
-    native_focus_parameters=FOC_WRT_BOWL,
+    focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL, FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
+    # Xyz-mid-bowl is native alongside scalar mid bowl, it's the same reference frame, just
+    # with x/y added, and needs no calibration to send as-is (see the 3D steering plan).
+    native_focus_parameters='\n'.join([FOC_WRT_BOWL, FOC_XYZ_WRT_BOWL]),
     max_transducer_slots=1,
     max_buffers=2,
     active=False,
@@ -536,8 +565,10 @@ _add_driving_system(
     transducer_compatibility=SC_TRAN_2CH + DUMMIES,
     power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
     native_power_parameters=POW_AMPL,
-    focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL],
-    native_focus_parameters=FOC_WRT_BOWL,
+    focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL, FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
+    # Xyz-mid-bowl is native alongside scalar mid bowl, it's the same reference frame, just
+    # with x/y added, and needs no calibration to send as-is (see the 3D steering plan).
+    native_focus_parameters='\n'.join([FOC_WRT_BOWL, FOC_XYZ_WRT_BOWL]),
     max_transducer_slots=1,
     max_buffers=2,
     active=False,
@@ -553,8 +584,10 @@ _add_driving_system(
     transducer_compatibility=DUMMIES,
     power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
     native_power_parameters=POW_AMPL,
-    focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL],
-    native_focus_parameters=FOC_WRT_BOWL,
+    focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL, FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
+    # Xyz-mid-bowl is native alongside scalar mid bowl, it's the same reference frame, just
+    # with x/y added, and needs no calibration to send as-is (see the 3D steering plan).
+    native_focus_parameters='\n'.join([FOC_WRT_BOWL, FOC_XYZ_WRT_BOWL]),
     max_transducer_slots=2,
     max_buffers=2,
     active=True,
@@ -571,8 +604,10 @@ _add_driving_system(
     transducer_compatibility=IS_TRANS + DUMMIES,
     power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
     native_power_parameters=POW_AMPL,
-    focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL],
-    native_focus_parameters=FOC_WRT_BOWL,
+    focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL, FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
+    # Xyz-mid-bowl is native alongside scalar mid bowl, it's the same reference frame, just
+    # with x/y added, and needs no calibration to send as-is (see the 3D steering plan).
+    native_focus_parameters='\n'.join([FOC_WRT_BOWL, FOC_XYZ_WRT_BOWL]),
     max_transducer_slots=2,
     max_buffers=2,
     active=True,
@@ -588,8 +623,10 @@ _add_driving_system(
     transducer_compatibility=IS_TRANS + DUMMIES,
     power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
     native_power_parameters=POW_AMPL,
-    focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL],
-    native_focus_parameters=FOC_WRT_BOWL,
+    focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL, FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
+    # Xyz-mid-bowl is native alongside scalar mid bowl, it's the same reference frame, just
+    # with x/y added, and needs no calibration to send as-is (see the 3D steering plan).
+    native_focus_parameters='\n'.join([FOC_WRT_BOWL, FOC_XYZ_WRT_BOWL]),
     max_transducer_slots=1,
     max_buffers=2,
     active=True,
@@ -606,8 +643,10 @@ _add_driving_system(
     transducer_compatibility=SC_TRAN_4CH + DUMMIES,
     power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
     native_power_parameters=POW_AMPL,
-    focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL],
-    native_focus_parameters=FOC_WRT_BOWL,
+    focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL, FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
+    # Xyz-mid-bowl is native alongside scalar mid bowl, it's the same reference frame, just
+    # with x/y added, and needs no calibration to send as-is (see the 3D steering plan).
+    native_focus_parameters='\n'.join([FOC_WRT_BOWL, FOC_XYZ_WRT_BOWL]),
     max_transducer_slots=2,
     max_buffers=2,
     active=False,
@@ -622,8 +661,10 @@ _add_driving_system(
     transducer_compatibility=SC_TRAN_4CH + DUMMIES,
     power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
     native_power_parameters=POW_AMPL,
-    focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL],
-    native_focus_parameters=FOC_WRT_BOWL,
+    focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL, FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
+    # Xyz-mid-bowl is native alongside scalar mid bowl, it's the same reference frame, just
+    # with x/y added, and needs no calibration to send as-is (see the 3D steering plan).
+    native_focus_parameters='\n'.join([FOC_WRT_BOWL, FOC_XYZ_WRT_BOWL]),
     max_transducer_slots=1,
     max_buffers=2,
     active=False,
@@ -639,8 +680,10 @@ _add_driving_system(
     transducer_compatibility=SC_TRAN_2CH + DUMMIES,
     power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
     native_power_parameters=POW_AMPL,
-    focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL],
-    native_focus_parameters=FOC_WRT_BOWL,
+    focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL, FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
+    # Xyz-mid-bowl is native alongside scalar mid bowl, it's the same reference frame, just
+    # with x/y added, and needs no calibration to send as-is (see the 3D steering plan).
+    native_focus_parameters='\n'.join([FOC_WRT_BOWL, FOC_XYZ_WRT_BOWL]),
     max_transducer_slots=2,
     max_buffers=2,
     active=False,
@@ -655,8 +698,10 @@ _add_driving_system(
     transducer_compatibility=SC_TRAN_2CH + DUMMIES,
     power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
     native_power_parameters=POW_AMPL,
-    focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL],
-    native_focus_parameters=FOC_WRT_BOWL,
+    focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL, FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
+    # Xyz-mid-bowl is native alongside scalar mid bowl, it's the same reference frame, just
+    # with x/y added, and needs no calibration to send as-is (see the 3D steering plan).
+    native_focus_parameters='\n'.join([FOC_WRT_BOWL, FOC_XYZ_WRT_BOWL]),
     max_transducer_slots=1,
     max_buffers=2,
     active=False,
