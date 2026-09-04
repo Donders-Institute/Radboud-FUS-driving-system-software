@@ -23,13 +23,13 @@ https://github.com/Donders-Institute/Radboud-FUS-driving-system-software.
 
 # -------------------------------------------------------------------------------
 
-import sys
 import math
 
 # Access the logger
 from fus_driving_systems.config.config import config_info as config
 from fus_driving_systems.utils import get_config_value
 from fus_driving_systems.config.logging_config import get_logger
+from fus_driving_systems.exceptions import FDSConfigError, FDSInternalError, FDSValidationError
 
 try:  # for Python 2/3 compatibility
     from StringIO import StringIO
@@ -50,13 +50,10 @@ TWO_PI = 2.0 * math.pi      # 2 pi, rad
 def apply_cyclic_dephasing(phases, dephasing_degree):
     """
     Applies a cyclic dephasing step to a list of phases -- shared by Transducer.compute_phases()
-    (below) and IGT._set_phases()'s .xlsx branch (igt_ds.py), which used to each carry their own,
-    independent copy of this exact loop (flagged by pylint's duplicate-code check). The two
-    copies had quietly drifted apart on invalid input: this version's sys.exit() on more than one
-    entry is the one that was already correct -- more than one dephasing value that doesn't match
-    the element count exactly (that case is handled by the caller directly, as a full phase
-    override, before ever reaching here) is invalid input, not something to silently paper over
-    by using the first value and warning.
+    (below) and IGT._set_phases()'s .xlsx branch (igt_ds.py). More than one dephasing entry that
+    doesn't match the element count exactly (that case is handled by the caller directly, as a
+    full phase override, before ever reaching here) is rejected as invalid input, rather than
+    silently using the first value.
 
     Parameters:
         phases (list(float)): Phases [degrees] to dephase, one per element.
@@ -72,7 +69,7 @@ def apply_cyclic_dephasing(phases, dephasing_degree):
                    f'correspond to number of transducer elements ({len(phases)}). Only enter ' +
                    'one dephasing value or n-values equal to the number of transducer elements.')
         get_logger().critical(message)
-        sys.exit(message)
+        raise FDSValidationError(message)
 
     dephasing_degree = dephasing_degree[0]
     dephased = list(phases)
@@ -133,13 +130,13 @@ class Transducer:
         except IOError as e:
             message = f'Error: {e}'
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSConfigError(message) from e
 
     def load_from_string(self, definition):
         if not definition.strip():
             message = 'Error: empty content'
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSConfigError(message)
 
         # Named parser, not config -- that name is already taken at module level by the shared
         # config_info object (see SOUND_SPEED_WATER above), which this ConfigParser instance
@@ -156,24 +153,24 @@ class Transducer:
         # /1000.0 here (unlike the element coordinates below) -- focalLength stays in mm.
         try:
             self.focalLength = parser.getfloat("transducer", "focalLength")
-        except (cfg.Error, ValueError):
+        except (cfg.Error, ValueError) as e:
             message = "Error: missing or invalid 'transducer.focalLength' parameter"
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSConfigError(message) from e
 
         size = 0
         # self.name = ""
         try:
             # self.name = parser.get ("transducer", "name")
             size = parser.getint("elements", "size")
-        except (cfg.Error, ValueError):
+        except (cfg.Error, ValueError) as e:
             message = "Error: missing 'elements.size' parameter"
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSConfigError(message) from e
         if size == 0:
             message = "Error: size is 0"
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSConfigError(message)
 
         self.elements = []
         for i in range(1, 1+size):
@@ -186,7 +183,7 @@ class Transducer:
             except Exception as ex:
                 message = f"Error: {ex}"
                 get_logger().critical(message)
-                sys.exit(message)
+                raise FDSConfigError(message) from ex
 
         return True
 
@@ -213,14 +210,14 @@ class Transducer:
             message = ("Error: the frequencies must be defined in the pulse before calling" +
                        "compute_phases().")
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSInternalError(message)
         if freq_count == 1:
             wavelen = SOUND_SPEED_WATER / pulse.frequency(0)
         elif freq_count != self.channel_count():
             message = (f"Error: bad number of frequencies ({freq_count} in pulse, " +
                        f"{self.channel_count()} elements in transducer)")
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSInternalError(message)
 
         phases = [0.0] * self.channel_count()
         x = point_mm[0] / 1000.0

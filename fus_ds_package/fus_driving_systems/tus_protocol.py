@@ -10,9 +10,6 @@ If you use this kit in your research or project, please cite it -- see CITATION.
 https://github.com/Donders-Institute/Radboud-FUS-driving-system-software.
 """
 
-# Basic packages
-import sys
-
 # Own packages
 from fus_driving_systems import driving_system as ds
 from fus_driving_systems.transducer_slot import TransducerSlot
@@ -21,6 +18,7 @@ from fus_driving_systems.calc_utils import validate_value
 from fus_driving_systems.config.config import config_info as config
 from fus_driving_systems.config.logging_config import get_logger
 from fus_driving_systems.utils import get_config_value
+from fus_driving_systems.exceptions import FDSValidationError
 
 
 # Which driving system serials have already had their (static, never changing within a process)
@@ -268,7 +266,7 @@ class TUSProtocol():
             message = (f'{self._driving_sys.serial} supports at most ' +
                        f'{self._driving_sys.max_tran_slots} simultaneous transducer slot(s).')
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSValidationError(message)
 
         slot = TransducerSlot(self._driving_sys, self._engineering_mode)
         slot.update_transducer(transducer_serial, focus_option, focus_value, power_option,
@@ -295,7 +293,7 @@ class TUSProtocol():
                        f'exceeded by the combined elements of the {len(self._slots)} ' +
                        f'transducer slot(s) ({total_elements}).')
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSValidationError(message)
 
     @property
     def pulse_dur(self):
@@ -460,7 +458,7 @@ class TUSProtocol():
         if pulse_ramp_shape not in self.get_ramp_shapes():
             message = f'{pulse_ramp_shape} is not an available ramping option.'
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSValidationError(message)
         self._timing_param['pulse_ramp_shape'] = pulse_ramp_shape
 
         if pulse_ramp_dur is None:

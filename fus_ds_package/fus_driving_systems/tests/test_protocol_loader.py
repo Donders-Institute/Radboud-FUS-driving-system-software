@@ -5,16 +5,17 @@ Tests for fus_driving_systems.protocol_loader.load_protocol().
 Every test uses real, shipped config values (driving system 'IGT-32-ch_comb_2x10-ch',
 transducers 'IS_PCD15287_01001'/'IS_PCD15287_01002') rather than mocks -- load_protocol() is a
 thin translation layer over TUSProtocol/add_slot()/configure_timing(), which already validate
-everything semantic (unknown serials, invalid options, out-of-range values) with their own clear
-sys.exit() messages; these tests confirm load_protocol() delegates to those unchanged, and only
-adds its own validation for the YAML file's own structure (required keys, unknown/typo'd keys).
+everything semantic (unknown serials, invalid options, out-of-range values) by raising their own
+clear FDSValidationError; these tests confirm load_protocol() delegates to those unchanged, and
+only adds its own validation for the YAML file's own structure (required keys, unknown/typo'd
+keys).
 """
 import hashlib
 import pathlib
 
 import pytest
 
-from fus_driving_systems.exceptions import FDSValidationError
+from fus_driving_systems.exceptions import FDSSafetyError, FDSValidationError
 from fus_driving_systems.protocol_loader import approve_protocol, load_protocol
 
 DS_SERIAL = 'IGT-32-ch_comb_2x10-ch'
@@ -149,44 +150,44 @@ protocols:
 
 class TestFileErrors:
 
-    def test_exits_when_file_missing(self, tmp_path):
-        with pytest.raises(SystemExit):
+    def test_raises_when_file_missing(self, tmp_path):
+        with pytest.raises(FDSValidationError):
             load_protocol(str(tmp_path / 'does_not_exist.yaml'))
 
-    def test_exits_when_yaml_malformed(self, tmp_path):
+    def test_raises_when_yaml_malformed(self, tmp_path):
         path = _write_yaml(tmp_path, 'driving_sys_serial: [unclosed')
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSValidationError):
             load_protocol(path)
 
-    def test_exits_when_top_level_is_not_a_mapping(self, tmp_path):
+    def test_raises_when_top_level_is_not_a_mapping(self, tmp_path):
         path = _write_yaml(tmp_path, '- just\n- a\n- list\n')
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSValidationError):
             load_protocol(path)
 
 
 class TestMissingRequiredKeys:
 
-    def test_exits_when_driving_sys_serial_missing(self, tmp_path):
+    def test_raises_when_driving_sys_serial_missing(self, tmp_path):
         path = _write_yaml(tmp_path, 'protocols: []\n')
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSValidationError):
             load_protocol(path)
 
-    def test_exits_when_protocols_key_missing(self, tmp_path):
+    def test_raises_when_protocols_key_missing(self, tmp_path):
         path = _write_yaml(tmp_path, f'driving_sys_serial: {DS_SERIAL}\n')
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSValidationError):
             load_protocol(path)
 
-    def test_exits_when_protocols_is_empty(self, tmp_path):
+    def test_raises_when_protocols_is_empty(self, tmp_path):
         path = _write_yaml(tmp_path, f'driving_sys_serial: {DS_SERIAL}\nprotocols: []\n')
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSValidationError):
             load_protocol(path)
 
-    def test_exits_when_slots_key_missing_from_protocol(self, tmp_path):
+    def test_raises_when_slots_key_missing_from_protocol(self, tmp_path):
         path = _write_yaml(tmp_path, f"""
 driving_sys_serial: {DS_SERIAL}
 protocols:
@@ -194,10 +195,10 @@ protocols:
       pulse_dur: 45
 """)
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSValidationError):
             load_protocol(path)
 
-    def test_exits_when_timing_key_missing_from_protocol(self, tmp_path):
+    def test_raises_when_timing_key_missing_from_protocol(self, tmp_path):
         path = _write_yaml(tmp_path, f"""
 driving_sys_serial: {DS_SERIAL}
 protocols:
@@ -209,10 +210,10 @@ protocols:
         power_value: 0.5
 """)
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSValidationError):
             load_protocol(path)
 
-    def test_exits_when_slot_missing_a_required_field(self, tmp_path):
+    def test_raises_when_slot_missing_a_required_field(self, tmp_path):
         path = _write_yaml(tmp_path, f"""
 driving_sys_serial: {DS_SERIAL}
 protocols:
@@ -224,10 +225,10 @@ protocols:
       pulse_dur: 45
 """)
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSValidationError):
             load_protocol(path)
 
-    def test_exits_when_timing_missing_pulse_dur(self, tmp_path):
+    def test_raises_when_timing_missing_pulse_dur(self, tmp_path):
         path = _write_yaml(tmp_path, f"""
 driving_sys_serial: {DS_SERIAL}
 protocols:
@@ -241,23 +242,23 @@ protocols:
       pulse_rep_int: 100
 """)
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSValidationError):
             load_protocol(path)
 
 
 class TestUnknownKeys:
 
-    def test_exits_when_top_level_has_an_unknown_key(self, tmp_path):
+    def test_raises_when_top_level_has_an_unknown_key(self, tmp_path):
         path = _write_yaml(tmp_path, f"""
 driving_sys_serial: {DS_SERIAL}
 protocols: []
 some_typo: 1
 """)
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSValidationError):
             load_protocol(path)
 
-    def test_exits_when_protocol_has_an_unknown_key(self, tmp_path):
+    def test_raises_when_protocol_has_an_unknown_key(self, tmp_path):
         path = _write_yaml(tmp_path, f"""
 driving_sys_serial: {DS_SERIAL}
 protocols:
@@ -266,10 +267,10 @@ protocols:
     some_typo: 1
 """)
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSValidationError):
             load_protocol(path)
 
-    def test_exits_when_slot_has_an_unknown_key(self, tmp_path):
+    def test_raises_when_slot_has_an_unknown_key(self, tmp_path):
         path = _write_yaml(tmp_path, f"""
 driving_sys_serial: {DS_SERIAL}
 protocols:
@@ -284,10 +285,10 @@ protocols:
       pulse_dur: 45
 """)
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSValidationError):
             load_protocol(path)
 
-    def test_exits_when_timing_has_a_typo_d_key(self, tmp_path):
+    def test_raises_when_timing_has_a_typo_d_key(self, tmp_path):
         """puls_dur (missing the 'e') is exactly the class of mistake this check exists for --
         without it, a typo'd optional-looking key would silently do nothing instead of erroring,
         since every optional field is read via .get()."""
@@ -304,7 +305,7 @@ protocols:
       puls_dur: 45
 """)
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSValidationError):
             load_protocol(path)
 
     @pytest.mark.parametrize('yaml_snippet', [
@@ -312,14 +313,14 @@ protocols:
         ('driving_sys_serial: {ds}\nprotocols:\n  - slots: []\n    timing: {{}}\n    '
          'engineering_mode: true\n'),
     ])
-    def test_exits_with_dedicated_message_when_engineering_mode_is_a_file_field(
+    def test_raises_with_dedicated_message_when_engineering_mode_is_a_file_field(
             self, tmp_path, yaml_snippet):
         """engineering_mode is deliberately not a file field anywhere in this schema (top-level
         or per-protocol) -- a researcher adding it should get a message pointing at the correct
         Python-level parameter, not the generic 'unknown key' message."""
         path = _write_yaml(tmp_path, yaml_snippet.format(ds=DS_SERIAL))
 
-        with pytest.raises(SystemExit) as exc_info:
+        with pytest.raises(FDSValidationError) as exc_info:
             load_protocol(path)
 
         assert 'engineering_mode' in str(exc_info.value)
@@ -328,7 +329,7 @@ protocols:
 
 class TestStructuralTypeErrors:
 
-    def test_exits_when_protocols_is_not_a_list(self, tmp_path):
+    def test_raises_when_protocols_is_not_a_list(self, tmp_path):
         path = _write_yaml(tmp_path, f"""
 driving_sys_serial: {DS_SERIAL}
 protocols:
@@ -336,10 +337,10 @@ protocols:
   timing: {{}}
 """)
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSValidationError):
             load_protocol(path)
 
-    def test_exits_when_slots_is_not_a_list(self, tmp_path):
+    def test_raises_when_slots_is_not_a_list(self, tmp_path):
         path = _write_yaml(tmp_path, f"""
 driving_sys_serial: {DS_SERIAL}
 protocols:
@@ -349,10 +350,10 @@ protocols:
       pulse_dur: 45
 """)
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSValidationError):
             load_protocol(path)
 
-    def test_exits_when_a_slot_entry_is_not_a_mapping(self, tmp_path):
+    def test_raises_when_a_slot_entry_is_not_a_mapping(self, tmp_path):
         path = _write_yaml(tmp_path, f"""
 driving_sys_serial: {DS_SERIAL}
 protocols:
@@ -362,14 +363,14 @@ protocols:
       pulse_dur: 45
 """)
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSValidationError):
             load_protocol(path)
 
 
 class TestDelegatedSemanticValidation:
-    """load_protocol() must not re-implement any of this -- TUSProtocol/add_slot() already
-    sys.exit() clearly. These tests confirm the existing library messages surface unchanged,
-    proving load_protocol() doesn't swallow or double-validate them."""
+    """load_protocol() must not re-implement any of this -- TUSProtocol/add_slot() already raise
+    FDSValidationError clearly. These tests confirm the existing library messages surface
+    unchanged, proving load_protocol() doesn't swallow or double-validate them."""
 
     def test_unknown_driving_sys_serial_surfaces_the_existing_library_message(self, tmp_path):
         path = _write_yaml(tmp_path, f"""
@@ -385,7 +386,7 @@ protocols:
       pulse_dur: 45
 """)
 
-        with pytest.raises(SystemExit) as exc_info:
+        with pytest.raises(FDSValidationError) as exc_info:
             load_protocol(path)
 
         assert 'NOT-A-REAL-SERIAL' in str(exc_info.value)
@@ -453,7 +454,7 @@ class TestHashProtection:
 
         assert len(protocols) == 1
 
-    def test_exits_when_file_edited_after_approval(self, tmp_path):
+    def test_raises_when_file_edited_after_approval(self, tmp_path):
         path = _write_yaml(tmp_path, _single_protocol_yaml())
         approve_protocol(path)
 
@@ -461,7 +462,7 @@ class TestHashProtection:
         edited = _single_protocol_yaml().replace('focus_value: 40', 'focus_value: 41')
         _write_yaml(tmp_path, edited)
 
-        with pytest.raises(SystemExit) as exc_info:
+        with pytest.raises(FDSSafetyError) as exc_info:
             load_protocol(path)
 
         assert path in str(exc_info.value)
@@ -482,7 +483,7 @@ class TestHashProtection:
 
     def test_approve_then_edit_then_reapprove_then_load_succeeds(self, tmp_path):
         """The realistic workflow: approve, make a legitimate edit, re-approve, load again --
-        must not exit, since the sidecar now reflects the current, intentional content."""
+        must not raise, since the sidecar now reflects the current, intentional content."""
         path = _write_yaml(tmp_path, _single_protocol_yaml())
         approve_protocol(path)
 
@@ -500,10 +501,10 @@ class TestRequireHash:
     file must already be approved -- unlike the default (opt-in only when a sidecar happens to
     exist), a missing sidecar itself becomes an error."""
 
-    def test_exits_when_require_hash_true_and_no_sidecar_present(self, tmp_path):
+    def test_raises_when_require_hash_true_and_no_sidecar_present(self, tmp_path):
         path = _write_yaml(tmp_path, _single_protocol_yaml())
 
-        with pytest.raises(SystemExit) as exc_info:
+        with pytest.raises(FDSSafetyError) as exc_info:
             load_protocol(path, require_hash=True)
 
         assert path in str(exc_info.value)
@@ -517,7 +518,7 @@ class TestRequireHash:
 
         assert len(protocols) == 1
 
-    def test_exits_when_require_hash_true_and_sidecar_mismatched(self, tmp_path):
+    def test_raises_when_require_hash_true_and_sidecar_mismatched(self, tmp_path):
         """A stale (mismatched) sidecar is still reported as an edited-since-approval mismatch,
         not as if no sidecar existed at all -- require_hash doesn't change that message."""
         path = _write_yaml(tmp_path, _single_protocol_yaml())
@@ -526,7 +527,7 @@ class TestRequireHash:
         edited = _single_protocol_yaml().replace('focus_value: 40', 'focus_value: 41')
         _write_yaml(tmp_path, edited)
 
-        with pytest.raises(SystemExit) as exc_info:
+        with pytest.raises(FDSSafetyError) as exc_info:
             load_protocol(path, require_hash=True)
 
         assert 'edited since it was last approved' in str(exc_info.value)

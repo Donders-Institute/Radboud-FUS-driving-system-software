@@ -10,9 +10,6 @@ If you use this kit in your research or project, please cite it -- see CITATION.
 https://github.com/Donders-Institute/Radboud-FUS-driving-system-software.
 """
 
-# Basic packages
-import sys
-
 # Miscellaneous packages
 import copy
 
@@ -20,6 +17,7 @@ import copy
 from fus_driving_systems.config.config import config_info as config
 from fus_driving_systems.config.logging_config import get_logger
 from fus_driving_systems.utils import get_config_value
+from fus_driving_systems.exceptions import FDSConfigError, FDSValidationError
 
 
 class DrivingSystem:
@@ -77,14 +75,18 @@ class DrivingSystem:
         """
         Sets the driving system based on the provided serial number.
 
-        Called by TUSProtocol.driving_sys's setter and get_ds_list() -- both can be given a
-        serial that isn't actually in the configuration file (e.g. a typo). That is checked
-        explicitly below, rather than relying on incidentally hitting one of the individual
-        raise_on_missing=True fields further down and having to track down why that one field
-        failed.
+        Called by TUSProtocol.__init__() (directly with its own caller-given
+        driving_sys_serial argument) and get_ds_list() -- both can be given a serial that isn't
+        actually in the configuration file (e.g. a typo). That is checked explicitly below,
+        rather than relying on incidentally hitting one of the individual raise_on_missing=True
+        fields further down and having to track down why that one field failed.
 
         Parameters:
             serial (str): Serial number of the driving system.
+
+        Raises:
+            FDSValidationError: If no 'Equipment.Driving system.<serial>' section exists for
+                serial.
         """
 
         section = 'Equipment.Driving system.' + serial
@@ -92,7 +94,7 @@ class DrivingSystem:
             message = (f'No driving system with serial number {serial} found in ' +
                        'configuration file.')
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSValidationError(message)
 
         self.serial = serial
         self.name = get_config_value(get_logger(), config, section, 'Name',
@@ -178,6 +180,9 @@ def get_ds_serials():
 
     Returns:
         List[str]: Serial numbers for available driving systems.
+
+    Raises:
+        FDSConfigError: If no active driving system section exists in the configuration file.
     """
 
     serial_ds = get_config_value(get_logger(), config, 'Equipment', 'Driving systems', '',
@@ -194,7 +199,7 @@ def get_ds_serials():
     if len(active_serials) < 1:
         message = 'No active driving systems found in configuration file.'
         get_logger().critical(message)
-        sys.exit(message)
+        raise FDSConfigError(message)
 
     return active_serials
 

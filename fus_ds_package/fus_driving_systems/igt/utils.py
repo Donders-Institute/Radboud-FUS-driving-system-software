@@ -218,8 +218,8 @@ class ExecListener(unifus.FUSListener):
         self.exec_result = None
         # Set by onSequenceResult() when a protocol execution fails; unifus.FUSListener's
         # callbacks cannot propagate exceptions to Python (see its docstring), so this is read
-        # back and acted on (sys.exit()) by the caller on the main thread, after wait_protocol()
-        # returns, rather than raised here.
+        # back and acted on (raising FDSHardwareError) by the caller on the main thread, after
+        # wait_protocol() returns, rather than raised here.
         self.exec_error_code = None
         # for mechanics
         self._finding_origin = False

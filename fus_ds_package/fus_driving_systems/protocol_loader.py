@@ -12,13 +12,13 @@ https://github.com/Donders-Institute/Radboud-FUS-driving-system-software.
 
 # Basic packages
 import hashlib
-import sys
 
 import yaml
 
 # Own packages
 from fus_driving_systems.tus_protocol import TUSProtocol
 from fus_driving_systems.config.logging_config import get_logger
+from fus_driving_systems.exceptions import FDSSafetyError, FDSValidationError
 
 
 _REQUIRED_TOP_LEVEL_KEYS = ('driving_sys_serial', 'protocols')
@@ -42,41 +42,43 @@ _OPTIONAL_TIMING_KEYS = ('pulse_rep_int', 'pulse_train_dur',
 
 
 def _require_mapping(value, context):
-    """Returns value, or exits if it isn't a mapping (dict) -- e.g. a researcher wrote a list or
-    a bare scalar where key: value pairs were expected."""
+    """Returns value, or raises FDSValidationError if it isn't a mapping (dict) -- e.g. a
+    researcher wrote a list or a bare scalar where key: value pairs were expected."""
 
     if not isinstance(value, dict):
         message = f'{context} must be a mapping (key: value pairs), got {type(value).__name__}.'
         get_logger().critical(message)
-        sys.exit(message)
+        raise FDSValidationError(message)
 
     return value
 
 
 def _require_list(value, context):
-    """Returns value, or exits if it isn't a non-empty list."""
+    """Returns value, or raises FDSValidationError if it isn't a non-empty list."""
 
     if not isinstance(value, list) or not value:
         message = f'{context} must be a non-empty list.'
         get_logger().critical(message)
-        sys.exit(message)
+        raise FDSValidationError(message)
 
     return value
 
 
 def _require_key(mapping, key, context):
-    """Returns mapping[key], or exits with a clear message naming the missing key and context."""
+    """Returns mapping[key], or raises FDSValidationError with a clear message naming the
+    missing key and context."""
 
     if key not in mapping:
         message = f"Missing required key '{key}' in {context}."
         get_logger().critical(message)
-        sys.exit(message)
+        raise FDSValidationError(message)
 
     return mapping[key]
 
 
 def _reject_unknown_keys(mapping, known_keys, context):
-    """Exits if mapping has any key outside known_keys -- catches a typo'd key immediately
+    """Raises FDSValidationError if mapping has any key outside known_keys -- catches a typo'd
+    key immediately
     (e.g. 'puls_dur'), rather than it silently doing nothing, since every optional key is read
     via .get() elsewhere. Also flags a literal 'engineering_mode' key with a dedicated message:
     it's deliberately not a file field anywhere in this schema, only a Python-level
@@ -87,14 +89,14 @@ def _reject_unknown_keys(mapping, known_keys, context):
         message = ("'engineering_mode' is not a protocol-file field -- set it as a Python-level "
                    "parameter instead: load_protocol(yaml_path, engineering_mode=True).")
         get_logger().critical(message)
-        sys.exit(message)
+        raise FDSValidationError(message)
 
     unknown = set(mapping) - set(known_keys)
     if unknown:
         message = (f'Unknown key(s) {sorted(unknown)} in {context} -- check for typos. ' +
                    f'Expected one of: {sorted(known_keys)}.')
         get_logger().critical(message)
-        sys.exit(message)
+        raise FDSValidationError(message)
 
 
 def _build_slot(protocol, slot_def, slot_index, protocol_index):
@@ -151,8 +153,9 @@ def _hash_sidecar_path(yaml_path):
 def _verify_hash(yaml_path, raw_bytes, require_hash):
     """Protection against an accidental edit to yaml_path: if a sidecar '<yaml_path>.sha256'
     file exists (written by approve_protocol()), its hash must match yaml_path's current
-    content, or this exits. If no sidecar exists, this exits only when require_hash -- otherwise
-    it silently does nothing, since hash protection is opt-in by default, per protocol file."""
+    content, or this raises FDSSafetyError. If no sidecar exists, this raises FDSSafetyError
+    only when require_hash -- otherwise it silently does nothing, since hash protection is
+    opt-in by default, per protocol file."""
 
     sidecar_path = _hash_sidecar_path(yaml_path)
     try:
@@ -164,7 +167,7 @@ def _verify_hash(yaml_path, raw_bytes, require_hash):
                        f'this script requires an approved protocol (require_hash=True). Run: '
                        f'python -m fus_driving_systems.approve_protocol {yaml_path}')
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSSafetyError(message)
         return
 
     actual_hash = _compute_file_hash(raw_bytes)
@@ -174,7 +177,7 @@ def _verify_hash(yaml_path, raw_bytes, require_hash):
                    f'review it, then run: python -m fus_driving_systems.approve_protocol '
                    f'{yaml_path}')
         get_logger().critical(message)
-        sys.exit(message)
+        raise FDSSafetyError(message)
 
 
 def approve_protocol(yaml_path):
@@ -211,20 +214,21 @@ def load_protocol(yaml_path, engineering_mode=False, require_hash=False):
 
     Semantic validation (unknown driving-system/transducer serial, invalid focus/power/trigger
     option, out-of-range timing value) is not duplicated here -- TUSProtocol/add_slot()/
-    configure_timing() already exit with a clear message for all of these. This function only
-    validates the file's own structure: required keys present, no typo'd/unknown keys.
+    configure_timing() already raise a clear FDSValidationError for all of these. This function
+    only validates the file's own structure: required keys present, no typo'd/unknown keys.
 
     If yaml_path has a sidecar '<yaml_path>.sha256' file (written by approve_protocol()), this
-    exits when yaml_path's content no longer matches it -- protection against an accidental
-    edit. A protocol file with no sidecar is loaded without any check at all, unless
-    require_hash is True, in which case a missing sidecar exits too (e.g. it was never approved,
-    or the sidecar was lost/not copied alongside the file).
+    raises FDSSafetyError when yaml_path's content no longer matches it -- protection against an
+    accidental edit. A protocol file with no sidecar is loaded without any check at all, unless
+    require_hash is True, in which case a missing sidecar also raises FDSSafetyError (e.g. it
+    was never approved, or the sidecar was lost/not copied alongside the file).
 
     Parameters:
         yaml_path (str): Path to the YAML protocol-definition file.
         engineering_mode (bool): Passed straight to every TUSProtocol this file describes.
         require_hash (bool): If True, yaml_path must have a matching, approved '.sha256'
-            sidecar -- a missing sidecar exits, instead of silently loading unchecked.
+            sidecar -- a missing sidecar raises FDSSafetyError, instead of silently loading
+            unchecked.
 
     Returns:
         tuple(list(TUSProtocol), float or None, str or None, int or None, int): The protocol(s)
@@ -242,7 +246,7 @@ def load_protocol(yaml_path, engineering_mode=False, require_hash=False):
     except OSError as e:
         message = f'Could not read protocol file {yaml_path}: {e}'
         get_logger().critical(message)
-        sys.exit(message)
+        raise FDSValidationError(message) from e
 
     _verify_hash(yaml_path, raw_bytes, require_hash)
 
@@ -251,7 +255,7 @@ def load_protocol(yaml_path, engineering_mode=False, require_hash=False):
     except yaml.YAMLError as e:
         message = f'Could not read protocol file {yaml_path}: {e}'
         get_logger().critical(message)
-        sys.exit(message)
+        raise FDSValidationError(message) from e
 
     data = _require_mapping(data, 'the top-level protocol file')
     _reject_unknown_keys(data, _REQUIRED_TOP_LEVEL_KEYS + _OPTIONAL_TOP_LEVEL_KEYS,

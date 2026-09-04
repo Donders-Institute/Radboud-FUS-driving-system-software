@@ -12,7 +12,7 @@ systems happen to be listed in ds_config.ini.
 import pytest
 
 from fus_driving_systems import driving_system
-from fus_driving_systems.exceptions import FDSConfigError
+from fus_driving_systems.exceptions import FDSConfigError, FDSValidationError
 
 
 def _configure_driving_system_section_only(patch_config, serial, name='Test DS',
@@ -189,7 +189,7 @@ def test_get_ds_serials_treats_missing_active_key_as_inactive(patch_config):
     _configure_driving_system(patch_config, 'UNITTEST_DS')
     del config_info['Equipment.Driving system.UNITTEST_DS']['Active?']
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSConfigError):
         driving_system.get_ds_serials()
 
 
@@ -207,15 +207,15 @@ def test_set_ds_info_supports_more_than_one_native_parameter(patch_config):
     assert ds.native_focus_params == ['Focus wrt mid bowl', 'Focus wrt exit plane [mm]']
 
 
-def test_set_ds_info_exits_with_clear_message_for_unknown_serial(patch_config):
+def test_set_ds_info_raises_with_clear_message_for_unknown_serial(patch_config):
     """GitHub issue #133: a serial with no matching config section used to fall through to
     individual fields (e.g. 'Connection info', which has raise_on_missing=True) before exiting,
     surfacing a confusing "Config key 'Connection info' not found" message that didn't point
     at the actual problem. Now checked explicitly upfront with a clear message."""
     ds = driving_system.DrivingSystem()
 
-    with pytest.raises(SystemExit, match='No driving system with serial number '
-                                         'UNKNOWN_SERIAL found in configuration file.'):
+    with pytest.raises(FDSValidationError, match='No driving system with serial number '
+                                                 'UNKNOWN_SERIAL found in configuration file.'):
         ds.set_ds_info('UNKNOWN_SERIAL')
 
 
@@ -228,11 +228,11 @@ def test_get_ds_serials_returns_only_active_serials(patch_config):
     assert driving_system.get_ds_serials() == ['UNITTEST_ACTIVE']
 
 
-def test_get_ds_serials_exits_when_none_active(patch_config):
+def test_get_ds_serials_raises_when_none_active(patch_config):
     patch_config.set('Equipment', 'Driving systems', 'UNITTEST_INACTIVE_ONLY')
     patch_config.set('Equipment.Driving system.UNITTEST_INACTIVE_ONLY', 'Active?', 'False')
 
-    with pytest.raises(SystemExit) as exc_info:
+    with pytest.raises(FDSConfigError) as exc_info:
         driving_system.get_ds_serials()
     assert 'No active driving systems' in str(exc_info.value)
 
@@ -271,14 +271,11 @@ def test_get_ds_list_excludes_inactive_driving_systems(patch_config):
     assert isinstance(ds_list[0], driving_system.DrivingSystem)
     assert ds_list[0].name == 'Active DS'
 
-# Note: get_ds_names()'s own 'if len(names) < 1: sys.exit(...)' and
-# get_ds_list()'s 'except KeyError' are NOT separately tested here. Both are
-# unreachable via the public API: get_ds_serials() already guarantees at
-# least one serial (or sys.exits itself first, see
-# test_get_ds_serials_exits_when_none_active above) before either of these
-# functions' loops ever run, and get_config_value() never raises KeyError
-# (it checks membership defensively). Forcing those branches would mean
-# testing a state the real code can't reach, not real behavior.
+# Note: an empty result from get_ds_names()/get_ds_list() is NOT separately tested here --
+# unreachable via the public API: get_ds_serials() already guarantees at least one serial (or
+# raises FDSConfigError itself first, see test_get_ds_serials_raises_when_none_active above)
+# before either of these functions' loops ever run. Forcing that branch would mean testing a
+# state the real code can't reach, not real behavior.
 
 
 def test_get_serial_from_name_returns_matching_serial(patch_config):

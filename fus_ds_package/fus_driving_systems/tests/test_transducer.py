@@ -10,6 +10,7 @@ whatever real transducers happen to be listed in ds_config.ini.
 import pytest
 
 from fus_driving_systems import transducer
+from fus_driving_systems.exceptions import FDSConfigError
 
 
 def _configure_transducer_section_only(patch_config, serial, name='Test Transducer',
@@ -130,26 +131,26 @@ def test_set_transducer_info_reads_can_3d_steer_true_for_ini_steer_info(patch_co
     assert tran.can_3d_steer is True
 
 
-def test_set_transducer_info_exits_when_can_3d_steer_true_with_non_ini_steer_info(patch_config):
+def test_set_transducer_info_raises_when_can_3d_steer_true_with_non_ini_steer_info(patch_config):
     """can_3d_steer is only meaningful for the transducer_xyz.Transducer (.ini) steer path --
     a .xlsx-based lookup table has no x/y concept at all (see igt_ds.py's _set_phases())."""
     _configure_transducer(patch_config, 'UNITTEST_TRAN', steer_info='igt/config/steer.xlsx')
     patch_config.set('Equipment.Transducer.UNITTEST_TRAN', 'Can 3D steer?', 'True')
 
     tran = transducer.Transducer()
-    with pytest.raises(SystemExit, match='can_3d_steer=True'):
+    with pytest.raises(FDSConfigError, match='can_3d_steer=True'):
         tran.set_transducer_info('UNITTEST_TRAN')
 
 
-def test_set_transducer_info_exits_with_clear_message_for_unknown_serial(patch_config):
+def test_set_transducer_info_raises_with_clear_message_for_unknown_serial(patch_config):
     """GitHub issue #133: a serial with no matching config section used to fall through to
     individual fields (e.g. 'Elements', which has raise_on_missing=True) before exiting, surfacing
     a confusing "Config key 'Elements' not found" message that didn't point at the actual
     problem. Now checked explicitly upfront with a clear message."""
     tran = transducer.Transducer()
 
-    with pytest.raises(SystemExit, match='No transducer with serial number '
-                                         'UNKNOWN_SERIAL found in configuration file.'):
+    with pytest.raises(FDSConfigError, match='No transducer with serial number '
+                                             'UNKNOWN_SERIAL found in configuration file.'):
         tran.set_transducer_info('UNKNOWN_SERIAL')
 
 
@@ -178,11 +179,11 @@ def test_get_tran_serials_returns_only_active_serials(patch_config):
     assert transducer.get_tran_serials() == ['UNITTEST_ACTIVE']
 
 
-def test_get_tran_serials_exits_when_none_active(patch_config):
+def test_get_tran_serials_raises_when_none_active(patch_config):
     patch_config.set('Equipment', 'Transducers', 'UNITTEST_INACTIVE_ONLY')
     patch_config.set('Equipment.Transducer.UNITTEST_INACTIVE_ONLY', 'Active?', 'False')
 
-    with pytest.raises(SystemExit) as exc_info:
+    with pytest.raises(FDSConfigError) as exc_info:
         transducer.get_tran_serials()
     assert 'No active tranducers' in str(exc_info.value)
 
@@ -195,7 +196,7 @@ def test_get_tran_serials_treats_missing_active_key_as_inactive(patch_config):
     _configure_transducer(patch_config, 'UNITTEST_TRAN')
     del config_info['Equipment.Transducer.UNITTEST_TRAN']['Active?']
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSConfigError):
         transducer.get_tran_serials()
 
 
@@ -232,12 +233,10 @@ def test_get_tran_list_excludes_inactive_transducers(patch_config):
     assert isinstance(tran_list[0], transducer.Transducer)
     assert tran_list[0].name == 'Active Transducer'
 
-# Note: get_tran_names()/get_tran_list()'s own 'no transducers found'
-# sys.exit and 'except KeyError' branches are NOT separately tested here,
-# for the same reason as driving_system.py's mirror-image branches (see the
-# note in test_driving_system.py): get_tran_serials() already guarantees at
-# least one serial (or sys.exits itself first) before either function's
-# loop runs, and get_config_value() never raises KeyError.
+# Note: an empty result from get_tran_names()/get_tran_list() is NOT separately tested here,
+# for the same reason as driving_system.py's mirror-image functions (see the note in
+# test_driving_system.py): get_tran_serials() already guarantees at least one serial (or
+# raises FDSConfigError itself first) before either function's loop ever runs.
 
 
 def test_get_serial_from_name_returns_matching_serial(patch_config):

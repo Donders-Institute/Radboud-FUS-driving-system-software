@@ -1573,6 +1573,19 @@ class IGT(ds.ControlDrivingSystem):
             list: List of phases.
         """
 
+        # Checked up front, before either branch below does any real work.
+        # A length matching self.n_channels never reaches here to begin with: the caller
+        # (_define_pulse_group()) treats that case as a full phase override before ever calling
+        # this method. Mirrors apply_cyclic_dephasing()'s own identical check (still needed
+        # there too, for a caller that reaches Transducer.compute_phases() directly).
+        if dephasing_degree is not None and len(dephasing_degree) > 1:
+            message = (f'Number of dephasing entries ({len(dephasing_degree)}) does not ' +
+                       f'correspond to number of transducer elements ({self.n_channels}). Only ' +
+                       'enter one dephasing value or n-values equal to the number of ' +
+                       'transducer elements.')
+            get_logger().critical(message)
+            raise FDSValidationError(message)
+
         # transducer has been chosen where phases are calculated based on phase law
         package_name = get_config_value(get_logger(), config, 'General', 'Package name',
                                         'fus_driving_systems')

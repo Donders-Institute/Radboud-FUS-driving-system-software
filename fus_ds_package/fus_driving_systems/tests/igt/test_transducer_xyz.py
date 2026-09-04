@@ -13,6 +13,7 @@ one light test using tmp_path.
 """
 import pytest
 
+from fus_driving_systems.exceptions import FDSConfigError, FDSInternalError, FDSValidationError
 from fus_driving_systems.igt import transducer_xyz
 
 
@@ -93,32 +94,32 @@ class TestComputePhases:
 
         assert phases == pytest.approx([0.0, 180.0, 360.0, 540.0])
 
-    def test_exits_when_no_frequencies_defined(self):
+    def test_raises_when_no_frequencies_defined(self):
         trans = _transducer_with_elements([(0.0, 0.0, 0.0)])
         pulse = _FakePulse([])  # frequencyCount() == 0
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSInternalError):
             trans.compute_phases(pulse, (0, 0, 0), set_focus_mm=50, dephasing_degree=None)
 
-    def test_exits_when_first_frequency_is_zero(self):
+    def test_raises_when_first_frequency_is_zero(self):
         trans = _transducer_with_elements([(0.0, 0.0, 0.0)])
         pulse = _FakePulse([0])
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSInternalError):
             trans.compute_phases(pulse, (0, 0, 0), set_focus_mm=50, dephasing_degree=None)
 
-    def test_exits_when_frequency_count_mismatches_element_count(self):
+    def test_raises_when_frequency_count_mismatches_element_count(self):
         trans = _transducer_with_elements([(0.0, 0.0, 0.0), (0.0, 0.0, 0.00025)])
         pulse = _FakePulse([1_500_000, 750_000, 500_000])  # 3 freqs, 2 elements
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSInternalError):
             trans.compute_phases(pulse, (0, 0, 0), set_focus_mm=50, dephasing_degree=None)
 
-    def test_exits_when_dephasing_degree_has_more_than_one_entry_that_does_not_match(self):
+    def test_raises_when_dephasing_degree_has_more_than_one_entry_that_does_not_match(self):
         trans = _transducer_with_elements([(0.0, 0.0, 0.0), (0.0, 0.0, 0.00025)])
         pulse = _FakePulse([1_500_000])
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSValidationError):
             trans.compute_phases(pulse, (0, 0, 0), set_focus_mm=50,
                                  dephasing_degree=[10.0, 20.0])
 
@@ -167,38 +168,38 @@ class TestLoadFromString:
             (0.005, 0.005, 0.02),
         ])
 
-    def test_exits_when_focal_length_key_is_missing(self):
+    def test_raises_when_focal_length_key_is_missing(self):
         """focalLength is required, not merely defaulted to 0 -- a missing/invalid value would
         silently feed a wrong number into compute_phases()'s aim_wrt_natural_focus arithmetic,
         producing a plausible-looking but incorrect target focus instead of a loud failure."""
         trans = transducer_xyz.Transducer()
         definition = "[elements]\nsize = 1\n1 = 0|0|10\n"
 
-        with pytest.raises(SystemExit, match='focalLength'):
+        with pytest.raises(FDSConfigError, match='focalLength'):
             trans.load_from_string(definition)
 
-    def test_exits_when_focal_length_is_not_numeric(self):
+    def test_raises_when_focal_length_is_not_numeric(self):
         trans = transducer_xyz.Transducer()
         definition = "[transducer]\nfocalLength = not_a_number\n[elements]\nsize = 1\n1 = 0|0|10\n"
 
-        with pytest.raises(SystemExit, match='focalLength'):
+        with pytest.raises(FDSConfigError, match='focalLength'):
             trans.load_from_string(definition)
 
-    def test_exits_when_size_key_is_missing(self):
+    def test_raises_when_size_key_is_missing(self):
         trans = transducer_xyz.Transducer()
         definition = "[transducer]\nfocalLength = 75\n[elements]\nnotsize = 2\n"
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSConfigError):
             trans.load_from_string(definition)
 
-    def test_exits_when_size_is_zero(self):
+    def test_raises_when_size_is_zero(self):
         trans = transducer_xyz.Transducer()
         definition = "[transducer]\nfocalLength = 75\n[elements]\nsize = 0\n"
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSConfigError):
             trans.load_from_string(definition)
 
-    def test_exits_when_an_element_entry_is_malformed(self):
+    def test_raises_when_an_element_entry_is_malformed(self):
         trans = transducer_xyz.Transducer()
         definition = (
             "[transducer]\n"
@@ -208,10 +209,10 @@ class TestLoadFromString:
             "1 = not|enough\n"
         )
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSConfigError):
             trans.load_from_string(definition)
 
-    def test_exits_with_empty_content_message_on_empty_string(self):
+    def test_raises_with_empty_content_message_on_empty_string(self):
         """
         SOLVED: load_from_string's 'empty content' guard used to compare
         `config.readfp(stringio) == []`, which can never be True --
@@ -221,21 +222,21 @@ class TestLoadFromString:
         config.getint('elements', 'size') raised NoSectionError (no
         [elements] section at all), reported as "Error: missing
         'elements.size' parameter" instead -- the same (misleading) path
-        as test_exits_when_size_key_is_missing above. Now checked directly
+        as test_raises_when_size_key_is_missing above. Now checked directly
         on the input string before parsing, so empty content is caught
         with its own, correct message.
         """
         trans = transducer_xyz.Transducer()
 
-        with pytest.raises(SystemExit, match='Error: empty content'):
+        with pytest.raises(FDSConfigError, match='Error: empty content'):
             trans.load_from_string("")
 
-    def test_exits_with_empty_content_message_on_whitespace_only_string(self):
+    def test_raises_with_empty_content_message_on_whitespace_only_string(self):
         """Whitespace-only input is just as 'empty' in intent as "" -- both must hit the same
         guard rather than one falling through to _load_config()'s less specific error."""
         trans = transducer_xyz.Transducer()
 
-        with pytest.raises(SystemExit, match='Error: empty content'):
+        with pytest.raises(FDSConfigError, match='Error: empty content'):
             trans.load_from_string("   \n  \n")
 
 
@@ -261,9 +262,9 @@ class TestLoad:
         assert result is True
         assert trans.elements == pytest.approx([(0.001, 0.002, 0.003)])
 
-    def test_load_exits_when_file_does_not_exist(self, tmp_path):
+    def test_load_raises_when_file_does_not_exist(self, tmp_path):
         trans = transducer_xyz.Transducer()
         missing = tmp_path / "does_not_exist.ini"
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSConfigError):
             trans.load(str(missing))

@@ -154,12 +154,12 @@ def test_configure_timing_sets_pulse_ramp_shape(patch_config):
     assert protocol.pulse_ramp_shape == 'Linear'
 
 
-def test_configure_timing_exits_for_unavailable_ramp_shape(patch_config):
+def test_configure_timing_raises_for_unavailable_ramp_shape(patch_config):
     patch_config.set('Ramp', 'Options', 'Linear\nTukey')
     protocol = _bare_protocol()
     protocol._timing_param = {}
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSValidationError):
         protocol.configure_timing(pulse_dur=10, pulse_ramp_shape='Something else')
 
 
@@ -293,17 +293,17 @@ def _configure_transducer(patch_config, serial, elements=2):
     patch_config.set(section, 'Active?', 'True')
 
 
-def test_add_slot_exits_when_max_tran_slots_exceeded():
+def test_add_slot_raises_when_max_tran_slots_exceeded():
     protocol = _bare_protocol()
     protocol._engineering_mode = False
     protocol._driving_sys = SimpleNamespace(serial='DS1', max_tran_slots=1)
     protocol._slots = [_fake_slot()]
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSValidationError):
         protocol.add_slot('TRAN-B', 'Focus wrt exit plane [mm]', 20, 'Amplitude [%]', 30)
 
 
-def test_add_slot_exits_when_transducer_exceeds_elements_per_slot(patch_config):
+def test_add_slot_raises_when_transducer_exceeds_elements_per_slot(patch_config):
     """Slots are always evenly divided, so the per-slot ceiling is simply
     available_ch / max_tran_slots -- no separate config key for it. A transducer with more
     elements than that must be rejected before ever touching focus/power, regardless of how the
@@ -378,12 +378,12 @@ def test_add_slot_defaults_oper_freq_to_transducer_fund_freq_when_not_given(patc
 
 # --- _validate_channel_count -------------------------------------------------
 
-def test_validate_channel_count_exits_when_total_elements_exceed_available_ch():
+def test_validate_channel_count_raises_when_total_elements_exceed_available_ch():
     protocol = _bare_protocol()
     protocol._driving_sys = SimpleNamespace(available_ch=4)
     protocol._slots = [_fake_slot(elements=3), _fake_slot(elements=3)]
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSValidationError):
         protocol._validate_channel_count()
 
 
