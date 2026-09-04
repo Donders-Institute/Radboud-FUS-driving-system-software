@@ -14,6 +14,7 @@ import pathlib
 
 import pytest
 
+from fus_driving_systems.exceptions import FDSValidationError
 from fus_driving_systems.protocol_loader import approve_protocol, load_protocol
 
 DS_SERIAL = 'IGT-32-ch_comb_2x10-ch'
@@ -403,14 +404,14 @@ protocols:
       pulse_dur: 45
 """)
 
-        with pytest.raises(SystemExit) as exc_info:
+        with pytest.raises(FDSValidationError) as exc_info:
             load_protocol(path)
 
         assert 'NOT-A-REAL-TRANSDUCER' in str(exc_info.value)
 
     def test_engineering_only_power_option_without_engineering_mode_surfaces_the_existing_error(
             self, tmp_path):
-        """Unlike most other TUSProtocol/add_slot() validation failures (sys.exit()),
+        """Unlike most other TUSProtocol/add_slot() validation failures (FDSValidationError),
         engineering-mode violations specifically raise RuntimeError -- confirm load_protocol()
         lets that propagate unchanged too, rather than converting or swallowing it."""
         path = _write_yaml(tmp_path, f"""

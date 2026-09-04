@@ -17,7 +17,8 @@ from types import SimpleNamespace
 import pytest
 from scipy.interpolate import PPoly
 
-from fus_driving_systems.exceptions import FDSConfigError
+from fus_driving_systems.exceptions import (FDSConfigError, FDSInternalError, FDSSafetyError,
+                                            FDSValidationError)
 from fus_driving_systems.transducer_slot import TransducerSlot, get_max_pressure
 
 
@@ -56,7 +57,7 @@ def test_calc_eq_factor_exits_when_focus_is_not_numeric():
     # file.
     slot._transducer = SimpleNamespace(min_foc=0, max_foc=10)
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSInternalError):
         slot._calc_eq_factor('not-a-number')
 
 
@@ -68,7 +69,7 @@ def test_calc_eq_factor_exits_when_focus_is_out_of_range():
     slot = _bare_slot()
     slot._conv_param = {'eq_curve_pp': _identity_pp(0.0, 10.0)}
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSValidationError):
         slot._calc_eq_factor(50)  # outside the curve's [0, 10] domain
 
 
@@ -119,7 +120,7 @@ def test_convert_press_to_ampl_exits_when_x_value_above_pp_range():
     slot = _bare_slot()
     slot._conv_param = {'power_curve_pp': _identity_pp(-10.0, 1000.0)}
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSValidationError):
         slot._convert_press_to_ampl(2000e-6, 1.0)  # x_value = 2000, above the pp's max of 1000
 
 
@@ -127,23 +128,21 @@ def test_convert_press_to_ampl_exits_when_x_value_below_pp_range():
     slot = _bare_slot()
     slot._conv_param = {'power_curve_pp': _identity_pp(-10.0, 1000.0)}
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSValidationError):
         slot._convert_press_to_ampl(-20e-6, 1.0)  # x_value = -20, below the pp's min of -10
 
 
 def test_convert_press_to_ampl_clamps_to_100_and_exits_when_calculated_above_100():
     """calc_ampl > 100 (but still within the pp's domain) is clamped to 100% just long enough
     to compute the press/volt shown in the error message, then the method exits without
-    returning anything -- unlike the pre-Phase-3 self-mutating version, there is no self._ampl
-    left behind to clear: the setters that call this now reset self._ampl to None themselves
-    before calling, precisely because this function can no longer do it on their behalf."""
+    returning anything."""
     slot = _bare_slot()
     slot._conv_param = {
         'power_curve_pp': _identity_pp(-10.0, 1000.0),
         'volt_curve_pp': _identity_pp(-10.0, 200.0),
     }
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSValidationError):
         slot._convert_press_to_ampl(150e-6, 1.0)  # x_value = 150 -> calc_ampl = 150 > 100
 
 
@@ -202,7 +201,7 @@ def test_convert_volt_to_ampl_exits_when_volt_is_below_pp_range():
     slot = _bare_slot()
     slot._conv_param = {'volt_curve_pp': _identity_pp(-10.0, 200.0)}
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSValidationError):
         slot._convert_volt_to_ampl([-20], 1.0)  # below the pp's min of -10
 
 
@@ -210,7 +209,7 @@ def test_convert_volt_to_ampl_exits_when_volt_is_above_pp_range():
     slot = _bare_slot()
     slot._conv_param = {'volt_curve_pp': _identity_pp(-10.0, 200.0)}
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSValidationError):
         slot._convert_volt_to_ampl([300], 1.0)  # above the pp's max of 200
 
 
@@ -228,7 +227,7 @@ def test_convert_volt_to_ampl_clamps_to_100_and_exits_when_calculated_above_100(
         'power_curve_pp': _identity_pp(-10.0, 1000.0),
     }
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSValidationError):
         slot._convert_volt_to_ampl([60], 1.0)  # in range -> calc_ampl = 60 + 50 = 110 > 100
 
 
@@ -295,7 +294,7 @@ def test_convert_ampl_to_press_exits_when_result_exceeds_configured_max(patch_co
     slot = _bare_slot()
     slot._conv_param = {'power_curve_pp': _identity_pp(-10.0, 1000.0)}
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSSafetyError):
         slot._convert_ampl_to_press([50], 1e-5)  # inflates press_mpa well above the 1 MPa limit
 
 
@@ -314,7 +313,7 @@ def test_convert_ampl_to_press_exits_when_given_more_than_one_amplitude_value():
     outright rather than silently deriving a value from just the first entry."""
     slot = _bare_slot()
 
-    with pytest.raises(SystemExit, match='2 entries'):
+    with pytest.raises(FDSInternalError, match='2 entries'):
         slot._convert_ampl_to_press([50, 60], 1.0)
 
 
@@ -450,7 +449,7 @@ def test_global_power_setter_exits_when_option_unavailable(patch_config):
     slot = _bare_slot()
     slot.driving_sys = SimpleNamespace(power_options=['Some other option'])
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSValidationError):
         slot._set_global_power(5)
 
 
@@ -537,7 +536,7 @@ def test_press_setter_exits_when_power_option_unavailable(patch_config):
     slot = _bare_slot()
     slot.driving_sys = SimpleNamespace(power_options=['Some other option'])
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSValidationError):
         slot._set_press(0.5)
 
 
@@ -550,7 +549,7 @@ def test_press_setter_exits_when_combo_unknown_but_required(patch_config):
         power_options=['Max. pressure in free water [MPa]'], native_power_params=['Amplitude [%]'])
     slot._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSValidationError):
         slot._set_press(0.5)
 
 
@@ -561,7 +560,7 @@ def test_press_setter_exits_when_above_configured_max(patch_config):
         power_options=['Max. pressure in free water [MPa]'],
         native_power_params=['Max. pressure in free water [MPa]'])
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSSafetyError):
         slot._set_press(5)
 
 
@@ -594,7 +593,7 @@ def test_press_setter_reports_missing_calibration_before_value_specific_errors(p
         native_power_params=['Amplitude [%]'])
     slot._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
 
-    with pytest.raises(SystemExit, match='No active calibration available'):
+    with pytest.raises(FDSValidationError, match='No active calibration available'):
         slot._set_press(5)  # also above the configured max of 1 -- must not be the error surfaced
 
 
@@ -618,7 +617,7 @@ def test_press_setter_exits_and_clears_ampl_when_calculated_amplitude_exceeds_10
     slot._eq_factor = 1.0
     slot._ampl = ['stale']
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSValidationError):
         slot._set_press(150e-6)  # x_value = 150 -> calc_ampl = 150 > 100
 
     assert slot._ampl is None
@@ -723,7 +722,7 @@ def test_volt_setter_exits_when_derived_press_exceeds_configured_max(patch_confi
     """CONFIRMED INTENDED (not a bug): amplitude is what's actually sent to hardware here
     (voltage is converted to it above), but exceeding the configured safe pressure limit is a
     deliberate safety checkpoint for the engineer, so
-    _convert_ampl_to_press()'s max-pressure-exceeded sys.exit() is intentionally left free to
+    _convert_ampl_to_press()'s max-pressure-exceeded FDSSafetyError is intentionally left free to
     propagate. The whole voltage request is rejected
     in that case, so the just-assigned _volt (and its derived _ampl) are also cleared back to
     None -- otherwise they'd still look like a valid, current result even though the request as
@@ -744,7 +743,7 @@ def test_volt_setter_exits_when_derived_press_exceeds_configured_max(patch_confi
     }
     slot._eq_factor = 1.0
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSSafetyError):
         slot._set_volt(50)
 
     assert slot._press is None
@@ -804,7 +803,7 @@ def test_volt_setter_exits_when_power_option_unavailable():
     slot._engineering_mode = True
     slot.driving_sys = SimpleNamespace(power_options=['Some other option'])
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSValidationError):
         slot._set_volt(50)
 
 
@@ -814,7 +813,7 @@ def test_volt_setter_exits_on_wrong_length_list():
     slot.driving_sys = SimpleNamespace(
         power_options=['Voltage [V]'], native_power_params=['Voltage [V]'], available_ch=4)
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSValidationError):
         slot._set_volt([10, 20])  # neither 1 entry nor 4 (available_ch) entries
 
 
@@ -829,14 +828,19 @@ def test_volt_setter_exits_when_combo_unknown_but_required():
                                        native_power_params=['Amplitude [%]'], available_ch=1)
     slot._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSValidationError):
         slot._set_volt(50)
 
 
 def test_volt_setter_exits_and_clears_ampl_when_calculated_amplitude_exceeds_100(patch_config):
     """Mirrors test_press_setter_exits_and_clears_ampl_when_calculated_amplitude_exceeds_100 --
     _convert_volt_to_ampl()'s own internal >100% exit no longer has a self._ampl to clear
-    either; volt's setter resets it to None before calling, for the same reason."""
+    either; volt's setter resets it to None before calling, for the same reason. Uses an
+    in-domain voltage whose curve-fit result spills past 100 (matches
+    test_convert_volt_to_ampl_clamps_to_100_and_exits_when_calculated_above_100), not an
+    out-of-domain one -- those are a separate check inside _convert_volt_to_ampl() itself (see
+    test_convert_volt_to_ampl_exits_when_volt_is_above_pp_range), also FDSValidationError, but a
+    different check entirely from this >100% clamp."""
     patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
     slot = _bare_slot()
     slot._engineering_mode = True
@@ -844,14 +848,15 @@ def test_volt_setter_exits_and_clears_ampl_when_calculated_amplitude_exceeds_100
         power_options=['Voltage [V]'], native_power_params=['Amplitude [%]'], available_ch=1)
     slot._ds_tran_combo = 'combo1'
     slot._conv_param = {
-        'volt_curve_pp': _identity_pp(-10.0, 200.0),
+        # pp(x) = x + 50, so an in-range x can still yield a >100 y
+        'volt_curve_pp': PPoly(c=[[1.0], [50.0]], x=[0.0, 100.0], extrapolate=False),
         'power_curve_pp': _identity_pp(-10.0, 1000.0),
     }
     slot._eq_factor = 1.0
     slot._ampl = ['stale']
 
-    with pytest.raises(SystemExit):
-        slot._set_volt(300)  # above volt_curve_pp's max of 200 -> calc_ampl > 100
+    with pytest.raises(FDSValidationError):
+        slot._set_volt(60)  # in range -> calc_ampl = 60 + 50 = 110 > 100
 
     assert slot._ampl is None
 
@@ -891,9 +896,9 @@ def test_ampl_setter_succeeds_without_engineering_mode_when_not_configured_as_su
 def test_ampl_setter_without_conversion_sets_value_directly():
     """Amplitude is this driving system's own native power parameter (matches IGT), so no
     calibration is ever needed to set it -- succeeds even with no active combo. CONFIRMED
-    INTENDED asymmetry with press/volt (which both sys.exit() in this same situation, per
-    their own tests): without an active calibration those two genuinely cannot derive the
-    amplitude actually sent to hardware, whereas ampl already *is* that value."""
+    INTENDED asymmetry with press/volt (which both raise FDSValidationError in this same
+    situation, per their own tests): without an active calibration those two genuinely cannot
+    derive the amplitude actually sent to hardware, whereas ampl already *is* that value."""
     slot = _bare_slot()
     slot._engineering_mode = True
     slot.driving_sys = SimpleNamespace(
@@ -953,8 +958,8 @@ def test_ampl_setter_exits_when_derived_press_exceeds_configured_max(patch_confi
     """CONFIRMED INTENDED (not a bug): even though amplitude is what's actually sent to
     hardware here (the derived pressure is otherwise only for the log line), exceeding the
     configured safe pressure limit is a deliberate safety checkpoint for the engineer, not
-    merely a logging concern -- _convert_ampl_to_press()'s max-pressure-exceeded sys.exit() is
-    intentionally left free to propagate through this setter rather than being caught.
+    merely a logging concern -- _convert_ampl_to_press()'s max-pressure-exceeded FDSSafetyError
+    is intentionally left free to propagate through this setter rather than being caught.
     The whole amplitude request is rejected in that case, so the just-assigned _ampl (and its
     derived _volt) are also cleared back to None -- otherwise they'd still look like a valid,
     current result even though the request as a whole was refused."""
@@ -973,7 +978,7 @@ def test_ampl_setter_exits_when_derived_press_exceeds_configured_max(patch_confi
     }
     slot._eq_factor = 1.0
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSSafetyError):
         slot._set_ampl(2_000_000)
 
     # Cleared right before the exit, per the "don't leave a stale, valid-looking value behind
@@ -989,20 +994,20 @@ def test_ampl_setter_exits_on_wrong_length_list():
     slot.driving_sys = SimpleNamespace(
         power_options=['Amplitude [%]'], native_power_params=['Amplitude [%]'], available_ch=4)
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSValidationError):
         slot._set_ampl([10, 20])  # neither 1 entry nor 4 (available_ch) entries
 
 
 def test_ampl_setter_exits_when_power_option_unavailable():
     """SOLVED: ampl's setter now mirrors press/volt with an explicit
-    `else: sys.exit(...)` when the power option isn't in
+    `else: raise FDSValidationError(...)` when the power option isn't in
     driving_sys.power_options, instead of silently leaving self._ampl at
     the reset value of 0 with no error."""
     slot = _bare_slot()
     slot._engineering_mode = True
     slot.driving_sys = SimpleNamespace(power_options=['Some other option'], available_ch=1)
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSValidationError):
         slot._set_ampl(50)
 
 
@@ -1133,7 +1138,7 @@ def test_focus_wrt_exit_plane_setter_exits_when_out_of_curve_range_and_not_nativ
         'eq_curve_pp': _identity_pp(0.0, 200.0),
     }
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSValidationError):
         slot._set_focus_wrt_exit_plane(70)  # within transducer range, outside curve's [0, 50]
 
 
@@ -1200,7 +1205,7 @@ def test_focus_wrt_exit_plane_setter_exits_when_out_of_transducer_range():
     slot._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
     slot._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSValidationError):
         slot._set_focus_wrt_exit_plane(200)
 
 
@@ -1216,7 +1221,7 @@ def test_focus_wrt_exit_plane_setter_reports_missing_calibration_before_range_er
     slot._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
     slot._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
 
-    with pytest.raises(SystemExit, match='No active calibration available'):
+    with pytest.raises(FDSValidationError, match='No active calibration available'):
         slot._set_focus_wrt_exit_plane(200)  # also out of the transducer's [0, 100] range
 
 
@@ -1233,7 +1238,7 @@ def test_focus_wrt_exit_plane_setter_exits_when_combo_unknown_but_required():
     slot._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
     slot._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSValidationError):
         slot._set_focus_wrt_exit_plane(20)
 
 
@@ -1243,7 +1248,7 @@ def test_focus_wrt_exit_plane_setter_exits_when_focus_option_unavailable():
     slot = _bare_slot()
     slot.driving_sys = SimpleNamespace(focus_options=['Focus wrt mid bowl [mm]'])
 
-    with pytest.raises(SystemExit, match='not available'):
+    with pytest.raises(FDSValidationError, match='not available'):
         slot._set_focus_wrt_exit_plane(25)
 
 
@@ -1288,7 +1293,7 @@ def test_focus_wrt_mid_bowl_setter_exits_when_focus_option_unavailable():
     slot._engineering_mode = True
     slot.driving_sys = SimpleNamespace(focus_options=['Focus wrt exit plane [mm]'])
 
-    with pytest.raises(SystemExit, match='not available'):
+    with pytest.raises(FDSValidationError, match='not available'):
         slot._set_focus_wrt_mid_bowl(25)
 
 
@@ -1361,7 +1366,7 @@ def test_focus_wrt_mid_bowl_setter_exits_when_x_not_found_and_not_native(patch_c
         'eq_curve_pp': _identity_pp(-1000.0, 1000.0),
     }
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSValidationError):
         slot._set_focus_wrt_mid_bowl(500)  # outside focus_curve_pp's [0, 100] y-range -> not found
 
 
@@ -1399,7 +1404,7 @@ def test_focus_wrt_mid_bowl_setter_exits_when_combo_unknown_but_required():
     slot._transducer = SimpleNamespace(min_foc=0, max_foc=100, exit_plane_dist=5, name='tran')
     slot._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSValidationError):
         slot._set_focus_wrt_mid_bowl(20)
 
 
@@ -1468,7 +1473,7 @@ def test_focus_setters_both_work_without_calibration_when_both_are_native():
 def test_set_focus_xyz_exits_when_point_is_not_length_3():
     slot = _bare_slot()
 
-    with pytest.raises(SystemExit, match='3-tuple'):
+    with pytest.raises(FDSValidationError, match='3-tuple'):
         slot._set_focus_xyz('Focus xyz wrt mid bowl [mm]', (1, 2))
 
 
@@ -1476,7 +1481,7 @@ def test_set_focus_xyz_exits_when_transducer_not_3d_capable():
     slot = _bare_slot()
     slot._transducer = SimpleNamespace(can_3d_steer=False, serial='TRAN-A')
 
-    with pytest.raises(SystemExit, match='can_3d_steer'):
+    with pytest.raises(FDSValidationError, match='can_3d_steer'):
         slot._set_focus_xyz('Focus xyz wrt mid bowl [mm]', (1, 2, 30))
 
 
@@ -1490,7 +1495,7 @@ def test_set_focus_xyz_exits_when_not_available_for_driving_system():
         focus_options=['Focus wrt exit plane [mm]'],
         native_focus_params=['Focus wrt exit plane [mm]'])
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSValidationError):
         slot._set_focus_xyz('Focus xyz wrt mid bowl [mm]', (0, 0, 30))
 
 
@@ -1577,7 +1582,7 @@ def test_set_focus_xyz_mid_bowl_native_exits_when_derived_exit_plane_out_of_rang
         native_focus_params=['Focus xyz wrt mid bowl [mm]'])
     slot._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSValidationError):
         slot._set_focus_xyz('Focus xyz wrt mid bowl [mm]', (0, 0, 10))  # 10-5=5 < min_foc=50
 
 
@@ -1592,7 +1597,7 @@ def test_set_focus_xyz_non_native_exits_when_combo_inactive(patch_config):
         native_focus_params=['Focus xyz wrt mid bowl [mm]'])
     slot._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
 
-    with pytest.raises(SystemExit, match='3D calibration data'):
+    with pytest.raises(FDSValidationError, match='3D calibration data'):
         slot._set_focus_xyz('Focus xyz wrt exit plane [mm]', (0, 0, 30))
 
 
@@ -1602,7 +1607,7 @@ def test_transducer_setter_exits_when_not_compatible(patch_config):
     slot = _bare_slot()
     slot.driving_sys = SimpleNamespace(serial='DS1', tran_comp=['TRAN-A', 'TRAN-B'])
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSValidationError):
         slot._set_transducer('TRAN-C')
 
 
@@ -1748,7 +1753,7 @@ def test_update_transducer_validates_new_transducers_element_count(patch_config)
     slot.driving_sys = _driving_sys_for('TRAN-BIG', max_tran_slots=4, available_ch=208)
     slot._transducer = _fake_transducer(elements=60)
 
-    with pytest.raises(SystemExit, match='60 elements'):
+    with pytest.raises(FDSValidationError, match='60 elements'):
         slot.update_transducer('TRAN-BIG', 'Focus wrt exit plane [mm]', 20, 'Amplitude [%]', 30)
 
 
@@ -1822,7 +1827,7 @@ def test_set_focus_exits_for_unknown_option(patch_config):
     patch_config.set('Focus', 'Option.bowl', 'Focus wrt mid bowl [mm]')
     slot = _bare_slot()
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSValidationError):
         slot._set_focus('Something else', 42)
 
 
@@ -1850,7 +1855,7 @@ def test_set_power_exits_for_unknown_option(patch_config):
     patch_config.set('Power', 'Option.ampl', 'Amplitude [%]')
     slot = _bare_slot()
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSValidationError):
         slot._set_power('Something else', 5)
 
 

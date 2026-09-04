@@ -315,7 +315,7 @@ def test_add_slot_exits_when_transducer_exceeds_elements_per_slot(patch_config):
                                             tran_comp=['TRAN-BIG'])
     protocol._slots = []
 
-    with pytest.raises(SystemExit, match='60 elements'):
+    with pytest.raises(FDSValidationError, match='60 elements'):
         protocol.add_slot('TRAN-BIG', 'Focus wrt exit plane [mm]', 20, 'Amplitude [%]', 30)
 
 

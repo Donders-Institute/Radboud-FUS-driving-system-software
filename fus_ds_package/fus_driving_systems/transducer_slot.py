@@ -10,9 +10,6 @@ If you use this kit in your research or project, please cite it -- see CITATION.
 https://github.com/Donders-Institute/Radboud-FUS-driving-system-software.
 """
 
-# Basic packages
-import sys
-
 # Own packages
 from fus_driving_systems import transducer as tran
 
@@ -21,6 +18,8 @@ from fus_driving_systems.calc_utils import (validate_value, extract_and_define_p
                                             format_or_unavailable)
 from fus_driving_systems.config.config import config_info as config
 from fus_driving_systems.config.logging_config import get_logger
+from fus_driving_systems.exceptions import FDSError, FDSInternalError, FDSSafetyError, \
+    FDSValidationError
 from fus_driving_systems.utils import get_config_value
 
 
@@ -61,18 +60,21 @@ def get_max_pressure():
 
 def _enforce_max_pressure(press_mpa):
     """
-    The one, single-source-of-truth safety check for THE software pressure limit: sys.exit()s
-    if press_mpa exceeds the configured 'Maximum pressure allowed in free water [MPa]'. Shared
-    by every code path that can ever produce a pressure value (_set_press()'s direct input,
-    _convert_ampl_to_press()'s derived result) specifically so a future reviewer -- or a future
-    third pressure-producing path, e.g. once GitHub #147's more generic power-parameter
-    conversion lands -- can grep for calls to this one function to verify the limit is actually
-    enforced everywhere it needs to be, instead of having to separately verify the same
-    comparison logic wherever it happens to be copy-pasted. The check is strict '>' (not '>='):
-    a value exactly at the limit is accepted.
+    The one, single-source-of-truth safety check for THE software pressure limit: raises
+    FDSSafetyError if press_mpa exceeds the configured 'Maximum pressure allowed in free water
+    [MPa]'. Shared by every code path that can ever produce a pressure value (_set_press()'s
+    direct input, _convert_ampl_to_press()'s derived result) specifically so a future reviewer --
+    or a future third pressure-producing path, e.g. once GitHub #147's more generic
+    power-parameter conversion lands -- can grep for calls to this one function to verify the
+    limit is actually enforced everywhere it needs to be, instead of having to separately verify
+    the same comparison logic wherever it happens to be copy-pasted. The check is strict '>' (not
+    '>='): a value exactly at the limit is accepted.
 
     Parameters:
         press_mpa (float): The pressure [MPa] to check.
+
+    Raises:
+        FDSSafetyError: If press_mpa exceeds the configured maximum.
     """
 
     max_press = get_max_pressure()
@@ -81,7 +83,7 @@ def _enforce_max_pressure(press_mpa):
                    f'crossing the allowed limit of {max_press:.2f} [MPa]. Please change your ' +
                    'value.')
         get_logger().critical(message)
-        sys.exit(message)
+        raise FDSSafetyError(message)
 
 
 class TransducerSlot:
@@ -352,7 +354,7 @@ class TransducerSlot:
             message = (f'{serial} is not compatible with {self.driving_sys.serial}. Use one ' +
                        f'of the following instead: {self.driving_sys.tran_comp}.')
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSValidationError(message)
 
         self._transducer.set_transducer_info(serial)
 
@@ -421,7 +423,7 @@ class TransducerSlot:
                        f'slot on {self.driving_sys.serial} ({self.driving_sys.available_ch} ' +
                        f'available channels / {self.driving_sys.max_tran_slots} slots).')
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSValidationError(message)
 
     def update_transducer(self, transducer_serial, focus_option, focus_value, power_option,
                           power_value, oper_freq=None, dephasing_degree=None):
@@ -649,7 +651,7 @@ class TransducerSlot:
                        'chosen driving system. Use one of the following options instead: ' +
                        f'{self.driving_sys.power_options}.')
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSValidationError(message)
 
     @property
     def press(self):
@@ -695,7 +697,7 @@ class TransducerSlot:
                            f'free water to {self.driving_sys.native_power_params} for ' +
                            f'{self._ds_tran_combo}.')
                 get_logger().critical(message)
-                sys.exit(message)
+                raise FDSValidationError(message)
 
             validate_value(press, 'Maximum pressure in free water [MPa] (press)',
                            True, True, False, False)
@@ -728,7 +730,7 @@ class TransducerSlot:
                        'chosen driving system. Use one of the following options instead: ' +
                        f'{self.driving_sys.power_options}.')
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSValidationError(message)
 
     @property
     def volt(self):
@@ -774,7 +776,7 @@ class TransducerSlot:
                            f'{self.driving_sys.native_power_params} for ' +
                            f'{self._ds_tran_combo}.')
                 get_logger().critical(message)
-                sys.exit(message)
+                raise FDSValidationError(message)
 
             if not isinstance(volt, list):
                 volt = [volt]
@@ -787,7 +789,7 @@ class TransducerSlot:
                            'Only enter one voltage value or n-values equal to the number of ' +
                            'transducer elements.')
                 get_logger().critical(message)
-                sys.exit(message)
+                raise FDSValidationError(message)
 
             validate_value(volt, 'Voltage [V] (volt)', True, True, False, False, True)
 
@@ -814,7 +816,7 @@ class TransducerSlot:
                     # max-pressure-exceeded check (inside _convert_ampl_to_press) is a deliberate
                     # exception to that: exceeding the configured safe limit is a safety
                     # decision for the engineer, not merely a logging concern, so it's
-                    # intentionally left free to sys.exit() here same as anywhere else.
+                    # intentionally left free to raise FDSSafetyError here same as anywhere else.
                     self._press = self._convert_ampl_to_press_for_logging(
                         self._ampl, self._eq_factor, '_volt', '_ampl')
 
@@ -836,7 +838,7 @@ class TransducerSlot:
                        'chosen driving system. Use one of the following options instead: ' +
                        f'{self.driving_sys.power_options}.')
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSValidationError(message)
 
     @property
     def ampl(self):
@@ -884,7 +886,7 @@ class TransducerSlot:
                            f'{self.driving_sys.native_power_params} for ' +
                            f'{self._ds_tran_combo}.')
                 get_logger().critical(message)
-                sys.exit(message)
+                raise FDSValidationError(message)
 
             if not isinstance(ampl, list):
                 ampl = [ampl]
@@ -897,7 +899,7 @@ class TransducerSlot:
                            'Only enter one amplitude value or n-values equal to the number of ' +
                            'transducer elements.')
                 get_logger().critical(message)
-                sys.exit(message)
+                raise FDSValidationError(message)
 
             validate_value(ampl, 'Amplitude [%] (ampl)', True, True, False, False, True)
 
@@ -923,8 +925,8 @@ class TransducerSlot:
                     # _convert_ampl_to_press()'s own max-pressure-exceeded check is a deliberate
                     # exception to "logging-only": exceeding the configured safe limit
                     # is a safety decision for the engineer, not merely a logging
-                    # concern, so it's intentionally left free to sys.exit() here same
-                    # as anywhere else.
+                    # concern, so it's intentionally left free to raise FDSSafetyError here
+                    # same as anywhere else.
                     self._press = self._convert_ampl_to_press_for_logging(
                         self._ampl, self._eq_factor, '_ampl', '_volt')
 
@@ -945,7 +947,7 @@ class TransducerSlot:
                        'chosen driving system. Use one of the following options instead: ' +
                        f'{self.driving_sys.power_options}.')
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSValidationError(message)
 
     def configure(self, focus_option, focus_value, power_option, power_value):
         """
@@ -1000,7 +1002,7 @@ class TransducerSlot:
             message = (f'{focus_option} is not a valid focus option. Use one of: ' +
                        f'{exit_opt}, {bowl_opt}, {xyz_exit_opt}, {xyz_bowl_opt}.')
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSValidationError(message)
 
     def _set_power(self, power_option, power_value):
         """
@@ -1034,7 +1036,7 @@ class TransducerSlot:
             message = (f'{power_option} is not a valid power option. Use one of: ' +
                        f'{glob_pow_opt}, {press_opt}, {volt_opt}, {ampl_opt}.')
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSValidationError(message)
 
     def get_focus_options(self):
         """
@@ -1152,7 +1154,7 @@ class TransducerSlot:
                        'chosen driving system. Use one of the following options instead: ' +
                        f'{self.driving_sys.focus_options}.')
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSValidationError(message)
 
         # Fail fast: check whether this driving system can accept focus_wrt_exit_plane
         # right now, before validating anything about the specific value -- mid bowl is not
@@ -1165,7 +1167,7 @@ class TransducerSlot:
                        f'to {self.driving_sys.native_focus_params} for ' +
                        f'{self._ds_tran_combo}.')
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSValidationError(message)
 
         validate_value(focus, 'Focus wrt exit plane [mm] (focus_wrt_exit_plane)',
                        True, True, False, False)
@@ -1195,7 +1197,7 @@ class TransducerSlot:
                         f'{self._ds_tran_combo} -- there is no way to accurately produce ' +
                         f'{self.driving_sys.native_focus_params} from this focus value.')
                     get_logger().critical(message)
-                    sys.exit(message)
+                    raise FDSValidationError(message)
 
                 get_logger().warning(
                     f'Focus wrt exit plane of {focus:.2f} [mm] is outside of the active ' +
@@ -1214,7 +1216,7 @@ class TransducerSlot:
                            f'{self._transducer.max_foc:.2f} [mm] of transducer ' +
                            f'{self._transducer.name}.')
                 get_logger().critical(message)
-                sys.exit(message)
+                raise FDSValidationError(message)
 
             # Native and no curve available -- fall back to the simple, always-valid
             # geometric offset (only reached when native, since non-native + inactive
@@ -1278,7 +1280,7 @@ class TransducerSlot:
                        'chosen driving system. Use one of the following options instead: ' +
                        f'{self.driving_sys.focus_options}.')
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSValidationError(message)
 
         # Fail fast: check whether this driving system can accept focus_wrt_mid_bowl right
         # now, before validating anything about the specific value -- exit plane is not mid
@@ -1291,7 +1293,7 @@ class TransducerSlot:
                        f'to {self.driving_sys.native_focus_params} for ' +
                        f'{self._ds_tran_combo}.')
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSValidationError(message)
 
         validate_value(focus, 'Focus wrt mid bowl [mm] (focus_wrt_mid_bowl)',
                        True, True, False, False)
@@ -1314,7 +1316,7 @@ class TransducerSlot:
                         'there is no way to accurately produce ' +
                         f'{self.driving_sys.native_focus_params} from this focus value.')
                     get_logger().critical(message)
-                    sys.exit(message)
+                    raise FDSValidationError(message)
 
                 get_logger().warning(
                     f"Could not find an x value for y = {target_y_value:.2f}. " +
@@ -1339,7 +1341,7 @@ class TransducerSlot:
                 f'{self._transducer.max_foc:.2f} [mm] of transducer ' +
                 f'{self._transducer.name}.')
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSValidationError(message)
 
         self._chosen_focus = focus_option
 
@@ -1412,7 +1414,7 @@ class TransducerSlot:
             message = ('Focus xyz value must be a 3-tuple (x, y, z) [mm], got ' +
                        f'{focus_xyz_value}.')
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSValidationError(message)
         x, y, z = focus_xyz_value
         is_mid_bowl = focus_option == xyz_bowl_opt
 
@@ -1421,7 +1423,7 @@ class TransducerSlot:
                        f'{self._transducer.serial} -- it is not configured as 3D-steering-' +
                        f'capable (can_3d_steer). Use {exit_opt}/{bowl_opt} instead.')
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSValidationError(message)
 
         if self._requires_engineering_mode('Focus', focus_option) and not self._engineering_mode:
             raise RuntimeError(
@@ -1433,7 +1435,7 @@ class TransducerSlot:
                        'chosen driving system. Use one of the following options instead: ' +
                        f'{self.driving_sys.focus_options}.')
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSValidationError(message)
 
         validate_value(x, 'Focus x offset [mm] (x)', True, False, False, False)
         validate_value(y, 'Focus y offset [mm] (y)', True, False, False, False)
@@ -1470,7 +1472,7 @@ class TransducerSlot:
                     f'{self._transducer.min_foc:.2f} and {self._transducer.max_foc:.2f} [mm] ' +
                     f'of transducer {self._transducer.name}.')
                 get_logger().critical(message)
-                sys.exit(message)
+                raise FDSValidationError(message)
         else:
             # The other frame genuinely needs an (x, y, z) -> native-frame conversion via a 3D
             # curve, only possible with an active combo.
@@ -1479,7 +1481,7 @@ class TransducerSlot:
                            f'available for {self._ds_tran_combo}. Use one of the following ' +
                            f'options instead: {self.driving_sys.native_focus_params}.')
                 get_logger().critical(message)
-                sys.exit(message)
+                raise FDSValidationError(message)
             if is_mid_bowl:
                 self._focus_wrt_exit_plane = self._convert_xyz_to_exit_plane(x, y, z)
             else:
@@ -1722,10 +1724,14 @@ class TransducerSlot:
             # for instance, can't be compared with '<') -- pp(x_value) itself would silently
             # return NaN rather than raise (extrapolate=False), so this is reachable only for a
             # focus_wrt_exit_plane that isn't numeric at all, never for a merely out-of-range one.
+            # Both current callers (_set_focus_wrt_exit_plane/_set_focus_wrt_mid_bowl) already
+            # run focus through validate_value(..., check_num=True, ...) before it gets here, so
+            # this branch can't fire today -- it's a guard against a future caller of this
+            # private method skipping that validation, not a reachable production path.
             message = (f'{e} \n Focus wrt exit plane of {focus_wrt_exit_plane} is not a valid ' +
                        'numeric value.')
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSInternalError(message) from e
 
         if range_status != 'in_range':
             x_min = self._conv_param['eq_curve_pp'].x[0]
@@ -1734,7 +1740,7 @@ class TransducerSlot:
                 f'Focus wrt exit plane of {focus_wrt_exit_plane:.2f} [mm] is outside of the ' +
                 f"active calibration curve's limits ({x_min:.2f} - {x_max:.2f} [mm]).")
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSValidationError(message)
 
         return eq_factor
 
@@ -1805,7 +1811,7 @@ class TransducerSlot:
                 f'factor {eq_factor:.4f}) -- must be between {press_min:.2f} and ' +
                 f'{press_max:.2f} [MPa] for this chosen focal depth. Change input value.')
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSValidationError(message)
 
         if calc_ampl > 100:
             clamped_ampl = [100]
@@ -1820,7 +1826,11 @@ class TransducerSlot:
                        f'of {format_or_unavailable(volt_for_msg[0])} [V] will result in an ' +
                        'amplitude of 100% at the current focal depth. Change input value.')
             get_logger().critical(message)
-            sys.exit(message)
+            # FDSValidationError, not FDSSafetyError: 100% is the hardware's own ceiling (like
+            # the domain checks above), not a configurable safety margin below some higher
+            # achievable value -- unlike _enforce_max_pressure, there's no "this is achievable
+            # but not allowed" distinction to make here.
+            raise FDSValidationError(message)
 
         if calc_ampl < 0:
             get_logger().debug(
@@ -1876,7 +1886,7 @@ class TransducerSlot:
                 message = (f'Voltage of {v} [V] is outside of pp limits ({x_min:.2f} - ' +
                            f'{x_max:.2f} [V]). Change input value.')
                 get_logger().critical(message)
-                sys.exit(message)
+                raise FDSValidationError(message)
 
             if calc_ampl > 100:
                 # Provisional values, computed purely to describe the rejected request in the
@@ -1890,7 +1900,9 @@ class TransducerSlot:
                            'amplitude of 100% at the current focal depth. Change input value.')
 
                 get_logger().critical(message)
-                sys.exit(message)
+                # FDSValidationError, not FDSSafetyError -- see the matching comment in
+                # _convert_press_to_ampl().
+                raise FDSValidationError(message)
 
             if calc_ampl < 0:
                 get_logger().debug(
@@ -1923,7 +1935,7 @@ class TransducerSlot:
                        f'amplitude value -- got {len(ampl)} entries, which has no one ' +
                        'pressure that represents the whole array.')
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSInternalError(message)
 
         target_y_value = ampl[0]
         press_pa_with_eq_fact, status = find_x_for_y_in_pp(self._conv_param['power_curve_pp'],
@@ -1942,18 +1954,20 @@ class TransducerSlot:
         """
         Calls _convert_ampl_to_press() purely to produce a log line (the value actually sent to
         hardware was already determined independently by the caller). If the derived pressure
-        exceeds the configured maximum, _convert_ampl_to_press() exits -- the whole request is
+        exceeds the configured maximum, _convert_ampl_to_press() raises -- the whole request is
         being rejected in that case, so self._press (every caller assigns this method's return
         value to it) and `sibling_fields` (e.g. '_volt', '_ampl') are all cleared to None too, so
-        none of them look like a valid, current result afterwards, before the exit is re-raised.
-        This clearing used to happen inside _convert_ampl_to_press() itself (an upfront
-        self._press = None reset) -- now that it's a pure function with no self._press of its
-        own to protect, this wrapper is what has to guarantee it instead.
+        none of them look like a valid, current result afterwards, before the exception is
+        re-raised. _convert_ampl_to_press() used to do this itself, unconditionally resetting
+        self._press to None before attempting the conversion and overwriting it with the real
+        value on success. Now that it's a pure function with no self._press of its own to
+        protect, that reset moved here -- from an unconditional upfront assignment to an
+        explicit one in this except block, run only on the failure path.
 
         Parameters:
             ampl (list(float)): Amplitude [%] to derive the pressure from.
             eq_factor (float): Equalization factor [-] for the current focal depth.
-            sibling_fields (str): Names of self's attributes to clear to None on exit.
+            sibling_fields (str): Names of self's attributes to clear to None when this raises.
 
         Returns:
             float or None: See _convert_ampl_to_press().
@@ -1961,7 +1975,7 @@ class TransducerSlot:
 
         try:
             return self._convert_ampl_to_press(ampl, eq_factor)
-        except SystemExit:
+        except FDSError:
             self._press = None
             for field in sibling_fields:
                 setattr(self, field, None)
