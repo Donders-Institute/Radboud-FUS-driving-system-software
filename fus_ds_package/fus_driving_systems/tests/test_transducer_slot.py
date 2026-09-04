@@ -318,7 +318,7 @@ def test_convert_ampl_to_press_exits_when_given_more_than_one_amplitude_value():
 
 
 # --- _non_engineering_options -------------------------------------------------
-# Used to make an "engineering_mode required" RuntimeError actionable -- naming a hardcoded
+# Used to make an "engineering_mode required" FDSValidationError actionable -- naming a hardcoded
 # alternative could be wrong (not offered by this driving system, or also engineering-only for
 # this institution), so it's computed from the driving system's own options instead.
 
@@ -353,7 +353,7 @@ def test_volt_setter_names_available_alternatives_when_engineering_mode_disabled
         'Global power [mW]', 'Max. pressure in free water [MPa]', 'Voltage [V]',
         'Amplitude [%]'])
 
-    with pytest.raises(RuntimeError) as exc_info:
+    with pytest.raises(FDSValidationError) as exc_info:
         slot._set_volt(50)
     message = str(exc_info.value)
     assert 'Global power [mW]' in message
@@ -378,7 +378,7 @@ def test_global_power_setter_raises_when_configured_as_engineering_only(patch_co
     slot._engineering_mode = False
     slot.driving_sys = SimpleNamespace(power_options=['Global power [mW]'])
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(FDSValidationError):
         slot._set_global_power(5)
 
 
@@ -468,7 +468,7 @@ def test_press_setter_raises_when_configured_as_engineering_only(patch_config):
     slot._engineering_mode = False
     slot.driving_sys = SimpleNamespace(power_options=['Max. pressure in free water [MPa]'])
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(FDSValidationError):
         slot._set_press(0.5)
 
 
@@ -634,7 +634,7 @@ def test_volt_setter_raises_when_engineering_mode_disabled(patch_config):
     slot._engineering_mode = False
     slot.driving_sys = SimpleNamespace(power_options=['Voltage [V]'])
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(FDSValidationError):
         slot._set_volt(50)
 
 
@@ -873,7 +873,7 @@ def test_ampl_setter_raises_when_engineering_mode_disabled(patch_config):
     slot._engineering_mode = False
     slot.driving_sys = SimpleNamespace(power_options=['Amplitude [%]'])
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(FDSValidationError):
         slot._set_ampl(50)
 
 
@@ -1045,7 +1045,7 @@ def test_focus_wrt_exit_plane_setter_raises_when_configured_as_engineering_only(
     slot._engineering_mode = False
     slot.driving_sys = SimpleNamespace(focus_options=['Focus wrt exit plane [mm]'])
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(FDSValidationError):
         slot._set_focus_wrt_exit_plane(20)
 
 
@@ -1260,7 +1260,7 @@ def test_focus_wrt_mid_bowl_setter_raises_when_engineering_mode_disabled(patch_c
     slot._engineering_mode = False
     slot.driving_sys = SimpleNamespace(focus_options=['Focus wrt mid bowl [mm]'])
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(FDSValidationError):
         slot._set_focus_wrt_mid_bowl(25)
 
 
@@ -1509,7 +1509,7 @@ def test_set_focus_xyz_mid_bowl_raises_when_engineering_mode_disabled(patch_conf
         focus_options=['Focus xyz wrt mid bowl [mm]'],
         native_focus_params=['Focus xyz wrt mid bowl [mm]'])
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(FDSValidationError):
         slot._set_focus_xyz('Focus xyz wrt mid bowl [mm]', (0, 0, 30))
 
 

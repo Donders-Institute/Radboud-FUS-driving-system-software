@@ -637,9 +637,11 @@ class TransducerSlot:
                                         'Global power [mW]')
 
         if self._requires_engineering_mode('Power', power_option) and not self._engineering_mode:
-            raise RuntimeError(
-                f'{power_option} mode is disabled. Enable engineering_mode, or use one of ' +
-                f'the following options instead: {self._non_engineering_options("Power")}.')
+            message = (f'{power_option} mode is disabled. Enable engineering_mode, or use ' +
+                       'one of the following options instead: ' +
+                       f'{self._non_engineering_options("Power")}.')
+            get_logger().critical(message)
+            raise FDSValidationError(message)
 
         if power_option in self.driving_sys.power_options:
             validate_value(global_power, 'Global power [W] (global_power)',
@@ -681,9 +683,11 @@ class TransducerSlot:
                                         'Max. pressure in free water [MPa]')
 
         if self._requires_engineering_mode('Power', power_option) and not self._engineering_mode:
-            raise RuntimeError(
-                f'{power_option} mode is disabled. Enable engineering_mode, or use one of ' +
-                f'the following options instead: {self._non_engineering_options("Power")}.')
+            message = (f'{power_option} mode is disabled. Enable engineering_mode, or use ' +
+                       'one of the following options instead: ' +
+                       f'{self._non_engineering_options("Power")}.')
+            get_logger().critical(message)
+            raise FDSValidationError(message)
 
         if power_option in self.driving_sys.power_options:
             # Fail fast: check whether this driving system can accept press at all before
@@ -760,9 +764,11 @@ class TransducerSlot:
             get_logger(), config, 'Power', 'Option.volt', 'Voltage [V]')
 
         if self._requires_engineering_mode('Power', power_option) and not self._engineering_mode:
-            raise RuntimeError(
-                f'{power_option} mode is disabled. Enable engineering_mode, or use one of ' +
-                f'the following options instead: {self._non_engineering_options("Power")}.')
+            message = (f'{power_option} mode is disabled. Enable engineering_mode, or use ' +
+                       'one of the following options instead: ' +
+                       f'{self._non_engineering_options("Power")}.')
+            get_logger().critical(message)
+            raise FDSValidationError(message)
 
         if power_option in self.driving_sys.power_options:
             # Fail fast: check whether this driving system can accept volt at all before
@@ -870,9 +876,11 @@ class TransducerSlot:
                                         'Option.ampl', 'Amplitude [%]')
 
         if self._requires_engineering_mode('Power', power_option) and not self._engineering_mode:
-            raise RuntimeError(
-                f'{power_option} mode is disabled. Enable engineering_mode, or use one of ' +
-                f'the following options instead: {self._non_engineering_options("Power")}.')
+            message = (f'{power_option} mode is disabled. Enable engineering_mode, or use ' +
+                       'one of the following options instead: ' +
+                       f'{self._non_engineering_options("Power")}.')
+            get_logger().critical(message)
+            raise FDSValidationError(message)
 
         if power_option in self.driving_sys.power_options:
             # Fail fast: check whether this driving system can accept ampl at all before
@@ -1145,9 +1153,11 @@ class TransducerSlot:
                                         'Focus wrt exit plane [mm]')
 
         if self._requires_engineering_mode('Focus', focus_option) and not self._engineering_mode:
-            raise RuntimeError(
-                f'{focus_option} mode is disabled. Enable engineering_mode, or use one of ' +
-                f'the following options instead: {self._non_engineering_options("Focus")}.')
+            message = (f'{focus_option} mode is disabled. Enable engineering_mode, or use ' +
+                       'one of the following options instead: ' +
+                       f'{self._non_engineering_options("Focus")}.')
+            get_logger().critical(message)
+            raise FDSValidationError(message)
 
         if focus_option not in self.driving_sys.focus_options:
             message = ('Focus wrt exit plane parameter is not available for ' +
@@ -1271,9 +1281,11 @@ class TransducerSlot:
                                         'Focus wrt mid bowl [mm]')
 
         if self._requires_engineering_mode('Focus', focus_option) and not self._engineering_mode:
-            raise RuntimeError(
-                f'{focus_option} mode is disabled. Enable engineering_mode, or use one of ' +
-                f'the following options instead: {self._non_engineering_options("Focus")}.')
+            message = (f'{focus_option} mode is disabled. Enable engineering_mode, or use ' +
+                       'one of the following options instead: ' +
+                       f'{self._non_engineering_options("Focus")}.')
+            get_logger().critical(message)
+            raise FDSValidationError(message)
 
         if focus_option not in self.driving_sys.focus_options:
             message = ('Focus wrt mid bowl parameter is not available for ' +
@@ -1426,9 +1438,11 @@ class TransducerSlot:
             raise FDSValidationError(message)
 
         if self._requires_engineering_mode('Focus', focus_option) and not self._engineering_mode:
-            raise RuntimeError(
-                f'{focus_option} mode is disabled. Enable engineering_mode, or use one of ' +
-                f'the following options instead: {self._non_engineering_options("Focus")}.')
+            message = (f'{focus_option} mode is disabled. Enable engineering_mode, or use ' +
+                       'one of the following options instead: ' +
+                       f'{self._non_engineering_options("Focus")}.')
+            get_logger().critical(message)
+            raise FDSValidationError(message)
 
         if focus_option not in self.driving_sys.focus_options:
             message = (f'{focus_option} is not available for ' +

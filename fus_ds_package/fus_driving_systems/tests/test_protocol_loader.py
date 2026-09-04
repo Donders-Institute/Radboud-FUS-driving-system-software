@@ -129,7 +129,7 @@ total_alternating_duration_ms: 80000
     def test_engineering_mode_python_parameter_reaches_every_protocol(self, tmp_path):
         """engineering_mode is deliberately not a file field -- confirm the Python-level
         parameter actually reaches TUSProtocol, by using an engineering-only power option
-        ('Voltage [V]') that would otherwise raise RuntimeError."""
+        ('Voltage [V]') that would otherwise raise FDSValidationError."""
         path = _write_yaml(tmp_path, f"""
 driving_sys_serial: {DS_SERIAL}
 protocols:
@@ -412,9 +412,8 @@ protocols:
 
     def test_engineering_only_power_option_without_engineering_mode_surfaces_the_existing_error(
             self, tmp_path):
-        """Unlike most other TUSProtocol/add_slot() validation failures (FDSValidationError),
-        engineering-mode violations specifically raise RuntimeError -- confirm load_protocol()
-        lets that propagate unchanged too, rather than converting or swallowing it."""
+        """Confirm load_protocol() lets TUSProtocol/add_slot()'s engineering-mode violation
+        propagate unchanged, rather than converting or swallowing it."""
         path = _write_yaml(tmp_path, f"""
 driving_sys_serial: {DS_SERIAL}
 protocols:
@@ -428,7 +427,7 @@ protocols:
       pulse_dur: 45
 """)
 
-        with pytest.raises(RuntimeError) as exc_info:
+        with pytest.raises(FDSValidationError) as exc_info:
             load_protocol(path)
 
         assert 'engineering_mode' in str(exc_info.value).lower()
