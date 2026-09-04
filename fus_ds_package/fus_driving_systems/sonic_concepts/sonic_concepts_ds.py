@@ -12,7 +12,6 @@ https://github.com/Donders-Institute/Radboud-FUS-driving-system-software.
 
 # Basis packages
 import re
-import sys
 import time
 import tkinter
 
@@ -26,6 +25,8 @@ from fus_driving_systems import control_driving_system as ds
 from fus_driving_systems.config.config import config_info as config
 from fus_driving_systems.config.logging_config import get_logger
 from fus_driving_systems.utils import get_config_value
+from fus_driving_systems.exceptions import (FDSHardwareError, FDSInternalError, FDSSafetyError,
+                                            FDSValidationError)
 
 
 class SonicConcepts(ds.ControlDrivingSystem):
@@ -59,10 +60,46 @@ class SonicConcepts(ds.ControlDrivingSystem):
             self._connected = False
             message = "Error E2; connection cannot be made with driving system"
             get_logger().critical(message)
-            sys.exit(message)
-        else:
-            self._connected = True
-            get_logger().debug("Connection with driving system %s is established", startup_message)
+            raise FDSHardwareError(message)
+
+        self._connected = True
+        get_logger().debug("Connection with driving system %s is established", startup_message)
+
+    def validate_protocol(self, protocol):
+        """
+        Validates if the protocol is within the expected ranges.
+
+        Parameters:
+            protocol(Object): a TUSProtocol instance containing, amongst other things:
+                the timing/power/focus parameters (focus, pulse duration, pulse rep. interval
+                and etcetera) and the equipment used (driving system and transducer)
+
+        Returns:
+            List: List of error messages.
+        """
+
+        error_messages = super().validate_protocol(protocol)
+
+        # send_protocol() only ever reads protocol.slots[0] -- this driving system only ever
+        # requires a single transducer slot.
+        slot = protocol.slots[0]
+        if slot.global_power is None:
+            slot_ref = ("transducer slot 0 (counting from 0, i.e. protocol.slots[0]; " +
+                        f"{slot.transducer.serial})")
+            if slot.chosen_power is None:
+                # Never configured at all -- distinct from having chosen a different,
+                # non-'Global power [mW]' option (below): there is no "wrong option" to name
+                # here, so say so directly instead of awkwardly working 'power not yet
+                # configured' into the "chosen option is ..." phrasing meant for the other case.
+                error_messages.append(
+                    f"No power option has been configured yet for {slot_ref} -- this driving " +
+                    "system requires 'Global power [mW]'.")
+            else:
+                error_messages.append(
+                    f"Chosen power option for {slot_ref} is {slot.chosen_power}, but this " +
+                    "driving system only supports 'Global power [mW]'.")
+
+        return error_messages
 
     def send_protocol(self, protocol):
         """
@@ -111,10 +148,10 @@ class SonicConcepts(ds.ControlDrivingSystem):
         Arms the previously sent protocol to fire on an external trigger, instead of firing
         immediately via execute_protocol().
 
-        Exits with a clear message if send_protocol() hasn't been called yet -- unlike a
-        dropped connection (which reconnects and resends automatically, since that's an
-        external failure rather than a caller mistake), this method never sends on the
-        caller's behalf.
+        Raises FDSValidationError with a clear message if send_protocol() hasn't been called
+        yet -- unlike a dropped connection (which reconnects and resends automatically, since
+        that's an external failure rather than a caller mistake), this method never sends on
+        the caller's behalf.
 
         Parameters:
             protocol(Object): Same protocol already passed to send_protocol().
@@ -129,7 +166,7 @@ class SonicConcepts(ds.ControlDrivingSystem):
             message = ('No protocol has been sent yet -- call send_protocol() before ' +
                        'wait_for_trigger().')
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSValidationError(message)
 
         if self.is_connected():
             self._send_command('TRIGGERMODE=1\r\n')
@@ -146,10 +183,10 @@ class SonicConcepts(ds.ControlDrivingSystem):
         """
         Executes the previously sent protocol on the Sonic Concepts ultrasound driving system.
 
-        Exits with a clear message if send_protocol() hasn't been called yet -- unlike a
-        dropped connection (which reconnects and resends automatically, since that's an
-        external failure rather than a caller mistake), this method never sends on the
-        caller's behalf.
+        Raises FDSValidationError with a clear message if send_protocol() hasn't been called
+        yet -- unlike a dropped connection (which reconnects and resends automatically, since
+        that's an external failure rather than a caller mistake), this method never sends on
+        the caller's behalf.
         """
 
         get_logger().info('Executing protocol...')
@@ -161,7 +198,7 @@ class SonicConcepts(ds.ControlDrivingSystem):
             message = ('No protocol has been sent yet -- call send_protocol() before ' +
                        'execute_protocol().')
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSValidationError(message)
 
         if self.is_connected():
             try:
@@ -174,7 +211,7 @@ class SonicConcepts(ds.ControlDrivingSystem):
             except serial.SerialException as why:
                 message = f"Exception: {why}"
                 get_logger().critical(message)
-                sys.exit(message)
+                raise FDSHardwareError(message) from why
 
         else:
             get_logger().warning("No connection with driving system.")
@@ -218,7 +255,7 @@ class SonicConcepts(ds.ControlDrivingSystem):
         if response == 'E2':
             message = "Error E2"
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSHardwareError(message)
 
         return response
 
@@ -286,9 +323,13 @@ class SonicConcepts(ds.ControlDrivingSystem):
             command = f'GLOBALPOWER={global_power}\r\n'
             self._send_command(command, 0.1)
         else:
+            # Should never happen: validate_protocol()'s own slot.global_power is None check
+            # (run via _validate_or_raise() in send_protocol(), before _set_global_power() is
+            # ever called) already rejects this. A guard against a bug in this package itself,
+            # not a caller mistake.
             message = "Power parameter may be set incorrectly. Global power is None."
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSInternalError(message)
 
     def _set_burst_length(self, burst):
         """
@@ -388,7 +429,7 @@ class SonicConcepts(ds.ControlDrivingSystem):
             else:
                 message = f"Unknown modulation value: {ramp_mode}"
                 get_logger().critical(message)
-                sys.exit(message)
+                raise FDSValidationError(message)
 
             command = f'RAMPMODE={ramp_mode}\r\n'
             self._send_command(command)
@@ -418,6 +459,10 @@ class SonicConcepts(ds.ControlDrivingSystem):
         if response == 'Confirm':
             get_logger().debug("Correct transducer selection is confirmed.")
         else:
-            message = "Pipeline is cancelled by user."
+            # Not a data-validation issue: proceeding without confirmation risks physically
+            # firing a protocol built for one transducer through a different one actually
+            # selected on the driving system -- a genuine safety concern, not a caller mistake.
+            message = ("Transducer selection was not confirmed -- refusing to proceed until " +
+                       "the correct transducer is selected on the driving system.")
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSSafetyError(message)

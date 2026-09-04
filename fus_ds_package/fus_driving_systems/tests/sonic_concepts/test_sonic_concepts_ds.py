@@ -10,6 +10,9 @@ the connected_instance fixture bypasses connect() entirely for those.
 import pytest
 import serial
 
+from fus_driving_systems.exceptions import (FDSHardwareError, FDSInternalError, FDSSafetyError,
+                                            FDSValidationError)
+
 
 def test_connect_establishes_connection_on_normal_response(mock_serial):
     from fus_driving_systems.sonic_concepts.sonic_concepts_ds import SonicConcepts
@@ -22,12 +25,12 @@ def test_connect_establishes_connection_on_normal_response(mock_serial):
     assert instance.protocol_sent is False
 
 
-def test_connect_exits_on_e2_response(mock_serial):
+def test_connect_raises_on_e2_response(mock_serial):
     from fus_driving_systems.sonic_concepts.sonic_concepts_ds import SonicConcepts
     mock_serial.readline.return_value = b'E2\n'
     instance = SonicConcepts()
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSHardwareError):
         instance.connect('COM3')
     assert instance._connected is False
 
@@ -41,10 +44,10 @@ def test_send_command_writes_and_returns_response(connected_instance):
     assert response == 'OK'
 
 
-def test_send_command_exits_on_e2_response(connected_instance):
+def test_send_command_raises_on_e2_response(connected_instance):
     connected_instance.gen.readline.return_value = b'E2\n'
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSHardwareError):
         connected_instance._send_command('FOO=1\r\n', sleep_time_s=0)
 
 
@@ -66,8 +69,12 @@ def test_set_global_power_converts_w_to_mw(mocker, connected_instance):
     mock_send.assert_called_once_with('GLOBALPOWER=2000.0\r\n', 0.1)
 
 
-def test_set_global_power_exits_when_none(connected_instance):
-    with pytest.raises(SystemExit):
+def test_set_global_power_raises_when_none(connected_instance):
+    """Regression test: this is a should-never-happen internal guard now -- validate_protocol()'s
+    own slot.global_power is None check (run via _validate_or_raise() in send_protocol(), before
+    _set_global_power() is ever called) already rejects this via the public send_protocol() path.
+    Calling the private setter directly, as here, bypasses that and hits the guard itself."""
+    with pytest.raises(FDSInternalError):
         connected_instance._set_global_power(None)
 
 
@@ -134,13 +141,13 @@ def test_set_ramping_rectangular_resets_and_aborts(mocker, connected_instance, p
     mock_send.assert_called_once_with('ABORT\r\n', 0.1)
 
 
-def test_set_ramping_unknown_mode_exits(mocker, connected_instance, patch_config):
+def test_set_ramping_unknown_mode_raises(mocker, connected_instance, patch_config):
     patch_config.set('Ramp', 'Option.rect', 'Rectangular - no ramping')
     patch_config.set('Ramp', 'Option.lin', 'Linear')
     patch_config.set('Ramp', 'Option.tuk', 'Tukey')
     mocker.patch.object(connected_instance, '_send_command')
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSValidationError):
         connected_instance._set_ramping('Something else', 10)
 
 
@@ -231,7 +238,7 @@ def test_reset_ramping_sends_abort_then_rampmode_zero(mocker, connected_instance
     ]
 
 
-def test_check_tran_sel_confirm_does_not_exit(mocker, connected_instance):
+def test_check_tran_sel_confirm_does_not_raise(mocker, connected_instance):
     mocker.patch('fus_driving_systems.sonic_concepts.sonic_concepts_ds.tkinter.Tk')
     mock_box = mocker.patch(
         'fus_driving_systems.sonic_concepts.sonic_concepts_ds.CTkMessagebox')
@@ -240,13 +247,13 @@ def test_check_tran_sel_confirm_does_not_exit(mocker, connected_instance):
     connected_instance.check_tran_sel()  # must not raise
 
 
-def test_check_tran_sel_cancel_exits(mocker, connected_instance):
+def test_check_tran_sel_cancel_raises(mocker, connected_instance):
     mocker.patch('fus_driving_systems.sonic_concepts.sonic_concepts_ds.tkinter.Tk')
     mock_box = mocker.patch(
         'fus_driving_systems.sonic_concepts.sonic_concepts_ds.CTkMessagebox')
     mock_box.return_value.get.return_value = 'Cancel'
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSSafetyError):
         connected_instance.check_tran_sel()
 
 
@@ -290,20 +297,90 @@ def test_send_protocol_calls_setters_in_order_and_marks_sent(mocker, connected_i
     ]
 
 
-def test_send_protocol_exits_when_validation_produces_errors(mocker, connected_instance):
+def test_validate_protocol_flags_global_power_none(mocker, connected_instance):
+    """This driving system only ever reads protocol.slots[0].global_power (send_protocol()
+    unconditionally calls _set_global_power(slot.global_power)) -- nothing enforces that the
+    chosen power option is actually 'Global power [mW]', so a slot configured with a different
+    option (e.g. one meant for a different driving system) reaches here with global_power still
+    at its unset None default. The message must name what was actually chosen, not just that
+    something is wrong."""
+    fake_protocol = mocker.Mock()
+    fake_protocol.slots = [mocker.Mock(global_power=None, chosen_power='Amplitude [%]',
+                                       transducer=mocker.Mock(serial='TRAN-A'))]
+    fake_protocol.pulse_dur = 1
+    fake_protocol.pulse_rep_int = 2
+    fake_protocol.pulse_train_dur = 10
+    fake_protocol.pulse_train_rep_int = 10
+    fake_protocol.pulse_train_rep_dur = 10
+
+    errors = connected_instance.validate_protocol(fake_protocol)
+
+    assert len(errors) == 1
+    assert 'Amplitude [%]' in errors[0]
+    assert "'Global power [mW]'" in errors[0]
+
+
+def test_validate_protocol_flags_global_power_none_when_never_configured(
+        mocker, connected_instance):
+    """Mirrors test_validate_protocol_flags_global_power_none, for the other way
+    global_power can be None: the slot's power was never configured at all (chosen_power is
+    also still None), not configured with some other, wrong option. Gets its own distinct
+    message -- there is no "wrong option" to name here, so it must say so directly rather than
+    awkwardly working a 'chosen option is ...' phrasing around a None/placeholder value."""
+    fake_protocol = mocker.Mock()
+    fake_protocol.slots = [mocker.Mock(global_power=None, chosen_power=None,
+                                       transducer=mocker.Mock(serial='TRAN-A'))]
+    fake_protocol.pulse_dur = 1
+    fake_protocol.pulse_rep_int = 2
+    fake_protocol.pulse_train_dur = 10
+    fake_protocol.pulse_train_rep_int = 10
+    fake_protocol.pulse_train_rep_dur = 10
+
+    errors = connected_instance.validate_protocol(fake_protocol)
+
+    assert len(errors) == 1
+    assert 'No power option has been configured yet' in errors[0]
+    assert "'Global power [mW]'" in errors[0]
+
+
+def test_send_protocol_raises_before_touching_hardware_when_global_power_is_none(
+        mocker, connected_instance):
+    """Regression test: this check used to only surface deep inside _set_global_power(), after
+    _reset_parameters()/_set_operating_freq()/_set_focus() had already sent several commands to
+    the physical hardware. Now caught by validate_protocol() up front, before anything is sent."""
+    mock_reset = mocker.patch.object(connected_instance, '_reset_parameters')
+    mock_send_command = mocker.patch.object(connected_instance, '_send_command')
+
+    fake_protocol = mocker.Mock()
+    fake_protocol.slots = [mocker.Mock(global_power=None, chosen_power='Amplitude [%]',
+                                       transducer=mocker.Mock(serial='TRAN-A'))]
+    fake_protocol.pulse_dur = 1
+    fake_protocol.pulse_rep_int = 2
+    fake_protocol.pulse_train_dur = 10
+    fake_protocol.pulse_train_rep_int = 10
+    fake_protocol.pulse_train_rep_dur = 10
+
+    with pytest.raises(FDSValidationError, match='Amplitude'):
+        connected_instance.send_protocol(fake_protocol)
+
+    mock_reset.assert_not_called()
+    mock_send_command.assert_not_called()
+
+
+def test_send_protocol_raises_when_validation_produces_errors(mocker, connected_instance):
     """Regression test: send_protocol previously never called
     validate_protocol at all, so a malformed protocol would silently be
     accepted instead of failing loudly like IGT already does."""
     mocker.patch.object(connected_instance, '_reset_parameters')
 
     fake_protocol = mocker.Mock()
+    fake_protocol.slots = [mocker.Mock(global_power=2, transducer=mocker.Mock(serial='TRAN-A'))]
     fake_protocol.pulse_dur = 1
     fake_protocol.pulse_rep_int = 2
     fake_protocol.pulse_train_dur = 11  # not a whole multiple of pulse_rep_int
     fake_protocol.pulse_train_rep_int = 10
     fake_protocol.pulse_train_rep_dur = 10
 
-    from fus_driving_systems.exceptions import FDSValidationError
     with pytest.raises(FDSValidationError):
         connected_instance.send_protocol(fake_protocol)
 
@@ -347,12 +424,12 @@ def test_wait_for_trigger_sends_triggermode_when_protocol_sent(mocker, connected
     mock_send_command.assert_called_once_with('TRIGGERMODE=1\r\n')
 
 
-def test_wait_for_trigger_exits_when_not_yet_sent(mocker, connected_instance):
+def test_wait_for_trigger_raises_when_not_yet_sent(mocker, connected_instance):
     connected_instance.protocol_sent = False
     mock_send_command = mocker.patch.object(connected_instance, '_send_command')
     mock_send_protocol = mocker.patch.object(connected_instance, 'send_protocol')
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSValidationError):
         connected_instance.wait_for_trigger(mocker.Mock())
 
     mock_send_protocol.assert_not_called()
@@ -365,7 +442,7 @@ def test_wait_for_trigger_reconnects_when_not_connected(mocker):
     here means connect() + send_protocol() + wait_for_trigger() all get retried. Only reached
     once a protocol is already known to have been sent -- it recovers a dropped connection
     after a real send, it doesn't fill in for a caller who never sent anything at all (see
-    test_wait_for_trigger_exits_when_not_yet_sent above)."""
+    test_wait_for_trigger_raises_when_not_yet_sent above)."""
     from fus_driving_systems.sonic_concepts.sonic_concepts_ds import SonicConcepts
     instance = SonicConcepts()
     instance._connected = False
@@ -399,22 +476,22 @@ def test_execute_protocol_writes_start_command_when_protocol_sent(connected_inst
     connected_instance.gen.write.assert_called_once_with(b'START\r')
 
 
-def test_execute_protocol_exits_on_exception(connected_instance):
+def test_execute_protocol_raises_on_exception(connected_instance):
     """serial.SerialException, not a bare OSError -- that's the real exception pyserial raises
     on an I/O failure, and the one this method's except clause now specifically catches (it used
     to catch bare Exception)."""
     connected_instance.protocol_sent = True
     connected_instance.gen.write.side_effect = serial.SerialException('boom')
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSHardwareError):
         connected_instance.execute_protocol(None)
 
 
-def test_execute_protocol_exits_when_not_yet_sent(mocker, connected_instance):
+def test_execute_protocol_raises_when_not_yet_sent(mocker, connected_instance):
     connected_instance.protocol_sent = False
     mock_send_protocol = mocker.patch.object(connected_instance, 'send_protocol')
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSValidationError):
         connected_instance.execute_protocol(mocker.Mock())
 
     mock_send_protocol.assert_not_called()
@@ -427,7 +504,7 @@ def test_execute_protocol_reconnects_when_not_connected(mocker):
     above) -- not connected here means connect() + send_protocol() +
     execute_protocol() all get retried. Only reached once a protocol is already known to have
     been sent -- it recovers a dropped connection after a real send, it doesn't fill in for a
-    caller who never sent anything at all (see test_execute_protocol_exits_when_not_yet_sent
+    caller who never sent anything at all (see test_execute_protocol_raises_when_not_yet_sent
     above)."""
     from fus_driving_systems.sonic_concepts.sonic_concepts_ds import SonicConcepts
     instance = SonicConcepts()
