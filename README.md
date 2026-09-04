@@ -460,6 +460,12 @@ def disconnect(self):
 
 You can add additional helper methods as needed to support your implementation.
 
+#### Error Handling
+
+This package signals failures by raising exceptions from `fus_driving_systems.exceptions`, not by exiting the process: `FDSValidationError` (invalid caller input), `FDSSafetyError` (a value that would be unsafe to actually send to hardware), `FDSHardwareError` (an SDK/hardware/OS failure), `FDSConfigError` (broken or missing static configuration), and `FDSInternalError` (a should-never-happen internal bug) -- all inherit from a common `FDSError`. When implementing a new manufacturer module, log via `get_logger().critical(...)` and raise whichever of these matches the failure, rather than calling `sys.exit()` or raising a bare/builtin exception.
+
+Every standalone example script wraps its own body in `except FDSError as e: sys.exit(str(e))`, so any of these still produce today's clean, single-line command-line output when run directly.
+
 ### Step 3: Create a Standalone Script
 
 1. Create a new scenario folder under [example_protocols/](example_protocols) (e.g., `example_protocols/your_manufacturer/`), or add a manufacturer subfolder to an existing scenario if it fits one already.
