@@ -150,8 +150,7 @@ def extract_and_define_pp(json_dir, return_breaks=False):
         get_logger().warning(f'Error converting xTransform to numpy array: {ve}')
     except FDSConfigError:
         # Re-raise as-is -- the broad except Exception below would otherwise silently swallow
-        # this deliberate raise (FDSConfigError is an Exception subclass, unlike the SystemExit
-        # this used to be), turning a hard config error into an unrelated warning.
+        # this deliberate raise, turning a hard config error into an unrelated warning.
         raise
     except Exception as e:
         get_logger().warning(f'Unknown error checking for xTransform: {str(e)}')

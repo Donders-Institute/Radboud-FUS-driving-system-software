@@ -12,7 +12,6 @@ https://github.com/Donders-Institute/Radboud-FUS-driving-system-software.
 
 # Basis packages
 import os
-import sys
 import time
 
 # Miscellaneous packages
@@ -34,6 +33,8 @@ from fus_driving_systems.igt import unifus
 from fus_driving_systems.utils import get_config_value
 from fus_driving_systems.calc_utils import validate_value
 from fus_driving_systems.transducer_slot import get_max_pressure
+from fus_driving_systems.exceptions import (FDSConfigError, FDSError, FDSHardwareError,
+                                            FDSInternalError, FDSSafetyError, FDSValidationError)
 
 # Access the logger
 from fus_driving_systems.config.logging_config import (enable_crash_detection, get_logger,
@@ -213,8 +214,8 @@ class IGT(ds.ControlDrivingSystem):
 
         Returns:
             bool: True once connected (whether newly connected or already connected).
-            Unrecoverable errors still exit the program (see GitHub issue #61 -- returning
-            False instead is a separate, later change).
+            Unrecoverable errors raise FDSHardwareError/FDSConfigError instead of returning False
+            (GitHub issue #61).
         """
 
         # Only checked on the initial, externally-invoked call (attempt == 0) -- an internal
@@ -288,7 +289,7 @@ class IGT(ds.ControlDrivingSystem):
         except Exception as e:
             message = f'Error initializing FUSSystem: {e}'
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSHardwareError(message) from e
 
         try:
             # A prefix so the native IGT log sorts and reads alongside this package's
@@ -315,7 +316,7 @@ class IGT(ds.ControlDrivingSystem):
         except Exception as e:
             message = f"Error loading configuration: {e}"
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSConfigError(message) from e
 
         try:
             # Create and register an event listener
@@ -335,35 +336,40 @@ class IGT(ds.ControlDrivingSystem):
                 time.sleep(reconnect_delay_s)
                 return self.connect(connect_info, log_dir, log_name, attempt=attempt+1)
 
-            message = f'Maximum amount of {max_attempts} for reconnecting is reached. Exit.'
+            message = f'Maximum amount of {max_attempts} for reconnecting is reached.'
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSHardwareError(message) from e
 
+        # Narrowly scoped to just the SDK calls -- the retry/raise logic below deliberately
+        # sits outside this try, so a nested FDSConfigError/FDSHardwareError from the recursive
+        # connect() call a few lines down propagates as-is instead of being caught and rewrapped
+        # by the except below.
         try:
-            if self.is_connected():
+            connected = self.is_connected()
+            if connected:
                 self.gen = self.fus.gen()
                 self.n_channels = self.gen.getParam(unifus.GenParam.ChannelCount)
-                get_logger().info("Driving system is connected. Generator: %s channels",
-                                  self.n_channels)
-                return True
-
-            get_logger().warning("Error: connection failed.")
-
-            if attempt < max_attempts:
-                get_logger().warning('Try to disconnect and reconnect...')
-                self.disconnect()
-                time.sleep(reconnect_delay_s)
-                return self.connect(connect_info, log_dir, log_name, attempt=attempt+1)
-
-            message = (f'Maximum amount of {max_attempts} for reconnecting is reached. ' +
-                       'Exit.')
-            get_logger().critical(message)
-            sys.exit(message)
-
         except Exception as e:
             message = f"Error after connection check: {e}"
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSHardwareError(message) from e
+
+        if connected:
+            get_logger().info("Driving system is connected. Generator: %s channels",
+                              self.n_channels)
+            return True
+
+        get_logger().warning("Error: connection failed.")
+
+        if attempt < max_attempts:
+            get_logger().warning('Try to disconnect and reconnect...')
+            self.disconnect()
+            time.sleep(reconnect_delay_s)
+            return self.connect(connect_info, log_dir, log_name, attempt=attempt+1)
+
+        message = f'Maximum amount of {max_attempts} for reconnecting is reached.'
+        get_logger().critical(message)
+        raise FDSHardwareError(message)
 
     def validate_protocol(self, protocol):
         """
@@ -444,7 +450,7 @@ class IGT(ds.ControlDrivingSystem):
             message = ('No transducer slot configured on this protocol -- call ' +
                        'protocol.add_slot(...) at least once before sending it.')
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSValidationError(message)
 
         total_elements = sum(slot.transducer.elements for slot in protocol.slots)
         if total_elements != protocol.driving_sys.available_ch:
@@ -452,7 +458,7 @@ class IGT(ds.ControlDrivingSystem):
                        f'does not match the combined elements of the {len(protocol.slots)} ' +
                        f'transducer slot(s) ({total_elements}).')
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSValidationError(message)
 
     def _assert_duration_given_when_interleaving(self, protocols,
                                                  total_alternating_duration_ms):
@@ -473,11 +479,12 @@ class IGT(ds.ControlDrivingSystem):
             message = ('total_alternating_duration_ms is required (and must be greater than 0) ' +
                        'when interleaving more than one protocol.')
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSValidationError(message)
 
     def _assert_valid_buffer_num(self, driving_sys, buffer_num):
         """
-        Exits with a clear message unless buffer_num is a valid buffer for driving_sys.
+        Raises FDSValidationError with a clear message unless buffer_num is a valid buffer for
+        driving_sys.
 
         Parameters:
             driving_sys (DrivingSystem): The driving system buffer_num is being validated
@@ -493,13 +500,13 @@ class IGT(ds.ControlDrivingSystem):
                        f'{driving_sys.serial} -- it has {driving_sys.max_buffers} buffer(s), ' +
                        f'so buffer_num must be between 0 and {driving_sys.max_buffers - 1}.')
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSValidationError(message)
 
     def _assert_matches_sent(self, protocols, buffer_num):
         """
-        Exits with a clear message unless `protocols` are (by identity, via the default list/
-        object equality Python already gives us) the exact objects send_protocol() was last
-        called with for this buffer.
+        Raises FDSValidationError with a clear message unless `protocols` are (by identity, via
+        the default list/object equality Python already gives us) the exact objects
+        send_protocol() was last called with for this buffer.
 
         is_protocol_sent(buffer_num) alone only proves *something* was sent to this buffer, not
         that these specific objects are it -- without this additional check, execute_protocol()/
@@ -521,12 +528,12 @@ class IGT(ds.ControlDrivingSystem):
                        f'{buffer_num} -- call send_protocol() again with these protocol(s) ' +
                        'first.')
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSValidationError(message)
 
     def _assert_not_reconfigured_since_send(self, protocols, buffer_num):
         """
-        Exits with a clear message if any protocol (its timing/ramping) or any of its slots has
-        been reconfigured since actually being sent to this buffer (e.g. protocol.
+        Raises FDSSafetyError with a clear message if any protocol (its timing/ramping) or any of
+        its slots has been reconfigured since actually being sent to this buffer (e.g. protocol.
         configure_timing()/slot.configure()/slot.update_transducer() called again, or slot.
         oper_freq/dephasing_degree set directly, after send_protocol(), without resending).
 
@@ -560,12 +567,12 @@ class IGT(ds.ControlDrivingSystem):
                 'system. Call send_protocol() again before proceeding, so it fires what you ' +
                 'now expect instead of the stale, previously sent configuration.')
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSSafetyError(message)
 
     def _assert_duration_matches_sent(self, protocols, buffer_num, total_alternating_duration_ms):
         """
-        Exits with a clear message if total_alternating_duration_ms doesn't match what this
-        buffer was actually sent with, when interleaving more than one protocol.
+        Raises FDSValidationError with a clear message if total_alternating_duration_ms doesn't
+        match what this buffer was actually sent with, when interleaving more than one protocol.
 
         Without this, a caller passing a different duration here than they used at
         send_protocol() would have it silently discarded rather than honored: execute_protocol()/
@@ -600,7 +607,7 @@ class IGT(ds.ControlDrivingSystem):
                     'send_protocol() again with this new duration first, or pass the ' +
                     'original value here.')
                 get_logger().critical(message)
-                sys.exit(message)
+                raise FDSValidationError(message)
 
     def _assert_ready_to_run(self, protocols, buffer_num, total_alternating_duration_ms, caller):
         """
@@ -626,7 +633,7 @@ class IGT(ds.ControlDrivingSystem):
             message = (f'No protocol has been sent to buffer {buffer_num} yet -- call ' +
                        f'send_protocol() before {caller}().')
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSValidationError(message)
 
         self._assert_matches_sent(protocols, buffer_num)
         self._assert_not_reconfigured_since_send(protocols, buffer_num)
@@ -795,7 +802,7 @@ class IGT(ds.ControlDrivingSystem):
             message = ('All protocols given to interleave must use the same ramping -- got ' +
                        f'{ramp_settings}.')
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSValidationError(message)
 
         for protocol in protocols:
             tran_serials = ', '.join(slot.transducer.serial for slot in protocol.slots)
@@ -859,28 +866,40 @@ class IGT(ds.ControlDrivingSystem):
             # guaranteed to declare the same values, enforced above).
             rect_ramp = get_config_value(get_logger(), config, 'Ramp', 'Option.rect',
                                          'Rectangular - no ramping')
-            if protocol0.pulse_ramp_shape != rect_ramp:
-                self._apply_ramping(protocol0)
-            else:
-                self.gen.setPulseModulation([], 0, [], 0)  # disable any modulation
-                self.gen.setPulseRamp(unifus.PulseRamp.Rising, 0)
-                self.gen.setPulseRamp(unifus.PulseRamp.Falling, 0)
 
-            # (optional) restore disabled channels
-            self.gen.enableAllChannels()
+            try:
+                if protocol0.pulse_ramp_shape != rect_ramp:
+                    self._apply_ramping(protocol0)
+                else:
+                    self.gen.setPulseModulation([], 0, [], 0)  # disable any modulation
+                    self.gen.setPulseRamp(unifus.PulseRamp.Rising, 0)
+                    self.gen.setPulseRamp(unifus.PulseRamp.Falling, 0)
 
-            # (optional) disable HeartBeat security
-            self.gen.setParam(unifus.GenParam.HeartBeatTimeout, 0)
+                # (optional) restore disabled channels
+                self.gen.enableAllChannels()
 
-            # (optional) only for generator with a transducer multiplexer
-            # gen.setParam (unifus.GenParam.MultiplexerValue, 3);
+                # (optional) disable HeartBeat security
+                self.gen.setParam(unifus.GenParam.HeartBeatTimeout, 0)
 
-            # Upload the protocol
-            self.gen.sendSequence(buffer_num, pulse_train_seq)
+                # (optional) only for generator with a transducer multiplexer
+                # gen.setParam (unifus.GenParam.MultiplexerValue, 3);
 
-            self.register_sent_protocol(buffer_num, protocols, pulse_train_seq,
-                                        n_pulse_train_rep, pulse_train_delay, phases,
-                                        total_alternating_duration_ms)
+                # Upload the protocol
+                self.gen.sendSequence(buffer_num, pulse_train_seq)
+
+                self.register_sent_protocol(buffer_num, protocols, pulse_train_seq,
+                                            n_pulse_train_rep, pulse_train_delay, phases,
+                                            total_alternating_duration_ms)
+
+            except FDSError:
+                # _apply_ramping() can raise FDSConfigError (missing hardware-limit config
+                # keys) -- that must propagate as-is, not get caught and rewrapped by the
+                # broad except below.
+                raise
+            except Exception as e:
+                message = f"Error sending protocol to buffer {buffer_num}: {e}"
+                get_logger().critical(message)
+                raise FDSHardwareError(message) from e
 
         else:
             get_logger().warning("No connection with driving system.")
@@ -904,57 +923,75 @@ class IGT(ds.ControlDrivingSystem):
             tuple: (unifus.Pulse, list) -- the defined pulse and its phases.
         """
 
-        pulse = unifus.Pulse(self.n_channels, 1, 1)  # n phases, n frequencies, n amplitudes
+        try:
+            pulse = unifus.Pulse(self.n_channels, 1, 1)  # n phases, n frequencies, n amplitudes
 
-        # duration in ms, delay in ms
-        pulse.setDuration(protocol.pulse_dur,
-                          round(protocol.pulse_rep_int - protocol.pulse_dur, 1))
+            # duration in ms, delay in ms
+            pulse.setDuration(protocol.pulse_dur,
+                              round(protocol.pulse_rep_int - protocol.pulse_dur, 1))
 
-        slots = protocol.slots
+            slots = protocol.slots
 
-        # frequencies have to be set first before phases can be computed
-        phases = []
-        freqs = []
-        ampls = []
-        for slot in slots:
-            if slot.ampl is None:
-                message = "Power parameter may be set incorrectly. Amplitude is None."
-                get_logger().critical(message)
-                sys.exit(message)
+            # frequencies have to be set first before phases can be computed
+            phases = []
+            freqs = []
+            ampls = []
+            for slot in slots:
+                if slot.ampl is None:
+                    # Should never happen: validate_protocol()'s own slot.ampl is None check
+                    # (run via _validate_or_raise() in send_protocol(), before
+                    # _define_pulse_group() is ever called) already rejects this. A guard
+                    # against a bug in this package itself, not a caller mistake.
+                    message = "Power parameter may be set incorrectly. Amplitude is None."
+                    get_logger().critical(message)
+                    raise FDSInternalError(message)
 
-            # Every slot's own value is expanded to its own element count before concatenating
-            # -- applied uniformly, whether this protocol has 1 slot or several.
-            tran_freq = [int(slot.oper_freq * 1e3)] * slot.transducer.elements
-            if len(slot.ampl) == 1:
-                ampls = ampls + slot.ampl * slot.transducer.elements
-            else:
-                ampls = ampls + slot.ampl
+                # Every slot's own value is expanded to its own element count before
+                # concatenating -- applied uniformly, whether this protocol has 1 slot or
+                # several.
+                tran_freq = [int(slot.oper_freq * 1e3)] * slot.transducer.elements
+                if len(slot.ampl) == 1:
+                    ampls = ampls + slot.ampl * slot.transducer.elements
+                else:
+                    ampls = ampls + slot.ampl
 
-            freqs = freqs + tran_freq
+                freqs = freqs + tran_freq
 
-            pulse.setFrequencies(tran_freq)
-            if slot.dephasing_degree is not None and (
-                    len(slot.dephasing_degree) == slot.transducer.elements):
-                get_logger().info('Phases are overridden by phases set at dephasing_degree: ' +
-                                  f'{slot.dephasing_degree}')
-                phases = phases + slot.dephasing_degree
-            else:
-                computed_phases = self._set_phases(pulse, slot.focus_wrt_mid_bowl,
-                                                   slot.transducer.steer_info,
-                                                   slot.dephasing_degree,
-                                                   slot.focus_offset_x, slot.focus_offset_y)
-                phases = phases + computed_phases
+                pulse.setFrequencies(tran_freq)
+                if slot.dephasing_degree is not None and (
+                        len(slot.dephasing_degree) == slot.transducer.elements):
+                    get_logger().info(
+                        'Phases are overridden by phases set at dephasing_degree: ' +
+                        f'{slot.dephasing_degree}')
+                    phases = phases + slot.dephasing_degree
+                else:
+                    computed_phases = self._set_phases(pulse, slot.focus_wrt_mid_bowl,
+                                                       slot.transducer.steer_info,
+                                                       slot.dephasing_degree,
+                                                       slot.focus_offset_x,
+                                                       slot.focus_offset_y)
+                    phases = phases + computed_phases
 
-        # set phase offset for all channels (angle in [0,360] degrees)
-        pulse.setPhases(phases)
+            # set phase offset for all channels (angle in [0,360] degrees)
+            pulse.setPhases(phases)
 
-        # set frequency for all channels, in Hz
-        pulse.setFrequencies(freqs)
+            # set frequency for all channels, in Hz
+            pulse.setFrequencies(freqs)
 
-        # set amplitude for all channels in percent (of max amplitude)
-        pulse.setAmplitudes(ampls)
+            # set amplitude for all channels in percent (of max amplitude)
+            pulse.setAmplitudes(ampls)
 
-        return pulse, phases
+            return pulse, phases
+
+        except FDSError:
+            # The ampl-is-None guard above and _set_phases() both raise their own, more specific
+            # FDSError subclasses -- those must propagate as-is, not get caught and rewrapped by
+            # the broad except below.
+            raise
+        except Exception as e:
+            message = f"Error defining pulse group: {e}"
+            get_logger().critical(message)
+            raise FDSHardwareError(message) from e
 
     def _compute_exec_flags(self, protocols):
         """
@@ -1118,10 +1155,10 @@ class IGT(ds.ControlDrivingSystem):
         exactly one trigger event and one hardware buffer, whether it's a single protocol or
         several interleaved ones.
 
-        Exits with a clear message if send_protocol() hasn't been called for this buffer yet --
-        unlike a dropped connection (which reconnects and resends automatically, since that's an
-        external failure rather than a caller mistake), this method never sends on the caller's
-        behalf.
+        Raises FDSValidationError with a clear message if send_protocol() hasn't been called for
+        this buffer yet -- unlike a dropped connection (which reconnects and resends
+        automatically, since that's an external failure rather than a caller mistake), this
+        method never sends on the caller's behalf.
 
         Parameters:
             protocols (TUSProtocol or list(TUSProtocol)): Same protocol(s) already passed to
@@ -1158,90 +1195,97 @@ class IGT(ds.ControlDrivingSystem):
                                   'wait_for_trigger')
 
         if self.is_connected():
-            try:
-                # Use unifus.ExecFlag.NONE if nothing special, or simply don't pass the
-                # exec_flags argument. Use '|' to combine multiple flags: flag1 | flag2 | flag3
-                # To use trigger, add one of unifus::ExecFlag::Trigger*
-                exec_flags = self._compute_exec_flags(protocols)
+            # Use unifus.ExecFlag.NONE if nothing special, or simply don't pass the
+            # exec_flags argument. Use '|' to combine multiple flags: flag1 | flag2 | flag3
+            # To use trigger, add one of unifus::ExecFlag::Trigger*
+            #
+            # Deliberately kept outside the try below: this is pure computation/validation over
+            # protocols/config, none of it touches the SDK, so none of it belongs under a
+            # "wrap SDK failures as FDSHardwareError" umbrella -- its own FDSValidationError
+            # raises need no guarding against being caught and rewrapped there.
+            exec_flags = self._compute_exec_flags(protocols)
 
-                sent_protocol_info = self.sent_protocols.get(buffer_num, {})
-                n_pulse_train_rep = sent_protocol_info.get('n_pulse_train_rep')
-                pulse_train_delay = sent_protocol_info.get('pulse_train_delay')
+            sent_protocol_info = self.sent_protocols.get(buffer_num, {})
+            n_pulse_train_rep = sent_protocol_info.get('n_pulse_train_rep')
+            pulse_train_delay = sent_protocol_info.get('pulse_train_delay')
 
-                # Determining trigger flag.
-                pulse_train_trigger = get_config_value(get_logger(), config, 'Trigger',
-                                                       'Option.pulse_train',
-                                                       'TriggerOnePulseTrain')
-                whole_protocol_trigger = get_config_value(get_logger(), config, 'Trigger',
-                                                          'Option.whole_protocol',
-                                                          'TriggerWholeProtocol')
-                if trigger_option == pulse_train_trigger:
-                    # One pulse train fires per trigger received, so the driving system
-                    # genuinely needs to know in advance how many triggers to expect -- there is
-                    # no sensible default to fall back to.
-                    if n_triggers is None:
-                        message = ("n_triggers is required when trigger_option is " +
-                                   f"'{pulse_train_trigger}' -- it tells the driving system how " +
-                                   'many triggers to expect (one pulse train fires per trigger).')
-                        get_logger().critical(message)
-                        sys.exit(message)
-                    validate_value(n_triggers, 'Number of anticipated triggers (n_triggers)',
-                                   True, True, True, False)
-                    exec_flags |= unifus.ExecFlag.TriggerOneSequence
-
-                    # n_triggers overrides whatever send_protocol() already derived for this
-                    # buffer (from protocol0's own pulse_train_rep_int/pulse_train_rep_dur for a
-                    # single protocol, or from total_alternating_duration_ms/pulse_rep_int when
-                    # interleaving) -- warn explicitly, since a researcher may well have set
-                    # those expecting them to determine the actual repetition count.
-                    get_logger().warning(
-                        f"trigger_option '{pulse_train_trigger}' overrides the repetition "
-                        f'count/delay already computed for buffer {buffer_num} '
-                        f'({n_pulse_train_rep} repetition(s), {pulse_train_delay} ms delay) -- '
-                        f'using n_triggers={n_triggers} instead.')
-                    n_pulse_train_rep = n_triggers
-                    pulse_train_delay = 0  # trigger will determine delay
-
-                elif trigger_option == whole_protocol_trigger:
-                    if n_triggers is not None:
-                        message = ("n_triggers only applies when trigger_option is " +
-                                   f"'{pulse_train_trigger}' -- '{whole_protocol_trigger}' " +
-                                   'always fires exactly one trigger for the whole protocol.')
-                        get_logger().critical(message)
-                        sys.exit(message)
-                    # Purely for the "Waiting for a total of N trigger(s)" log line below --
-                    # never used to decide anything on the hardware side for this trigger mode.
-                    n_triggers = 1
-                    exec_flags |= unifus.ExecFlag.TriggerAllSequences
-
-                else:
-                    message = (
-                        f'Trigger option {trigger_option} is not identical to implemented ' +
-                        f'trigger options: {self.get_trigger_options()}.')
+            # Determining trigger flag.
+            pulse_train_trigger = get_config_value(get_logger(), config, 'Trigger',
+                                                   'Option.pulse_train',
+                                                   'TriggerOnePulseTrain')
+            whole_protocol_trigger = get_config_value(get_logger(), config, 'Trigger',
+                                                      'Option.whole_protocol',
+                                                      'TriggerWholeProtocol')
+            if trigger_option == pulse_train_trigger:
+                # One pulse train fires per trigger received, so the driving system
+                # genuinely needs to know in advance how many triggers to expect -- there is
+                # no sensible default to fall back to.
+                if n_triggers is None:
+                    message = ("n_triggers is required when trigger_option is " +
+                               f"'{pulse_train_trigger}' -- it tells the driving system how " +
+                               'many triggers to expect (one pulse train fires per trigger).')
                     get_logger().critical(message)
-                    sys.exit(message)
+                    raise FDSValidationError(message)
+                validate_value(n_triggers, 'Number of anticipated triggers (n_triggers)',
+                               True, True, True, False)
+                exec_flags |= unifus.ExecFlag.TriggerOneSequence
 
-                get_logger().info(f"Waiting for a total of {n_triggers} trigger(s)...")
+                # n_triggers overrides whatever send_protocol() already derived for this
+                # buffer (from protocol0's own pulse_train_rep_int/pulse_train_rep_dur for a
+                # single protocol, or from total_alternating_duration_ms/pulse_rep_int when
+                # interleaving) -- warn explicitly, since a researcher may well have set
+                # those expecting them to determine the actual repetition count.
+                get_logger().warning(
+                    f"trigger_option '{pulse_train_trigger}' overrides the repetition "
+                    f'count/delay already computed for buffer {buffer_num} '
+                    f'({n_pulse_train_rep} repetition(s), {pulse_train_delay} ms delay) -- '
+                    f'using n_triggers={n_triggers} instead.')
+                n_pulse_train_rep = n_triggers
+                pulse_train_delay = 0  # trigger will determine delay
 
-                # Logged before arming, so a researcher knows what will fire once the external
-                # trigger comes in, before they go trigger it themselves (GitHub #125).
-                self._log_intensity_summary(buffer_num, 'This will fire once triggered:')
+            elif trigger_option == whole_protocol_trigger:
+                if n_triggers is not None:
+                    message = ("n_triggers only applies when trigger_option is " +
+                               f"'{pulse_train_trigger}' -- '{whole_protocol_trigger}' " +
+                               'always fires exactly one trigger for the whole protocol.')
+                    get_logger().critical(message)
+                    raise FDSValidationError(message)
+                # Purely for the "Waiting for a total of N trigger(s)" log line below --
+                # never used to decide anything on the hardware side for this trigger mode.
+                n_triggers = 1
+                exec_flags |= unifus.ExecFlag.TriggerAllSequences
 
-                self._configure_voltage_feedback(protocols, sent_protocol_info)
+            else:
+                message = (
+                    f'Trigger option {trigger_option} is not identical to implemented ' +
+                    f'trigger options: {self.get_trigger_options()}.')
+                get_logger().critical(message)
+                raise FDSValidationError(message)
+
+            get_logger().info(f"Waiting for a total of {n_triggers} trigger(s)...")
+
+            # Logged before arming, so a researcher knows what will fire once the external
+            # trigger comes in, before they go trigger it themselves (GitHub #125).
+            self._log_intensity_summary(buffer_num, 'This will fire once triggered:')
+
+            # Pure computation, not an SDK call -- kept outside the try below so a bug in it
+            # isn't mislabeled as a hardware failure.
+            self._configure_voltage_feedback(protocols, sent_protocol_info)
+
+            try:
                 self.gen.prepareSequence(buffer_num, n_pulse_train_rep, pulse_train_delay,
                                          exec_flags)
 
                 self.gen.startSequence()
-
-                # Only set once arming has actually succeeded -- read back by
-                # wait_for_trigger_result() (see its own docstring) to confirm it's being called
-                # for a buffer that's genuinely armed, not merely sent.
-                self.sent_protocols[buffer_num]['armed'] = True
-
             except Exception as why:
                 message = f"Exception: {why}"
                 get_logger().critical(message)
-                sys.exit(message)
+                raise FDSHardwareError(message) from why
+
+            # Only set once arming has actually succeeded -- read back by
+            # wait_for_trigger_result() (see its own docstring) to confirm it's being called
+            # for a buffer that's genuinely armed, not merely sent.
+            self.sent_protocols[buffer_num]['armed'] = True
         else:
             # Reached only once a protocol is confirmed sent (above) -- reconnecting and
             # resending here is recovering the driving system's own state after losing the
@@ -1260,24 +1304,25 @@ class IGT(ds.ControlDrivingSystem):
 
     def wait_for_trigger_result(self, buffer_num=0, timeout_s=5.0):
         """
-        Waits (blocking) for a previously armed triggered protocol to finish, and exits if the
-        driving system reports its execution failed -- or if timeout_s elapses without the
-        driving system ever reporting a result at all (GitHub #78), e.g. because the external
-        trigger never actually arrived (a disconnected trigger cable, a researcher who forgot to
-        press it). That second case is not an execution error (exec_error_code stays None --
-        onSequenceResult() is simply never called), so without an explicit timeout check this
-        would otherwise silently fall through to reporting success on a protocol that never
-        fired at all.
+        Waits (blocking) for a previously armed triggered protocol to finish, and raises
+        FDSHardwareError if the driving system reports its execution failed -- or if timeout_s
+        elapses without the driving system ever reporting a result at all (GitHub #78), e.g.
+        because the external trigger never actually arrived (a disconnected trigger cable, a
+        researcher who forgot to press it). That second case is not an execution error
+        (exec_error_code stays None. onSequenceResult() is simply never called), so without an
+        explicit timeout check this would otherwise silently fall through to reporting success on
+        a protocol that never fired at all.
 
         wait_for_trigger() only arms the protocol to fire on the external trigger and returns
         immediately -- it does not wait for or observe the actual execution result (see GitHub
         issue #112). Call this once the external trigger is expected to have fired (or with a
         generous timeout) to check that the driving system actually reported success.
 
-        Exits with a clear message unless wait_for_trigger() has actually armed this buffer --
-        being merely sent (send_protocol() called, but wait_for_trigger() never was, e.g. the
-        caller used execute_protocol() instead) is not enough: reaching this method without a
-        real arm behind it is always a caller mistake, never something to silently wait out.
+        Raises FDSValidationError with a clear message unless wait_for_trigger() has actually
+        armed this buffer -- being merely sent (send_protocol() called, but wait_for_trigger()
+        never was, e.g. the caller used execute_protocol() instead) is not enough: reaching this
+        method without a real arm behind it is always a caller mistake, never something to
+        silently wait out.
 
         Parameters:
             buffer_num (int): Which hardware buffer to report on (starting at 0) --
@@ -1293,7 +1338,7 @@ class IGT(ds.ControlDrivingSystem):
                        'wait for. Call send_protocol() and wait_for_trigger() before ' +
                        'wait_for_trigger_result().')
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSValidationError(message)
 
         # wait_protocol() returns False specifically on timeout (see its own docstring) --
         # distinct from exec_error_code, which is only ever set once onSequenceResult() actually
@@ -1305,14 +1350,14 @@ class IGT(ds.ControlDrivingSystem):
                        'result. The external trigger may never have arrived. No confirmation ' +
                        'that anything was emitted.')
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSHardwareError(message)
 
         if self.listener.exec_error_code is not None:
             message = ('Protocol execution failed on the driving system (error ' +
                        f'code: {self.listener.exec_error_code}). No ultrasound was ' +
                        'emitted.')
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSHardwareError(message)
 
         self._log_intensity_summary(buffer_num, 'Triggered protocol executed successfully:')
 
@@ -1341,16 +1386,16 @@ class IGT(ds.ControlDrivingSystem):
         protocol given, matching send_protocol()'s own "ramping is a whole-group setting, not
         per interleaved protocol" behavior.
 
-        Exits with a clear message if the driving system reports execution failed, or if it
-        never reports a result at all within the protocol's own expected duration (GitHub #78)
-        -- that second case is not an execution error (exec_error_code stays None), so without
-        an explicit timeout check this would otherwise silently report success on a protocol
-        that never actually fired.
+        Raises FDSHardwareError if the driving system reports execution failed, or if it never
+        reports a result at all within the protocol's own expected duration (GitHub #78) -- that
+        second case is not an execution error (exec_error_code stays None), so without an
+        explicit timeout check this would otherwise silently report success on a protocol that
+        never actually fired.
 
-        Exits with a clear message if send_protocol() hasn't been called for this buffer yet --
-        unlike a dropped connection (which reconnects and resends automatically, since that's an
-        external failure rather than a caller mistake), this method never sends on the caller's
-        behalf.
+        Raises FDSValidationError with a clear message if send_protocol() hasn't been called for
+        this buffer yet -- unlike a dropped connection (which reconnects and resends
+        automatically, since that's an external failure rather than a caller mistake), this
+        method never sends on the caller's behalf.
 
         Parameters:
             protocols (TUSProtocol or list(TUSProtocol)): Same protocol(s) already passed to
@@ -1381,14 +1426,18 @@ class IGT(ds.ControlDrivingSystem):
                                   'execute_protocol')
 
         if self.is_connected():
-            try:
-                # Use unifus.ExecFlag.NONE if nothing special, or simply don't pass the
-                # exec_flags argument. Use '|' to combine multiple flags: flag1 | flag2 | flag3
-                # To use trigger, add one of unifus::ExecFlag::Trigger*
-                exec_flags = self._compute_exec_flags(protocols)
+            # Use unifus.ExecFlag.NONE if nothing special, or simply don't pass the
+            # exec_flags argument. Use '|' to combine multiple flags: flag1 | flag2 | flag3
+            # To use trigger, add one of unifus::ExecFlag::Trigger*
+            #
+            # Deliberately kept outside the try below, same reasoning as wait_for_trigger():
+            # pure computation, not an SDK call, so a bug in it shouldn't be mislabeled as a
+            # hardware failure.
+            exec_flags = self._compute_exec_flags(protocols)
+            sent_protocol_info = self.sent_protocols.get(buffer_num, {})
+            self._configure_voltage_feedback(protocols, sent_protocol_info)
 
-                sent_protocol_info = self.sent_protocols.get(buffer_num, {})
-                self._configure_voltage_feedback(protocols, sent_protocol_info)
+            try:
                 self.gen.prepareSequence(buffer_num,
                                          sent_protocol_info.get('n_pulse_train_rep'),
                                          sent_protocol_info.get('pulse_train_delay'),
@@ -1411,25 +1460,29 @@ class IGT(ds.ControlDrivingSystem):
                         'finish -- the driving system never reported a result. No ' +
                         'confirmation that anything was emitted.')
                     get_logger().critical(message)
-                    sys.exit(message)
+                    raise FDSHardwareError(message)
 
                 if self.listener.exec_error_code is not None:
                     message = ('Protocol execution failed on the driving system (error ' +
                                f'code: {self.listener.exec_error_code}). Potentially no ' +
                                'ultrasound emitted.')
                     get_logger().critical(message)
-                    sys.exit(message)
+                    raise FDSHardwareError(message)
 
-                # Confirms execution actually succeeded (GitHub #122), naming exactly what was
-                # fired (GitHub #125) -- distinct from "About to execute" above even though the
-                # values are identical, since the two log points confirm different things:
-                # intent, and actual outcome.
-                self._log_intensity_summary(buffer_num, 'Protocol executed successfully:')
-
+            except FDSHardwareError:
+                # The two raises above must propagate as-is, not get caught and rewrapped (with
+                # a worse, doubled-up message) by the broad except below.
+                raise
             except Exception as why:
                 message = f"Exception: {why}"
                 get_logger().critical(message)
-                sys.exit(message)
+                raise FDSHardwareError(message) from why
+
+            # Confirms execution actually succeeded (GitHub #122), naming exactly what was
+            # fired (GitHub #125) -- distinct from "About to execute" above even though the
+            # values are identical, since the two log points confirm different things:
+            # intent, and actual outcome.
+            self._log_intensity_summary(buffer_num, 'Protocol executed successfully:')
 
         else:
             # Reached only once a protocol is confirmed sent (above) -- reconnecting and
@@ -1530,7 +1583,7 @@ class IGT(ds.ControlDrivingSystem):
             if not trans.load(ini_path):
                 message = f'Error: can not load the transducer definition from {ini_path}'
                 get_logger().critical(message)
-                sys.exit(message)
+                raise FDSConfigError(message)
 
             # Natural focus (radius of curvature) comes from the transducer's own .ini steer
             # file (trans.focalLength) -- not a separately-maintained config value -- so it can
@@ -1555,7 +1608,7 @@ class IGT(ds.ControlDrivingSystem):
                 message = (f'Lateral steering (x={focus_offset_x}, y={focus_offset_y}) is not ' +
                            'supported for the .xlsx steer information path.')
                 get_logger().critical(message)
-                sys.exit(message)
+                raise FDSInternalError(message)
 
             # Import excel file containing phases per focal depth
             excel_path = str(importlib.resources.files(package_name).joinpath(steer_info))
@@ -1573,9 +1626,9 @@ class IGT(ds.ControlDrivingSystem):
                     message = (f'No focus in transducer phases file {excel_path}' +
                                f' corresponds with {focus_wrt_mid_bowl}')
                     get_logger().critical(message)
-                    sys.exit(message)
+                    raise FDSValidationError(message)
 
-                elif len(match_row) > 1:
+                if len(match_row) > 1:
                     message = (f'Duplicate foci {focus_wrt_mid_bowl} found in transducer ' +
                                f'phases file {excel_path}. First found entry will be used.')
                     get_logger().error(message)
@@ -1593,16 +1646,15 @@ class IGT(ds.ControlDrivingSystem):
                     f'Computed phases for set focus of {focus_wrt_mid_bowl}: {phases_str}')
 
             else:
-                message = ("Pipeline is cancelled. The following direction cannot be found: " +
-                           f"{excel_path}")
+                message = f"Transducer phases file cannot be found: {excel_path}"
                 get_logger().critical(message)
-                sys.exit(message)
+                raise FDSConfigError(message)
 
         else:
             message = ("Steer information is expected to be a '.ini' or '.xlsx' file, but got: " +
                        f"{steer_info}")
             get_logger().critical(message)
-            sys.exit(message)
+            raise FDSConfigError(message)
 
         return phases
 

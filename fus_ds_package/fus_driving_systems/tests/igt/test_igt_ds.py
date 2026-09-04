@@ -26,7 +26,8 @@ import pandas as pd
 import pytest
 
 from fus_driving_systems.config import logging_config
-from fus_driving_systems.exceptions import FDSConfigError, FDSValidationError
+from fus_driving_systems.exceptions import (FDSConfigError, FDSHardwareError, FDSInternalError,
+                                            FDSSafetyError, FDSValidationError)
 from fus_driving_systems.igt import transducer_xyz, unifus
 from fus_driving_systems.igt.igt_ds import IGT
 
@@ -345,31 +346,47 @@ class TestConnect:
         instance = IGT(log_dir=str(tmp_path))
         mocker.patch.object(instance, 'disconnect')  # not under test here
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSHardwareError):
             instance.connect('igt/config/gen_test.json', log_dir=str(tmp_path))
 
         # once for the attempt==0 defensive disconnect, once for the actual retry
         assert sleep_mock.call_args_list.count(mocker.call(5.0)) == 2
 
-    def test_connect_exits_immediately_when_fus_system_construction_fails(self, mocker, tmp_path):
+    def test_connect_raises_immediately_when_fus_system_construction_fails(self, mocker, tmp_path):
         mocker.patch("fus_driving_systems.igt.igt_ds.unifus.FUSSystem",
                      side_effect=RuntimeError("boom"))
         instance = IGT(log_dir=str(tmp_path))
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSHardwareError):
             instance.connect('igt/config/gen_test.json', log_dir=str(tmp_path))
 
-    def test_connect_retries_then_exits_when_never_reports_connected(self, mocker, mock_fus_system,
-                                                                     tmp_path, patch_config):
+    def test_connect_retries_then_raises_when_never_reports_connected(
+            self, mocker, mock_fus_system, tmp_path, patch_config):
         patch_config.set('General', 'Maximum reconnection attempts', '1')
         mock_fus_system.isConnected.return_value = False
         instance = IGT(log_dir=str(tmp_path))
         mocker.patch.object(instance, 'disconnect')  # not under test here
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSHardwareError):
             instance.connect('igt/config/gen_test.json', log_dir=str(tmp_path))
 
         assert instance.disconnect.call_count == 1  # exactly one retry attempted
+
+    def test_connect_surfaces_config_error_from_a_retry_attempt_as_such(
+            self, mocker, mock_fus_system, tmp_path, patch_config):
+        """Regression test: the recursive retry call used to sit inside the same try/except
+        that wraps the post-connection-check block -- a retry attempt whose own loadConfig()
+        fails with FDSConfigError would fall through that block's broad except and get
+        mislabeled as FDSHardwareError instead. loadConfig() succeeds on the first attempt (so
+        the retry is actually reached) and fails on the second."""
+        patch_config.set('General', 'Maximum reconnection attempts', '1')
+        mock_fus_system.isConnected.return_value = False
+        mock_fus_system.loadConfig.side_effect = [None, RuntimeError('config boom')]
+        instance = IGT(log_dir=str(tmp_path))
+        mocker.patch.object(instance, 'disconnect')  # not under test here
+
+        with pytest.raises(FDSConfigError):
+            instance.connect('igt/config/gen_test.json', log_dir=str(tmp_path))
 
     def test_connect_returns_true_after_a_successful_retry(self, mocker, mock_fus_system,
                                                            tmp_path, patch_config):
@@ -421,7 +438,7 @@ class TestConnect:
         mock_fus_system.gen.return_value = fake_gen
         mocker.patch.object(instance, 'disconnect')  # not under test here
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSHardwareError):
             # isConnected() is stubbed to always return False, so every reconnection attempt
             # fails too -- the point of this test is only that it actually *attempts* to
             # reconnect (loadConfig/connect get called) rather than skipping via the stale flag.
@@ -721,13 +738,29 @@ class TestDefinePulseGroupSingleSlot:
             assert pulse.amplitude(i) == 50
             assert pulse.frequency(i) == 250_000
 
-    def test_exits_when_amplitude_is_none(self, connected_instance):
+    def test_raises_when_amplitude_is_none(self, connected_instance):
         connected_instance.n_channels = 2
         slot = SimpleNamespace(oper_freq=250, ampl=None, dephasing_degree=None,
                                transducer=SimpleNamespace(elements=2))
         protocol = SimpleNamespace(pulse_dur=1.0, pulse_rep_int=2.0, slots=[slot])
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSInternalError):
+            connected_instance._define_pulse_group(protocol)
+
+    def test_wraps_native_pulse_construction_failure_as_hardware_error(
+            self, mocker, connected_instance):
+        """Regression test: this method used to have no exception handling at all around its
+        unifus.Pulse construction/setup -- a native SDK failure here would previously propagate
+        raw instead of surfacing as a catchable FDSHardwareError, unlike every other unifus
+        touchpoint in this class."""
+        connected_instance.n_channels = 2
+        mocker.patch('fus_driving_systems.igt.igt_ds.unifus.Pulse',
+                     side_effect=RuntimeError('native pulse construction failed'))
+        slot = SimpleNamespace(oper_freq=250, ampl=[50, 60], dephasing_degree=[10.0, 20.0],
+                               transducer=SimpleNamespace(elements=2))
+        protocol = SimpleNamespace(pulse_dur=1.0, pulse_rep_int=2.0, slots=[slot])
+
+        with pytest.raises(FDSHardwareError):
             connected_instance._define_pulse_group(protocol)
 
     def test_computes_phases_via_real_transducer_ini_definition(self, connected_instance):
@@ -835,26 +868,26 @@ class TestSetPhasesExcelBranch:
 
         assert phases == [10.0, 20.0]
 
-    def test_excel_branch_exits_when_file_does_not_exist(self, mocker, connected_instance):
+    def test_excel_branch_raises_when_file_does_not_exist(self, mocker, connected_instance):
         connected_instance.n_channels = 2
         mocker.patch('fus_driving_systems.igt.igt_ds.os.path.exists', return_value=False)
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSConfigError):
             connected_instance._set_phases(mocker.Mock(), focus_wrt_mid_bowl=50.0,
                                            steer_info='missing.xlsx', dephasing_degree=None)
 
-    def test_exits_when_steer_info_is_neither_ini_nor_xlsx(self, mocker, connected_instance):
+    def test_raises_when_steer_info_is_neither_ini_nor_xlsx(self, mocker, connected_instance):
         """DUMMY/CITRUS transducers configure an empty 'Steer information'
         string (they're never used with an IGT driving system either), so
         an unrecognized extension should be rejected rather than silently
         misbehaving."""
         connected_instance.n_channels = 2
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSConfigError):
             connected_instance._set_phases(mocker.Mock(), focus_wrt_mid_bowl=50.0, steer_info='',
                                            dephasing_degree=None)
 
-    def test_exits_when_more_than_one_dephasing_entry_given(self, mocker, connected_instance):
+    def test_raises_when_more_than_one_dephasing_entry_given(self, mocker, connected_instance):
         """Regression test: this branch used to only warn and silently use the first entry when
         given more than one dephasing value -- transducer_xyz.Transducer.compute_phases() (the
         .ini branch's equivalent) already treated this as a hard error via the same underlying
@@ -945,6 +978,28 @@ class TestSendProtocol:
         connected_instance.gen.sendSequence.assert_called_once_with(0, [fake_pulse, fake_pulse])
         assert connected_instance.is_protocol_sent(0) is True
 
+    def test_wraps_send_sequence_failure_as_hardware_error(
+            self, mocker, connected_instance, patch_config):
+        """Regression test: everything from ramping through gen.sendSequence()/
+        register_sent_protocol() used to have no exception handling at all -- a native SDK
+        failure here would previously propagate raw instead of surfacing as a catchable
+        FDSHardwareError."""
+        patch_config.set('Ramp', 'Option.rect', 'Rectangular - no ramping')
+        mocker.patch.object(connected_instance, 'validate_protocol', return_value=[])
+        fake_pulse = mocker.Mock()
+        mocker.patch.object(connected_instance, '_define_pulse_group',
+                            return_value=(fake_pulse, [1.0, 2.0]))
+        mocker.patch.object(connected_instance, '_define_pulse_train',
+                            return_value=([fake_pulse, fake_pulse], 5.0))
+        connected_instance.gen.sendSequence.side_effect = RuntimeError('native send failed')
+
+        fake_protocol = SimpleNamespace(
+            buffer_num=0, pulse_train_rep_dur=20, pulse_train_rep_int=10,
+            pulse_ramp_shape='Rectangular - no ramping', **_ready(_slot()))
+
+        with pytest.raises(FDSHardwareError):
+            connected_instance.send_protocol([fake_protocol])
+
     def test_accepts_a_single_protocol_without_a_list(self, mocker, connected_instance,
                                                       patch_config):
         """A bare TUSProtocol (checked via isinstance, so this only kicks in for the real class --
@@ -984,25 +1039,25 @@ class TestSendProtocol:
 
         connected_instance.gen.sendSequence.assert_called_once_with(1, [fake_pulse])
 
-    def test_exits_when_no_slots_configured(self, connected_instance):
+    def test_raises_when_no_slots_configured(self, connected_instance):
         """A protocol that never had add_slot() called on it must be rejected with a clear
         message, not fail confusingly deep inside pulse construction."""
         fake_protocol = SimpleNamespace(
             buffer_num=0, slots=[],
             driving_sys=SimpleNamespace(available_ch=1, max_buffers=2))
 
-        with pytest.raises(SystemExit, match='add_slot'):
+        with pytest.raises(FDSValidationError, match='add_slot'):
             connected_instance.send_protocol([fake_protocol])
 
-    def test_exits_when_slot_elements_do_not_match_available_channels(self, connected_instance):
+    def test_raises_when_slot_elements_do_not_match_available_channels(self, connected_instance):
         fake_protocol = SimpleNamespace(
             buffer_num=0, slots=[_slot(elements=2)],
             driving_sys=SimpleNamespace(available_ch=10, max_buffers=2))
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSValidationError):
             connected_instance.send_protocol([fake_protocol])
 
-    def test_exits_when_validation_produces_errors(self, mocker, connected_instance):
+    def test_raises_when_validation_produces_errors(self, mocker, connected_instance):
         mocker.patch.object(connected_instance, 'validate_protocol',
                             return_value=['something is wrong'])
         fake_protocol = SimpleNamespace(buffer_num=0, **_ready(_slot()))
@@ -1110,7 +1165,7 @@ class TestSendProtocol:
         # n_pulse_train_rep = floor(90 / (10+10+10)) = 3
         assert connected_instance.sent_protocols[0]['n_pulse_train_rep'] == 3
 
-    def test_exits_when_interleaved_protocols_have_different_ramping(
+    def test_raises_when_interleaved_protocols_have_different_ramping(
             self, mocker, connected_instance, patch_config):
         """Only protocol0's pulse_ramp_shape/pulse_ramp_dur are ever actually applied to the
         generator once interleaving is under way (see this method's own docstring), but a caller
@@ -1126,11 +1181,11 @@ class TestSendProtocol:
                                     pulse_ramp_shape='Tukey', pulse_ramp_dur=5,
                                     **_ready(_slot()))
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSValidationError):
             connected_instance.send_protocol([protocol1, protocol2],
                                              total_alternating_duration_ms=100)
 
-    def test_exits_when_total_alternating_duration_ms_omitted_for_interleaved_protocols(
+    def test_raises_when_total_alternating_duration_ms_omitted_for_interleaved_protocols(
             self, mocker, connected_instance, patch_config):
         """Unlike a single protocol (which gets its own repetition count from its own
         pulse_train_rep_dur/pulse_train_rep_int), the interleaved group as a whole has no
@@ -1145,10 +1200,10 @@ class TestSendProtocol:
                                     pulse_ramp_shape='Rectangular - no ramping', pulse_ramp_dur=0,
                                     **_ready(_slot()))
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSValidationError):
             connected_instance.send_protocol([protocol1, protocol2])
 
-    def test_exits_when_total_alternating_duration_ms_is_negative_for_interleaved_protocols(
+    def test_raises_when_total_alternating_duration_ms_is_negative_for_interleaved_protocols(
             self, mocker, connected_instance, patch_config):
         """A negative value is just as meaningless as omitting it (leaving None) or passing 0 --
         none of them describe a real span of time to keep alternating for -- so it must be
@@ -1162,7 +1217,7 @@ class TestSendProtocol:
                                     pulse_ramp_shape='Rectangular - no ramping', pulse_ramp_dur=0,
                                     **_ready(_slot()))
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSValidationError):
             connected_instance.send_protocol([protocol1, protocol2],
                                              total_alternating_duration_ms=-100)
 
@@ -1199,7 +1254,7 @@ class TestSendProtocol:
 
 class TestExecuteProtocol:
 
-    def test_exits_when_total_alternating_duration_ms_omitted_for_interleaved_protocols(
+    def test_raises_when_total_alternating_duration_ms_omitted_for_interleaved_protocols(
             self, connected_instance):
         """Unlike a single protocol (which gets its own repetition count from its own
         pulse_train_rep_dur/pulse_train_rep_int), the interleaved group as a whole has no
@@ -1208,7 +1263,7 @@ class TestExecuteProtocol:
         fake_protocol1 = SimpleNamespace(buffer_num=0)
         fake_protocol2 = SimpleNamespace(buffer_num=0)
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSValidationError):
             connected_instance.execute_protocol([fake_protocol1, fake_protocol2])
 
     def test_starts_protocol_and_waits_when_already_sent(self, mocker, connected_instance):
@@ -1240,7 +1295,7 @@ class TestExecuteProtocol:
 
         assert 'Maximum allowed pressure is: 0.75 MPa' in caplog.text
 
-    def test_exits_when_wait_protocol_times_out_without_a_result(self, connected_instance):
+    def test_raises_when_wait_protocol_times_out_without_a_result(self, connected_instance):
         """GitHub #78: wait_protocol() returns False specifically on timeout (see its own
         docstring) -- distinct from exec_error_code, which is only ever set once
         onSequenceResult() actually fires. Without checking this return value, the method would
@@ -1253,7 +1308,7 @@ class TestExecuteProtocol:
         connected_instance.listener.wait_protocol.return_value = False
         connected_instance.listener.exec_error_code = None
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSHardwareError):
             connected_instance.execute_protocol([fake_protocol])
 
     def test_sets_measure_channels_flag_for_long_pulse(self, connected_instance):
@@ -1328,7 +1383,7 @@ class TestExecuteProtocol:
                     unifus.ExecFlag.MeasureTimings)
         assert int(exec_flags) == int(expected)
 
-    def test_exits_when_never_sent_regardless_of_connection_state(self, mocker, tmp_path):
+    def test_raises_when_never_sent_regardless_of_connection_state(self, mocker, tmp_path):
         """A protocol that was never sent is a caller mistake either way -- is_protocol_sent()
         is checked before is_connected() (see the source), so neither the 'already connected'
         happy path nor the 'not connected' reconnect-and-resend path is ever reached."""
@@ -1339,7 +1394,7 @@ class TestExecuteProtocol:
         fake_protocol = SimpleNamespace(
             buffer_num=0, driving_sys=SimpleNamespace(connect_info='igt/config/gen_test.json'))
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSValidationError):
             instance.execute_protocol([fake_protocol])
 
         mock_connect.assert_not_called()
@@ -1352,8 +1407,8 @@ class TestExecuteProtocol:
         This reconnect-and-resend path is only reached once a protocol is already known to
         have been sent (buffer 0 pre-populated in sent_protocols below) -- it recovers a
         dropped connection after a real send, it doesn't fill in for a caller who never sent
-        anything at all (see test_exits_when_not_yet_sent for that case, which must not
-        reconnect or send)."""
+        anything at all (see test_raises_when_never_sent_regardless_of_connection_state for
+        that case, which must not reconnect or send)."""
         instance = IGT(log_dir=str(tmp_path))
         instance.sent_protocols[0] = {'n_pulse_train_rep': 1, 'pulse_train_delay': 0.0,
                                       'total_protocol_duration_ms': 10.0}
@@ -1415,28 +1470,28 @@ class TestExecuteProtocol:
 
         mock_send.assert_called_once_with([fake_protocol], 5000, 0)
 
-    def test_exits_on_exception_during_execution(self, connected_instance):
-        """The broad 'except Exception: sys.exit' wrapper around the
+    def test_raises_on_exception_during_execution(self, connected_instance):
+        """The broad 'except Exception: raise FDSHardwareError' wrapper around the
         prepare/start/wait calls -- any hardware-layer failure should
-        surface as a SystemExit, not propagate raw."""
+        surface as an FDSHardwareError, not propagate raw."""
         connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
                                                  'total_protocol_duration_ms': 500.0}}
         connected_instance.gen.prepareSequence.side_effect = RuntimeError('hardware fault')
         fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=0.5, pulse_ramp_dur=0,
                                         pulse_ramp_shape='Rectangular - no ramping', slots=[])
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSHardwareError):
             connected_instance.execute_protocol([fake_protocol])
 
-    def test_exits_when_listener_reports_protocol_execution_error(self, connected_instance):
+    def test_raises_when_listener_reports_protocol_execution_error(self, connected_instance):
         """GitHub issue #112: unifus.FUSListener's onSequenceResult callback used to only log
         the error (see igt/utils.py's ExecListener) -- execute_protocol() itself never noticed,
         so the program silently continued as if ultrasound had actually been emitted.
 
         unifus.FUSListener's own docstring states exceptions raised inside its callbacks are
-        not propagated to Python, so sys.exit() cannot live inside onSequenceResult itself --
-        it has to be raised here, in execute_protocol(), after wait_protocol() returns on the
-        calling thread. ExecListener.onSequenceResult() stores the failure on
+        not propagated to Python, so the exception cannot be raised inside onSequenceResult
+        itself -- it has to be raised here, in execute_protocol(), after wait_protocol() returns
+        on the calling thread. ExecListener.onSequenceResult() stores the failure on
         self.exec_error_code (a plain attribute set, unaffected by that restriction); this
         checks that execute_protocol() then acts on it."""
         connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
@@ -1445,10 +1500,10 @@ class TestExecuteProtocol:
         fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=0.5, pulse_ramp_dur=0,
                                         pulse_ramp_shape='Rectangular - no ramping', slots=[])
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSHardwareError):
             connected_instance.execute_protocol([fake_protocol])
 
-    def test_does_not_exit_when_listener_reports_no_error(self, connected_instance):
+    def test_does_not_raise_when_listener_reports_no_error(self, connected_instance):
         """Mirrors the test above: a successful execution (exec_error_code left at None by
         ExecListener.onSequenceResult()) must not raise."""
         connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
@@ -1479,7 +1534,7 @@ class TestExecuteProtocol:
         assert 'Protocol executed successfully:' in caplog.text
         assert caplog.text.count('TRAN-A: fake intensity summary') == 2
 
-    def test_exits_when_given_protocol_does_not_match_sent(self, connected_instance):
+    def test_raises_when_given_protocol_does_not_match_sent(self, connected_instance):
         """is_protocol_sent(buffer_num) alone only proves *something* was sent to this buffer,
         not that these specific protocol objects are it -- without _assert_matches_sent(), this
         would silently compute exec_flags/pulse_dur thresholds from a protocol that has nothing
@@ -1494,12 +1549,12 @@ class TestExecuteProtocol:
                                          pulse_ramp_shape='Rectangular - no ramping',
                                          slots=[_slot(serial='GIVEN-TRAN')])
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSValidationError):
             connected_instance.execute_protocol([given_protocol])
 
         connected_instance.gen.prepareSequence.assert_not_called()
 
-    def test_exits_when_slot_reconfigured_after_send_without_resending(self, connected_instance):
+    def test_raises_when_slot_reconfigured_after_send_without_resending(self, connected_instance):
         """A researcher who calls slot.configure() again after send_protocol() but forgets to
         resend must not have their new value silently ignored (GitHub #122/#125) -- the driving
         system would still fire whatever was baked in at send time. This must actually block
@@ -1523,12 +1578,12 @@ class TestExecuteProtocol:
         mutable_slot.current_summary = 'TRAN-A: 0.80 MPa'
         mutable_slot.ampl = [80.0]
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSSafetyError):
             connected_instance.execute_protocol([protocol])
 
         connected_instance.gen.prepareSequence.assert_not_called()
 
-    def test_exits_when_given_duration_does_not_match_sent_when_interleaving(
+    def test_raises_when_given_duration_does_not_match_sent_when_interleaving(
             self, connected_instance):
         """total_alternating_duration_ms is never actually read by execute_protocol()/
         wait_for_trigger() for anything physical -- passing a different value here than what
@@ -1550,14 +1605,14 @@ class TestExecuteProtocol:
             'protocol_fingerprints': connected_instance._build_protocol_fingerprints(
                 [protocol1, protocol2])}}
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSValidationError):
             connected_instance.execute_protocol([protocol1, protocol2],
                                                 total_alternating_duration_ms=5000)
 
         connected_instance.gen.prepareSequence.assert_not_called()
 
-    def test_exits_when_oper_freq_changed_without_touching_focus_or_power(self,
-                                                                          connected_instance):
+    def test_raises_when_oper_freq_changed_without_touching_focus_or_power(
+            self, connected_instance):
         """oper_freq/dephasing_degree have their own public setters, independent of configure()
         -- changing either directly (without touching chosen focus/power at all) still changes
         what _define_pulse_group() actually builds, so it must be caught too, not just a focus/
@@ -1578,12 +1633,12 @@ class TestExecuteProtocol:
         # therefore intensity_lines) would stay unaware of this, since it never reads oper_freq.
         slot.oper_freq = 750
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSSafetyError):
             connected_instance.execute_protocol([protocol])
 
         connected_instance.gen.prepareSequence.assert_not_called()
 
-    def test_exits_when_timing_reconfigured_without_touching_any_slot(self, connected_instance):
+    def test_raises_when_timing_reconfigured_without_touching_any_slot(self, connected_instance):
         """protocol.configure_timing() has its own effect on what gets baked into the buffer at
         send time (pulse_dur/pulse_rep_int/pulse_train_dur/pulse_train_rep_int/
         pulse_train_rep_dur/ramping) -- calling it again after send_protocol(), without
@@ -1608,7 +1663,7 @@ class TestExecuteProtocol:
         # all, only the protocol's own pulse_dur.
         protocol.pulse_dur = 2.0
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSSafetyError):
             connected_instance.execute_protocol([protocol])
 
         connected_instance.gen.prepareSequence.assert_not_called()
@@ -1787,7 +1842,7 @@ class TestWaitForTrigger:
 
         assert connected_instance.sent_protocols[0]['armed'] is True
 
-    def test_exits_when_total_alternating_duration_ms_omitted_for_interleaved_protocols(
+    def test_raises_when_total_alternating_duration_ms_omitted_for_interleaved_protocols(
             self, connected_instance):
         """Unlike a single protocol (which gets its own repetition count from its own
         pulse_train_rep_dur/pulse_train_rep_int), the interleaved group as a whole has no
@@ -1797,7 +1852,7 @@ class TestWaitForTrigger:
         fake_protocol1 = SimpleNamespace(buffer_num=0)
         fake_protocol2 = SimpleNamespace(buffer_num=0)
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSValidationError):
             connected_instance.wait_for_trigger([fake_protocol1, fake_protocol2], 'None')
 
     def test_sets_measure_channels_flag_for_long_pulse(self, connected_instance, patch_config):
@@ -1870,17 +1925,21 @@ class TestWaitForTrigger:
 
         connected_instance.gen.prepareSequence.assert_called_once_with(0, 2, 5.0, mocker.ANY)
 
-    def test_unknown_trigger_option_exits(self, connected_instance, patch_config):
+    def test_unknown_trigger_option_raises(self, connected_instance, patch_config):
+        """Regression: fake_protocol previously had no pulse_dur, so _compute_exec_flags()
+        actually raised AttributeError before the trigger_option check was ever reached --
+        invisible while both paths shared the same SystemExit, surfaced as a real test failure
+        once they became distinguishable FDSValidationError/FDSHardwareError types."""
         patch_config.set('Trigger', 'Option.pulse_train', 'TriggerOnePulseTrain')
         patch_config.set('Trigger', 'Option.whole_protocol', 'TriggerWholeProtocol')
         connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0}}
-        fake_protocol = SimpleNamespace(buffer_num=0, pulse_ramp_dur=0,
+        fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=0.5, pulse_ramp_dur=0,
                                         pulse_ramp_shape='Rectangular - no ramping', slots=[])
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSValidationError):
             connected_instance.wait_for_trigger([fake_protocol], 'Bogus')
 
-    def test_exits_when_never_sent_regardless_of_connection_state(self, mocker, tmp_path):
+    def test_raises_when_never_sent_regardless_of_connection_state(self, mocker, tmp_path):
         """A protocol that was never sent is a caller mistake either way -- is_protocol_sent()
         is checked before is_connected() (see the source), so neither the 'already connected'
         happy path nor the 'not connected' reconnect-and-resend path is ever reached."""
@@ -1891,7 +1950,7 @@ class TestWaitForTrigger:
         fake_protocol = SimpleNamespace(
             buffer_num=0, driving_sys=SimpleNamespace(connect_info='igt/config/gen_test.json'))
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSValidationError):
             instance.wait_for_trigger([fake_protocol], 'None')
 
         mock_connect.assert_not_called()
@@ -1904,7 +1963,8 @@ class TestWaitForTrigger:
         This reconnect-and-resend path is only reached once a protocol is already known to have
         been sent (pre-populated here) -- it recovers a dropped connection after a real send, it
         doesn't fill in for a caller who never sent anything at all (see
-        test_exits_when_not_yet_sent for that case, which must not reconnect or send)."""
+        test_raises_when_never_sent_regardless_of_connection_state for that case, which must
+        not reconnect or send)."""
         patch_config.set('Trigger', 'Option.pulse_train', 'TriggerOnePulseTrain')
         patch_config.set('Trigger', 'Option.whole_protocol', 'TriggerWholeProtocol')
         instance = IGT(log_dir=str(tmp_path))
@@ -1966,10 +2026,10 @@ class TestWaitForTrigger:
 
         mock_send.assert_called_once_with([fake_protocol], 5000, 0)
 
-    def test_exits_on_exception_during_trigger_wait(self, connected_instance, patch_config):
-        """The broad 'except Exception: sys.exit' wrapper around the
+    def test_raises_on_exception_during_trigger_wait(self, connected_instance, patch_config):
+        """The broad 'except Exception: raise FDSHardwareError' wrapper around the
         prepare/start calls -- any hardware-layer failure should surface
-        as a SystemExit, not propagate raw."""
+        as an FDSHardwareError, not propagate raw."""
         patch_config.set('Trigger', 'Option.pulse_train', 'TriggerOnePulseTrain')
         patch_config.set('Trigger', 'Option.whole_protocol', 'TriggerWholeProtocol')
         connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0}}
@@ -1977,7 +2037,7 @@ class TestWaitForTrigger:
         fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=0.5, pulse_ramp_dur=0,
                                         pulse_ramp_shape='Rectangular - no ramping', slots=[])
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSHardwareError):
             connected_instance.wait_for_trigger([fake_protocol], 'TriggerOnePulseTrain',
                                                 n_triggers=3)
 
@@ -2000,7 +2060,8 @@ class TestWaitForTrigger:
         assert 'This will fire once triggered:' in caplog.text
         assert 'TRAN-A: fake intensity summary' in caplog.text
 
-    def test_exits_when_given_protocol_does_not_match_sent(self, connected_instance, patch_config):
+    def test_raises_when_given_protocol_does_not_match_sent(self, connected_instance,
+                                                            patch_config):
         """is_protocol_sent(buffer_num) alone only proves *something* was sent to this buffer,
         not that these specific protocol objects are it -- without _assert_matches_sent(), this
         would silently compute exec_flags/trigger config from a protocol that has nothing to do
@@ -2016,14 +2077,14 @@ class TestWaitForTrigger:
                                          pulse_ramp_shape='Rectangular - no ramping',
                                          slots=[_slot(serial='GIVEN-TRAN')])
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSValidationError):
             connected_instance.wait_for_trigger([given_protocol], 'TriggerOnePulseTrain',
                                                 n_triggers=3)
 
         connected_instance.gen.prepareSequence.assert_not_called()
 
-    def test_exits_when_slot_reconfigured_after_send_without_resending(self, connected_instance,
-                                                                       patch_config):
+    def test_raises_when_slot_reconfigured_after_send_without_resending(
+            self, connected_instance, patch_config):
         """A researcher who calls slot.configure() again after send_protocol() but forgets to
         resend must not have their new value silently ignored (GitHub #122/#125) -- the driving
         system would still arm to fire whatever was baked in at send time. This must actually
@@ -2049,7 +2110,7 @@ class TestWaitForTrigger:
         mutable_slot.current_summary = 'TRAN-A: 0.80 MPa'
         mutable_slot.ampl = [80.0]
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSSafetyError):
             connected_instance.wait_for_trigger([protocol], 'TriggerOnePulseTrain', n_triggers=3)
 
         connected_instance.gen.prepareSequence.assert_not_called()
@@ -2066,18 +2127,19 @@ class TestWaitForTriggerResult:
     the method a caller invokes separately, once the external trigger is expected to have
     fired, to block until completion and check the listener's exec_error_code."""
 
-    def test_exits_when_listener_reports_protocol_execution_error(self, connected_instance):
-        """exec_error_code causes sys.exit() before _log_intensity_summary() is ever reached, so
-        'intensity_lines' isn't needed here -- only 'armed' is, to get past the arming guard."""
+    def test_raises_when_listener_reports_protocol_execution_error(self, connected_instance):
+        """exec_error_code causes an FDSHardwareError before _log_intensity_summary() is ever
+        reached, so 'intensity_lines' isn't needed here -- only 'armed' is, to get past the
+        arming guard."""
         connected_instance.sent_protocols[0] = {'armed': True}
         connected_instance.listener.exec_error_code = 2863311530
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSHardwareError):
             connected_instance.wait_for_trigger_result(0)
 
         connected_instance.listener.wait_protocol.assert_called_once_with(5.0)
 
-    def test_exits_when_wait_protocol_times_out_without_a_result(self, connected_instance):
+    def test_raises_when_wait_protocol_times_out_without_a_result(self, connected_instance):
         """GitHub #78: wait_protocol() returns False specifically on timeout (see its own
         docstring) -- distinct from exec_error_code, which is only ever set once
         onSequenceResult() actually fires (e.g. the external trigger never arrived at all).
@@ -2087,10 +2149,10 @@ class TestWaitForTriggerResult:
         connected_instance.listener.wait_protocol.return_value = False
         connected_instance.listener.exec_error_code = None
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSHardwareError):
             connected_instance.wait_for_trigger_result(0, timeout_s=10.0)
 
-    def test_does_not_exit_when_listener_reports_no_error(self, connected_instance):
+    def test_does_not_raise_when_listener_reports_no_error(self, connected_instance):
         connected_instance.sent_protocols[0] = {'intensity_lines': [], 'armed': True}
 
         # must not raise
@@ -2113,19 +2175,19 @@ class TestWaitForTriggerResult:
         assert 'Triggered protocol executed successfully:' in caplog.text
         assert 'TRAN-A: fake intensity summary' in caplog.text
 
-    def test_exits_when_nothing_was_ever_sent_to_this_buffer(self, connected_instance):
+    def test_raises_when_nothing_was_ever_sent_to_this_buffer(self, connected_instance):
         """A buffer_num that was never actually sent to (e.g. a caller typo, or calling this
         before wait_for_trigger() at all) is always a caller mistake -- wait_for_trigger() itself
         can't have armed this buffer without send_protocol() having been called for it first, so
         there's nothing to genuinely wait for. Exits before ever blocking on wait_protocol(),
         rather than waiting out the full timeout only to report a misleading "success" with an
         empty summary underneath it."""
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSValidationError):
             connected_instance.wait_for_trigger_result(99, timeout_s=10.0)
 
         connected_instance.listener.wait_protocol.assert_not_called()
 
-    def test_exits_when_sent_but_never_armed(self, connected_instance):
+    def test_raises_when_sent_but_never_armed(self, connected_instance):
         """A buffer can be sent-to (send_protocol()) and even executed directly
         (execute_protocol()) without wait_for_trigger() ever having been called for it -- there
         is then nothing armed to wait a trigger result for, even though is_protocol_sent(buffer_
@@ -2133,7 +2195,7 @@ class TestWaitForTriggerResult:
         fresh send; only a real wait_for_trigger() call sets it back to True."""
         connected_instance.sent_protocols[0] = {'intensity_lines': [], 'armed': False}
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FDSValidationError):
             connected_instance.wait_for_trigger_result(0, timeout_s=10.0)
 
         connected_instance.listener.wait_protocol.assert_not_called()
@@ -2157,7 +2219,7 @@ class TestHasExecutionError:
     def test_returns_none_when_listener_reports_no_error(self, connected_instance):
         assert connected_instance.has_execution_error() is None
 
-    def test_does_not_block_or_exit(self, connected_instance):
+    def test_does_not_block_or_raise(self, connected_instance):
         """Unlike wait_for_trigger_result(), this must never call wait_protocol() or raise --
         it is a pure, immediate getter."""
         connected_instance.listener.exec_error_code = 2863311530
