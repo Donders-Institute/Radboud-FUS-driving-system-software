@@ -222,6 +222,29 @@ class SonicConcepts(ds.ControlDrivingSystem):
             self.send_protocol(protocol)
             self.execute_protocol(protocol)
 
+    def abort(self):
+        """
+        Stops a currently running pulse train/sequence without disconnecting, so the same
+        connection can immediately send/execute another protocol afterwards, unlike
+        disconnect(), which closes the serial connection itself. Reuses the same 'ABORT\\r\\n'
+        command _reset_ramping() already sends before every send_protocol(). A no-op if not
+        connected.
+
+        Raises:
+            FDSHardwareError: If the driving system reports an error response, or the serial
+            connection itself fails.
+        """
+
+        if not self._ready_to_abort():
+            return
+
+        try:
+            self._send_command('ABORT\r\n', 0.5)
+        except serial.SerialException as why:
+            message = f"Exception: {why}"
+            get_logger().critical(message)
+            raise FDSHardwareError(message) from why
+
     def disconnect(self):
         """
         Disconnects from the Sonic Concepts ultrasound driving system.

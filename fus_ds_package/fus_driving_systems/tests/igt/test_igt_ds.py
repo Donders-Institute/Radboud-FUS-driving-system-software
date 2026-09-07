@@ -2224,6 +2224,33 @@ class TestHasExecutionError:
 
 
 # ---------------------------------------------------------------------------
+# abort
+# ---------------------------------------------------------------------------
+
+class TestAbort:
+
+    def test_stops_the_sequence_without_disconnecting(self, connected_instance):
+        connected_instance.abort()
+
+        connected_instance.gen.stopSequence.assert_called_once()
+        connected_instance.fus.disconnect.assert_not_called()
+        connected_instance.fus.clearListeners.assert_not_called()
+
+    def test_does_nothing_when_not_connected(self, connected_instance):
+        connected_instance.fus.isConnected.return_value = False
+
+        connected_instance.abort()  # must not raise
+
+        connected_instance.gen.stopSequence.assert_not_called()
+
+    def test_raises_fds_hardware_error_when_stop_sequence_fails(self, connected_instance):
+        connected_instance.gen.stopSequence.side_effect = RuntimeError("comms failure")
+
+        with pytest.raises(FDSHardwareError):
+            connected_instance.abort()
+
+
+# ---------------------------------------------------------------------------
 # disconnect
 # ---------------------------------------------------------------------------
 

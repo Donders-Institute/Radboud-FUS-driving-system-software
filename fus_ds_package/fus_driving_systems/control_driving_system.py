@@ -82,6 +82,39 @@ class ControlDrivingSystem(ABC):
         Abstract method for disconnecting from the ultrasound driving system.
         """
 
+    def abort(self):
+        """
+        Stops a currently running pulse train/sequence without disconnecting, unlike
+        disconnect(); this is meant to be immediately followed by another send_protocol()/
+        execute_protocol() on the same connection, e.g. a host application's abort button. The
+        default implementation here falls back to disconnect(), since there's no equipment-
+        agnostic way to interrupt execution without a driving-system-specific command; subclasses
+        that can do better (IGT, SonicConcepts) override this.
+        """
+
+        get_logger().warning(
+            "abort() is not implemented for this driving system, falling back to disconnect().")
+        self.disconnect()
+
+    def _ready_to_abort(self):
+        """
+        Checks connection state and logs consistently before a subclass's own abort() override
+        attempts to actually stop a running sequence; shared by IGT.abort()/
+        SonicConcepts.abort() so this guard-and-log boilerplate isn't duplicated in both (each
+        subclass's own stop mechanism differs too much to share the rest of abort() itself).
+
+        Returns:
+            bool: True if connected and the subclass should proceed to actually stop the
+            sequence, False if there's nothing to abort.
+        """
+
+        if not self.is_connected():
+            get_logger().warning("No connection with driving system, nothing to abort.")
+            return False
+
+        get_logger().info('Aborting...')
+        return True
+
     def is_connected(self):
         """
         Checks whether the ultrasound driving system is currently connected.

@@ -257,6 +257,30 @@ def test_check_tran_sel_cancel_raises(mocker, connected_instance):
         connected_instance.check_tran_sel()
 
 
+def test_abort_sends_abort_command_without_disconnecting(connected_instance):
+    connected_instance.abort()
+
+    sent_commands = [call.args[0] for call in connected_instance.gen.write.call_args_list]
+    assert b'ABORT\r\n' in sent_commands
+    connected_instance.gen.close.assert_not_called()
+    assert connected_instance.is_connected() is True
+
+
+def test_abort_does_nothing_when_not_connected(connected_instance):
+    connected_instance._connected = False
+
+    connected_instance.abort()  # must not raise
+
+    connected_instance.gen.write.assert_not_called()
+
+
+def test_abort_raises_fds_hardware_error_on_serial_exception(connected_instance):
+    connected_instance.gen.write.side_effect = serial.SerialException("comms failure")
+
+    with pytest.raises(FDSHardwareError):
+        connected_instance.abort()
+
+
 def test_disconnect_closes_gen_and_marks_disconnected(connected_instance):
     connected_instance.disconnect()
 

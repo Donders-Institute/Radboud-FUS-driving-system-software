@@ -1,10 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-Tests for ControlDrivingSystem.validate_protocol -- the single fixture-free,
-hardware-free, config-free pure-logic target in the abstract driving-system
-layer. It only needs a duck-typed object exposing the five timing
-attributes it reads, so a plain SimpleNamespace stands in for a real
-TUSProtocol.
+Tests for the fixture-free, hardware-free, config-free pure-logic targets in the abstract
+driving-system layer: validate_protocol() (it only needs a duck-typed object exposing the five
+timing attributes it reads, so a plain SimpleNamespace stands in for a real TUSProtocol) and
+abort()'s own default fallback behavior.
 """
 from types import SimpleNamespace
 
@@ -125,3 +124,13 @@ def test_zero_pulse_train_rep_int_is_a_validation_error(driving_system):
     errors = driving_system.validate_protocol(_protocol(pulse_train_rep_int=0))
     assert any("Pulse Train Repetition Interval" in e and "not allowed to be 0" in e
                for e in errors)
+
+
+def test_abort_default_falls_back_to_disconnect(mocker, driving_system):
+    """A subclass with no abort() of its own (e.g. CITRUS) still has *something* to call;
+    the base default logs a warning and disconnects instead."""
+    mocker.patch.object(driving_system, 'disconnect')
+
+    driving_system.abort()
+
+    driving_system.disconnect.assert_called_once()

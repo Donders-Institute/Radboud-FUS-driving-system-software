@@ -1499,6 +1499,27 @@ class IGT(ds.ControlDrivingSystem):
             self.send_protocol(protocols, total_alternating_duration_ms, buffer_num)
             self.execute_protocol(protocols, total_alternating_duration_ms, buffer_num)
 
+    def abort(self):
+        """
+        Stops a currently running pulse train/sequence without disconnecting, so the same
+        connection can immediately send/execute another protocol afterwards, unlike
+        disconnect(), which also tears down modulation state and the listener/connection itself
+        in preparation for reconnecting. A no-op if not connected.
+
+        Raises:
+            FDSHardwareError: If stopSequence() itself fails.
+        """
+
+        if not self._ready_to_abort():
+            return
+
+        try:
+            self.gen.stopSequence()
+        except Exception as e:
+            message = f"Exception: {e}"
+            get_logger().critical(message)
+            raise FDSHardwareError(message) from e
+
     def disconnect(self):
         """
         Disconnects from the IGT ultrasound driving system.
