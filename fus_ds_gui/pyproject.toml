@@ -1,0 +1,16 @@
+[tool.pylint.main]
+# PySide6's Qt bindings are a compiled C extension pylint can't statically introspect, which
+# would otherwise misreport every one of its classes/functions as a false-positive
+# no-name-in-module error.
+extension-pkg-allow-list = ["PySide6"]
+
+[tool.pytest.ini_options]
+testpaths = ["fus_ds_gui/tests"]
+addopts = """
+-ra
+--strict-markers
+--cov=fus_ds_gui
+--cov-report=term-missing
+--cov-report=html
+--cov-fail-under=70
+"""

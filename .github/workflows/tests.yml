@@ -23,8 +23,12 @@ jobs:
       - name: Install flake8
         run: pip install flake8
 
-      - name: Run flake8
+      - name: Run flake8 (fus_ds_package)
         working-directory: fus_ds_package
+        run: flake8
+
+      - name: Run flake8 (fus_ds_gui)
+        working-directory: fus_ds_gui
         run: flake8
 
   security:
@@ -42,18 +46,23 @@ jobs:
       - name: Install pip-audit
         run: pip install pip-audit
 
-      - name: Audit dependencies for known vulnerabilities
+      - name: Audit dependencies for known vulnerabilities (fus_ds_package)
         run: pip-audit -r requirements-ci.txt
+
+      - name: Audit dependencies for known vulnerabilities (fus_ds_gui)
+        run: pip-audit -r fus_ds_gui/requirements-gui.txt
 
   test:
     # Windows-only: the package only officially supports Windows (see README),
     # and the igt subpackage depends on a compiled native extension
     # (unifus.pyd) built for Windows. pylint also runs here rather than in
     # the ubuntu lint job: it resolves every import for its analysis
-    # (unlike flake8), and unifus.pyd -- along with the other third-party
-    # dependencies -- can only be installed/imported on this runner. Running
+    # (unlike flake8), and unifus.pyd, along with the other third-party
+    # dependencies, can only be installed/imported on this runner. Running
     # pylint without them installed floods the score with import-error
-    # findings that have nothing to do with real code quality.
+    # findings that have nothing to do with real code quality. fus_ds_gui runs
+    # here too since it depends on fus_driving_systems, for the same reason;
+    # it has no display, so its own tests default to QT_QPA_PLATFORM=offscreen.
     runs-on: windows-latest
 
     steps:
@@ -66,28 +75,51 @@ jobs:
           cache: 'pip'
           cache-dependency-path: requirements-ci.txt
 
-      - name: Install test dependencies
+      - name: Install test dependencies (fus_ds_package)
         run: pip install -r requirements-ci.txt
+
+      - name: Install test dependencies (fus_ds_gui)
+        run: pip install -r fus_ds_gui/requirements-gui.txt
 
       - name: Install pylint
         run: pip install pylint
 
-      - name: Run pylint
+      - name: Run pylint (fus_ds_package)
         working-directory: fus_ds_package
         run: pylint fus_driving_systems --fail-under=9.5
+
+      - name: Run pylint (fus_ds_gui)
+        working-directory: fus_ds_gui
+        run: pylint fus_ds_gui --fail-under=9.5
 
       - name: Check duplicated code stays under 3%
         working-directory: fus_ds_package
         run: python dev_tools/check_duplication.py
 
-      - name: Run tests (hardware-dependent tests excluded)
+      - name: Run tests (fus_ds_package, hardware-dependent tests excluded)
         working-directory: fus_ds_package
         run: pytest -m "not hardware"
 
-      - name: Upload coverage HTML report
+      - name: Run tests (fus_ds_gui)
+        working-directory: fus_ds_gui
+        env:
+          # No display on this runner; conftest.py already defaults to this, set explicitly
+          # here too so CI doesn't silently depend on that default staying in place.
+          QT_QPA_PLATFORM: offscreen
+        run: pytest
+
+      - name: Upload coverage HTML report (fus_ds_package)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-html-report
+          name: coverage-html-report-fus-ds-package
           path: fus_ds_package/htmlcov/
+          retention-days: 30
+
+      - name: Upload coverage HTML report (fus_ds_gui)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-html-report-fus-ds-gui
+          path: fus_ds_gui/htmlcov/
           retention-days: 30
