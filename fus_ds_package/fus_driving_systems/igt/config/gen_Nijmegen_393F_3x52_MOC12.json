@@ -1,0 +1,29 @@
+{
+	"units": [
+		{ "host": "192.168.0.57", "port": 14442, "channels": [
+			0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,
+			64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115
+		] },
+		{ "host": "192.168.0.58", "port": 14442, "channels": 52 }
+	],
+	
+	"measures": {
+		"vg02": { "adc2phy": [ 8.01089e-05, 0 ] },
+		"vg12": { "adc2phy": [ 5.19913e-05, 0 ] },
+		"vgp2": { "adc2phy": [ 6.67557e-04, 0 ] },
+		"vgb2": { "adc2phy": [ 1.52765e-04, 0 ] },
+
+		"vdp2": { "adc2phy": [ 6.04230e-04, 0 ] },
+		"idp2": { "adc2phy": [ 2.09820e-04, 0 ] },
+		"tem2": { "adc2phy": [ 3.90625e-03, -55 ] },
+
+		"vrt2": { "adc2phy": [ 0.000292, -0.132 ], "minADC": 453 },
+		"irt2": { "adc2phy": [ 6.71e-06, -0.00317 ], "minADC": 473 },
+		"pvi2": { "adc2phy": [ 0.00572958, -0.739116 ], "signed": true },
+		"prv2": { "adc2phy": [ 0.00549316, -0.468679 ], "signed": true },
+		"fsc4": { }
+	},
+	
+	"validUntil": "2034-02-01T12:00:00, [SHOT,RURD,ELIM,ADM1,MOC1,MOC2]",
+	"cert": "AAAAAUlHVDEIMDAwMDAwMDELTmlqbWVnZW4xMjgH6AYFBxgDAQAAOT8HU0hPVAfyAgEMAABSVVJEB_ICAQwAAEVMSU0H8gIBDAAAQURNMQfyAgEMAABNT0MxB_ICAQwAAE1PQzIH8gIBDAAAQURNMgfoBh4MAAAAAAAAAAECACL2UrT-IcBr5ziCxIcHSpQikxFQlCILjEbHNGrfNoRWdnzoKhmsNgkQhrKx3YU7CDFYNkLGGmGa1nd08zw_n4UJEpumYRW3tJW-ysSD0641xMLW3hF1_iSii5_JAefdb4hWL8BruH8h5lDYRqzuk4LrOqM7uErWToWHYPybZfaJmqzxzxxTBvs5ynfk14eWFWjOxWjZedeFrxSJRTH3AqyG6l7sQSGEatzjRkfYyPD1c3_jTSiie1qh8a8Q4I06rVHZuyj7jO1XY0B0EPbxyx1v18i_n2RtkkR7M0M0KVv2KlAPYj2FidKrcXjUr_RVCOo83Z_kmJNilprE6RAzx5uI0r4bs5FdjwHk2eLmfxNsEXj7qw6T9fL07wcUfcsXzuzVpusrpEMR4jKmPBPmpmgVUH9nWvBqu8eSvUPxn-U0gCx7nGpRNTxL-LapTw7Zj8jR0Y9T-7Ul7pa0uOUQwHirZMpDip_MZz-WfWQGEnMSN1njYnpOAqrBM05Ao7l_fjnh-yC5HIAUOoiIHrF7GwyMtnjjw-GS1V7uVi2NPB-AGPj-8znmqLlucRXCN8APMNkJqtzl2fQCH6xCi_0ErL7cRbRQgKVPLAe4weT30VJAkAkYUF9zbpB7CldB7_143x-3Y_8LuP5wWJJdZIxvPCH_Ez-1DeotK8Cpup7mRKlj"
+}

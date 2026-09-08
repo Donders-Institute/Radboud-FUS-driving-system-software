@@ -354,11 +354,9 @@ config['Equipment.Manufacturer.IGT']['Voltage feedback consecutive groups for wa
 config['Equipment.Manufacturer.IGT']['Min. temporal ramping resolution [ms]'] = str(0.005)
 config['Equipment.Manufacturer.IGT']['Max. amount of ramping steps'] = str(1023)
 
-IGT_DS = ['IGT-128-ch', 'IGT-128-ch_comb_2x10-ch', 'IGT-128-ch_comb_1x10-ch',
-          'IGT-128-ch_comb_1x8-ch', 'IGT-128-ch_comb_1x4-ch', 'IGT-128-ch_comb_1x2-ch',
-          'IGT-32-ch', 'IGT-32-ch_comb_2x10-ch', 'IGT-32-ch_comb_1x10-ch',
-          'IGT-8-ch_comb_2x4-ch', 'IGT-8-ch_comb_1x4-ch', 'IGT-8-ch_comb_2x2-ch',
-          'IGT-8-ch_comb_1x2-ch']
+IGT_DS = ['IGT-32-ch', 'IGT-32-ch_comb_2x10-ch', 'IGT-32-ch_comb_1x10-ch',
+          'IGT-256-ch', 'IGT-256-ch_comb_1x52-ch', 'IGT-256-ch_comb_2x52-ch',
+          'IGT-256-ch_comb_3x52-ch', 'IGT-256-ch_comb_4x52-ch']
 
 config['Equipment.Manufacturer.IGT']['Equipment - Driving systems'] = '\n'.join(IGT_DS)
 
@@ -379,6 +377,10 @@ config['Equipment.Manufacturer.IS']['Config. file folder transducers'] = CONFIG_
 IS_TRANS = ['IS_PCD15287_01001', 'IS_PCD15287_01002', 'IS_PCD15473_01001',
             'IS_PCD15473_01002', 'IS_PCD15473_01003', 'IS_PCD15473_01001_OPM',
             'IS_PCD15473_01003_OPM']
+
+# Clover: a 3D-steering-capable (can_3d_steer=True) Imasonic transducer line, one per physical
+# unit (see the 'Imasonic - Clover tranducers' _add_transducer() calls below).
+CLOVER_TRANS = ['Clover_1', 'Clover_2', 'Clover_3']
 
 #######################################################################################
 # CITRUS
@@ -402,7 +404,7 @@ config['Equipment.Manufacturer.CITRUS']['Equipment - Transducers'] = '\n'.join(C
 # Equipment collection
 #######################################################################################
 
-config['Equipment.Manufacturer.IS']['Equipment - Transducers'] = '\n'.join(IS_TRANS)
+config['Equipment.Manufacturer.IS']['Equipment - Transducers'] = '\n'.join(IS_TRANS + CLOVER_TRANS)
 
 # list of driving system 'serial numbers'
 config['Equipment']['Driving systems'] = str('\n'.join(SC_DS + IGT_DS + CITRUS_DS))
@@ -411,7 +413,8 @@ config['Equipment']['Default driving system serial'] = SC_DS[0]
 DUMMY = 'Dummy'
 DUMMIES = [DUMMY]
 # list of transducer 'serial numbers'
-config['Equipment']['Transducers'] = str('\n'.join(SC_TRANS + IS_TRANS + CITRUS_TRANS + DUMMIES))
+config['Equipment']['Transducers'] = str(
+    '\n'.join(SC_TRANS + IS_TRANS + CITRUS_TRANS + CLOVER_TRANS + DUMMIES))
 config['Equipment']['Default transducer serial'] = SC_TRANS[0]
 
 COMBO_JOIN_SIGN = '~'
@@ -464,13 +467,17 @@ _add_driving_system(
 # IGT - Driving systems
 #######################################################################################
 
-# # 128 ch. # #
+# # 32 ch. # #
+# All channels: same reasoning as the 256 ch. family below. An undivided "all channels" variant
+# doesn't map onto any single per-slot transducer split (unlike the 1 x 10 ch./2 x 10 ch. comb
+# variants, whose own slot count directly matches their own name), so it stays inactive; only the
+# comb variants below are active.
 _add_driving_system(
     IGT_DS[0],
-    name=IGT + ' 128 ch. - all channels',
+    name=IGT + ' 32 ch. - all channels',
     manufacturer=IGT,
-    available_channels=128,
-    connection_info=str(os.path.join(CONFIG_FILE_FOLDER_IGT_DS, 'gen_Nijmegen128_393F.json')),
+    available_channels=32,
+    connection_info=str(os.path.join(CONFIG_FILE_FOLDER_IGT_DS, 'gen_Nijmegen32_71D8_10W.json')),
     transducer_compatibility=DUMMIES,
     power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
     native_power_parameters=POW_AMPL,
@@ -486,116 +493,6 @@ _add_driving_system(
 # 2 x 10 ch.: this driving system config drives two 10-element transducers at once.
 _add_driving_system(
     IGT_DS[1],
-    name=IGT + ' 128 ch. - 2 x 10 ch.',
-    manufacturer=IGT,
-    available_channels=20,
-    connection_info=str(os.path.join(CONFIG_FILE_FOLDER_IGT_DS, 'gen_Nijmegen128_2x10_393F.json')),
-    transducer_compatibility=IS_TRANS + DUMMIES,
-    power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
-    native_power_parameters=POW_AMPL,
-    focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL, FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
-    # Xyz-mid-bowl is native alongside scalar mid bowl, it's the same reference frame, just
-    # with x/y added, and needs no calibration to send as-is (see the 3D steering plan).
-    native_focus_parameters='\n'.join([FOC_WRT_BOWL, FOC_XYZ_WRT_BOWL]),
-    max_transducer_slots=2,
-    max_buffers=2,
-    active=False,
-)
-
-_add_driving_system(
-    IGT_DS[2],
-    name=IGT + ' 128 ch. - 1 x 10 ch.',
-    manufacturer=IGT,
-    available_channels=10,
-    connection_info=str(os.path.join(CONFIG_FILE_FOLDER_IGT_DS, 'gen_Nijmegen128_1x10_393F.json')),
-    transducer_compatibility=IS_TRANS + DUMMIES,
-    power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
-    native_power_parameters=POW_AMPL,
-    focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL, FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
-    # Xyz-mid-bowl is native alongside scalar mid bowl, it's the same reference frame, just
-    # with x/y added, and needs no calibration to send as-is (see the 3D steering plan).
-    native_focus_parameters='\n'.join([FOC_WRT_BOWL, FOC_XYZ_WRT_BOWL]),
-    max_transducer_slots=1,
-    max_buffers=2,
-    active=False,
-)
-
-_add_driving_system(
-    IGT_DS[3],
-    name=IGT + ' 128 ch. - 8 ch.',
-    manufacturer=IGT,
-    available_channels=8,
-    connection_info=str(os.path.join(CONFIG_FILE_FOLDER_IGT_DS, 'gen_Nijmegen128_8c.json')),
-    transducer_compatibility=SC_TRAN_4CH + DUMMIES,
-    power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
-    native_power_parameters=POW_AMPL,
-    focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL, FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
-    # Xyz-mid-bowl is native alongside scalar mid bowl, it's the same reference frame, just
-    # with x/y added, and needs no calibration to send as-is (see the 3D steering plan).
-    native_focus_parameters='\n'.join([FOC_WRT_BOWL, FOC_XYZ_WRT_BOWL]),
-    max_transducer_slots=1,
-    max_buffers=2,
-    active=False,
-)
-
-_add_driving_system(
-    IGT_DS[4],
-    name=IGT + ' 128 ch. - 4 ch.',
-    manufacturer=IGT,
-    available_channels=4,
-    connection_info=str(os.path.join(CONFIG_FILE_FOLDER_IGT_DS, 'gen_Nijmegen128_4ch.json')),
-    transducer_compatibility=SC_TRANS + DUMMIES,
-    power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
-    native_power_parameters=POW_AMPL,
-    focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL, FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
-    # Xyz-mid-bowl is native alongside scalar mid bowl, it's the same reference frame, just
-    # with x/y added, and needs no calibration to send as-is (see the 3D steering plan).
-    native_focus_parameters='\n'.join([FOC_WRT_BOWL, FOC_XYZ_WRT_BOWL]),
-    max_transducer_slots=1,
-    max_buffers=2,
-    active=False,
-)
-
-_add_driving_system(
-    IGT_DS[5],
-    name=IGT + ' 128 ch. - 2 ch.',
-    manufacturer=IGT,
-    available_channels=2,
-    connection_info=str(os.path.join(CONFIG_FILE_FOLDER_IGT_DS, 'gen_Nijmegen128_2ch.json')),
-    transducer_compatibility=SC_TRAN_2CH + DUMMIES,
-    power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
-    native_power_parameters=POW_AMPL,
-    focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL, FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
-    # Xyz-mid-bowl is native alongside scalar mid bowl, it's the same reference frame, just
-    # with x/y added, and needs no calibration to send as-is (see the 3D steering plan).
-    native_focus_parameters='\n'.join([FOC_WRT_BOWL, FOC_XYZ_WRT_BOWL]),
-    max_transducer_slots=1,
-    max_buffers=2,
-    active=False,
-)
-
-# # 32 ch. # #
-_add_driving_system(
-    IGT_DS[6],
-    name=IGT + ' 32 ch. - all channels',
-    manufacturer=IGT,
-    available_channels=32,
-    connection_info=str(os.path.join(CONFIG_FILE_FOLDER_IGT_DS, 'gen_Nijmegen32_71D8_10W.json')),
-    transducer_compatibility=DUMMIES,
-    power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
-    native_power_parameters=POW_AMPL,
-    focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL, FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
-    # Xyz-mid-bowl is native alongside scalar mid bowl, it's the same reference frame, just
-    # with x/y added, and needs no calibration to send as-is (see the 3D steering plan).
-    native_focus_parameters='\n'.join([FOC_WRT_BOWL, FOC_XYZ_WRT_BOWL]),
-    max_transducer_slots=2,
-    max_buffers=2,
-    active=True,
-)
-
-# 2 x 10 ch.: this driving system config drives two 10-element transducers at once.
-_add_driving_system(
-    IGT_DS[7],
     name=IGT + ' 32 ch. - 2 x 10 ch.',
     manufacturer=IGT,
     available_channels=20,
@@ -614,7 +511,7 @@ _add_driving_system(
 )
 
 _add_driving_system(
-    IGT_DS[8],
+    IGT_DS[2],
     name=IGT + ' 32 ch. - 1 x 10 ch.',
     manufacturer=IGT,
     available_channels=10,
@@ -632,77 +529,102 @@ _add_driving_system(
     active=True,
 )
 
-# # 8 ch. # #
-# 2 x 4 ch.: this driving system config drives two 4-element transducers at once.
+# # 256 ch. # #
+# All channels: kept Dummy-only, same reasoning as the 32 ch. "all channels" variant above:
+# there's no single real transducer meant to span the full, unsplit channel count.
 _add_driving_system(
-    IGT_DS[9],
-    name=IGT + ' 8 ch. - 2 x 4 ch.',
+    IGT_DS[3],
+    name=IGT + ' 256 ch. - all channels',
     manufacturer=IGT,
-    available_channels=8,
-    connection_info=str(os.path.join(CONFIG_FILE_FOLDER_IGT_DS, 'gen_Nijmegen_8_F720.json')),
-    transducer_compatibility=SC_TRAN_4CH + DUMMIES,
+    available_channels=256,
+    connection_info=str(os.path.join(
+        CONFIG_FILE_FOLDER_IGT_DS, 'gen_Nijmegen_393F_256_MOC12.json')),
+    transducer_compatibility=DUMMIES,
     power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
     native_power_parameters=POW_AMPL,
     focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL, FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
     # Xyz-mid-bowl is native alongside scalar mid bowl, it's the same reference frame, just
     # with x/y added, and needs no calibration to send as-is (see the 3D steering plan).
     native_focus_parameters='\n'.join([FOC_WRT_BOWL, FOC_XYZ_WRT_BOWL]),
-    max_transducer_slots=2,
+    # Same physical unit as IGT_DS[7] below (4 x 52 ch., just exposed unsplit here); 4 slots
+    # either way.
+    max_transducer_slots=4,
     max_buffers=2,
     active=False,
 )
 
+# 1/2/3 x 52 ch.: drive one, two, or three 52-element Clover transducers at once, same
+# 52-of-64-wired-per-bank layout as the 4 x 52 ch. variant below, just fewer banks exposed.
 _add_driving_system(
-    IGT_DS[10],
-    name=IGT + ' 8 ch. - 1 x 4 ch.',
+    IGT_DS[4],
+    name=IGT + ' 256 ch. - 1 x 52 ch.',
     manufacturer=IGT,
-    available_channels=4,
-    connection_info=str(os.path.join(CONFIG_FILE_FOLDER_IGT_DS, 'gen_Nijmegen_4_F720.json')),
-    transducer_compatibility=SC_TRAN_4CH + DUMMIES,
+    available_channels=52,
+    connection_info=str(os.path.join(
+        CONFIG_FILE_FOLDER_IGT_DS, 'gen_Nijmegen_393F_1x52_MOC12.json')),
+    transducer_compatibility=CLOVER_TRANS + DUMMIES,
     power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
     native_power_parameters=POW_AMPL,
     focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL, FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
-    # Xyz-mid-bowl is native alongside scalar mid bowl, it's the same reference frame, just
-    # with x/y added, and needs no calibration to send as-is (see the 3D steering plan).
     native_focus_parameters='\n'.join([FOC_WRT_BOWL, FOC_XYZ_WRT_BOWL]),
     max_transducer_slots=1,
     max_buffers=2,
-    active=False,
+    active=True,
 )
 
-# 2 x 2 ch.: this driving system config drives two 2-element transducers at once.
 _add_driving_system(
-    IGT_DS[11],
-    name=IGT + ' 8 ch. - 2 x 2 ch.',
+    IGT_DS[5],
+    name=IGT + ' 256 ch. - 2 x 52 ch.',
     manufacturer=IGT,
-    available_channels=4,
-    connection_info=str(os.path.join(CONFIG_FILE_FOLDER_IGT_DS, 'gen_Nijmegen_8c4_F720.json')),
-    transducer_compatibility=SC_TRAN_2CH + DUMMIES,
+    available_channels=52 * 2,
+    connection_info=str(os.path.join(
+        CONFIG_FILE_FOLDER_IGT_DS, 'gen_Nijmegen_393F_2x52_MOC12.json')),
+    transducer_compatibility=CLOVER_TRANS + DUMMIES,
     power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
     native_power_parameters=POW_AMPL,
     focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL, FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
-    # Xyz-mid-bowl is native alongside scalar mid bowl, it's the same reference frame, just
-    # with x/y added, and needs no calibration to send as-is (see the 3D steering plan).
     native_focus_parameters='\n'.join([FOC_WRT_BOWL, FOC_XYZ_WRT_BOWL]),
     max_transducer_slots=2,
     max_buffers=2,
-    active=False,
+    active=True,
 )
 
 _add_driving_system(
-    IGT_DS[12],
-    name=IGT + ' 8 ch. - 1 x 2 ch.',
+    IGT_DS[6],
+    name=IGT + ' 256 ch. - 3 x 52 ch.',
     manufacturer=IGT,
-    available_channels=2,
-    connection_info=str(os.path.join(CONFIG_FILE_FOLDER_IGT_DS, 'gen_Nijmegen_4c2_F720.json')),
-    transducer_compatibility=SC_TRAN_2CH + DUMMIES,
+    available_channels=52 * 3,
+    connection_info=str(os.path.join(
+        CONFIG_FILE_FOLDER_IGT_DS, 'gen_Nijmegen_393F_3x52_MOC12.json')),
+    transducer_compatibility=CLOVER_TRANS + DUMMIES,
+    power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
+    native_power_parameters=POW_AMPL,
+    focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL, FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
+    native_focus_parameters='\n'.join([FOC_WRT_BOWL, FOC_XYZ_WRT_BOWL]),
+    max_transducer_slots=3,
+    max_buffers=2,
+    active=True,
+)
+
+# 4 x 52 ch.: drives four 52-element Clover transducers at once. Each of the 4 underlying banks
+# is actually 64 channels wide; only 52 are wired per Clover (see gen_Nijmegen_393F_4x52_MOC12.
+# json's own channel list: channels 52-63 of each bank are skipped).
+_add_driving_system(
+    IGT_DS[7],
+    name=IGT + ' 256 ch. - 4 x 52 ch.',
+    manufacturer=IGT,
+    available_channels=52 * 4,
+    connection_info=str(os.path.join(
+        CONFIG_FILE_FOLDER_IGT_DS, 'gen_Nijmegen_393F_4x52_MOC12.json')),
+    transducer_compatibility=CLOVER_TRANS + DUMMIES,
     power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
     native_power_parameters=POW_AMPL,
     focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL, FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
     # Xyz-mid-bowl is native alongside scalar mid bowl, it's the same reference frame, just
-    # with x/y added, and needs no calibration to send as-is (see the 3D steering plan).
+    # with x/y added, and needs no calibration to send as-is (see the 3D steering plan). This
+    # is the option Clover's own can_3d_steer=True unlocks without needing real 3D calibration.
     native_focus_parameters='\n'.join([FOC_WRT_BOWL, FOC_XYZ_WRT_BOWL]),
-    max_transducer_slots=1,
+    max_transducer_slots=4,
     max_buffers=2,
     active=False,
 )
@@ -856,6 +778,47 @@ _add_transducer(
 )
 
 #######################################################################################
+# Imasonic - Clover tranducers
+#######################################################################################
+
+# One physical unit each, driven together via a 1/2/3/4 x 52 ch. IGT variant. can_3d_steer=True
+# is what actually unlocks the Focus xyz wrt exit/mid bowl options in the GUI for these (see
+# fus_ds_gui's ProtocolBuilder.focus_options()), not anything driving-system-specific.
+#
+# TODO: exit_plane_dist/min_focus/max_focus and each Clover's own steer_information .ini file
+# are all placeholders; real Clover geometry and 3D steer calibration data aren't available
+# yet.
+_add_transducer(
+    CLOVER_TRANS[0], name='Clover 52 ch. #1', manufacturer=IMASONIC,
+    elements=52, fund_freq=350, exit_plane_dist=0,
+    min_focus=0, max_focus=1000,
+    can_3d_steer=True,
+    steer_information=str(os.path.join(
+        CONFIG_FILE_FOLDER_IS_TRAN, 'clover_1_PLACEHOLDER.ini')),
+    active=True,
+)
+
+_add_transducer(
+    CLOVER_TRANS[1], name='Clover 52 ch. #2', manufacturer=IMASONIC,
+    elements=52, fund_freq=350, exit_plane_dist=0,
+    min_focus=0, max_focus=1000,
+    can_3d_steer=True,
+    steer_information=str(os.path.join(
+        CONFIG_FILE_FOLDER_IS_TRAN, 'clover_2_PLACEHOLDER.ini')),
+    active=True,
+)
+
+_add_transducer(
+    CLOVER_TRANS[2], name='Clover 52 ch. #3', manufacturer=IMASONIC,
+    elements=52, fund_freq=350, exit_plane_dist=0,
+    min_focus=0, max_focus=1000,
+    can_3d_steer=True,
+    steer_information=str(os.path.join(
+        CONFIG_FILE_FOLDER_IS_TRAN, 'clover_3_PLACEHOLDER.ini')),
+    active=True,
+)
+
+#######################################################################################
 # Dummy tranducer
 #######################################################################################
 
@@ -892,119 +855,45 @@ _add_transducer(
 # Driving system - transducer combinations
 #######################################################################################
 
-# No calibration data exists yet for these 128-ch combinations -- kept as ready-to-uncomment
-# templates (matching _combo_files_exist()'s automatic Active?, they'd generate Active? = False
-# until the calibration JSON files referenced below actually exist on disk).
-
-# _add_combination(
-#     IGT_DS[1], IS_TRANS[0],
-#     'IS_PCD15287_01001_equalizationCurveFitExport.json',
-#     'IS_PCD15287_01001_focusCurveFitExport.json',
-#     'IS_PCD15287_01001_powerCurveFitExport.json',
-#     'voltageCurveFit_IGT_128_ch.json')
-
-# _add_combination(
-#     IGT_DS[1], IS_TRANS[1],
-#     'IS_PCD15287_01002_equalizationCurveFitExport.json',
-#     'IS_PCD15287_01002_focusCurveFitExport.json',
-#     'IS_PCD15287_01002_powerCurveFitExport.json',
-#     'voltageCurveFit_IGT_128_ch.json')
-
-# _add_combination(
-#     IGT_DS[1], IS_TRANS[2],
-#     'IS_PCD15473_01001_equalizationCurveFitExport.json',
-#     'IS_PCD15473_01001_focusCurveFitExport.json',
-#     'IS_PCD15473_01001_powerCurveFitExport.json',
-#     'voltageCurveFit_IGT_128_ch.json')
-
-# _add_combination(
-#     IGT_DS[1], IS_TRANS[3],
-#     'IS_PCD15473_01002_equalizationCurveFitExport.json',
-#     'IS_PCD15473_01002_focusCurveFitExport.json',
-#     'IS_PCD15473_01002_powerCurveFitExport.json',
-#     'voltageCurveFit_IGT_128_ch.json')
-
-# _add_combination(
-#     IGT_DS[1], IS_TRANS[4],
-#     'IS_PCD15473_01003_equalizationCurveFitExport.json',
-#     'IS_PCD15473_01003_focusCurveFitExport.json',
-#     'IS_PCD15473_01003_powerCurveFitExport.json',
-#     'voltageCurveFit_IGT_128_ch.json')
-
-# _add_combination(
-#     IGT_DS[2], IS_TRANS[0],
-#     'IS_PCD15287_01001_equalizationCurveFitExport.json',
-#     'IS_PCD15287_01001_focusCurveFitExport.json',
-#     'IS_PCD15287_01001_powerCurveFitExport.json',
-#     'voltageCurveFit_IGT_128_ch.json')
-
-# _add_combination(
-#     IGT_DS[2], IS_TRANS[1],
-#     'IS_PCD15287_01002_equalizationCurveFitExport.json',
-#     'IS_PCD15287_01002_focusCurveFitExport.json',
-#     'IS_PCD15287_01002_powerCurveFitExport.json',
-#     'voltageCurveFit_IGT_128_ch.json')
-
-# _add_combination(
-#     IGT_DS[2], IS_TRANS[2],
-#     'IS_PCD15473_01001_equalizationCurveFitExport.json',
-#     'IS_PCD15473_01001_focusCurveFitExport.json',
-#     'IS_PCD15473_01001_powerCurveFitExport.json',
-#     'voltageCurveFit_IGT_128_ch.json')
-
-# _add_combination(
-#     IGT_DS[2], IS_TRANS[3],
-#     'IS_PCD15473_01002_equalizationCurveFitExport.json',
-#     'IS_PCD15473_01002_focusCurveFitExport.json',
-#     'IS_PCD15473_01002_powerCurveFitExport.json',
-#     'voltageCurveFit_IGT_128_ch.json')
-
-# _add_combination(
-#     IGT_DS[2], IS_TRANS[4],
-#     'IS_PCD15473_01003_equalizationCurveFitExport.json',
-#     'IS_PCD15473_01003_focusCurveFitExport.json',
-#     'IS_PCD15473_01003_powerCurveFitExport.json',
-#     'voltageCurveFit_IGT_128_ch.json')
-
 # IGT-32-ch_comb_2x10-ch combinations
 _add_combination(
-    IGT_DS[7], IS_TRANS[0],
+    IGT_DS[1], IS_TRANS[0],
     'IS_PCD15287_01001_equalizationCurveFitExport.json',
     'IS_PCD15287_01001_focusCurveFitExport.json',
     'IS_PCD15287_01001_powerCurveFitExport.json',
     'voltageCurveFit_IGT_32_ch.json')
 _add_combination(
-    IGT_DS[7], IS_TRANS[1],
+    IGT_DS[1], IS_TRANS[1],
     'IS_PCD15287_01002_equalizationCurveFitExport.json',
     'IS_PCD15287_01002_focusCurveFitExport.json',
     'IS_PCD15287_01002_powerCurveFitExport.json',
     'voltageCurveFit_IGT_32_ch.json')
 _add_combination(
-    IGT_DS[7], IS_TRANS[2],
+    IGT_DS[1], IS_TRANS[2],
     'IS_PCD15473_01001_equalizationCurveFitExport.json',
     'IS_PCD15473_01001_focusCurveFitExport.json',
     'IS_PCD15473_01001_powerCurveFitExport.json',
     'voltageCurveFit_IGT_32_ch.json')
 _add_combination(
-    IGT_DS[7], IS_TRANS[3],
+    IGT_DS[1], IS_TRANS[3],
     'IS_PCD15473_01002_equalizationCurveFitExport.json',
     'IS_PCD15473_01002_focusCurveFitExport.json',
     'IS_PCD15473_01002_powerCurveFitExport.json',
     'voltageCurveFit_IGT_32_ch.json')
 _add_combination(
-    IGT_DS[7], IS_TRANS[4],
+    IGT_DS[1], IS_TRANS[4],
     'IS_PCD15473_01003_equalizationCurveFitExport.json',
     'IS_PCD15473_01003_focusCurveFitExport.json',
     'IS_PCD15473_01003_powerCurveFitExport.json',
     'voltageCurveFit_IGT_32_ch.json')
 _add_combination(
-    IGT_DS[7], IS_TRANS[5],
+    IGT_DS[1], IS_TRANS[5],
     'IS_PCD15473_01001_OPM_equalizationCurveFitExport.json',
     'IS_PCD15473_01001_OPM_focusCurveFitExport.json',
     'IS_PCD15473_01001_OPM_powerCurveFitExport.json',
     'voltageCurveFit_IGT_32_ch.json')
 _add_combination(
-    IGT_DS[7], IS_TRANS[6],
+    IGT_DS[1], IS_TRANS[6],
     'IS_PCD15473_01003_OPM_equalizationCurveFitExport.json',
     'IS_PCD15473_01003_OPM_focusCurveFitExport.json',
     'IS_PCD15473_01003_OPM_powerCurveFitExport.json',
@@ -1012,43 +901,43 @@ _add_combination(
 
 # IGT-32-ch_comb_1x10-ch combinations
 _add_combination(
-    IGT_DS[8], IS_TRANS[0],
+    IGT_DS[2], IS_TRANS[0],
     'IS_PCD15287_01001_equalizationCurveFitExport.json',
     'IS_PCD15287_01001_focusCurveFitExport.json',
     'IS_PCD15287_01001_powerCurveFitExport.json',
     'voltageCurveFit_IGT_32_ch.json')
 _add_combination(
-    IGT_DS[8], IS_TRANS[1],
+    IGT_DS[2], IS_TRANS[1],
     'IS_PCD15287_01002_equalizationCurveFitExport.json',
     'IS_PCD15287_01002_focusCurveFitExport.json',
     'IS_PCD15287_01002_powerCurveFitExport.json',
     'voltageCurveFit_IGT_32_ch.json')
 _add_combination(
-    IGT_DS[8], IS_TRANS[2],
+    IGT_DS[2], IS_TRANS[2],
     'IS_PCD15473_01001_equalizationCurveFitExport.json',
     'IS_PCD15473_01001_focusCurveFitExport.json',
     'IS_PCD15473_01001_powerCurveFitExport.json',
     'voltageCurveFit_IGT_32_ch.json')
 _add_combination(
-    IGT_DS[8], IS_TRANS[3],
+    IGT_DS[2], IS_TRANS[3],
     'IS_PCD15473_01002_equalizationCurveFitExport.json',
     'IS_PCD15473_01002_focusCurveFitExport.json',
     'IS_PCD15473_01002_powerCurveFitExport.json',
     'voltageCurveFit_IGT_32_ch.json')
 _add_combination(
-    IGT_DS[8], IS_TRANS[4],
+    IGT_DS[2], IS_TRANS[4],
     'IS_PCD15473_01003_equalizationCurveFitExport.json',
     'IS_PCD15473_01003_focusCurveFitExport.json',
     'IS_PCD15473_01003_powerCurveFitExport.json',
     'voltageCurveFit_IGT_32_ch.json')
 _add_combination(
-    IGT_DS[8], IS_TRANS[5],
+    IGT_DS[2], IS_TRANS[5],
     'IS_PCD15473_01001_OPM_equalizationCurveFitExport.json',
     'IS_PCD15473_01001_OPM_focusCurveFitExport.json',
     'IS_PCD15473_01001_OPM_powerCurveFitExport.json',
     'voltageCurveFit_IGT_32_ch.json')
 _add_combination(
-    IGT_DS[8], IS_TRANS[6],
+    IGT_DS[2], IS_TRANS[6],
     'IS_PCD15473_01003_OPM_equalizationCurveFitExport.json',
     'IS_PCD15473_01003_OPM_focusCurveFitExport.json',
     'IS_PCD15473_01003_OPM_powerCurveFitExport.json',
