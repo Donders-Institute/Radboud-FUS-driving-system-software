@@ -44,6 +44,36 @@ from fus_driving_systems.config.logging_config import (enable_crash_detection, g
 from fus_driving_systems.config.config import config_info as config
 
 
+def _channel_count_mismatch_message(protocol):
+    """
+    Shared by validate_protocol() (reported early, alongside every other problem) and
+    _assert_ready_to_send() (enforced right before actual use). One driving system whose
+    max_transducer_slots allows more than one transducer slot (e.g. a "2 x 10 ch." or "4 x 52
+    ch." variant) genuinely needs every one of its slots configured, not just some of them: the
+    hardware expects data for its whole, fixed available_ch, and a caller who only wants fewer
+    transducers should instead choose the matching smaller driving system.
+
+    Parameters:
+        protocol (TUSProtocol): The protocol to check.
+
+    Returns:
+        str | None: An error message if protocol's slots' combined element count doesn't
+        exactly match protocol.driving_sys.available_ch, None if it matches (or there are no
+        slots yet to check at all).
+    """
+
+    if not protocol.slots:
+        return None
+    total_elements = sum(slot.transducer.elements for slot in protocol.slots)
+    if total_elements == protocol.driving_sys.available_ch:
+        return None
+    return (f'Number of available channels ({protocol.driving_sys.available_ch}) does not ' +
+            f'match the combined elements of the {len(protocol.slots)} transducer slot(s) ' +
+            f'({total_elements}). Configure the remaining transducer slot(s), or choose a ' +
+            'driving system whose available channels match how many transducers you intend ' +
+            'to use.')
+
+
 class IGT(ds.ControlDrivingSystem):
     """
     Class for an IGT ultrasound driving system, inheriting from the abstract class DrivingSystem.
@@ -415,6 +445,10 @@ class IGT(ds.ControlDrivingSystem):
                     f"(counting from 0, i.e. protocol.slots[{i}]; {slot.transducer.serial}). " +
                     "Amplitude is None.")
 
+        channel_count_mismatch = _channel_count_mismatch_message(protocol)
+        if channel_count_mismatch is not None:
+            error_messages.append(channel_count_mismatch)
+
         n_pulses = protocol.pulse_train_dur/protocol.pulse_rep_int
         max_n_pulses = int(get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
                                             'Max. pulses in pulse train', 64, True))
@@ -427,6 +461,10 @@ class IGT(ds.ControlDrivingSystem):
                 "pulse_train_rep_dur to repeat the train instead -- physically equivalent, " +
                 "since each pulse already carries its own pulse_rep_int - pulse_dur trailing " +
                 "gap, but not subject to this per-train pulse count limit.")
+        # No separate n_pulses < 1 check: pulse_rep_int/pulse_train_dur are both validated
+        # nonzero by configure_timing(), so n_pulses is always > 0, and any value strictly
+        # between 0 and 1 is never a whole number either, already caught above by
+        # super().validate_protocol()'s own "not a whole number" check.
 
         return error_messages
 
@@ -452,13 +490,10 @@ class IGT(ds.ControlDrivingSystem):
             get_logger().critical(message)
             raise FDSValidationError(message)
 
-        total_elements = sum(slot.transducer.elements for slot in protocol.slots)
-        if total_elements != protocol.driving_sys.available_ch:
-            message = (f'Number of available channels ({protocol.driving_sys.available_ch}) ' +
-                       f'does not match the combined elements of the {len(protocol.slots)} ' +
-                       f'transducer slot(s) ({total_elements}).')
-            get_logger().critical(message)
-            raise FDSValidationError(message)
+        channel_count_mismatch = _channel_count_mismatch_message(protocol)
+        if channel_count_mismatch is not None:
+            get_logger().critical(channel_count_mismatch)
+            raise FDSValidationError(channel_count_mismatch)
 
     def _assert_duration_given_when_interleaving(self, protocols,
                                                  total_alternating_duration_ms):

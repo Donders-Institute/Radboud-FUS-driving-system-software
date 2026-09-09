@@ -80,6 +80,12 @@ class SonicConcepts(ds.ControlDrivingSystem):
 
         error_messages = super().validate_protocol(protocol)
 
+        if not protocol.slots:
+            # Nothing to check yet: validate_protocol() can be called before any transducer
+            # slot has been added at all (e.g. a GUI validating timing on its own), unlike
+            # send_protocol(), which always has protocol.slots[0] to read by the time it runs.
+            return error_messages
+
         # send_protocol() only ever reads protocol.slots[0] -- this driving system only ever
         # requires a single transducer slot.
         slot = protocol.slots[0]

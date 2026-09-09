@@ -1,0 +1,227 @@
+# -*- coding: utf-8 -*-
+"""
+Integration tests for PlanningTab: wiring between EquipmentPanel, SlotEditor(s), TimingPanel,
+and the validation label. Not re-testing what each widget's own test module already covers in
+isolation.
+"""
+import pytest
+
+from fus_ds_gui.planning.planning_tab import PlanningTab
+
+
+def _configure_driving_system(patch_config, serial, max_tran_slots=1, manufacturer='Sonic '
+                              'Concepts', power_option='Global power [mW]'):
+    # Sonic Concepts by default, not IGT: IGT.validate_protocol() also requires slot.ampl to be
+    # set, which is only ever derived from a *real*, active calibration combo (a genuine
+    # hardware fact: IGT's native power parameter is always amplitude, whatever power option
+    # was chosen), not something these no-active-combo synthetic fixtures can produce. SC's own
+    # validate_protocol() only requires global_power, so "no problems found" is reachable here
+    # without needing real calibration curve files (see test_protocol_builder.py for the same
+    # reasoning).
+    patch_config.set('Equipment', 'Driving systems', serial)
+    section = f'Equipment.Driving system.{serial}'
+    patch_config.set(section, 'Name', f'Test {manufacturer}')
+    patch_config.set(section, 'Manufacturer', manufacturer)
+    patch_config.set(section, 'Available channels', '4')
+    patch_config.set(section, 'Connection info', 'COM1')
+    patch_config.set(section, 'Transducer compatibility', 'UNITTEST_TRAN')
+    patch_config.set(section, 'Power options', power_option)
+    patch_config.set(section, 'Focus options', 'Focus wrt exit plane [mm]')
+    patch_config.set(section, 'Native power parameters', power_option)
+    patch_config.set(section, 'Native focus parameters', 'Focus wrt exit plane [mm]')
+    patch_config.set(section, 'Max. transducer slots', str(max_tran_slots))
+    patch_config.set(section, 'Active?', 'True')
+
+
+def _configure_transducer(patch_config, serial='UNITTEST_TRAN'):
+    section = f'Equipment.Transducer.{serial}'
+    patch_config.set(section, 'Elements', '2')
+    patch_config.set(section, 'Fund. freq.', '300')
+    patch_config.set(section, 'Min. focus', '10')
+    patch_config.set(section, 'Max. focus', '80')
+    patch_config.set(section, 'Exit plane - first element dist.', '5')
+    patch_config.set(section, 'Steer information', '')
+    patch_config.set(section, 'Active?', 'True')
+
+
+def _transducer_serials(combo):
+    """Item 0 is always the 'no transducer selected' placeholder (itemData None, see
+    SlotEditor._populate_transducer_combo()'s own docstring); every real item has a Transducer
+    with its own .serial."""
+    return [combo.itemData(i).serial if combo.itemData(i) is not None else None
+            for i in range(combo.count())]
+
+
+@pytest.fixture
+def single_slot_setup(patch_config):
+    """One driving system with max_tran_slots=1 and one compatible transducer, so the "Add
+    transducer slot" button must never become enabled."""
+    _configure_driving_system(patch_config, 'UNITTEST_IGT', max_tran_slots=1)
+    patch_config.set('Equipment', 'Transducers', 'UNITTEST_TRAN')
+    _configure_transducer(patch_config)
+
+
+def test_validation_label_shows_placeholder_before_any_slot(qtbot, single_slot_setup):
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+
+    assert tab.validation_label.text() == (
+        "Configure a transducer slot below and click its Apply button to begin.")
+    assert tab.validation_label.styleSheet() == ""
+
+
+def test_validation_label_reports_a_timing_error_before_any_slot_is_applied(
+        qtbot, single_slot_setup):
+    """A researcher must see a timing problem right away, without first needing to apply a
+    transducer slot just to unlock validation at all (see ProtocolBuilder.validate()'s own
+    docstring)."""
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+
+    tab.builder.configure_timing(pulse_dur=10, pulse_rep_int=5)
+    tab._refresh_validation()
+
+    assert 'Pulse Duration' in tab.validation_label.text()
+    assert 'red' in tab.validation_label.styleSheet()
+
+
+def test_builds_one_slot_editor_and_timing_panel_on_startup(qtbot, single_slot_setup):
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+
+    assert len(tab._slot_editors) == 1
+    assert tab.timing_panel is not None
+    assert tab.builder is not None
+
+
+def test_add_slot_button_disabled_at_max_tran_slots(qtbot, single_slot_setup):
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+
+    assert tab.add_slot_button.isEnabled() is False
+
+
+def test_add_slot_button_enabled_when_room_for_more(qtbot, patch_config):
+    _configure_driving_system(patch_config, 'UNITTEST_IGT', max_tran_slots=2)
+    patch_config.set('Equipment', 'Transducers', 'UNITTEST_TRAN')
+    _configure_transducer(patch_config)
+
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+
+    assert tab.add_slot_button.isEnabled() is True
+
+    tab.add_slot_button.click()
+
+    assert len(tab._slot_editors) == 2
+    assert tab.add_slot_button.isEnabled() is False  # now at the limit
+
+
+def test_choosing_a_transducer_excludes_it_from_other_slot_editors(qtbot, patch_config):
+    _configure_driving_system(patch_config, 'UNITTEST_IGT', max_tran_slots=2)
+    patch_config.set('Equipment.Driving system.UNITTEST_IGT', 'Transducer compatibility',
+                     'UNITTEST_TRAN_A\nUNITTEST_TRAN_B')
+    patch_config.set('Equipment', 'Transducers', 'UNITTEST_TRAN_A\nUNITTEST_TRAN_B')
+    _configure_transducer(patch_config, 'UNITTEST_TRAN_A')
+    _configure_transducer(patch_config, 'UNITTEST_TRAN_B')
+
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+    tab.add_slot_button.click()
+    editor_1, editor_2 = tab._slot_editors
+    # Both editors start on the "no transducer selected" placeholder (see SlotEditor.
+    # _populate_transducer_combo()'s own docstring), so an explicit pick is needed here to
+    # trigger the exclusion in the first place.
+    editor_1.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN_A
+
+    assert _transducer_serials(editor_2.transducer_combo) == [None, 'UNITTEST_TRAN_B']
+
+    # editor_1's own dropdown must still offer its own current pick.
+    assert 'UNITTEST_TRAN_A' in _transducer_serials(editor_1.transducer_combo)
+
+
+def test_switching_a_transducer_frees_it_up_for_other_slot_editors(qtbot, patch_config):
+    """Three transducers, not two: with exactly as many transducers as slots, editor_1 can only
+    ever switch to whatever editor_2 doesn't already have; there's nothing left to prove about
+    "freeing up" a serial in that case (see the previous test's own comment). A third, still-
+    unclaimed transducer isolates the actual behavior under test: switching editor_1 *away from*
+    UNITTEST_TRAN_A makes that serial available to editor_2 again."""
+    _configure_driving_system(patch_config, 'UNITTEST_IGT', max_tran_slots=2)
+    patch_config.set('Equipment.Driving system.UNITTEST_IGT', 'Transducer compatibility',
+                     'UNITTEST_TRAN_A\nUNITTEST_TRAN_B\nUNITTEST_TRAN_C')
+    patch_config.set('Equipment', 'Transducers',
+                     'UNITTEST_TRAN_A\nUNITTEST_TRAN_B\nUNITTEST_TRAN_C')
+    _configure_transducer(patch_config, 'UNITTEST_TRAN_A')
+    _configure_transducer(patch_config, 'UNITTEST_TRAN_B')
+    _configure_transducer(patch_config, 'UNITTEST_TRAN_C')
+
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+    tab.add_slot_button.click()
+    editor_1, editor_2 = tab._slot_editors
+    editor_1.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN_A
+    # UNITTEST_TRAN_A is now excluded from editor_2's own dropdown (see the previous test), so
+    # look B up by serial rather than a fixed index.
+    b_index = next(i for i in range(editor_2.transducer_combo.count())
+                   if editor_2.transducer_combo.itemData(i) is not None
+                   and editor_2.transducer_combo.itemData(i).serial == 'UNITTEST_TRAN_B')
+    editor_2.transducer_combo.setCurrentIndex(b_index)
+    assert editor_2.transducer_combo.currentData().serial != 'UNITTEST_TRAN_A'
+
+    combo = editor_1.transducer_combo
+    tran_c_index = next(i for i in range(combo.count())
+                        if combo.itemData(i) is not None
+                        and combo.itemData(i).serial == 'UNITTEST_TRAN_C')
+    combo.setCurrentIndex(tran_c_index)
+
+    assert 'UNITTEST_TRAN_A' in _transducer_serials(editor_2.transducer_combo)
+
+
+def test_validation_label_updates_after_applying_a_slot(qtbot, single_slot_setup):
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+    editor = tab._slot_editors[0]
+    editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN
+    editor.focus_value_spin.setValue(20)
+    editor.power_value_spin.setValue(0.5)
+
+    editor.apply_button.click()
+
+    assert tab.validation_label.text() == "No problems found."
+    assert tab.validation_label.styleSheet() == ""
+
+
+def test_validation_label_turns_red_when_there_are_problems(
+        qtbot, single_slot_setup, monkeypatch):
+    """A plain-colored message blends in with the rest of the tab; see this label's own use
+    alongside SlotEditor/TimingPanel's identically-styled error_label (ApplyPanel). Fakes
+    validate() itself rather than constructing a real invalid protocol: this test is only about
+    _refresh_validation()'s own styling logic, not about which backend rule actually fires, so a
+    real slot/timing setup would only couple it to that rule's own wording/existence."""
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+
+    monkeypatch.setattr(tab.builder, 'validate', lambda: ['Something is wrong.'])
+    tab._refresh_validation()
+
+    assert tab.validation_label.text() == "- Something is wrong."
+    assert 'red' in tab.validation_label.styleSheet()
+
+
+def test_changing_driving_system_rebuilds_slot_editors_and_timing_panel(qtbot, patch_config):
+    _configure_driving_system(patch_config, 'UNITTEST_A', max_tran_slots=1)
+    _configure_driving_system(patch_config, 'UNITTEST_B', max_tran_slots=1)
+    patch_config.set('Equipment', 'Driving systems', 'UNITTEST_A\nUNITTEST_B')
+    patch_config.set('Equipment', 'Transducers', 'UNITTEST_TRAN')
+    _configure_transducer(patch_config)
+
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+    first_builder = tab.builder
+    first_timing_panel = tab.timing_panel
+
+    tab.equipment_panel._driving_system_combo.setCurrentIndex(1)
+
+    assert tab.builder is not first_builder
+    assert tab.timing_panel is not first_timing_panel
+    assert len(tab._slot_editors) == 1

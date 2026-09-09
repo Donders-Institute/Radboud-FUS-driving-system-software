@@ -249,10 +249,8 @@ config['Focus']['Option.exit'] = FOC_WRT_EXIT
 config['Focus']['Option.bowl'] = FOC_WRT_BOWL
 config['Focus']['Option.xyz_exit'] = FOC_XYZ_WRT_EXIT
 config['Focus']['Option.xyz_bowl'] = FOC_XYZ_WRT_BOWL
-# See the identical rationale on config['Power']['Engineering-only options'] above. Xyz-mid-bowl
-# inherits mid bowl's own gate (same reference frame, just with x/y added); xyz-exit-plane stays
-# non-engineering-only, matching scalar exit-plane.
-config['Focus']['Engineering-only options'] = '\n'.join([FOC_WRT_BOWL, FOC_XYZ_WRT_BOWL])
+# See the identical rationale on config['Power']['Engineering-only options'] above.
+config['Focus']['Engineering-only options'] = ''
 
 # No Default.exit/Default.bowl keys here -- TransducerSlot.__init__ hardcodes
 # _focus_wrt_exit_plane/_focus_wrt_mid_bowl to None directly. Default.bowl used to be read there,
@@ -268,21 +266,16 @@ RAMP_TUK = 'Tukey'
 
 config['Ramp'] = {}
 config['Ramp']['Options'] = '\n'.join([RAMP_RECT, RAMP_LIN, RAMP_TUK])
-config['Ramp']['Default option'] = RAMP_RECT
 config['Ramp']['Option.rect'] = RAMP_RECT
 config['Ramp']['Option.lin'] = RAMP_LIN
 config['Ramp']['Option.tuk'] = RAMP_TUK
 
-# Timing parameters
+# Timing parameters. pulse_dur is the only genuinely independent default here; every other
+# timing field (pulse_rep_int, pulse_train_dur, pulse_train_rep_int, pulse_train_rep_dur,
+# pulse_ramp_shape, pulse_ramp_dur) cascades from it via TUSProtocol.configure_timing()'s own
+# defaults, both at construction time and whenever a caller leaves one out.
 config['Timing'] = {}
 config['Timing']['Pulse_dur_ms'] = str(0.25)  # [ms]
-PULSE_REP_INT = 20
-config['Timing']['Pulse_rep_int_ms'] = str(PULSE_REP_INT)  # [ms]
-config['Timing']['Pulse_train_dur_ms'] = str(PULSE_REP_INT)  # [ms]
-config['Timing']['Pulse_train_rep_int_ms'] = str(PULSE_REP_INT)  # [ms]
-config['Timing']['Pulse_train_rep_dur'] = str(PULSE_REP_INT)  # [ms]
-
-config['Timing']['Pulse_ramp_dur_ms'] = str(0)  # [ms]
 
 # Equipment
 config['Equipment'] = {}
@@ -565,8 +558,8 @@ _add_driving_system(
     transducer_compatibility=CLOVER_TRANS + DUMMIES,
     power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
     native_power_parameters=POW_AMPL,
-    focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL, FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
-    native_focus_parameters='\n'.join([FOC_WRT_BOWL, FOC_XYZ_WRT_BOWL]),
+    focus_options=[FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
+    native_focus_parameters=FOC_XYZ_WRT_BOWL,
     max_transducer_slots=1,
     max_buffers=2,
     active=True,
@@ -582,8 +575,8 @@ _add_driving_system(
     transducer_compatibility=CLOVER_TRANS + DUMMIES,
     power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
     native_power_parameters=POW_AMPL,
-    focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL, FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
-    native_focus_parameters='\n'.join([FOC_WRT_BOWL, FOC_XYZ_WRT_BOWL]),
+    focus_options=[FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
+    native_focus_parameters=FOC_XYZ_WRT_BOWL,
     max_transducer_slots=2,
     max_buffers=2,
     active=True,
@@ -599,8 +592,8 @@ _add_driving_system(
     transducer_compatibility=CLOVER_TRANS + DUMMIES,
     power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
     native_power_parameters=POW_AMPL,
-    focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL, FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
-    native_focus_parameters='\n'.join([FOC_WRT_BOWL, FOC_XYZ_WRT_BOWL]),
+    focus_options=[FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
+    native_focus_parameters=FOC_XYZ_WRT_BOWL,
     max_transducer_slots=3,
     max_buffers=2,
     active=True,
@@ -619,11 +612,8 @@ _add_driving_system(
     transducer_compatibility=CLOVER_TRANS + DUMMIES,
     power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
     native_power_parameters=POW_AMPL,
-    focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL, FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
-    # Xyz-mid-bowl is native alongside scalar mid bowl, it's the same reference frame, just
-    # with x/y added, and needs no calibration to send as-is (see the 3D steering plan). This
-    # is the option Clover's own can_3d_steer=True unlocks without needing real 3D calibration.
-    native_focus_parameters='\n'.join([FOC_WRT_BOWL, FOC_XYZ_WRT_BOWL]),
+    focus_options=[FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
+    native_focus_parameters=FOC_XYZ_WRT_BOWL,
     max_transducer_slots=4,
     max_buffers=2,
     active=False,

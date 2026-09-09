@@ -474,6 +474,12 @@ class TestIsConnected:
 # ---------------------------------------------------------------------------
 
 def _valid_protocol(**overrides):
+    """A driving_sys is only synthesized here when the caller doesn't pass their own; its
+    available_ch is then set to exactly match the combined element count of whichever slots
+    list is in use (the default above, or an override), so every existing test asking about a
+    *different* problem stays genuinely valid on the channel-count front too. Only a test that
+    passes its own driving_sys can exercise a mismatch (see
+    test_channel_count_mismatch_is_flagged)."""
     values = dict(
         pulse_dur=1.0,
         pulse_rep_int=2.0,
@@ -485,6 +491,9 @@ def _valid_protocol(**overrides):
         slots=[_slot(ampl=[50.0])],
     )
     values.update(overrides)
+    if 'driving_sys' not in values:
+        total_elements = sum(slot.transducer.elements for slot in values['slots'])
+        values['driving_sys'] = SimpleNamespace(available_ch=total_elements)
     return SimpleNamespace(**values)
 
 
@@ -575,6 +584,58 @@ class TestValidateProtocol:
             pulse_train_rep_int=10.0, pulse_train_rep_dur=10.0))
 
         assert any('maximum amount of pulses' in e for e in errors)
+
+    def test_pulse_train_shorter_than_pulse_rep_int_is_flagged(self, igt_instance, patch_config):
+        """pulse_train_dur < pulse_rep_int means floor(pulse_train_dur / pulse_rep_int) (the
+        actual pulse count computed in _define_pulse_group()) is 0, a pulse train with no pulses
+        in it at all, not just an unusually short one. No dedicated IGT-level check for this: any
+        n_pulses strictly between 0 and 1 is never a whole number either (pulse_rep_int/
+        pulse_train_dur are both validated nonzero by configure_timing(), so n_pulses can't be
+        exactly 0), so ControlDrivingSystem.validate_protocol()'s own "not a whole number" check,
+        run via super() above, already reports it."""
+        patch_config.set('Ramp', 'Option.rect', 'Rectangular - no ramping')
+
+        errors = igt_instance.validate_protocol(_valid_protocol(
+            pulse_dur=1.0, pulse_rep_int=90.0, pulse_train_dur=18.0,
+            pulse_train_rep_int=18.0, pulse_train_rep_dur=18.0))
+
+        assert any('not a whole number' in e for e in errors)
+
+    def test_channel_count_mismatch_is_flagged(self, igt_instance, patch_config):
+        """A driving system whose max_transducer_slots allows more than one transducer slot
+        (e.g. a '2 x 10 ch.' variant) genuinely needs every one of its slots configured: the
+        hardware expects data for its whole, fixed available_ch. Previously only enforced at
+        send-time (_assert_ready_to_send()), so a researcher configuring just one of two slots
+        would see 'No problems found' right up until actually sending the protocol."""
+        patch_config.set('Ramp', 'Option.rect', 'Rectangular - no ramping')
+
+        errors = igt_instance.validate_protocol(_valid_protocol(
+            slots=[_slot(elements=10, ampl=[50.0])],
+            driving_sys=SimpleNamespace(available_ch=20)))
+
+        assert any('does not match the combined elements' in e for e in errors)
+
+    def test_channel_count_match_is_not_flagged(self, igt_instance, patch_config):
+        patch_config.set('Ramp', 'Option.rect', 'Rectangular - no ramping')
+
+        errors = igt_instance.validate_protocol(_valid_protocol(
+            slots=[_slot(elements=10, ampl=[50.0])],
+            driving_sys=SimpleNamespace(available_ch=10)))
+
+        assert not any('does not match the combined elements' in e for e in errors)
+
+    def test_channel_count_is_not_checked_before_any_slot_exists(
+            self, igt_instance, patch_config):
+        """Distinct from send-time's own 'No transducer slot configured' check (see
+        _assert_ready_to_send()): the GUI's own "add a transducer slot" placeholder already
+        covers this case, so validate_protocol() has nothing extra to say about channel count
+        when there are no slots to count at all."""
+        patch_config.set('Ramp', 'Option.rect', 'Rectangular - no ramping')
+
+        errors = igt_instance.validate_protocol(_valid_protocol(
+            slots=[], driving_sys=SimpleNamespace(available_ch=20)))
+
+        assert not any('does not match the combined elements' in e for e in errors)
 
 
 # ---------------------------------------------------------------------------

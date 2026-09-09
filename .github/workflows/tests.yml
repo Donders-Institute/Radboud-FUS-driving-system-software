@@ -82,7 +82,11 @@ jobs:
         run: pip install -r fus_ds_gui/requirements-gui.txt
 
       - name: Install pylint
-        run: pip install pylint
+        # Pinned: an unpinned install picked up pylint 4.0.8 on this runner (nothing here
+        # constrains its version the way spyder's own <4 dependency does in a full dev
+        # environment), and pylint 4's changed introspection of PySide6's compiled Qt bindings
+        # produced a new false-positive finding that isn't present under this pinned version.
+        run: pip install pylint==3.3.9
 
       - name: Run pylint (fus_ds_package)
         working-directory: fus_ds_package

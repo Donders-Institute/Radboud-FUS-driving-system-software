@@ -104,33 +104,13 @@ class TUSProtocol():
         # Transducer slot(s) -- see add_slot(). Call it at least once before using this protocol.
         self._slots = []
 
-        back_up_ramp_shape = get_config_value(get_logger(), config, 'Ramp', 'Options',
-                                              '').split('\n')[0]
-        # Timing parameters
-        self._timing_param = {
-            # # Pulse
-            'pulse_dur': float(get_config_value(get_logger(), config, 'Timing', 'Pulse_dur_ms',
-                                                0.25)),  # [ms]
-            'pulse_rep_int': float(get_config_value(
-                get_logger(), config, 'Timing', 'Pulse_rep_int_ms', 20)),  # [ms]
-
-            # Rectangular - no ramping, Linear, Tukey
-            'pulse_ramp_shape': get_config_value(get_logger(), config, 'Ramp', 'Default option',
-                                                 back_up_ramp_shape),
-            'pulse_ramp_dur': float(get_config_value(
-                get_logger(), config, 'Timing', 'Pulse_ramp_dur_ms', 0)),  # [ms]
-
-            # # Pulse train
-            'pulse_train_dur': float(get_config_value(get_logger(), config, 'Timing',
-                                                      'Pulse_train_dur_ms', 20)),  # [ms]
-            'pulse_train_rep_int': float(get_config_value(get_logger(), config, 'Timing',
-                                                          'Pulse_train_rep_int_ms', 20)),  # [ms]
-
-            # Pulse train repetition
-            'pulse_train_rep_dur': float(get_config_value(get_logger(), config, 'Timing',
-                                                          'Pulse_train_rep_dur', 20)),  # [ms]
-
-            }
+        # pulse_dur is the only genuinely independent timing default; every other field cascades
+        # from it exactly the way configure_timing() always cascades a field a caller leaves out
+        # (see its own docstring), which is what keeps a freshly-constructed protocol
+        # self-consistent even before configure_timing() has ever been called on it directly.
+        self._timing_param = {}
+        pulse_dur = float(get_config_value(get_logger(), config, 'Timing', 'Pulse_dur_ms', 0.25))
+        self.configure_timing(pulse_dur)
 
     def __str__(self):
         """

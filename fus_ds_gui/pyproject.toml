@@ -4,6 +4,20 @@
 # no-name-in-module error.
 extension-pkg-allow-list = ["PySide6"]
 
+[tool.pylint."messages control"]
+disable = [
+    # Mirrors fus_ds_package/.pylintrc's own, identically-reasoned disable: this package wraps
+    # fus_driving_systems' own domain, whose operations (e.g. TUSProtocol.add_slot(), which
+    # ProtocolBuilder.add_slot() forwards to directly) are inherently multi-parameter,
+    # required-together arguments, not accidental complexity to refactor away.
+    "too-many-arguments",
+    "too-many-positional-arguments",
+    # A Qt widget genuinely needs one attribute per child widget/combo/spinbox it composes
+    # (SlotEditor, TimingPanel, PlanningTab), that's normal widget composition, not
+    # accidental complexity.
+    "too-many-instance-attributes",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["fus_ds_gui/tests"]
 addopts = """

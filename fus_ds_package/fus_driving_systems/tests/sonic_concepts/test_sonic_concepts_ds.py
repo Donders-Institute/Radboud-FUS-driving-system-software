@@ -367,6 +367,43 @@ def test_validate_protocol_flags_global_power_none_when_never_configured(
     assert "'Global power [mW]'" in errors[0]
 
 
+def test_validate_protocol_is_safe_before_any_slot_exists(mocker, connected_instance):
+    """protocol.slots[0] (this driving system's own single-slot assumption, see
+    test_validate_protocol_flags_global_power_none's own docstring) must not be read at all
+    when there is no slot yet -- a caller (e.g. a GUI validating timing on its own) can call
+    this before any transducer slot has been added."""
+    fake_protocol = mocker.Mock()
+    fake_protocol.slots = []
+    fake_protocol.pulse_dur = 1
+    fake_protocol.pulse_rep_int = 2
+    fake_protocol.pulse_train_dur = 10
+    fake_protocol.pulse_train_rep_int = 10
+    fake_protocol.pulse_train_rep_dur = 10
+
+    errors = connected_instance.validate_protocol(fake_protocol)
+
+    assert errors == []
+
+
+def test_validate_protocol_reports_a_timing_error_before_any_slot_exists(mocker,
+                                                                         connected_instance):
+    """Confirms the empty-slots guard above doesn't accidentally swallow a real timing problem:
+    super().validate_protocol() runs before that guard, so its own errors must still surface
+    even when there's no slot yet to check at all."""
+    fake_protocol = mocker.Mock()
+    fake_protocol.slots = []
+    fake_protocol.pulse_dur = 1
+    # Exercises ControlDrivingSystem.validate_protocol()'s own "not allowed to be 0" check.
+    fake_protocol.pulse_rep_int = 0
+    fake_protocol.pulse_train_dur = 10
+    fake_protocol.pulse_train_rep_int = 10
+    fake_protocol.pulse_train_rep_dur = 10
+
+    errors = connected_instance.validate_protocol(fake_protocol)
+
+    assert any('Pulse Repetition Interval' in e for e in errors)
+
+
 def test_send_protocol_raises_before_touching_hardware_when_global_power_is_none(
         mocker, connected_instance):
     """Regression test: this check used to only surface deep inside _set_global_power(), after

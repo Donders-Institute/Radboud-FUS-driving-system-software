@@ -2,12 +2,15 @@
 """
 Characterization tests for fus_driving_systems.tus_protocol.TUSProtocol.
 
-TUSProtocol.__init__ pulls in several config-driven defaults. To keep these tests fast and
-independent of any specific driving-system/transducer/config combination, every test here builds
-the instance with TUSProtocol.__new__(TUSProtocol) (bypassing __init__ entirely) and sets only
-the private attributes the method-under-test actually reads.
+TUSProtocol.__init__ pulls in a config-driven pulse_dur default and derives every other timing
+field from it via configure_timing() itself. To keep the tests below fast and independent of any
+specific driving-system/transducer/config combination, every test other than the one for
+__init__ itself builds the instance with TUSProtocol.__new__(TUSProtocol) (bypassing __init__
+entirely) and sets only the private attributes the method-under-test actually reads.
 
 Covers:
+- __init__ deriving a self-consistent set of timing defaults from pulse_dur alone (one test,
+  using a real, minimal driving system via patch_config; see its own docstring).
 - configure_timing() -- the only way to set any timing parameter (pulse_dur, pulse_rep_int,
   pulse_train_dur, pulse_train_rep_int, pulse_train_rep_dur, pulse_ramp_shape, pulse_ramp_dur
   all have getters only), including the cascade defaults each level falls back to when not
@@ -46,6 +49,28 @@ def _fake_slot(serial='TRAN-A', elements=1, ampl=None):
     calculation."""
     return SimpleNamespace(
         transducer=SimpleNamespace(serial=serial, elements=elements), ampl=ampl)
+
+
+# --- __init__ -----------------------------------------------------------------
+
+def test_init_derives_self_consistent_timing_from_pulse_dur_alone(patch_config):
+    """The one test in this file that doesn't bypass __init__ (see this module's own docstring):
+    a fresh protocol must already be self-consistent, before configure_timing() is ever called
+    on it directly, the same way it would be for any caller who only gives pulse_dur."""
+    patch_config.set('Timing', 'Pulse_dur_ms', '5')
+    patch_config.set('Equipment', 'Driving systems', 'UNITTEST_DS')
+    patch_config.set('Equipment.Driving system.UNITTEST_DS', 'Available channels', '2')
+    patch_config.set('Equipment.Driving system.UNITTEST_DS', 'Connection info', 'COM1')
+    patch_config.set('Equipment.Driving system.UNITTEST_DS', 'Native power parameters', '')
+    patch_config.set('Equipment.Driving system.UNITTEST_DS', 'Native focus parameters', '')
+
+    protocol = TUSProtocol('UNITTEST_DS')
+
+    assert protocol.pulse_dur == 5
+    assert protocol.pulse_rep_int == 5
+    assert protocol.pulse_train_dur == 5
+    assert protocol.pulse_train_rep_int == 5
+    assert protocol.pulse_train_rep_dur == 5  # stored in ms -- 5/1e3 s * 1e3 = 5 ms
 
 
 # --- get_ramp_shapes ----------------------------------------------------------
