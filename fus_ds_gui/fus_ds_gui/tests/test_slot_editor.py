@@ -228,12 +228,148 @@ def test_apply_edits_an_already_added_slot_without_re_adding(qtbot, builder):
     assert editor.slot.focus_wrt_exit_plane == pytest.approx(30)
 
 
+def test_oper_freq_starts_at_zero_before_a_transducer_is_selected(qtbot, builder):
+    """Matches focus_value_spin/power_value_spin's own resting value while nothing is selected
+    yet; Apply already blocks on "Choose a transducer first." before oper_freq is ever read, so
+    the range briefly allowing 0 here is never actually reachable at Apply."""
+    editor = SlotEditor(builder)
+    qtbot.addWidget(editor)
+
+    assert editor.oper_freq_spin.value() == 0
+
+
+def test_oper_freq_defaults_to_the_transducers_fundamental_frequency(qtbot, builder):
+    editor = SlotEditor(builder)
+    qtbot.addWidget(editor)
+
+    editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN_A: fund_freq=300
+
+    assert editor.oper_freq_spin.value() == 300
+    assert editor.oper_freq_spin.minimum() == 1
+
+
+def test_oper_freq_resets_to_zero_when_deselecting_the_transducer(qtbot, builder):
+    editor = SlotEditor(builder)
+    qtbot.addWidget(editor)
+    editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN_A
+
+    editor.transducer_combo.setCurrentIndex(0)  # -- Select a transducer --
+
+    assert editor.oper_freq_spin.value() == 0
+    assert editor.oper_freq_spin.minimum() == 0
+
+
+def test_dephasing_value_rows_toggle_with_the_selected_mode(qtbot, builder):
+    editor = SlotEditor(builder)
+    qtbot.addWidget(editor)
+    assert editor._form.isRowVisible(editor.dephasing_degree_spin) is False
+    assert editor._form.isRowVisible(editor.dephasing_values_edit) is False
+
+    editor.dephasing_mode_combo.setCurrentIndex(1)  # Cyclic
+
+    assert editor._form.isRowVisible(editor.dephasing_degree_spin) is True
+    assert editor._form.isRowVisible(editor.dephasing_values_edit) is False
+
+    editor.dephasing_mode_combo.setCurrentIndex(2)  # Per-element override
+
+    assert editor._form.isRowVisible(editor.dephasing_degree_spin) is False
+    assert editor._form.isRowVisible(editor.dephasing_values_edit) is True
+
+
+def test_apply_defaults_dephasing_degree_to_none(qtbot, builder):
+    """Matches TransducerSlot.dephasing_degree's own default ("None = no dephasing"); the mode
+    combo starts on "No dephasing", so a researcher who never touches it gets exactly that."""
+    editor = SlotEditor(builder)
+    qtbot.addWidget(editor)
+    editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN_A
+
+    editor.apply_button.click()
+
+    assert editor.slot.dephasing_degree is None
+
+
+def test_apply_adds_a_new_slot_with_oper_freq_and_cyclic_dephasing(qtbot, builder):
+    editor = SlotEditor(builder)
+    qtbot.addWidget(editor)
+    editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN_A
+    editor.oper_freq_spin.setValue(500)
+    editor.dephasing_mode_combo.setCurrentIndex(1)  # Cyclic
+    editor.dephasing_degree_spin.setValue(45.0)
+
+    editor.apply_button.click()
+
+    assert editor.slot.oper_freq == 500
+    assert editor.slot.dephasing_degree == [45.0]
+
+
+def test_apply_adds_a_new_slot_with_a_per_element_dephasing_override(qtbot, builder):
+    """UNITTEST_TRAN_A has 2 elements (see _configure_transducer's own default)."""
+    editor = SlotEditor(builder)
+    qtbot.addWidget(editor)
+    editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN_A
+    editor.dephasing_mode_combo.setCurrentIndex(2)  # Per-element override
+    editor.dephasing_values_edit.setText("10, 20")
+
+    editor.apply_button.click()
+
+    assert editor.slot.dephasing_degree == [10.0, 20.0]
+
+
+def test_apply_rejects_a_per_element_override_with_the_wrong_count(qtbot, builder):
+    """The backend itself only catches this much later (IGT._define_pulse_group(), reached only
+    once Send/Execute exists), so _apply() must check it itself, synchronously."""
+    editor = SlotEditor(builder)
+    qtbot.addWidget(editor)
+    editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN_A: 2 elements
+    editor.dephasing_mode_combo.setCurrentIndex(2)  # Per-element override
+    editor.dephasing_values_edit.setText("10, 20, 30")
+
+    editor.apply_button.click()
+
+    assert editor.slot is None
+    assert 'does not correspond to number of transducer elements' in editor.error_label.text()
+
+
+def test_apply_rejects_unparseable_per_element_values(qtbot, builder):
+    editor = SlotEditor(builder)
+    qtbot.addWidget(editor)
+    editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN_A
+    editor.dephasing_mode_combo.setCurrentIndex(2)  # Per-element override
+    editor.dephasing_values_edit.setText("not, numbers")
+
+    editor.apply_button.click()
+
+    assert editor.slot is None
+    assert 'comma-separated list of numbers' in editor.error_label.text()
+
+
+def test_apply_updates_transducer_forwards_oper_freq_and_dephasing_degree(qtbot, builder):
+    """Covers the update_transducer() branch of _apply() (an already-added slot whose transducer
+    changes), not just the add_slot() one above."""
+    editor = SlotEditor(builder)
+    qtbot.addWidget(editor)
+    editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN_A
+    editor.apply_button.click()
+
+    editor.transducer_combo.setCurrentIndex(2)  # UNITTEST_TRAN_B
+    editor.oper_freq_spin.setValue(700)
+    editor.dephasing_mode_combo.setCurrentIndex(1)  # Cyclic
+    editor.dephasing_degree_spin.setValue(120.0)
+    editor.apply_button.click()
+
+    assert editor.slot.transducer.serial == 'UNITTEST_TRAN_B'
+    assert editor.slot.oper_freq == 700
+    assert editor.slot.dephasing_degree == [120.0]
+
+
 def test_changing_transducer_resets_value_fields(qtbot, builder):
     editor = SlotEditor(builder)
     qtbot.addWidget(editor)
     editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN_A
     editor.focus_value_spin.setValue(20)
     editor.power_value_spin.setValue(0.5)
+    editor.oper_freq_spin.setValue(999)
+    editor.dephasing_mode_combo.setCurrentIndex(1)  # Cyclic
 
     editor.transducer_combo.setCurrentIndex(2)  # UNITTEST_TRAN_B: min_foc=5, max_foc=50
 
@@ -241,6 +377,20 @@ def test_changing_transducer_resets_value_fields(qtbot, builder):
     # a valid focus value for every transducer.
     assert editor.focus_value_spin.value() == pytest.approx(5.0)
     assert editor.power_value_spin.value() == 0.0
+    # Mirrors TransducerSlot.update_transducer()'s own documented reset behavior: oper_freq
+    # falls back to the new transducer's own fund_freq, dephasing always resets to "no
+    # dephasing".
+    assert editor.oper_freq_spin.value() == 300
+    assert editor.dephasing_mode_combo.currentText() == 'No dephasing'
+
+
+def test_changing_transducer_updates_the_per_element_values_tooltip(qtbot, builder):
+    editor = SlotEditor(builder)
+    qtbot.addWidget(editor)
+
+    editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN_A: 2 elements
+
+    assert 'exactly 2' in editor.dephasing_values_edit.toolTip()
 
 
 def test_changing_transducer_emits_selection_changed(qtbot, builder):
@@ -384,3 +534,29 @@ def test_apply_passes_an_x_y_z_tuple_for_the_xyz_focus_option(qtbot, patch_confi
     # only asserts the (x, y, z) tuple was built and forwarded correctly, via the inline error
     # that failure produces, not that the whole flow succeeds end to end.
     assert not editor.error_label.isHidden()
+
+
+def test_dephasing_section_hidden_for_a_sonic_concepts_backed_builder(qtbot, patch_config):
+    """sonic_concepts_ds.py never reads TransducerSlot.dephasing_degree at all (see
+    ProtocolBuilder.supports_dephasing()'s own docstring), so configuring it would silently do
+    nothing on this driving system; the whole section is hidden rather than let a researcher
+    configure a no-op."""
+    _configure_driving_system(patch_config, 'UNITTEST_SC')
+    patch_config.set('Equipment.Driving system.UNITTEST_SC', 'Manufacturer', 'Sonic Concepts')
+    patch_config.set('Equipment.Driving system.UNITTEST_SC', 'Power options',
+                     'Global power [mW]')
+    patch_config.set('Equipment.Driving system.UNITTEST_SC', 'Native power parameters',
+                     'Global power [mW]')
+    patch_config.set('Equipment', 'Transducers', 'UNITTEST_TRAN_A\nUNITTEST_TRAN_B')
+    _configure_transducer(patch_config, 'UNITTEST_TRAN_A')
+    _configure_transducer(patch_config, 'UNITTEST_TRAN_B')
+
+    from fus_driving_systems import driving_system
+    ds = driving_system.DrivingSystem()
+    ds.set_ds_info('UNITTEST_SC')
+    editor = SlotEditor(ProtocolBuilder(ds))
+    qtbot.addWidget(editor)
+
+    assert editor._form.isRowVisible(editor.dephasing_mode_combo) is False
+    assert editor._form.isRowVisible(editor.dephasing_degree_spin) is False
+    assert editor._form.isRowVisible(editor.dephasing_values_edit) is False

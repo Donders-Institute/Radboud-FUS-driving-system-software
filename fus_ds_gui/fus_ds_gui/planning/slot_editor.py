@@ -8,11 +8,15 @@ See the LICENSE file for full license text.
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (QComboBox, QDoubleSpinBox, QFormLayout, QHBoxLayout, QLabel,
-                               QVBoxLayout, QWidget)
+                               QLineEdit, QSpinBox, QVBoxLayout, QWidget)
 
 from fus_driving_systems.exceptions import FDSValidationError
 
 from fus_ds_gui.planning.apply_panel import ApplyPanel
+
+_DEPHASING_NONE = "No dephasing"
+_DEPHASING_CYCLIC = "Cyclic (one degree, applied to every element)"
+_DEPHASING_PER_ELEMENT = "Per-element override (one phase value per element)"
 
 
 def _mm_spinbox():
@@ -29,10 +33,23 @@ class SlotEditor(ApplyPanel):
     already filters engineering-only focus/power options (see its own docstring); this widget
     never sees those at all, so there's nothing here to gate on an engineering-mode toggle.
 
-    Only oper_freq/dephasing_degree are left out of this v1 editor. Both already have sensible
-    defaults (the transducer's own fundamental frequency, and "no dephasing"), which is why v1
-    ships without them; adding both is scoped as its own follow-up (see the implementation
-    plan's Phase 2b).
+    oper_freq defaults to the currently selected transducer's own fundamental frequency, matching
+    TransducerSlot._set_transducer()'s own fallback exactly, so leaving it untouched reproduces
+    today's implicit default.
+
+    dephasing_degree has two mutually exclusive forms (see its own docstring on TransducerSlot):
+    a single cyclic degree step applied uniformly across every element, or an explicit
+    per-element override (one phase value per transducer element, replacing the focus-derived
+    phases entirely). dephasing_mode_combo switches which of the two value widgets is shown,
+    matching the single-vs-(x, y, z) focus field toggle above. The per-element form's own count
+    must match transducer.elements exactly; the backend itself only catches a mismatch much
+    later, inside IGT._define_pulse_group() (reached only once Send/Execute exists, see the
+    implementation plan's Phase 4), so _apply() checks this itself instead, synchronously.
+
+    Only IGT's own backend (igt_ds.py) ever reads dephasing_degree at all, SonicConcepts's own
+    backend never does, so the whole dephasing section is hidden outright for a SonicConcepts-
+    backed builder (see ProtocolBuilder.supports_dephasing()), rather than let a researcher
+    configure something that would silently have no effect.
 
     Before the first successful "Apply", this widget represents a not-yet-added slot: clicking
     Apply then calls ProtocolBuilder.add_slot(). After that, it represents an already-added slot
@@ -96,6 +113,15 @@ class SlotEditor(ApplyPanel):
         # value is never valid for any power option, on either driving system.
         self.power_value_spin.setRange(0.0, 100000.0)
 
+        self.oper_freq_spin = QSpinBox()
+        self.oper_freq_spin.setSuffix(' kHz')
+        # 0, matching focus_value_spin/power_value_spin's own "nothing selected yet" resting
+        # value: tightened to exclude 0 once a real transducer is chosen, see
+        # _on_transducer_changed().
+        self.oper_freq_spin.setRange(0, 100000)
+
+        self._build_dephasing_fields()
+
         self._focus_value_label = QLabel("Focus value:")
 
         self._form = QFormLayout()
@@ -105,6 +131,10 @@ class SlotEditor(ApplyPanel):
         self._form.addRow("Focus value (x, y, z):", self.focus_value_xyz_widget)
         self._form.addRow("Power option:", self.power_option_combo)
         self._form.addRow("Power value:", self.power_value_spin)
+        self._form.addRow("Operating frequency:", self.oper_freq_spin)
+        self._form.addRow("Dephasing mode:", self.dephasing_mode_combo)
+        self._form.addRow("Dephasing degree:", self.dephasing_degree_spin)
+        self._form.addRow("Dephasing values:", self.dephasing_values_edit)
 
         # Only safe from here on: _update_focus_options()/_update_focus_value_fields() both
         # need self._form (setRowVisible()) to already exist. _update_focus_options() must run
@@ -114,11 +144,44 @@ class SlotEditor(ApplyPanel):
         self._update_focus_options()
         self._update_focus_range()
         self._update_power_options()
+        self._update_dephasing_value_fields(self.dephasing_mode_combo.currentText())
+        self._apply_dephasing_support()
 
         layout = QVBoxLayout(self)
         layout.addLayout(self._form)
         layout.addWidget(self.apply_button)
         layout.addWidget(self.error_label)
+
+    def _apply_dephasing_support(self):
+        """Hides the whole dephasing section outright for a SonicConcepts-backed builder; see
+        ProtocolBuilder.supports_dephasing()'s own docstring for why."""
+
+        if self.builder.supports_dephasing():
+            return
+        self._form.setRowVisible(self.dephasing_mode_combo, False)
+        self._form.setRowVisible(self.dephasing_degree_spin, False)
+        self._form.setRowVisible(self.dephasing_values_edit, False)
+
+    def _build_dephasing_fields(self):
+        """Builds the mode selector plus its two mutually exclusive value widgets; see this
+        class's own docstring for what each mode means. Row visibility toggles between them the
+        same way _update_focus_value_fields() toggles the single vs. (x, y, z) focus rows."""
+
+        self.dephasing_mode_combo = QComboBox()
+        self.dephasing_mode_combo.addItems([_DEPHASING_NONE, _DEPHASING_CYCLIC,
+                                            _DEPHASING_PER_ELEMENT])
+        self.dephasing_mode_combo.currentTextChanged.connect(self._update_dephasing_value_fields)
+
+        self.dephasing_degree_spin = QDoubleSpinBox()
+        self.dephasing_degree_spin.setDecimals(1)
+        # >0, not >=0: apply_cyclic_dephasing() (transducer_xyz.py) divides 360 by this value, so
+        # 0 would raise a ZeroDivisionError rather than a clear, catchable FDSValidationError.
+        self.dephasing_degree_spin.setRange(0.1, 360.0)
+        self.dephasing_degree_spin.setValue(90.0)
+        self.dephasing_degree_spin.setSuffix(' deg')
+
+        self.dephasing_values_edit = QLineEdit()
+        self.dephasing_values_edit.setPlaceholderText("e.g. 0, 90, 180, 270")
 
     def set_excluded_transducers(self, serials):
         """
@@ -190,6 +253,24 @@ class SlotEditor(ApplyPanel):
         self.focus_value_y_spin.setValue(0.0)
         self.focus_value_z_spin.setValue(default_focus)
         self.power_value_spin.setValue(0.0)
+        # Mirrors TransducerSlot.update_transducer()'s own documented reset behavior:
+        # dephasing_degree always resets to "no dephasing" rather than carrying over, since a
+        # per-element list is sized to a specific transducer's own element count.
+        if tran is not None:
+            # 1, not 0: the backend's own oper_freq setter validates check_nonzero=True
+            # (transducer_slot.py), so 0 is never actually valid once a real transducer is
+            # chosen. tran.fund_freq itself is always a real, positive config value.
+            self.oper_freq_spin.setRange(1, 100000)
+            self.oper_freq_spin.setValue(tran.fund_freq)
+        else:
+            # Widened back to include 0: Apply already blocks on "Choose a transducer first."
+            # before oper_freq is ever read, so this is never actually reachable at Apply.
+            self.oper_freq_spin.setRange(0, 100000)
+            self.oper_freq_spin.setValue(0)
+        self.dephasing_mode_combo.setCurrentIndex(0)  # _DEPHASING_NONE
+        self.dephasing_values_edit.setToolTip(
+            f"Comma-separated phase values [deg], exactly {tran.elements} for {tran.name}."
+            if tran is not None else "")
         self.transducer_selection_changed.emit()
 
     def _focus_range_offset(self, tran):
@@ -296,6 +377,42 @@ class SlotEditor(ApplyPanel):
         self._update_focus_value_fields(focus_option)
         self._update_focus_range()
 
+    def _update_dephasing_value_fields(self, mode):
+        """Only one of the two value widgets is relevant per mode; see this class's own
+        docstring for what each mode means."""
+
+        self._form.setRowVisible(self.dephasing_degree_spin, mode == _DEPHASING_CYCLIC)
+        self._form.setRowVisible(self.dephasing_values_edit, mode == _DEPHASING_PER_ELEMENT)
+
+    def _resolve_dephasing_degree(self, transducer):
+        """
+        Resolves dephasing_mode_combo's current selection to the dephasing_degree value Apply
+        should actually send; see this class's own docstring for what each mode means.
+
+        Raises:
+            FDSValidationError: For the per-element mode, if dephasing_values_edit doesn't parse
+            to exactly transducer.elements numbers, checked here, synchronously, since the
+            backend itself only catches a mismatch much later (see this class's own docstring).
+        """
+
+        mode = self.dephasing_mode_combo.currentText()
+        if mode == _DEPHASING_CYCLIC:
+            return [self.dephasing_degree_spin.value()]
+        if mode == _DEPHASING_PER_ELEMENT:
+            raw_values = self.dephasing_values_edit.text().split(',')
+            try:
+                values = [float(value) for value in raw_values]
+            except ValueError as e:
+                raise FDSValidationError(
+                    "Dephasing values must be a comma-separated list of numbers.") from e
+            if len(values) != transducer.elements:
+                raise FDSValidationError(
+                    f"Number of dephasing entries ({len(values)}) does not correspond to "
+                    f"number of transducer elements ({transducer.elements}). Enter exactly "
+                    "one value per element.")
+            return values
+        return None
+
     def _apply(self):
         transducer = self.transducer_combo.currentData()
         if transducer is None:
@@ -309,12 +426,17 @@ class SlotEditor(ApplyPanel):
             focus_value = self.focus_value_spin.value()
         power_option = self.power_option_combo.currentText()
         power_value = self.power_value_spin.value()
+        oper_freq = self.oper_freq_spin.value()
+        dephasing_degree = self._resolve_dephasing_degree(transducer)
 
         if self.slot is None:
             self.slot = self.builder.add_slot(transducer.serial, focus_option, focus_value,
-                                              power_option, power_value)
+                                              power_option, power_value, oper_freq,
+                                              dephasing_degree)
         elif transducer.serial != self.slot.transducer.serial:
             self.slot.update_transducer(transducer.serial, focus_option, focus_value,
-                                        power_option, power_value)
+                                        power_option, power_value, oper_freq, dephasing_degree)
         else:
             self.slot.configure(focus_option, focus_value, power_option, power_value)
+            self.slot.oper_freq = oper_freq
+            self.slot.dephasing_degree = dephasing_degree

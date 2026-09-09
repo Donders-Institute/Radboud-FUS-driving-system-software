@@ -199,6 +199,17 @@ class ProtocolBuilder:
         return get_config_value(get_logger(), config, 'Ramp', 'option.rect',
                                 'Rectangular - no ramping')
 
+    def supports_dephasing(self):
+        """
+        Returns:
+            bool: True only for an IGT-backed driving system. SonicConcepts's own backend
+            (sonic_concepts_ds.py) never reads TransducerSlot.dephasing_degree anywhere, so
+            configuring it there would silently have no effect; the GUI hides the whole
+            dephasing section in that case rather than let a researcher configure a no-op.
+        """
+
+        return isinstance(self._ds_instance, IGT)
+
     def compatible_transducers(self):
         """
         Returns:
@@ -219,17 +230,19 @@ class ProtocolBuilder:
 
         return len(self.protocol.slots) < self.driving_system.max_tran_slots
 
-    def add_slot(self, transducer_serial, focus_option, focus_value, power_option, power_value):
+    def add_slot(self, transducer_serial, focus_option, focus_value, power_option, power_value,
+                 oper_freq=None, dephasing_degree=None):
         """
         Adds and fully configures one new transducer slot; see TUSProtocol.add_slot() for the
-        exact contract (all five parameters are always required together).
+        exact contract (the first five parameters are always required together; oper_freq/
+        dephasing_degree are optional, see its own docstring for their defaults).
 
         Returns:
             TransducerSlot: The newly added slot.
         """
 
         return self.protocol.add_slot(transducer_serial, focus_option, focus_value,
-                                      power_option, power_value)
+                                      power_option, power_value, oper_freq, dephasing_degree)
 
     def configure_timing(self, **kwargs):
         """

@@ -445,6 +445,19 @@ class IGT(ds.ControlDrivingSystem):
                     f"(counting from 0, i.e. protocol.slots[{i}]; {slot.transducer.serial}). " +
                     "Amplitude is None.")
 
+            # Mirrors _set_phases()'s own check, but reachable here well before send_protocol()
+            # ever calls it: a length matching neither 1 (cyclic dephasing) nor this slot's own
+            # transducer.elements (a full phase override) is invalid either way (see
+            # TransducerSlot.dephasing_degree's own docstring).
+            if slot.dephasing_degree is not None and len(slot.dephasing_degree) not in (
+                    1, slot.transducer.elements):
+                error_messages.append(
+                    f"Transducer slot {i} (counting from 0, i.e. protocol.slots[{i}]; " +
+                    f"{slot.transducer.serial}): number of dephasing entries " +
+                    f"({len(slot.dephasing_degree)}) does not correspond to number of " +
+                    f"transducer elements ({slot.transducer.elements}). Only enter one " +
+                    "dephasing value or n-values equal to the number of transducer elements.")
+
         channel_count_mismatch = _channel_count_mismatch_message(protocol)
         if channel_count_mismatch is not None:
             error_messages.append(channel_count_mismatch)

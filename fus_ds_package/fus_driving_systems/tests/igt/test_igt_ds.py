@@ -561,6 +561,36 @@ class TestValidateProtocol:
         assert any('slot 1 (counting from 0' in e and 'TRAN-B' in e for e in errors)
         assert not any('TRAN-A' in e for e in errors)
 
+    def test_dephasing_degree_length_mismatch_is_flagged(self, igt_instance, patch_config):
+        """Mirrors _set_phases()'s own check, but reachable here well before send_protocol()
+        ever calls it (see IGT.validate_protocol()'s own comment on this check)."""
+        patch_config.set('Ramp', 'Option.rect', 'Rectangular - no ramping')
+
+        errors = igt_instance.validate_protocol(_valid_protocol(
+            slots=[_slot(elements=2, dephasing_degree=[10.0, 20.0, 30.0])]))
+
+        assert any('does not correspond to number of transducer elements' in e for e in errors)
+
+    def test_dephasing_degree_of_length_one_is_not_flagged(self, igt_instance, patch_config):
+        """Length 1 is the cyclic form (a degree step applied to every element), valid regardless
+        of the transducer's own element count."""
+        patch_config.set('Ramp', 'Option.rect', 'Rectangular - no ramping')
+
+        errors = igt_instance.validate_protocol(_valid_protocol(
+            slots=[_slot(elements=4, dephasing_degree=[90.0])]))
+
+        assert errors == []
+
+    def test_dephasing_degree_matching_element_count_is_not_flagged(self, igt_instance,
+                                                                    patch_config):
+        """Length == elements is the full per-element override form, also always valid."""
+        patch_config.set('Ramp', 'Option.rect', 'Rectangular - no ramping')
+
+        errors = igt_instance.validate_protocol(_valid_protocol(
+            slots=[_slot(elements=2, dephasing_degree=[10.0, 20.0])]))
+
+        assert errors == []
+
     def test_raises_when_min_pulse_duration_config_key_missing(self, igt_instance, patch_config):
         """raise_on_missing=True: a typo'd or deleted hardware-limit key must never silently
         fall back to the hardcoded placeholder instead of the real configured limit -- the
