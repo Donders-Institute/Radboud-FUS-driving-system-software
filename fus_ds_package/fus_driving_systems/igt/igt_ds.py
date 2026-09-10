@@ -155,89 +155,75 @@ class IGT(ds.ControlDrivingSystem):
         max_attempts = int(get_config_value(logger, config, 'General',
                                             'Maximum reconnection attempts', 5))
 
-        try:
-            # Establish connection with driving system
-            logger.debug('Before unifus.FUSSystem....')
-            self.fus = unifus.FUSSystem()
-            logger.debug('After unifus.FUSSystem....')
-        except Exception as e:
-            message = f'Error initializing FUSSystem: {e}'
-            logger.critical(message)
-            sys.exit(message)
+        # unifus logging and the FUSSystem/listener are only initialized once: repeatedly
+        # tearing down and recreating them across reconnection attempts is what was crashing the
+        # underlying unifus library (and taking the whole interpreter down with it).
+        if self.fus is None:
+            try:
+                suffix = get_config_value(logger, config, 'Equipment.Manufacturer.IGT',
+                                          'Default log filename suffix', '_igt_ds_log')
+                unifus.setLogPath(log_dir, log_name + suffix)
+                unifus.setLogLevel(unifus.LogLevel.Debug)
 
-        try:
-            suffix = get_config_value(logger, config, 'Equipment.Manufacturer.IGT',
-                                      'Default log filename suffix', '_igt_ds_log')
-            unifus.setLogPath(log_dir, log_name + suffix)
-            unifus.setLogLevel(unifus.LogLevel.Debug)
+                logger.debug('After setting logging....')
+            except Exception as e:
+                message = f"Error setting up logging: {e}"
+                logger.error(message)
 
-            logger.debug('After setting logging....')
-        except Exception as e:
-            message = f"Error setting up logging: {e}"
-            logger.error(message)
+            try:
+                # Establish connection with driving system
+                logger.debug('Before unifus.FUSSystem....')
+                self.fus = unifus.FUSSystem()
+                logger.debug('After unifus.FUSSystem....')
+
+                # Create and register an event listener
+                self.listener = ExecListener()
+                self.fus.registerListener(self.listener)
+                logger.debug('After listener....')
+            except Exception as e:
+                message = f'Error initializing FUSSystem: {e}'
+                logger.critical(message)
+                sys.exit(message)
 
         try:
             # Update the name of your configuration file
             igt_config_path = pkg_resources.resource_filename('fus_driving_systems', connect_info)
-            logger.debug(f'igt_config_path: {igt_config_path} found....')
-            if igt_config_path != '':
-                self.fus.loadConfig(igt_config_path)
-                logger.debug('After loadConfig....')
-            else:
-                message = f"Configuration file {igt_config_path} doesn't exist."
+            if igt_config_path == '':
+                message = f"Configuration file {connect_info} doesn't exist."
                 logger.critical(message)
                 sys.exit(message)
+            logger.debug(f'igt_config_path: {igt_config_path} found....')
+            self.fus.loadConfig(igt_config_path)
+            logger.debug('After loadConfig....')
         except Exception as e:
             message = f"Error loading configuration: {e}"
             logger.critical(message)
             sys.exit(message)
 
-        try:
-            # Create and register an event listener
-            self.listener = ExecListener()
-            self.fus.registerListener(self.listener)
-            logger.debug('After listener....')
+        self.connected = False
+        for cur_attempt in range(max_attempts):
+            try:
+                self.fus.connect()
+                self.listener.waitConnection(10)
+                logger.debug('After waitConnection()....')
+                if self.fus.isConnected():
+                    self.connected = True
+                    logger.debug('Driving system is connected.')
 
-            self.fus.connect()
-            self.listener.waitConnection()
-            logger.debug('After waitConnection()....')
-        except Exception as e:
-            logger.error(f"Error during connection or listener registration: {e}")
+                    self.gen = self.fus.gen()
+                    self.n_channels = self.gen.getParam(unifus.GenParam.ChannelCount)
+                    logger.debug("Generator: %s channels", self.n_channels)
+                    return  # only exit on success
+            except Exception as e:
+                logger.error(f"Exception during connection: {e}")
 
-            if attempt < max_attempts:
-                logger.warning('Try to disconnect and reconnect...')
-                self.disconnect()
-                self.connect(connect_info, log_dir, log_name, attempt=attempt+1)
-            else:
-                message = f'Maximum amount of {max_attempts} for reconnecting is reached. Exit.'
-                logger.critical(message)
-                sys.exit(message)
+            logger.warning("Error: connection failed.")
+            if cur_attempt + 1 < max_attempts:
+                logger.warning('Try to reconnect...')
 
-        try:
-            if self.fus.isConnected():
-                self.connected = True
-                logger.debug('Driving system is connected.')
-
-                self.gen = self.fus.gen()
-                self.n_channels = self.gen.getParam(unifus.GenParam.ChannelCount)
-                logger.debug("Generator: %s channels", self.n_channels)
-            else:
-                self.connected = False
-                logger.warning("Error: connection failed.")
-
-                if attempt < max_attempts:
-                    logger.warning('Try to disconnect and reconnect...')
-                    self.disconnect()
-                    self.connect(connect_info, log_dir, log_name, attempt=attempt+1)
-                else:
-                    message = f'Maximum amount of {max_attempts} for reconnecting is reached. Exit.'
-                    logger.critical(message)
-                    sys.exit(message)
-
-        except Exception as e:
-            message = f"Error after connection check: {e}"
-            logger.critical(message)
-            sys.exit(message)
+        message = f'Maximum amount of {max_attempts} for reconnecting is reached. Exit.'
+        logger.critical(message)
+        sys.exit(message)
 
     def validate_sequence(self, sequence):
         """
@@ -632,7 +618,7 @@ class IGT(ds.ControlDrivingSystem):
             self.gen.setPulseModulation([], 0, [], 0)  # disable any modulation
 
         if self.fus is not None:
-            self.fus.clearListeners()
+            # self.fus.clearListeners()
             self.fus.disconnect()
 
             if not self.fus.isConnected():
