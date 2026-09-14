@@ -1,3 +1,4 @@
+setuptools<81
 CTkMessagebox==2.7
 numpy==2.1.0
 pandas==2.2.2
