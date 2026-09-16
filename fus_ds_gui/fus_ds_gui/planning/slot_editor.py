@@ -18,6 +18,12 @@ _DEPHASING_NONE = "No dephasing"
 _DEPHASING_CYCLIC = "Cyclic (one degree, applied to every element)"
 _DEPHASING_PER_ELEMENT = "Per-element override (one phase value per element)"
 
+_PER_ELEMENT_POWER_MESSAGE = (
+    "This slot's power value is set per element. Loading that per-element list here isn't "
+    "supported yet, since this field only ever holds one value shared by every element; enter "
+    "a new value here to apply it to every element instead, or choose a different power "
+    "option.")
+
 
 def _mm_spinbox():
     spin = QDoubleSpinBox()
@@ -25,6 +31,15 @@ def _mm_spinbox():
     spin.setRange(-1000.0, 1000.0)
     spin.setSuffix(' mm')
     return spin
+
+
+def _widen_range_to_fit(spinbox, value):
+    """Widens spinbox's own range to include value first if it's currently outside it, so a raw,
+    possibly out-of-range value from a failed slot_def (see _load_failed_slot()) shows exactly
+    what the file gave, instead of being silently clamped to the field's own normal range the
+    way typing such a value in by hand would be."""
+
+    spinbox.setRange(min(spinbox.minimum(), value), max(spinbox.maximum(), value))
 
 
 class SlotEditor(ApplyPanel):
@@ -43,8 +58,8 @@ class SlotEditor(ApplyPanel):
     phases entirely). dephasing_mode_combo switches which of the two value widgets is shown,
     matching the single-vs-(x, y, z) focus field toggle above. The per-element form's own count
     must match transducer.elements exactly; the backend itself only catches a mismatch much
-    later, inside IGT._define_pulse_group() (reached only once Send/Execute exists, see the
-    implementation plan's Phase 4), so _apply() checks this itself instead, synchronously.
+    later, inside IGT._define_pulse_group() (only reached once a protocol is actually sent,
+    which this GUI doesn't support yet), so _apply() checks this itself instead, synchronously.
 
     Only IGT's own backend (igt_ds.py) ever reads dephasing_degree at all, SonicConcepts's own
     backend never does, so the whole dephasing section is hidden outright for a SonicConcepts-
@@ -72,11 +87,61 @@ class SlotEditor(ApplyPanel):
 
     transducer_selection_changed = Signal()
 
-    def __init__(self, builder, excluded_transducer_serials=(), parent=None):
+    def __init__(self, builder, excluded_transducer_serials=(), existing_slot=None,
+                 failed_slot=None, parent=None):
+        """
+        Parameters:
+            builder (ProtocolBuilder): Backs this editor; see this class's own docstring.
+            excluded_transducer_serials (Iterable[str]): Transducers already claimed by a
+                sibling slot editor, excluded from this one's own dropdown (see
+                set_excluded_transducers()).
+            existing_slot (TransducerSlot): An already-configured slot to pre-fill every field
+                from, e.g. one just returned by protocol_loader.load_protocol() (see
+                PlanningTab.load_protocol()). Every field below shows that slot's own already-
+                chosen values instead of the fresh, empty defaults, and Apply edits it in place
+                rather than adding a new one. None (the default) starts a fresh, empty editor
+                for a not-yet-added slot instead.
+            failed_slot (tuple(dict, FDSError)): A (slot_def, exception) pair for a slot whose
+                own values a file described but that failed to actually construct (see
+                protocol_io.load()'s own failed_slots, and PlanningTab.load_protocol()). The raw
+                values are pre-filled exactly like existing_slot's own would be, but self.slot
+                stays None (never added to the protocol) and the exception's own message is
+                shown immediately in this editor's own inline error_label, exactly as if the
+                researcher had just clicked Apply themselves and it failed. Mutually exclusive
+                with existing_slot.
+        """
+
         super().__init__(parent)
 
         self.builder = builder
         self.slot = None  # Set once this editor's first Apply succeeds.
+        # The power option a failed slot_def's own per-element list was pre-filled from (see
+        # _load_failed_slot()), or None. Not institution-specific: which power options require
+        # engineering_mode is itself config-driven (_requires_engineering_mode()'s own
+        # docstring), so this field's own single, shared value can't be relied on to always be
+        # rejected before it would silently reach add_slot() -- _apply() checks this directly
+        # instead of assuming that.
+        self._per_element_power_option = None
+        # The first entry of that same per-element list, i.e. exactly what power_value_spin
+        # itself was pre-filled with (see _load_failed_slot()). _apply() only refuses to add a
+        # new slot while power_value_spin still shows this exact, untouched value: the moment
+        # the researcher types a genuinely different one in (even for the very same power
+        # option), that's a deliberate choice of one shared value for every element, not an
+        # accidental resend of the file's own per-element data.
+        self._per_element_power_first_value = None
+        # The raw, non-real option text (see _select_or_show_raw()) currently sitting as a
+        # one-off item in focus_option_combo/power_option_combo, or None. Tracked by text, not
+        # index, so _prune_raw_option() can still find and drop it correctly even after other
+        # items have been inserted/removed around it in the meantime.
+        self._raw_focus_option = None
+        self._raw_power_option = None
+        # A failed slot_def's own raw focus_value, still shown unclamped (see
+        # _load_failed_slot()/_widen_range_to_fit()), or None. _update_focus_range() checks this
+        # so that picking a different, real focus_option afterward doesn't silently clamp this
+        # value away the moment it narrows focus_value_spin's own range back down -- flagged
+        # via error_label instead, since the whole point of showing it was for the researcher to
+        # see and fix it, not have it vanish the moment they start doing exactly that.
+        self._raw_focus_value = None
         # Applied *before* the combo is first populated below, not after, so a freshly added
         # editor's own dropdown never even lists an already-chosen transducer as an option, not
         # even fleetingly (see PlanningTab._add_slot_editor()). A fresh editor itself always
@@ -90,21 +155,15 @@ class SlotEditor(ApplyPanel):
 
         self.focus_option_combo = QComboBox()
         self.focus_option_combo.currentTextChanged.connect(self._on_focus_option_changed)
+        self.focus_option_combo.activated.connect(
+            lambda _i: self._prune_raw_option(self.focus_option_combo, '_raw_focus_option'))
 
         self.focus_value_spin = _mm_spinbox()
-
-        self.focus_value_x_spin = _mm_spinbox()
-        self.focus_value_y_spin = _mm_spinbox()
-        self.focus_value_z_spin = _mm_spinbox()
-        self.focus_value_xyz_widget = QWidget()
-        xyz_layout = QHBoxLayout(self.focus_value_xyz_widget)
-        xyz_layout.setContentsMargins(0, 0, 0, 0)
-        for label, spin in (("x:", self.focus_value_x_spin), ("y:", self.focus_value_y_spin),
-                            ("z:", self.focus_value_z_spin)):
-            xyz_layout.addWidget(QLabel(label))
-            xyz_layout.addWidget(spin)
+        self._build_focus_xyz_widgets()
 
         self.power_option_combo = QComboBox()
+        self.power_option_combo.activated.connect(
+            lambda _i: self._prune_raw_option(self.power_option_combo, '_raw_power_option'))
 
         self.power_value_spin = QDoubleSpinBox()
         self.power_value_spin.setDecimals(3)
@@ -146,11 +205,193 @@ class SlotEditor(ApplyPanel):
         self._update_power_options()
         self._update_dephasing_value_fields(self.dephasing_mode_combo.currentText())
         self._apply_dephasing_support()
+        self._load_initial_state(existing_slot, failed_slot)
 
         layout = QVBoxLayout(self)
         layout.addLayout(self._form)
         layout.addWidget(self.apply_button)
         layout.addWidget(self.error_label)
+
+    def _build_focus_xyz_widgets(self):
+        """Builds focus_value_x/y/z_spin plus the row widget combining them; extracted out of
+        __init__ purely to keep its own statement count under pylint's limit."""
+
+        self.focus_value_x_spin = _mm_spinbox()
+        self.focus_value_y_spin = _mm_spinbox()
+        self.focus_value_z_spin = _mm_spinbox()
+        self.focus_value_xyz_widget = QWidget()
+        xyz_layout = QHBoxLayout(self.focus_value_xyz_widget)
+        xyz_layout.setContentsMargins(0, 0, 0, 0)
+        for label, spin in (("x:", self.focus_value_x_spin), ("y:", self.focus_value_y_spin),
+                            ("z:", self.focus_value_z_spin)):
+            xyz_layout.addWidget(QLabel(label))
+            xyz_layout.addWidget(spin)
+
+    def _load_initial_state(self, existing_slot, failed_slot):
+        """Dispatches __init__'s own existing_slot/failed_slot parameters to whichever pre-fill
+        this editor actually needs, or neither for a fresh, blank editor."""
+
+        if existing_slot is not None:
+            self._load_existing_slot(existing_slot)
+        elif failed_slot is not None:
+            self._load_failed_slot(*failed_slot)
+
+    def _load_existing_slot(self, slot):
+        """
+        Pre-fills every field from an already-configured TransducerSlot; see __init__'s own
+        existing_slot parameter. Selects the transducer first, exactly like an interactive pick
+        (so the focus/power option combos and the xyz/dephasing sections populate correctly for
+        it, via the same _on_transducer_changed()/_on_focus_option_changed() this triggers), then
+        overwrites the fresh "reset to default" values those handlers themselves just applied
+        with this slot's own actual, already-chosen ones.
+        """
+
+        self.slot = slot
+
+        combo = self.transducer_combo
+        index = next(i for i in range(combo.count())
+                     if combo.itemData(i) is not None
+                     and combo.itemData(i).serial == slot.transducer.serial)
+        combo.setCurrentIndex(index)
+
+        focus_index = self.focus_option_combo.findText(slot.chosen_focus)
+        self.focus_option_combo.setCurrentIndex(focus_index)
+        if slot.chosen_focus in self.builder.xyz_focus_options():
+            x, y, z = slot.chosen_focus_value
+            self.focus_value_x_spin.setValue(x)
+            self.focus_value_y_spin.setValue(y)
+            self.focus_value_z_spin.setValue(z)
+        else:
+            self.focus_value_spin.setValue(slot.chosen_focus_value)
+
+        power_index = self.power_option_combo.findText(slot.chosen_power)
+        self.power_option_combo.setCurrentIndex(power_index)
+        power_value = slot.chosen_power_value
+        # A list means one value per element (see TransducerSlot.chosen_power_value's own
+        # docstring for which power options that applies to, config-driven per institution, see
+        # TransducerSlot._requires_engineering_mode()); power_value_spin itself only ever
+        # shows/sends a single, shared value, so only the first entry is shown here for a list.
+        # Flagged immediately, the same way a failed slot_def's own problem is (see
+        # _load_failed_slot()), rather than waiting for the researcher to click Apply and
+        # discover only then that _apply() refuses to overwrite it with that single shared
+        # value.
+        if isinstance(power_value, list):
+            self._show_error(_PER_ELEMENT_POWER_MESSAGE)
+            power_value = power_value[0]
+        self.power_value_spin.setValue(power_value)
+
+        self.oper_freq_spin.setValue(slot.oper_freq)
+        self._load_existing_dephasing(slot.dephasing_degree)
+
+    def _load_existing_dephasing(self, dephasing_degree):
+        """Selects the right dephasing_mode_combo entry (and fills its own value widget) for an
+        already-configured slot's dephasing_degree, or a failed slot_def's raw one (see
+        _load_failed_slot()); see this class's own docstring for what each length means.
+        _widen_range_to_fit() is a no-op for an already-valid value, so this is safe either way."""
+
+        if dephasing_degree is None:
+            self.dephasing_mode_combo.setCurrentIndex(0)  # _DEPHASING_NONE
+        elif len(dephasing_degree) == 1:
+            self.dephasing_mode_combo.setCurrentIndex(1)  # _DEPHASING_CYCLIC
+            _widen_range_to_fit(self.dephasing_degree_spin, dephasing_degree[0])
+            self.dephasing_degree_spin.setValue(dephasing_degree[0])
+        else:
+            self.dephasing_mode_combo.setCurrentIndex(2)  # _DEPHASING_PER_ELEMENT
+            self.dephasing_values_edit.setText(', '.join(str(v) for v in dephasing_degree))
+
+    def _load_failed_slot(self, slot_def, exc):
+        """
+        Pre-fills every field from a raw slot_def dict that failed to actually construct via
+        add_slot() (see __init__'s own failed_slot parameter), and shows why in this editor's
+        own inline error_label. Closely mirrors _load_existing_slot(), but reads a plain dict
+        instead of an already-configured TransducerSlot, and never sets self.slot: this slot
+        was never actually added, so Apply (once the researcher fixes whatever's wrong) goes
+        through the normal "add a new slot" path, not "edit this one in place".
+
+        Every raw value below is shown exactly as the file gave it, deliberately never silently
+        replaced by something that merely looks plausible: a numeric field would otherwise clamp
+        an out-of-range value to its own normal range (see _widen_range_to_fit()), and an option
+        combo would otherwise fall back to whichever real option it already happens to default
+        to (see _select_or_show_raw()) -- either would leave the researcher looking at a
+        seemingly valid field with no hint that this is not what the file actually said.
+        """
+
+        combo = self.transducer_combo
+        serial = slot_def.get('transducer_serial')
+        index = next((i for i in range(combo.count())
+                      if combo.itemData(i) is not None and combo.itemData(i).serial == serial),
+                     None)
+        if index is not None:
+            combo.setCurrentIndex(index)
+
+        focus_option = slot_def.get('focus_option')
+        self._select_or_show_raw(self.focus_option_combo, focus_option, '_raw_focus_option')
+        focus_value = slot_def.get('focus_value')
+        if (focus_option in self.builder.xyz_focus_options()
+                and isinstance(focus_value, (list, tuple)) and len(focus_value) == 3):
+            x, y, z = focus_value
+            for spin, value in ((self.focus_value_x_spin, x), (self.focus_value_y_spin, y),
+                                (self.focus_value_z_spin, z)):
+                _widen_range_to_fit(spin, value)
+                spin.setValue(value)
+        elif isinstance(focus_value, (int, float)):
+            self._raw_focus_value = focus_value
+            _widen_range_to_fit(self.focus_value_spin, focus_value)
+            self.focus_value_spin.setValue(focus_value)
+
+        power_option = slot_def.get('power_option')
+        self._select_or_show_raw(self.power_option_combo, power_option, '_raw_power_option')
+        power_value = slot_def.get('power_value')
+        # See _load_existing_slot()'s own comment on the same list case.
+        if isinstance(power_value, list) and power_value:
+            self._per_element_power_option = power_option
+            power_value = power_value[0]
+            self._per_element_power_first_value = power_value
+        if isinstance(power_value, (int, float)):
+            _widen_range_to_fit(self.power_value_spin, power_value)
+            self.power_value_spin.setValue(power_value)
+
+        if slot_def.get('oper_freq') is not None:
+            _widen_range_to_fit(self.oper_freq_spin, slot_def['oper_freq'])
+            self.oper_freq_spin.setValue(slot_def['oper_freq'])
+        self._load_existing_dephasing(slot_def.get('dephasing_degree'))
+
+        self._show_error(str(exc))
+
+    def _select_or_show_raw(self, combo, text, raw_attr):
+        """Selects text in combo if it's one of the real options currently offered; otherwise
+        inserts and selects it as its own one-off item, so a raw option string a failed slot_def
+        gave (e.g. a focus/power option this transducer or driving system doesn't currently
+        offer) is shown exactly as-is, rather than combo silently falling back to whatever its
+        own first real item already happens to be, which would look like a plausible, unrelated
+        choice instead. raw_attr (e.g. '_raw_focus_option') names the attribute on self that
+        remembers the inserted text, so _prune_raw_option() can remove it again later once the
+        researcher actually picks something else."""
+
+        if not text:
+            return
+        index = combo.findText(text)
+        if index < 0:
+            combo.insertItem(0, text)
+            setattr(self, raw_attr, text)
+            index = 0
+        combo.setCurrentIndex(index)
+
+    def _prune_raw_option(self, combo, raw_attr):
+        """Removes combo's own one-off raw item (see _select_or_show_raw()) once the researcher
+        has actually picked something else, so a stale, invalid entry doesn't linger in the list
+        forever after a real choice has been made. Looked up by text, not the index it was
+        originally inserted at, since other items may have been added/removed around it since
+        (e.g. a rebuilt combo after the transducer changed already dropped it on its own; this
+        is then simply a no-op, see the index check below)."""
+
+        raw_text = getattr(self, raw_attr)
+        if raw_text is None or combo.currentText() == raw_text:
+            return
+        index = combo.findText(raw_text)
+        if index >= 0:
+            combo.removeItem(index)
+        setattr(self, raw_attr, None)
 
     def _apply_dephasing_support(self):
         """Hides the whole dephasing section outright for a SonicConcepts-backed builder; see
@@ -241,6 +482,15 @@ class SlotEditor(ApplyPanel):
         positive minimum focus).
         """
 
+        # Cleared before _update_focus_range()/_update_power_options() run below, not after: a
+        # different transducer makes the file's own raw, unconfirmed values (if any) meaningless
+        # regardless, and every field is about to be reset to this transducer's own default a
+        # few lines down anyway -- clearing first avoids briefly flagging a value that's already
+        # on its way out.
+        self._raw_focus_value = None
+        self._per_element_power_option = None
+        self._per_element_power_first_value = None
+
         self._update_focus_options()  # also refreshes the value-field visibility, see its body
         self._update_focus_range()
         self._update_power_options()
@@ -303,6 +553,12 @@ class SlotEditor(ApplyPanel):
         Also puts that range in the row label and the spinbox's own tooltip: QDoubleSpinBox
         silently clamps an out-of-range typed value to the nearest bound with no visual cue at
         all, so without this a researcher has no way to tell why their entry changed.
+
+        A failed slot_def's own raw, still-unconfirmed focus_value (self._raw_focus_value, see
+        _load_failed_slot()) is a special case of that same silent-clamp problem: narrowing the
+        range here would otherwise erase it the moment the researcher picks a different, real
+        focus_option (still showing the file's own out-of-range value was the whole point of
+        loading it this way). Flagged via error_label instead of erased.
         """
 
         tran = self.transducer_combo.currentData()
@@ -313,6 +569,16 @@ class SlotEditor(ApplyPanel):
         min_foc, max_foc = tran.min_foc + offset, tran.max_foc + offset
         self.focus_value_spin.setRange(min_foc, max_foc)
         range_text = f"{min_foc:.1f} to {max_foc:.1f} mm"
+        if self._raw_focus_value is not None and not min_foc <= self._raw_focus_value <= max_foc:
+            # The setRange() call above already clamped the widget's own current value to
+            # max_foc/min_foc as a side effect; widening the range back doesn't undo that on its
+            # own, so the raw value has to be written back in explicitly too.
+            _widen_range_to_fit(self.focus_value_spin, self._raw_focus_value)
+            self.focus_value_spin.setValue(self._raw_focus_value)
+            self._show_error(
+                f"The loaded focus value ({self._raw_focus_value}) is outside {tran.name}'s "
+                f"valid range for this focus option ({range_text}). Correct it before "
+                "applying.")
         if offset:
             # Derived from min_foc/max_foc plus exit_plane_dist (see _focus_range_offset()),
             # not read directly from config the way the wrt-exit-plane range is, so labeled as
@@ -414,6 +680,13 @@ class SlotEditor(ApplyPanel):
         return None
 
     def _apply(self):
+        # Whatever the outcome, this Apply attempt settles the question the raw-value flag in
+        # _update_focus_range() exists for: either this succeeds (nothing left to flag), or it
+        # fails on the backend's own real validation (a fresher, more specific error than that
+        # earlier heuristic). Cleared up front so a later, unrelated focus_option change never
+        # re-flags a value the researcher has already moved past.
+        self._raw_focus_value = None
+
         transducer = self.transducer_combo.currentData()
         if transducer is None:
             raise FDSValidationError("Choose a transducer first.")
@@ -430,6 +703,18 @@ class SlotEditor(ApplyPanel):
         dephasing_degree = self._resolve_dephasing_degree(transducer)
 
         if self.slot is None:
+            # Blocked only while power_value_spin still shows the exact, untouched first entry
+            # of the file's own per-element list (see _load_failed_slot()): the moment the
+            # researcher types a genuinely different number in, even for this very same power
+            # option, that's a deliberate choice of one shared value for every element, not an
+            # accidental resend of data that was never really a single, shared value at all.
+            if (power_option == self._per_element_power_option
+                    and power_value == self._per_element_power_first_value):
+                raise FDSValidationError(
+                    "This slot's power value was set per element in the file. Loading that "
+                    "per-element list here isn't supported yet, since this field only ever "
+                    "holds one value shared by every element; enter a new value here to apply "
+                    "it to every element instead, or choose a different power option.")
             self.slot = self.builder.add_slot(transducer.serial, focus_option, focus_value,
                                               power_option, power_value, oper_freq,
                                               dephasing_degree)
@@ -437,6 +722,16 @@ class SlotEditor(ApplyPanel):
             self.slot.update_transducer(transducer.serial, focus_option, focus_value,
                                         power_option, power_value, oper_freq, dephasing_degree)
         else:
+            # power_option is '' (nothing selected) rather than self.slot.chosen_power itself
+            # whenever the latter is filtered out of power_option_combo as engineering-only (see
+            # _update_power_options()) -- which every per-element option is today, but isn't
+            # guaranteed to stay true for every institution's own config (see this class's own
+            # _per_element_power_option comment). Block on either, not just an exact match. Same
+            # "still the untouched first entry" carve-out as the self.slot is None branch above.
+            if (isinstance(self.slot.chosen_power_value, list)
+                    and power_option in ('', self.slot.chosen_power)
+                    and power_value == self.slot.chosen_power_value[0]):
+                raise FDSValidationError(_PER_ELEMENT_POWER_MESSAGE)
             self.slot.configure(focus_option, focus_value, power_option, power_value)
             self.slot.oper_freq = oper_freq
             self.slot.dephasing_degree = dephasing_degree

@@ -89,6 +89,41 @@ def test_empty_config_leaves_the_dropdown_empty_without_raising(qtbot, patch_con
     assert panel.selected_driving_system() is None
 
 
+def test_select_driving_system_matches_by_serial(qtbot, patch_config):
+    """By serial, not object identity: a caller like protocol_io.load() constructs its own
+    DrivingSystem instance while parsing a file, never the same object already in this combo."""
+    patch_config.set('Equipment', 'Driving systems', 'UNITTEST_A\nUNITTEST_B')
+    _configure_driving_system(patch_config, 'UNITTEST_A', 'System A', 'IGT')
+    _configure_driving_system(patch_config, 'UNITTEST_B', 'System B', 'Sonic Concepts')
+    panel = EquipmentPanel()
+    qtbot.addWidget(panel)
+
+    from fus_driving_systems import driving_system
+    other_instance = driving_system.DrivingSystem()
+    other_instance.set_ds_info('UNITTEST_B')
+
+    found = panel.select_driving_system(other_instance)
+
+    assert found is True
+    assert panel.selected_driving_system().serial == 'UNITTEST_B'
+
+
+def test_select_driving_system_returns_false_when_not_offered(qtbot, igt_and_citrus):
+    """E.g. the loaded protocol's own driving system is a CITRUS one, filtered out of this
+    dropdown entirely."""
+    panel = EquipmentPanel()
+    qtbot.addWidget(panel)
+
+    from fus_driving_systems import driving_system
+    citrus_instance = driving_system.DrivingSystem()
+    citrus_instance.set_ds_info('UNITTEST_CITRUS')
+
+    found = panel.select_driving_system(citrus_instance)
+
+    assert found is False
+    assert panel.selected_driving_system().serial == 'UNITTEST_IGT'  # unchanged
+
+
 def test_reload_driving_systems_picks_up_a_config_change(qtbot, patch_config):
     patch_config.set('Equipment', 'Driving systems', 'UNITTEST_A')
     _configure_driving_system(patch_config, 'UNITTEST_A', 'System A', 'IGT')

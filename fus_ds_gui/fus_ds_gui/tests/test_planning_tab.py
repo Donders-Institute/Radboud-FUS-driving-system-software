@@ -5,7 +5,9 @@ and the validation label. Not re-testing what each widget's own test module alre
 isolation.
 """
 import pytest
+from PySide6.QtWidgets import QApplication
 
+from fus_ds_gui.models.protocol_io import LoadResult
 from fus_ds_gui.planning.planning_tab import PlanningTab
 
 
@@ -225,3 +227,173 @@ def test_changing_driving_system_rebuilds_slot_editors_and_timing_panel(qtbot, p
     assert tab.builder is not first_builder
     assert tab.timing_panel is not first_timing_panel
     assert len(tab._slot_editors) == 1
+
+
+def _build_protocol(driving_sys_serial, slot_defs, pulse_dur=5, **timing_kwargs):
+    """One TUSProtocol built directly via the Python API (not through a YAML file), for
+    load_protocol() tests below: PlanningTab.load_protocol() itself doesn't care where the
+    protocol came from, only that it's already fully configured."""
+    from fus_driving_systems.tus_protocol import TUSProtocol
+
+    protocol = TUSProtocol(driving_sys_serial)
+    for serial, focus_value, power_value in slot_defs:
+        protocol.add_slot(serial, 'Focus wrt exit plane [mm]', focus_value,
+                          'Global power [mW]', power_value)
+    protocol.configure_timing(pulse_dur, **timing_kwargs)
+    return protocol
+
+
+def test_load_protocol_does_not_leave_the_previous_slot_editor_as_a_stray_window(
+        qtbot, single_slot_setup):
+    """_clear_slot_editors()/_clear_timing_panel() must never setParent(None) a widget that was
+    already shown as part of a layout: Qt would then treat it as its own, still-visible
+    top-level window (a stray, empty OS window that lingers even after the whole app is closed)
+    instead of making it disappear -- see PlanningTab._clear_slot_editors()'s own comment on why
+    removeWidget()+deleteLater() is used instead."""
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+    original_editor = tab._slot_editors[0]
+    original_timing_panel = tab.timing_panel
+    protocol = _build_protocol('UNITTEST_IGT', [('UNITTEST_TRAN', 40, 0.5)])
+
+    tab.load_protocol(LoadResult(protocol, []))
+
+    assert original_editor.parent() is tab
+    assert original_editor not in QApplication.topLevelWidgets()
+    assert original_timing_panel.parent() is tab
+    assert original_timing_panel not in QApplication.topLevelWidgets()
+
+
+def test_load_protocol_selects_the_matching_driving_system(qtbot, patch_config):
+    _configure_driving_system(patch_config, 'UNITTEST_A', max_tran_slots=1)
+    _configure_driving_system(patch_config, 'UNITTEST_B', max_tran_slots=1)
+    patch_config.set('Equipment', 'Driving systems', 'UNITTEST_A\nUNITTEST_B')
+    patch_config.set('Equipment', 'Transducers', 'UNITTEST_TRAN')
+    _configure_transducer(patch_config)
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+    protocol = _build_protocol('UNITTEST_B', [('UNITTEST_TRAN', 40, 0.5)])
+
+    tab.load_protocol(LoadResult(protocol, []))
+
+    assert tab.equipment_panel.selected_driving_system().serial == 'UNITTEST_B'
+
+
+def test_load_protocol_builds_one_slot_editor_per_existing_slot(qtbot, patch_config):
+    _configure_driving_system(patch_config, 'UNITTEST_IGT', max_tran_slots=2)
+    patch_config.set('Equipment.Driving system.UNITTEST_IGT', 'Transducer compatibility',
+                     'UNITTEST_TRAN_A\nUNITTEST_TRAN_B')
+    patch_config.set('Equipment', 'Transducers', 'UNITTEST_TRAN_A\nUNITTEST_TRAN_B')
+    _configure_transducer(patch_config, 'UNITTEST_TRAN_A')
+    _configure_transducer(patch_config, 'UNITTEST_TRAN_B')
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+    protocol = _build_protocol('UNITTEST_IGT',
+                               [('UNITTEST_TRAN_A', 40, 0.5), ('UNITTEST_TRAN_B', 60, 0.3)])
+
+    tab.load_protocol(LoadResult(protocol, []))
+
+    assert len(tab._slot_editors) == 2
+    assert tab._slot_editors[0].slot.transducer.serial == 'UNITTEST_TRAN_A'
+    assert tab._slot_editors[0].focus_value_spin.value() == pytest.approx(40)
+    assert tab._slot_editors[1].slot.transducer.serial == 'UNITTEST_TRAN_B'
+    assert tab._slot_editors[1].focus_value_spin.value() == pytest.approx(60)
+
+
+def test_load_protocol_timing_panel_reflects_loaded_values(qtbot, single_slot_setup):
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+    protocol = _build_protocol('UNITTEST_IGT', [('UNITTEST_TRAN', 40, 0.5)], pulse_dur=7)
+
+    tab.load_protocol(LoadResult(protocol, []))
+
+    assert tab.timing_panel.pulse_dur_spin.value() == pytest.approx(7)
+
+
+def test_load_protocol_expands_timing_levels_set_explicitly_by_the_file(qtbot, single_slot_setup):
+    """A loaded protocol whose own pulse train/pulse train repetition values were explicitly
+    set (not just inherited from pulse_dur) must show those levels already expanded, not leave
+    a researcher unaware they're even set."""
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+    protocol = _build_protocol('UNITTEST_IGT', [('UNITTEST_TRAN', 40, 0.5)], pulse_dur=1,
+                               pulse_rep_int=5, pulse_train_dur=20,
+                               pulse_train_rep_int=40, pulse_train_rep_dur=2)
+
+    tab.load_protocol(LoadResult(protocol, []))
+
+    assert tab.timing_panel.pulse_train_level.is_expanded() is True
+    assert tab.timing_panel.pulse_train_rep_level.is_expanded() is True
+
+
+def test_load_protocol_refreshes_validation(qtbot, single_slot_setup):
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+    protocol = _build_protocol('UNITTEST_IGT', [('UNITTEST_TRAN', 40, 0.5)])
+
+    tab.load_protocol(LoadResult(protocol, []))
+
+    assert tab.validation_label.text() == "No problems found."
+
+
+def test_load_protocol_raises_when_driving_system_not_offered(qtbot, patch_config):
+    """E.g. a CITRUS driving system, filtered out of the Planning tab's own equipment dropdown
+    entirely; see EquipmentPanel.select_driving_system()'s own docstring."""
+    from fus_driving_systems.exceptions import FDSConfigError
+
+    _configure_driving_system(patch_config, 'UNITTEST_IGT', max_tran_slots=1)
+    patch_config.set('Equipment', 'Transducers', 'UNITTEST_TRAN')
+    _configure_transducer(patch_config)
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+    protocol = _build_protocol('UNITTEST_IGT', [('UNITTEST_TRAN', 40, 0.5)])
+    # Simulate a protocol built for a driving system this tab doesn't offer, by pointing its
+    # own driving_sys at one absent from config entirely (rather than genuinely configuring and
+    # then excluding a CITRUS one, which needs a real manufacturer round-trip).
+    protocol.driving_sys.serial = 'UNITTEST_NOT_OFFERED'
+
+    with pytest.raises(FDSConfigError, match='UNITTEST_NOT_OFFERED'):
+        tab.load_protocol(LoadResult(protocol, []))
+
+
+def test_load_protocol_builds_an_extra_editor_per_failed_slot(qtbot, single_slot_setup):
+    """A slot that failed to load (see protocol_io.load()'s own failed_slots) still gets its
+    own SlotEditor, pre-filled with the raw values and the failure shown inline, alongside one
+    editor per slot that did load successfully."""
+    from fus_driving_systems.exceptions import FDSSafetyError
+
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+    protocol = _build_protocol('UNITTEST_IGT', [('UNITTEST_TRAN', 40, 0.5)])
+    failed_slot_def = {
+        'transducer_serial': 'UNITTEST_TRAN',
+        'focus_option': 'Focus wrt exit plane [mm]',
+        'focus_value': 60,
+        'power_option': 'Global power [mW]',
+        'power_value': 999,
+    }
+    load_result = LoadResult(protocol, [(failed_slot_def, FDSSafetyError('too high'))])
+
+    tab.load_protocol(load_result)
+
+    assert len(tab._slot_editors) == 2
+    assert tab._slot_editors[0].slot is not None
+    assert tab._slot_editors[1].slot is None
+    assert not tab._slot_editors[1].error_label.isHidden()
+    assert 'too high' in tab._slot_editors[1].error_label.text()
+
+
+def test_current_protocol_returns_the_builder_protocol(qtbot, single_slot_setup):
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+
+    assert tab.current_protocol() is tab.builder.protocol
+
+
+def test_current_protocol_returns_none_without_a_driving_system(qtbot, patch_config):
+    patch_config.set('Equipment', 'Driving systems', '')
+
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+
+    assert tab.current_protocol() is None

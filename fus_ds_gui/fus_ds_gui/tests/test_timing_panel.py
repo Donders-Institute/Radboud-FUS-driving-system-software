@@ -50,6 +50,45 @@ def test_pulse_train_levels_start_collapsed(qtbot, builder):
     assert panel.pulse_train_rep_level.content.isVisible() is False
 
 
+def test_pulse_train_level_starts_expanded_when_already_set_explicitly(qtbot, builder):
+    """A loaded protocol whose file set pulse_rep_int/pulse_train_dur explicitly (different
+    from what pulse_dur alone would cascade to) must show that immediately, not hide it behind
+    a collapsed level the researcher would have to think to open."""
+    builder.protocol.configure_timing(pulse_dur=1.0, pulse_rep_int=5.0, pulse_train_dur=20.0)
+
+    panel = TimingPanel(builder)
+    qtbot.addWidget(panel)
+    panel.show()
+
+    assert panel.pulse_train_level.content.isVisible() is True
+    assert panel.pulse_train_level.is_expanded() is True
+
+
+def test_pulse_train_rep_level_starts_expanded_when_already_set_explicitly(qtbot, builder):
+    builder.protocol.configure_timing(pulse_dur=1.0, pulse_train_rep_int=5.0,
+                                      pulse_train_rep_dur=2.0)
+
+    panel = TimingPanel(builder)
+    qtbot.addWidget(panel)
+    panel.show()
+
+    assert panel.pulse_train_rep_level.content.isVisible() is True
+
+
+def test_pulse_train_level_stays_collapsed_when_values_match_the_cascade(qtbot, builder):
+    """Not "any explicit configure_timing() call expands it": only when the level's own two
+    fields aren't already exactly what plain inheritance from pulse_dur would produce. A
+    protocol whose pulse_rep_int/pulse_train_dur genuinely still both equal pulse_dur (the
+    common, freshly-constructed case) stays collapsed."""
+    builder.protocol.configure_timing(pulse_dur=3.0, pulse_rep_int=3.0, pulse_train_dur=3.0)
+
+    panel = TimingPanel(builder)
+    qtbot.addWidget(panel)
+    panel.show()
+
+    assert panel.pulse_train_level.content.isVisible() is False
+
+
 def test_toggling_a_level_shows_its_fields(qtbot, builder):
     panel = TimingPanel(builder)
     qtbot.addWidget(panel)

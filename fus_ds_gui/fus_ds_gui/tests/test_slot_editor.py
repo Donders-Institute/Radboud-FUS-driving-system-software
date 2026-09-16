@@ -3,7 +3,11 @@
 Tests for SlotEditor. Uses the same synthetic 'UNITTEST_*' fixture shape as
 test_protocol_builder.py.
 """
+from types import SimpleNamespace
+
 import pytest
+
+from fus_driving_systems.exceptions import FDSSafetyError, FDSValidationError
 
 from fus_ds_gui.models.protocol_builder import ProtocolBuilder
 from fus_ds_gui.planning.slot_editor import SlotEditor
@@ -435,6 +439,496 @@ def test_clearing_exclusion_restores_the_transducer(qtbot, builder):
         None, 'UNITTEST_TRAN_A', 'UNITTEST_TRAN_B']
 
 
+def test_existing_slot_prefills_every_field(qtbot, builder):
+    """Matches PlanningTab.load_protocol()'s own use: one SlotEditor per already-configured
+    TransducerSlot, e.g. one from protocol_io.load(), pre-filled rather than blank."""
+    slot = builder.add_slot('UNITTEST_TRAN_A', 'Focus wrt exit plane [mm]', 20,
+                            'Max. pressure in free water [MPa]', 0.5, oper_freq=500,
+                            dephasing_degree=[90.0])
+
+    editor = SlotEditor(builder, existing_slot=slot)
+    qtbot.addWidget(editor)
+
+    assert editor.slot is slot
+    assert editor.transducer_combo.currentData().serial == 'UNITTEST_TRAN_A'
+    assert editor.focus_option_combo.currentText() == 'Focus wrt exit plane [mm]'
+    assert editor.focus_value_spin.value() == pytest.approx(20)
+    assert editor.power_option_combo.currentText() == 'Max. pressure in free water [MPa]'
+    assert editor.power_value_spin.value() == pytest.approx(0.5)
+    assert editor.oper_freq_spin.value() == 500
+    assert editor.dephasing_mode_combo.currentText() == 'Cyclic (one degree, applied to every ' \
+                                                        'element)'
+    assert editor.dephasing_degree_spin.value() == pytest.approx(90.0)
+
+
+def test_existing_slot_with_no_dephasing_selects_that_mode(qtbot, builder):
+    slot = builder.add_slot('UNITTEST_TRAN_A', 'Focus wrt exit plane [mm]', 20,
+                            'Max. pressure in free water [MPa]', 0.5)
+
+    editor = SlotEditor(builder, existing_slot=slot)
+    qtbot.addWidget(editor)
+
+    assert editor.dephasing_mode_combo.currentText() == 'No dephasing'
+
+
+def test_existing_slot_with_per_element_dephasing_prefills_the_text_field(qtbot, builder):
+    """UNITTEST_TRAN_A has 2 elements (see _configure_transducer's own default)."""
+    slot = builder.add_slot('UNITTEST_TRAN_A', 'Focus wrt exit plane [mm]', 20,
+                            'Max. pressure in free water [MPa]', 0.5,
+                            dephasing_degree=[10.0, 20.0])
+
+    editor = SlotEditor(builder, existing_slot=slot)
+    qtbot.addWidget(editor)
+
+    assert editor.dephasing_mode_combo.currentText() == (
+        'Per-element override (one phase value per element)')
+    assert editor.dephasing_values_edit.text() == '10.0, 20.0'
+
+
+def test_editing_and_reapplying_an_existing_slot_configures_it_in_place(qtbot, builder):
+    slot = builder.add_slot('UNITTEST_TRAN_A', 'Focus wrt exit plane [mm]', 20,
+                            'Max. pressure in free water [MPa]', 0.5)
+    editor = SlotEditor(builder, existing_slot=slot)
+    qtbot.addWidget(editor)
+    editor.focus_value_spin.setValue(30)
+
+    editor.apply_button.click()
+
+    assert editor.slot is slot
+    assert len(builder.protocol.slots) == 1
+    assert slot.focus_wrt_exit_plane == pytest.approx(30)
+
+
+def test_existing_slot_with_a_list_power_value_shows_the_first_entry(qtbot, builder):
+    """See _load_existing_slot()'s own comment on the same list case (Amplitude [%]/
+    Voltage [V]): power_value_spin only ever shows/sends a single, shared value."""
+    editor = SlotEditor(builder)
+    qtbot.addWidget(editor)
+    tran_a = editor.transducer_combo.itemData(1)  # UNITTEST_TRAN_A
+    stand_in_slot = SimpleNamespace(
+        transducer=tran_a, chosen_focus='Focus wrt exit plane [mm]', chosen_focus_value=20,
+        chosen_power='Amplitude [%]', chosen_power_value=[70.0, 80.0], oper_freq=300,
+        dephasing_degree=None)
+
+    editor._load_existing_slot(stand_in_slot)
+
+    assert editor.power_value_spin.value() == pytest.approx(70.0)
+
+
+def test_existing_slot_with_a_list_power_value_flags_it_immediately(qtbot, builder):
+    """Matches how a failed slot_def's own problem is shown right away (see
+    _load_failed_slot()): a researcher shouldn't have to click Apply first just to discover
+    that editing this slot's power value isn't supported yet."""
+    editor = SlotEditor(builder)
+    qtbot.addWidget(editor)
+    tran_a = editor.transducer_combo.itemData(1)  # UNITTEST_TRAN_A
+    stand_in_slot = SimpleNamespace(
+        transducer=tran_a, chosen_focus='Focus wrt exit plane [mm]', chosen_focus_value=20,
+        chosen_power='Amplitude [%]', chosen_power_value=[70.0, 80.0], oper_freq=300,
+        dephasing_degree=None)
+
+    editor._load_existing_slot(stand_in_slot)
+
+    assert not editor.error_label.isHidden()
+    assert 'per element' in editor.error_label.text()
+
+
+def test_reapplying_an_existing_slot_with_a_list_power_value_is_refused(qtbot, builder):
+    """Editing/re-applying such a slot isn't supported yet (see _apply()'s own comment): Apply
+    must refuse it rather than silently collapse the per-element list into power_value_spin's
+    own single, shared value."""
+    editor = SlotEditor(builder)
+    qtbot.addWidget(editor)
+    tran_a = editor.transducer_combo.itemData(1)  # UNITTEST_TRAN_A
+    stand_in_slot = SimpleNamespace(
+        transducer=tran_a, chosen_focus='Focus wrt exit plane [mm]', chosen_focus_value=20,
+        chosen_power='Amplitude [%]', chosen_power_value=[70.0, 80.0], oper_freq=300,
+        dephasing_degree=None)
+    editor._load_existing_slot(stand_in_slot)
+
+    editor.apply_button.click()
+
+    assert not editor.error_label.isHidden()
+    assert 'per element' in editor.error_label.text()
+    assert stand_in_slot.chosen_power_value == [70.0, 80.0]  # untouched
+
+
+def test_reapplying_an_existing_slot_allows_a_genuinely_different_power_value(qtbot, builder):
+    """Typing a genuinely different value into power_value_spin -- even for the very same
+    per-element power option the slot already had -- is a deliberate choice of one shared value
+    for every element, not the accidental resend the guard above exists for."""
+    editor = SlotEditor(builder)
+    qtbot.addWidget(editor)
+    tran_a = editor.transducer_combo.itemData(1)  # UNITTEST_TRAN_A
+    calls = []
+    stand_in_slot = SimpleNamespace(
+        transducer=tran_a, chosen_focus='Focus wrt exit plane [mm]', chosen_focus_value=20,
+        chosen_power='Amplitude [%]', chosen_power_value=[70.0, 80.0], oper_freq=300,
+        dephasing_degree=None, configure=lambda *args: calls.append(args))
+    editor._load_existing_slot(stand_in_slot)
+    editor.power_value_spin.setValue(50)  # genuinely different from the pre-filled 70.0
+
+    editor.apply_button.click()
+
+    assert len(calls) == 1
+    assert editor.error_label.isHidden()
+
+
+def test_reapplying_an_existing_slot_allows_switching_to_another_power_option(qtbot, builder):
+    """Deliberately choosing a different, real power option (not just leaving the slot's own
+    per-element one in place) is a legitimate, explicit edit, not the silent flattening the
+    guard above exists for -- it must be allowed to configure() the slot in place."""
+    editor = SlotEditor(builder)
+    qtbot.addWidget(editor)
+    tran_a = editor.transducer_combo.itemData(1)  # UNITTEST_TRAN_A
+    calls = []
+    stand_in_slot = SimpleNamespace(
+        transducer=tran_a, chosen_focus='Focus wrt exit plane [mm]', chosen_focus_value=20,
+        chosen_power='Amplitude [%]', chosen_power_value=[70.0, 80.0], oper_freq=300,
+        dephasing_degree=None, configure=lambda *args: calls.append(args))
+    editor._load_existing_slot(stand_in_slot)
+    index = editor.power_option_combo.findText('Max. pressure in free water [MPa]')
+    editor.power_option_combo.setCurrentIndex(index)
+    editor.power_value_spin.setValue(0.5)
+
+    editor.apply_button.click()
+
+    assert calls == [('Focus wrt exit plane [mm]', 20.0, 'Max. pressure in free water [MPa]',
+                      0.5)]
+    assert editor.error_label.isHidden()
+
+
+def test_failed_slot_with_an_out_of_range_focus_value_shows_it_unclamped(qtbot, builder):
+    """A focus_value past the selected transducer's own min/max (10-80 here, see the builder
+    fixture) must not be silently clamped by focus_value_spin's own normal range: the whole
+    point of showing a failed slot's raw values is to let the researcher see exactly what was
+    wrong, not a plausible-looking value the widget quietly substituted instead (see
+    _widen_range_to_fit())."""
+    slot_def = {
+        'transducer_serial': 'UNITTEST_TRAN_A',
+        'focus_option': 'Focus wrt exit plane [mm]',
+        'focus_value': 200,
+        'power_option': 'Max. pressure in free water [MPa]',
+        'power_value': 0.5,
+    }
+
+    editor = SlotEditor(builder, failed_slot=(slot_def, FDSValidationError('too far')))
+    qtbot.addWidget(editor)
+
+    assert editor.focus_value_spin.value() == pytest.approx(200)
+
+
+def test_choosing_a_real_focus_option_flags_rather_than_overwrites_an_out_of_range_value(
+        qtbot, builder):
+    """Reported scenario: a failed slot_def named an unrecognized focus_option alongside a
+    focus_value that's out of range for this transducer (200, vs. 10-80, see the builder
+    fixture). Picking a real focus_option afterward must not silently narrow
+    focus_value_spin's own range back down and clamp that value away -- it must stay visible,
+    flagged via error_label instead (see _update_focus_range()'s own docstring)."""
+    slot_def = {
+        'transducer_serial': 'UNITTEST_TRAN_A',
+        'focus_option': 'Not A Real Focus Option',
+        'focus_value': 200,
+        'power_option': 'Max. pressure in free water [MPa]',
+        'power_value': 0.5,
+    }
+    editor = SlotEditor(builder, failed_slot=(slot_def, FDSValidationError('unrecognized')))
+    qtbot.addWidget(editor)
+    index = editor.focus_option_combo.findText('Focus wrt exit plane [mm]')
+
+    editor.focus_option_combo.setCurrentIndex(index)
+
+    assert editor.focus_value_spin.value() == pytest.approx(200)
+    assert not editor.error_label.isHidden()
+    assert 'outside' in editor.error_label.text()
+
+
+def test_changing_transducer_stops_flagging_a_failed_slots_raw_focus_value(qtbot, builder):
+    """A different transducer already resets focus_value_spin to its own default a few lines
+    later in _on_transducer_changed() regardless, so the raw-value flag must be cleared first,
+    not linger and get (re-)shown against a value that's already on its way out."""
+    slot_def = {
+        'transducer_serial': 'UNITTEST_TRAN_A',
+        'focus_option': 'Not A Real Focus Option',
+        'focus_value': 200,
+        'power_option': 'Max. pressure in free water [MPa]',
+        'power_value': 0.5,
+    }
+    editor = SlotEditor(builder, failed_slot=(slot_def, FDSValidationError('unrecognized')))
+    qtbot.addWidget(editor)
+
+    editor.transducer_combo.setCurrentIndex(2)  # UNITTEST_TRAN_B
+
+    assert editor._raw_focus_value is None
+    assert editor.focus_value_spin.value() != pytest.approx(200)
+
+
+def test_failed_slot_with_an_unrecognized_power_option_shows_it_verbatim(qtbot, builder):
+    """A power_option string this driving system doesn't currently offer must be shown exactly
+    as the file gave it, not silently replaced by whichever real option the combo already
+    happens to default to (see _select_or_show_raw())."""
+    slot_def = {
+        'transducer_serial': 'UNITTEST_TRAN_A',
+        'focus_option': 'Focus wrt exit plane [mm]',
+        'focus_value': 20,
+        'power_option': 'Not A Real Power Option',
+        'power_value': 0.5,
+    }
+
+    editor = SlotEditor(builder, failed_slot=(slot_def, FDSValidationError('bad option')))
+    qtbot.addWidget(editor)
+
+    assert editor.power_option_combo.currentText() == 'Not A Real Power Option'
+
+
+def test_raw_power_option_is_removed_once_a_real_one_is_deliberately_chosen(qtbot, builder):
+    """The one-off raw item _select_or_show_raw() inserts must not linger in the combo forever:
+    once the researcher deliberately picks a real option instead, _prune_raw_option() must drop
+    it, so it can't be mistaken for a real, still-available choice later."""
+    slot_def = {
+        'transducer_serial': 'UNITTEST_TRAN_A',
+        'focus_option': 'Focus wrt exit plane [mm]',
+        'focus_value': 20,
+        'power_option': 'Not A Real Power Option',
+        'power_value': 0.5,
+    }
+    editor = SlotEditor(builder, failed_slot=(slot_def, FDSValidationError('bad option')))
+    qtbot.addWidget(editor)
+    assert editor.power_option_combo.findText('Not A Real Power Option') >= 0
+    index = editor.power_option_combo.findText('Max. pressure in free water [MPa]')
+
+    editor.power_option_combo.setCurrentIndex(index)
+    editor.power_option_combo.activated.emit(index)  # only a real interaction prunes it
+
+    assert editor.power_option_combo.findText('Not A Real Power Option') == -1
+    assert editor.power_option_combo.currentText() == 'Max. pressure in free water [MPa]'
+
+
+def test_raw_power_option_stays_if_reselected_via_the_dropdown(qtbot, builder):
+    """Re-picking the very same raw item (a no-op reselection) must not prune it -- only moving
+    away from it should."""
+    slot_def = {
+        'transducer_serial': 'UNITTEST_TRAN_A',
+        'focus_option': 'Focus wrt exit plane [mm]',
+        'focus_value': 20,
+        'power_option': 'Not A Real Power Option',
+        'power_value': 0.5,
+    }
+    editor = SlotEditor(builder, failed_slot=(slot_def, FDSValidationError('bad option')))
+    qtbot.addWidget(editor)
+    raw_index = editor.power_option_combo.findText('Not A Real Power Option')
+
+    editor.power_option_combo.activated.emit(raw_index)
+
+    assert editor.power_option_combo.findText('Not A Real Power Option') == raw_index
+
+
+def test_failed_slot_prefills_every_field_and_shows_the_error(qtbot, builder):
+    slot_def = {
+        'transducer_serial': 'UNITTEST_TRAN_A',
+        'focus_option': 'Focus wrt exit plane [mm]',
+        'focus_value': 20,
+        'power_option': 'Max. pressure in free water [MPa]',
+        'power_value': 2.0,
+        'oper_freq': 310,
+        'dephasing_degree': None,
+    }
+    exc = FDSSafetyError('Maximum pressure exceeded.')
+
+    editor = SlotEditor(builder, failed_slot=(slot_def, exc))
+    qtbot.addWidget(editor)
+
+    assert editor.slot is None
+    assert editor.transducer_combo.currentData().serial == 'UNITTEST_TRAN_A'
+    assert editor.focus_option_combo.currentText() == 'Focus wrt exit plane [mm]'
+    assert editor.focus_value_spin.value() == pytest.approx(20)
+    assert editor.power_option_combo.currentText() == 'Max. pressure in free water [MPa]'
+    assert editor.power_value_spin.value() == pytest.approx(2.0)
+    assert editor.oper_freq_spin.value() == 310
+    assert not editor.error_label.isHidden()
+    assert 'Maximum pressure exceeded' in editor.error_label.text()
+
+
+def test_failed_slot_with_a_missing_power_option_leaves_the_combo_untouched(qtbot, builder):
+    """slot_def.get('power_option') can come back None (the key was missing entirely, as opposed
+    to naming an unrecognized option): _select_or_show_raw() must not insert a blank/None item
+    for that, it should just leave the combo at whatever it already defaulted to."""
+    slot_def = {
+        'transducer_serial': 'UNITTEST_TRAN_A',
+        'focus_option': 'Focus wrt exit plane [mm]',
+        'focus_value': 20,
+        'power_value': 0.5,
+    }
+
+    exc = FDSValidationError('missing power_option')
+    editor = SlotEditor(builder, failed_slot=(slot_def, exc))
+    qtbot.addWidget(editor)
+
+    assert editor.power_option_combo.currentText() == 'Max. pressure in free water [MPa]'
+
+
+def test_failed_slot_with_unknown_transducer_leaves_the_placeholder_selected(qtbot, builder):
+    """A slot_def naming a transducer this driving system doesn't even offer (or that failed on
+    the transducer step itself) still shows every other field, rather than crashing looking one
+    up that was never there."""
+
+    slot_def = {
+        'transducer_serial': 'NOT_A_REAL_TRANSDUCER',
+        'focus_option': 'Focus wrt exit plane [mm]',
+        'focus_value': 20,
+        'power_option': 'Max. pressure in free water [MPa]',
+        'power_value': 0.5,
+    }
+    exc = FDSValidationError('Unknown transducer serial.')
+
+    editor = SlotEditor(builder, failed_slot=(slot_def, exc))
+    qtbot.addWidget(editor)
+
+    assert editor.transducer_combo.currentData() is None
+    assert 'Unknown transducer serial' in editor.error_label.text()
+
+
+def test_failed_slot_can_still_be_applied_as_a_new_slot(qtbot, builder):
+    """Never edited in place (unlike existing_slot): this slot was never actually added, so a
+    successful Apply after fixing the value goes through the normal "add a new slot" path."""
+    slot_def = {
+        'transducer_serial': 'UNITTEST_TRAN_A',
+        'focus_option': 'Focus wrt exit plane [mm]',
+        'focus_value': 20,
+        'power_option': 'Max. pressure in free water [MPa]',
+        'power_value': 2.0,
+    }
+    editor = SlotEditor(builder, failed_slot=(slot_def, FDSSafetyError('too high')))
+    qtbot.addWidget(editor)
+    editor.power_value_spin.setValue(0.5)  # fix the value that failed
+
+    editor.apply_button.click()
+
+    assert editor.slot is not None
+    assert len(builder.protocol.slots) == 1
+    assert editor.error_label.isHidden()
+
+
+def test_failed_slot_with_an_untouched_list_power_value_cannot_silently_apply_a_flattened_one(
+        qtbot, builder):
+    """Clicking Apply without ever touching power_value_spin -- it still shows exactly the
+    file's own per-element list's first entry, unchanged -- must not silently add a new slot
+    with a flattened scalar in place of that list. This is checked directly
+    (_per_element_power_option/_per_element_power_first_value), not left to whatever each
+    backend power setter's own engineering-mode gate happens to enforce: which options require
+    engineering_mode is itself config-driven per institution (see
+    TransducerSlot._requires_engineering_mode()'s own docstring), so it can't be relied on as an
+    implicit safety net here."""
+    slot_def = {
+        'transducer_serial': 'UNITTEST_TRAN_A',
+        'focus_option': 'Focus wrt exit plane [mm]',
+        'focus_value': 20,
+        'power_option': 'Amplitude [%]',
+        'power_value': [999.0, 999.0],
+    }
+    editor = SlotEditor(builder, failed_slot=(slot_def, FDSValidationError('boom')))
+    qtbot.addWidget(editor)
+
+    editor.apply_button.click()  # power_value_spin left exactly as pre-filled
+
+    assert editor.slot is None
+    assert 'per element' in editor.error_label.text()
+
+
+def test_failed_slot_with_a_list_power_value_allows_a_genuinely_different_value(qtbot, builder):
+    """Typing a genuinely different value into power_value_spin -- even for the very same
+    per-element power option the file gave -- is a deliberate choice of one shared value for
+    every element, not the accidental resend the guard above exists for. Apply must be allowed
+    to proceed (a different, real validation problem may still turn up, but that's the
+    backend's own concern, not this guard's)."""
+    slot_def = {
+        'transducer_serial': 'UNITTEST_TRAN_A',
+        'focus_option': 'Focus wrt exit plane [mm]',
+        'focus_value': 20,
+        'power_option': 'Amplitude [%]',
+        'power_value': [999.0, 999.0],
+    }
+    editor = SlotEditor(builder, failed_slot=(slot_def, FDSValidationError('boom')))
+    qtbot.addWidget(editor)
+    editor.power_value_spin.setValue(50)  # genuinely different from the pre-filled 999.0
+
+    editor.apply_button.click()
+
+    assert 'per element' not in editor.error_label.text()
+
+
+def test_failed_slot_with_a_list_power_value_allows_switching_to_another_power_option(
+        qtbot, builder):
+    """Deliberately choosing a different, real power option (not just leaving the file's own
+    per-element one in place) is a legitimate, explicit edit, not the silent flattening
+    _per_element_power_option guards against -- it must be allowed to add a new slot."""
+    slot_def = {
+        'transducer_serial': 'UNITTEST_TRAN_A',
+        'focus_option': 'Focus wrt exit plane [mm]',
+        'focus_value': 20,
+        'power_option': 'Amplitude [%]',
+        'power_value': [999.0, 999.0],
+    }
+    editor = SlotEditor(builder, failed_slot=(slot_def, FDSValidationError('boom')))
+    qtbot.addWidget(editor)
+    index = editor.power_option_combo.findText('Max. pressure in free water [MPa]')
+    editor.power_option_combo.setCurrentIndex(index)
+    editor.power_value_spin.setValue(0.5)
+
+    editor.apply_button.click()
+
+    assert editor.slot is not None
+    assert editor.error_label.isHidden()
+
+
+def test_failed_slot_with_a_list_power_value_shows_the_first_entry(qtbot, builder):
+    """See _load_existing_slot()'s own comment on the same list case (Amplitude [%]/
+    Voltage [V]): power_value_spin only ever shows/sends a single, shared value."""
+    slot_def = {
+        'transducer_serial': 'UNITTEST_TRAN_A',
+        'focus_option': 'Focus wrt exit plane [mm]',
+        'focus_value': 20,
+        'power_option': 'Max. pressure in free water [MPa]',
+        'power_value': [0.7],
+    }
+
+    editor = SlotEditor(builder, failed_slot=(slot_def, FDSValidationError('boom')))
+    qtbot.addWidget(editor)
+
+    assert editor.power_value_spin.value() == pytest.approx(0.7)
+
+
+def test_failed_slot_with_xyz_focus_prefills_the_xyz_fields(qtbot, patch_config):
+    """Mirrors test_existing_slot_with_xyz_focus_prefills_the_xyz_fields, for the failed_slot
+    pre-fill path instead."""
+    _configure_driving_system(patch_config, 'UNITTEST_IGT')
+    patch_config.set('Equipment.Driving system.UNITTEST_IGT', 'Focus options',
+                     'Focus wrt exit plane [mm]\nFocus xyz wrt exit plane [mm]')
+    patch_config.set('Equipment', 'Transducers', 'UNITTEST_TRAN_A\nUNITTEST_TRAN_B')
+    _configure_transducer(patch_config, 'UNITTEST_TRAN_A')
+    _configure_transducer(patch_config, 'UNITTEST_TRAN_B')
+    patch_config.set('Equipment.Transducer.UNITTEST_TRAN_B', 'Can 3D steer?', 'True')
+    patch_config.set('Equipment.Transducer.UNITTEST_TRAN_B', 'Steer information',
+                     'unittest_steer.ini')
+    from fus_driving_systems import driving_system
+    ds = driving_system.DrivingSystem()
+    ds.set_ds_info('UNITTEST_IGT')
+    slot_def = {
+        'transducer_serial': 'UNITTEST_TRAN_B',
+        'focus_option': 'Focus xyz wrt exit plane [mm]',
+        'focus_value': [1.0, 2.0, 30.0],
+        'power_option': 'Max. pressure in free water [MPa]',
+        'power_value': 0.5,
+    }
+
+    editor = SlotEditor(ProtocolBuilder(ds), failed_slot=(slot_def, FDSValidationError('boom')))
+    qtbot.addWidget(editor)
+
+    assert editor.focus_value_x_spin.value() == pytest.approx(1.0)
+    assert editor.focus_value_y_spin.value() == pytest.approx(2.0)
+    assert editor.focus_value_z_spin.value() == pytest.approx(30.0)
+
+
 def _build_editor_with_xyz_focus_option(patch_config, tran_b_can_3d_steer=False):
     """Doesn't use the `builder` fixture above: ProtocolBuilder.__init__ re-reads
     DrivingSystem/focus_options fresh from config at construction time (see TUSProtocol.
@@ -534,6 +1028,26 @@ def test_apply_passes_an_x_y_z_tuple_for_the_xyz_focus_option(qtbot, patch_confi
     # only asserts the (x, y, z) tuple was built and forwarded correctly, via the inline error
     # that failure produces, not that the whole flow succeeds end to end.
     assert not editor.error_label.isHidden()
+
+
+def test_existing_slot_with_xyz_focus_prefills_the_xyz_fields(qtbot, patch_config):
+    """A lightweight stand-in slot, not one built via add_slot(): the xyz focus option needs an
+    active calibration combo to actually go through the public API, unrelated to what
+    _load_existing_slot() itself needs here (it only reads chosen_focus/chosen_focus_value
+    directly, never calls _set_focus_xyz())."""
+    editor = _build_editor_with_xyz_focus_option(patch_config, tran_b_can_3d_steer=True)
+    qtbot.addWidget(editor)
+    tran_b = editor.transducer_combo.itemData(2)
+    stand_in_slot = SimpleNamespace(
+        transducer=tran_b, chosen_focus='Focus xyz wrt exit plane [mm]',
+        chosen_focus_value=(1.0, 2.0, 30.0), chosen_power='Max. pressure in free water [MPa]',
+        chosen_power_value=0.5, oper_freq=300, dephasing_degree=None)
+
+    editor._load_existing_slot(stand_in_slot)
+
+    assert editor.focus_value_x_spin.value() == pytest.approx(1.0)
+    assert editor.focus_value_y_spin.value() == pytest.approx(2.0)
+    assert editor.focus_value_z_spin.value() == pytest.approx(30.0)
 
 
 def test_dephasing_section_hidden_for_a_sonic_concepts_backed_builder(qtbot, patch_config):

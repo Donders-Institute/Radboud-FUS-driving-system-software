@@ -99,36 +99,80 @@ def _reject_unknown_keys(mapping, known_keys, context):
         raise FDSValidationError(message)
 
 
-def _build_slot(protocol, slot_def, slot_index, protocol_index):
-    """Adds one slot to protocol, described by slot_def (one entry of a protocol's own 'slots'
-    list)."""
+def _validate_slot_def(slot_def, slot_index, protocol_index):
+    """Structurally validates one slot_def (one entry of a protocol's own 'slots' list):
+    required keys present, no typo'd/unknown keys. Doesn't construct anything via add_slot()
+    (see add_validated_slot() below for that, a separate step); this only settles whether
+    slot_def's own shape is even usable at all.
+
+    Returns:
+        dict: slot_def itself, confirmed to be a mapping with every required key present.
+    """
 
     context = f'protocols[{protocol_index}].slots[{slot_index}]'
     slot_def = _require_mapping(slot_def, context)
     _reject_unknown_keys(slot_def, _REQUIRED_SLOT_KEYS + _OPTIONAL_SLOT_KEYS, context)
+    for key in _REQUIRED_SLOT_KEYS:
+        _require_key(slot_def, key, context)
+    return slot_def
 
-    transducer_serial = _require_key(slot_def, 'transducer_serial', context)
-    focus_option = _require_key(slot_def, 'focus_option', context)
-    focus_value = _require_key(slot_def, 'focus_value', context)
-    power_option = _require_key(slot_def, 'power_option', context)
-    power_value = _require_key(slot_def, 'power_value', context)
 
-    protocol.add_slot(transducer_serial, focus_option, focus_value, power_option, power_value,
-                      oper_freq=slot_def.get('oper_freq'),
+def add_validated_slot(protocol, slot_def):
+    """
+    Adds one already structurally-validated slot_def (see _validate_slot_def(), already run by
+    parse_protocol_file()/load_protocol()) to protocol, via add_slot(). This is the one step
+    that can still raise for a semantic reason (unknown transducer serial, invalid focus/power
+    value, no active calibration, a safety limit exceeded, and so on). A caller that wants to
+    recover from exactly that, one slot at a time, rather than aborting an entire file over a
+    single bad slot (e.g. the GUI's own protocol_io.load()), calls this itself per slot instead
+    of going through load_protocol()'s own all-or-nothing loop.
+
+    Parameters:
+        protocol (TUSProtocol): The protocol to add the slot to.
+        slot_def (dict): One already-validated slot definition, as returned by
+            parse_protocol_file() (each of protocol_defs[i]['slots']).
+
+    Raises:
+        FDSError: Whatever add_slot() itself raises for an invalid slot_def.
+    """
+
+    protocol.add_slot(slot_def['transducer_serial'], slot_def['focus_option'],
+                      slot_def['focus_value'], slot_def['power_option'],
+                      slot_def['power_value'], oper_freq=slot_def.get('oper_freq'),
                       dephasing_degree=slot_def.get('dephasing_degree'))
 
 
-def _configure_timing(protocol, timing_def, protocol_index):
-    """Applies one protocol's 'timing' mapping via configure_timing()."""
+def _validate_timing_def(timing_def, protocol_index):
+    """Structurally validates one protocol's 'timing' mapping; see _validate_slot_def()'s own
+    docstring for the same reasoning applied to timing instead of a slot.
+
+    Returns:
+        dict: timing_def itself, confirmed to be a mapping with 'pulse_dur' present.
+    """
 
     context = f'protocols[{protocol_index}].timing'
     timing_def = _require_mapping(timing_def, context)
     _reject_unknown_keys(timing_def, _REQUIRED_TIMING_KEYS + _OPTIONAL_TIMING_KEYS, context)
+    _require_key(timing_def, 'pulse_dur', context)
+    return timing_def
 
-    pulse_dur = _require_key(timing_def, 'pulse_dur', context)
+
+def apply_validated_timing(protocol, timing_def):
+    """Applies one already structurally-validated timing_def (see _validate_timing_def(),
+    already run by parse_protocol_file()/load_protocol()) to protocol, via configure_timing().
+    See add_validated_slot()'s own docstring for why this is its own, separate step.
+
+    Parameters:
+        protocol (TUSProtocol): The protocol to configure.
+        timing_def (dict): One already-validated timing definition, as returned by
+            parse_protocol_file() (each of protocol_defs[i]['timing']).
+
+    Raises:
+        FDSError: Whatever configure_timing() itself raises for an invalid timing_def.
+    """
 
     protocol.configure_timing(
-        pulse_dur,
+        timing_def['pulse_dur'],
         pulse_rep_int=timing_def.get('pulse_rep_int'),
         pulse_train_dur=timing_def.get('pulse_train_dur'),
         pulse_ramp_shape=timing_def.get('pulse_ramp_shape'),
@@ -191,31 +235,143 @@ def approve_protocol(yaml_path):
 
     Parameters:
         yaml_path (str): Path to the YAML protocol-definition file to approve.
+
+    Raises:
+        FDSValidationError: If yaml_path can't be read, or its sidecar can't be written (e.g. a
+            missing file, or a permissions error).
     """
 
-    with open(yaml_path, 'rb') as f:
-        raw_bytes = f.read()
+    try:
+        with open(yaml_path, 'rb') as f:
+            raw_bytes = f.read()
+    except OSError as e:
+        message = f'Could not read protocol file {yaml_path}: {e}'
+        get_logger().critical(message)
+        raise FDSValidationError(message) from e
 
     sidecar_path = _hash_sidecar_path(yaml_path)
-    with open(sidecar_path, 'w', encoding='utf-8') as f:
-        f.write(f'{_compute_file_hash(raw_bytes)}  {yaml_path}\n')
+    try:
+        with open(sidecar_path, 'w', encoding='utf-8') as f:
+            f.write(f'{_compute_file_hash(raw_bytes)}  {yaml_path}\n')
+    except OSError as e:
+        message = f'Could not write hash sidecar {sidecar_path}: {e}'
+        get_logger().critical(message)
+        raise FDSValidationError(message) from e
 
     get_logger().info(f'Approved {yaml_path} -- wrote {sidecar_path}.')
 
 
-def load_protocol(yaml_path, engineering_mode=False, require_hash=False):
+def _dump_slot(slot):
+    """One TransducerSlot's own YAML slot mapping; see save_protocol()'s own docstring. chosen_
+    focus/chosen_power (and their own *_value counterparts) return exactly what a caller
+    originally passed to add_slot()/update_transducer()/configure(), so this reproduces that
+    call's own arguments, not TUSProtocol's internal derived state (focus_wrt_exit_plane and
+    focus_wrt_mid_bowl both exist together on a configured slot regardless of which one was
+    actually chosen)."""
+
+    focus_value = slot.chosen_focus_value
+    if isinstance(focus_value, tuple):
+        focus_value = list(focus_value)  # yaml.safe_dump has no representer for tuple.
+
+    return {
+        'transducer_serial': slot.transducer.serial,
+        'focus_option': slot.chosen_focus,
+        'focus_value': focus_value,
+        'power_option': slot.chosen_power,
+        'power_value': slot.chosen_power_value,
+        'oper_freq': slot.oper_freq,
+        'dephasing_degree': slot.dephasing_degree,
+    }
+
+
+def _dump_timing(protocol):
+    """One TUSProtocol's own fully-resolved timing fields, in the same units configure_timing()
+    itself accepts (pulse_train_rep_dur in seconds, everything else in milliseconds). Every
+    field is written explicitly, never omitted: TUSProtocol.__init__() already cascades a
+    complete, self-consistent set of values the moment a protocol is constructed (see its own
+    docstring), so there is never a "not yet set" timing field to leave out here."""
+
+    return {
+        'pulse_dur': protocol.pulse_dur,
+        'pulse_rep_int': protocol.pulse_rep_int,
+        'pulse_train_dur': protocol.pulse_train_dur,
+        'pulse_ramp_shape': protocol.pulse_ramp_shape,
+        'pulse_ramp_dur': protocol.pulse_ramp_dur,
+        'pulse_train_rep_int': protocol.pulse_train_rep_int,
+        'pulse_train_rep_dur': protocol.pulse_train_rep_dur / 1e3,
+    }
+
+
+def save_protocol(protocol, yaml_path, trigger_option=None, n_triggers=None, buffer_num=0):
     """
-    Parses a YAML protocol-definition file into ready-to-use TUSProtocol object(s).
+    Writes protocol to yaml_path in the same schema load_protocol() reads, this function's own
+    exact inverse for the single-protocol case: save_protocol() then load_protocol() reproduces
+    an equivalent protocol. Interleaved multi-protocol files (several 'protocols' entries, see
+    load_protocol()'s own Returns section) aren't produced by this function, only ever a single
+    protocol.
 
-    engineering_mode and require_hash are deliberately Python-level parameters here, not YAML
-    fields -- both must be set by editing the calling script, never the YAML file a researcher
-    edits (a researcher could otherwise turn off a safeguard simply by editing the file it's
-    meant to protect).
+    Parameters:
+        protocol (TUSProtocol): The protocol to write. Must already have at least one slot
+            added (see TUSProtocol.add_slot()); load_protocol() itself would reject a
+            'slots: []' file the same way, so this is checked here too, to fail at save time
+            rather than only on a later, separate load attempt.
+        yaml_path (str): Path to write the YAML file to. Overwritten if it already exists.
+        trigger_option (str): Written to the file's own top-level 'trigger_option' key; omitted
+            entirely when None, matching load_protocol()'s own "not given" case (see
+            IGT.wait_for_trigger()'s own parameter of the same name).
+        n_triggers (int): Written to the file's own top-level 'n_triggers' key; omitted entirely
+            when None.
+        buffer_num (int): Written to the file's own top-level 'buffer_num' key; omitted when 0,
+            matching load_protocol()'s own default for an absent key.
 
-    Semantic validation (unknown driving-system/transducer serial, invalid focus/power/trigger
-    option, out-of-range timing value) is not duplicated here -- TUSProtocol/add_slot()/
-    configure_timing() already raise a clear FDSValidationError for all of these. This function
-    only validates the file's own structure: required keys present, no typo'd/unknown keys.
+    Raises:
+        FDSValidationError: If protocol has no transducer slots added yet, or yaml_path can't be
+            written (e.g. its parent directory doesn't exist, or a permissions error).
+    """
+
+    if not protocol.slots:
+        message = 'Cannot save a protocol with no transducer slots configured.'
+        get_logger().critical(message)
+        raise FDSValidationError(message)
+
+    data = {
+        'driving_sys_serial': protocol.driving_sys.serial,
+        'protocols': [{
+            'slots': [_dump_slot(slot) for slot in protocol.slots],
+            'timing': _dump_timing(protocol),
+        }],
+    }
+    if trigger_option is not None:
+        data['trigger_option'] = trigger_option
+    if n_triggers is not None:
+        data['n_triggers'] = n_triggers
+    if buffer_num:
+        data['buffer_num'] = buffer_num
+
+    try:
+        with open(yaml_path, 'w', encoding='utf-8') as f:
+            yaml.safe_dump(data, f, sort_keys=False)
+    except OSError as e:
+        message = f'Could not write protocol file {yaml_path}: {e}'
+        get_logger().critical(message)
+        raise FDSValidationError(message) from e
+
+    get_logger().info(f'Saved protocol to {yaml_path}.')
+
+
+def parse_protocol_file(yaml_path, require_hash=False):
+    """
+    Reads and structurally validates yaml_path: required keys present, no typo'd/unknown keys,
+    the right shapes (mappings/lists where expected). Does not construct or semantically
+    validate anything via TUSProtocol/add_slot()/configure_timing(); load_protocol() itself is
+    built directly on top of this, doing exactly that construction step immediately, per
+    protocol/slot, and raising on the first problem it finds (see its own docstring).
+
+    A caller that instead wants to recover from one bad slot gracefully, rather than have a
+    single invalid slot abort the entire file (e.g. the GUI's own protocol_io.load(), which
+    shows the raw values it would have applied and why they failed, instead of losing every
+    other slot along with it) calls this directly, then add_validated_slot()/
+    apply_validated_timing() itself, one slot/timing block at a time.
 
     If yaml_path has a sidecar '<yaml_path>.sha256' file (written by approve_protocol()), this
     raises FDSSafetyError when yaml_path's content no longer matches it -- protection against an
@@ -225,19 +381,20 @@ def load_protocol(yaml_path, engineering_mode=False, require_hash=False):
 
     Parameters:
         yaml_path (str): Path to the YAML protocol-definition file.
-        engineering_mode (bool): Passed straight to every TUSProtocol this file describes.
         require_hash (bool): If True, yaml_path must have a matching, approved '.sha256'
             sidecar -- a missing sidecar raises FDSSafetyError, instead of silently loading
             unchecked.
 
     Returns:
-        tuple(list(TUSProtocol), float or None, str or None, int or None, int): The protocol(s)
-            described by the file; total_alternating_duration_ms (None if the file describes
-            only one protocol); trigger_option and n_triggers (None if the file omits them --
-            meant to be forwarded straight into IGT.wait_for_trigger(), see its own docstring for
-            why these live at the top level, not inside any one protocol's 'timing:'); and
-            buffer_num (0 if the file omits it), meant to be forwarded into
-            send_protocol()/wait_for_trigger()/execute_protocol() the same way.
+        tuple(str, list(dict), float or None, str or None, int or None, int): driving_sys_serial;
+            one dict per protocol, each {'slots': list(dict), 'timing': dict} (both already
+            structurally validated and ready for add_validated_slot()/apply_validated_timing());
+            then total_alternating_duration_ms (None if the file describes only one protocol);
+            trigger_option and n_triggers (None if the file omits them: meant to be forwarded
+            straight into IGT.wait_for_trigger(), see its own docstring for why these live at
+            the top level, not inside any one protocol's 'timing:'); and buffer_num (0 if the
+            file omits it), meant to be forwarded into send_protocol()/wait_for_trigger()/
+            execute_protocol() the same way.
     """
 
     try:
@@ -265,7 +422,7 @@ def load_protocol(yaml_path, engineering_mode=False, require_hash=False):
     protocol_defs = _require_list(_require_key(data, 'protocols', 'the top-level protocol file'),
                                   "'protocols'")
 
-    protocols = []
+    validated_protocol_defs = []
     for protocol_index, protocol_def in enumerate(protocol_defs):
         context = f'protocols[{protocol_index}]'
         protocol_def = _require_mapping(protocol_def, context)
@@ -275,12 +432,54 @@ def load_protocol(yaml_path, engineering_mode=False, require_hash=False):
                                   f'{context}.slots')
         timing_def = _require_key(protocol_def, 'timing', context)
 
+        validated_slots = [_validate_slot_def(slot_def, slot_index, protocol_index)
+                           for slot_index, slot_def in enumerate(slot_defs)]
+        validated_protocol_defs.append({
+            'slots': validated_slots,
+            'timing': _validate_timing_def(timing_def, protocol_index),
+        })
+
+    return (driving_sys_serial, validated_protocol_defs,
+            data.get('total_alternating_duration_ms'), data.get('trigger_option'),
+            data.get('n_triggers'), data.get('buffer_num', 0))
+
+
+def load_protocol(yaml_path, engineering_mode=False, require_hash=False):
+    """
+    Parses a YAML protocol-definition file into ready-to-use TUSProtocol object(s), via
+    parse_protocol_file() (see its own docstring for the structural validation this does, and
+    for a way to recover from one bad slot instead of this function's own all-or-nothing
+    construction below).
+
+    engineering_mode is a deliberately Python-level parameter here, not a YAML field: it must
+    be set by editing the calling script, never the YAML file a researcher edits (a researcher
+    could otherwise turn off a safeguard simply by editing the file it's meant to protect).
+
+    Semantic validation (unknown driving-system/transducer serial, invalid focus/power/trigger
+    option, out-of-range timing value) is not duplicated here; TUSProtocol/add_slot()/
+    configure_timing() already raise a clear FDSValidationError for all of these.
+
+    Parameters:
+        yaml_path (str): Path to the YAML protocol-definition file.
+        engineering_mode (bool): Passed straight to every TUSProtocol this file describes.
+        require_hash (bool): See parse_protocol_file()'s own docstring.
+
+    Returns:
+        tuple(list(TUSProtocol), float or None, str or None, int or None, int): The protocol(s)
+            described by the file; total_alternating_duration_ms, trigger_option, n_triggers,
+            and buffer_num, matching parse_protocol_file()'s own trailing four return values.
+    """
+
+    (driving_sys_serial, protocol_defs, total_alternating_duration_ms, trigger_option,
+     n_triggers, buffer_num) = parse_protocol_file(yaml_path, require_hash)
+
+    protocols = []
+    for protocol_def in protocol_defs:
         protocol = TUSProtocol(driving_sys_serial, engineering_mode)
-        for slot_index, slot_def in enumerate(slot_defs):
-            _build_slot(protocol, slot_def, slot_index, protocol_index)
-        _configure_timing(protocol, timing_def, protocol_index)
+        for slot_def in protocol_def['slots']:
+            add_validated_slot(protocol, slot_def)
+        apply_validated_timing(protocol, protocol_def['timing'])
 
         protocols.append(protocol)
 
-    return (protocols, data.get('total_alternating_duration_ms'), data.get('trigger_option'),
-            data.get('n_triggers'), data.get('buffer_num', 0))
+    return protocols, total_alternating_duration_ms, trigger_option, n_triggers, buffer_num

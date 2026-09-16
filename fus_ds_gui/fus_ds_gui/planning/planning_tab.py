@@ -6,7 +6,11 @@ SPDX-License-Identifier: MIT
 See the LICENSE file for full license text.
 """
 
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QLabel, QPushButton, QVBoxLayout, QWidget
+
+from fus_driving_systems.config.logging_config import get_logger
+from fus_driving_systems.exceptions import FDSConfigError
 
 from fus_ds_gui.models.protocol_builder import ProtocolBuilder
 from fus_ds_gui.planning.equipment_panel import EquipmentPanel
@@ -19,7 +23,14 @@ class PlanningTab(QWidget):
     Build a protocol: equipment selection, one or more transducer slots, and shared timing.
     Everything here is driven by one ProtocolBuilder at a time, replaced (never mutated in
     place) whenever the equipment selection changes, see EquipmentPanel.driving_system_changed.
+
+    Signals:
+        validation_changed(): Emitted every time _refresh_validation() runs, i.e. whenever
+            can_save()'s own answer might have changed. MainWindow listens for this to keep its
+            own Save action's enabled state in sync, rather than polling it.
     """
+
+    validation_changed = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -53,6 +64,29 @@ class PlanningTab(QWidget):
 
         self._on_driving_system_changed(self.equipment_panel.selected_driving_system())
 
+    def current_protocol(self):
+        """
+        Returns:
+            TUSProtocol or None: The protocol currently under construction (e.g. for
+            protocol_io.save()), or None if no driving system is selected yet.
+        """
+
+        return self.builder.protocol if self.builder is not None else None
+
+    def can_save(self):
+        """
+        Returns:
+            bool: True if the current protocol has at least one slot and no validation
+            problems, matching what MainWindow's own Save action gates on: saving a protocol
+            builder.validate() itself already flags as wrong would only produce a YAML file
+            that's misleading (or, for something like IGT's own "Amplitude is None" check,
+            outright missing an intended value) the moment anyone actually looks at it.
+        """
+
+        if self.builder is None or not self.builder.protocol.slots:
+            return False
+        return not self.builder.validate()
+
     def _on_driving_system_changed(self, driving_system):
         """Replaces the current ProtocolBuilder (and every widget bound to it) with a fresh one
         for the newly selected driving system, see ProtocolBuilder's own docstring for why a
@@ -77,28 +111,93 @@ class PlanningTab(QWidget):
         self._refresh_validation()
 
     def _clear_slot_editors(self):
+        # setParent(None) alone would leave editor's own visible flag untouched and drop its
+        # parent to None -- Qt then treats it as a standalone top-level window and actually
+        # shows it as one (a stray, empty OS-level window), rather than making it disappear.
+        # removeWidget() (keeps self as the Qt parent, just stops the layout from managing it)
+        # plus deleteLater() (schedules the actual Qt object destruction once safe) is the
+        # correct way to make a widget already added to a layout go away for good.
         for editor in self._slot_editors:
-            editor.setParent(None)
+            self.slots_layout.removeWidget(editor)
+            editor.deleteLater()
         self._slot_editors = []
 
     def _clear_timing_panel(self):
         if self.timing_panel is not None:
-            self.timing_panel.setParent(None)
+            self.timing_layout.removeWidget(self.timing_panel)  # see _clear_slot_editors()
+            self.timing_panel.deleteLater()
             self.timing_panel = None
 
     def _add_slot_editor(self):
+        self._build_slot_editor()
+
+    def _build_slot_editor(self, existing_slot=None, failed_slot=None):
+        """Adds one SlotEditor: blank by default, pre-filled from existing_slot, or pre-filled
+        (with its own inline error already showing) from failed_slot, see SlotEditor's own
+        existing_slot/failed_slot parameters. Used by the "Add transducer slot" button above and
+        by load_protocol() below, once per already-loaded or failed-to-load slot."""
+
         already_chosen = {
             editor.transducer_combo.currentData().serial
             for editor in self._slot_editors
             if editor.transducer_combo.currentData() is not None
         }
-        editor = SlotEditor(self.builder, excluded_transducer_serials=already_chosen)
+        editor = SlotEditor(self.builder, excluded_transducer_serials=already_chosen,
+                            existing_slot=existing_slot, failed_slot=failed_slot)
         editor.applied.connect(self._on_slot_applied)
         editor.transducer_selection_changed.connect(self._refresh_transducer_exclusions)
         self._slot_editors.append(editor)
         self.slots_layout.addWidget(editor)
         self._update_add_button_enabled()
         self._refresh_transducer_exclusions()
+
+    def load_protocol(self, load_result):
+        """
+        Replaces the protocol currently under construction with load_result's own, e.g. one
+        just returned by protocol_io.load(). Rebuilds every widget from its already-resolved
+        state: one pre-filled SlotEditor per successfully-loaded slot, one more pre-filled
+        SlotEditor per slot that failed to load (its own raw values shown together with the
+        failure itself, right in that editor's own inline error_label, rather than losing the
+        whole file over it, see protocol_io.load()'s own docstring), and a TimingPanel reading
+        the protocol's own timing fields directly, the same way it already does for a
+        freshly-constructed one.
+
+        Parameters:
+            load_result (protocol_io.LoadResult): The result of protocol_io.load().
+
+        Raises:
+            FDSConfigError: If load_result.protocol.driving_sys isn't offered in the Planning
+                tab's own equipment dropdown (e.g. it's a CITRUS one, filtered out entirely, or
+                has since become inactive in ds_config.ini). Loading it would otherwise silently
+                leave whatever was previously selected in place.
+        """
+
+        protocol = load_result.protocol
+        if not self.equipment_panel.select_driving_system(protocol.driving_sys):
+            message = (f"Cannot load this protocol: '{protocol.driving_sys.serial}' isn't "
+                       "available in the Planning tab (a CITRUS driving system, or one that's "
+                       "no longer active in ds_config.ini, isn't offered here).")
+            get_logger().error(message)
+            raise FDSConfigError(message)
+
+        # select_driving_system() above already rebuilt self.builder/self._slot_editors/
+        # self.timing_panel from scratch for the matching driving system (via
+        # _on_driving_system_changed()), for a fresh, empty protocol. Swap the actual loaded
+        # one in now, then rebuild around it instead.
+        self.builder.protocol = protocol
+        self._clear_slot_editors()
+        self._clear_timing_panel()
+
+        self.timing_panel = TimingPanel(self.builder)
+        self.timing_panel.applied.connect(self._refresh_validation)
+        self.timing_layout.addWidget(self.timing_panel)
+
+        for slot in protocol.slots:
+            self._build_slot_editor(existing_slot=slot)
+        for failed_slot in load_result.failed_slots:
+            self._build_slot_editor(failed_slot=failed_slot)
+
+        self._refresh_validation()
 
     def _refresh_transducer_exclusions(self):
         """Keeps the same physical transducer from ever being assigned to two slots at once:
@@ -131,6 +230,7 @@ class PlanningTab(QWidget):
         if self.builder is None:
             self.validation_label.setStyleSheet("")
             self.validation_label.setText("")
+            self.validation_changed.emit()
             return
 
         # Called even before any transducer slot has been added: ProtocolBuilder.validate()'s
@@ -149,3 +249,5 @@ class PlanningTab(QWidget):
         else:
             self.validation_label.setStyleSheet("")
             self.validation_label.setText("No problems found.")
+
+        self.validation_changed.emit()

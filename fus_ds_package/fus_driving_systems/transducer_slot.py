@@ -1201,11 +1201,9 @@ class TransducerSlot:
                     x_min = self._conv_param['focus_curve_pp'].x[0]
                     x_max = self._conv_param['focus_curve_pp'].x[-1]
                     message = (
-                        f'Focus wrt exit plane of {focus:.2f} [mm] is outside of the ' +
+                        f'{focus_option} of {focus:.2f} [mm] is outside of the ' +
                         f"active calibration curve's limits ({x_min:.2f} - {x_max:.2f} " +
-                        f'[mm]), and {focus_option} is not native for ' +
-                        f'{self._ds_tran_combo} -- there is no way to accurately produce ' +
-                        f'{self.driving_sys.native_focus_params} from this focus value.')
+                        '[mm]).')
                     get_logger().critical(message)
                     raise FDSValidationError(message)
 
@@ -1316,24 +1314,23 @@ class TransducerSlot:
                 self._conv_param['focus_curve_pp'], target_y_value)
 
             if not status:
+                exit_opt = get_config_value(get_logger(), config, 'Focus', 'Option.exit',
+                                            'Focus wrt exit plane [mm]')
                 if focus_option not in self.driving_sys.native_focus_params:
-                    # Mid bowl is not native here -- exit plane is what's actually native
+                    # Mid bowl is not native here, exit plane is what's actually native
                     # and would be sent to hardware, so an imprecise geometric approximation
                     # for it is not an acceptable fallback (unlike the native case below,
                     # where exit plane is purely informational and never sent anywhere).
                     message = (
-                        f'Could not find an x value for y = {target_y_value:.2f} in the ' +
-                        'active calibration curve, and ' +
-                        f'{focus_option} is not native for {self._ds_tran_combo} -- ' +
-                        'there is no way to accurately produce ' +
-                        f'{self.driving_sys.native_focus_params} from this focus value.')
+                        f'{focus_option} of {target_y_value:.2f} [mm] has no corresponding ' +
+                        f'{exit_opt} value in the active calibration curve.')
                     get_logger().critical(message)
                     raise FDSValidationError(message)
 
                 get_logger().warning(
-                    f"Could not find an x value for y = {target_y_value:.2f}. " +
-                    'Focus wrt exit plane will be calculated based on ' +
-                    'exit plane distance of ' +
+                    f'{focus_option} of {target_y_value:.2f} [mm] has no corresponding ' +
+                    f'{exit_opt} value in the active calibration curve. {exit_opt} will be ' +
+                    'calculated based on exit plane distance of ' +
                     f'{self._transducer.exit_plane_dist:.2f} [mm].')
 
                 self._focus_wrt_exit_plane = focus - self._transducer.exit_plane_dist

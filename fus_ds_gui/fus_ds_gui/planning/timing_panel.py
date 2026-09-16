@@ -22,6 +22,16 @@ def _ms_spinbox(initial):
     return spin
 
 
+def _is_inherited(field_a, source_a, field_b, source_b):
+    """True if field_a == source_a and field_b == source_b: this level's own two fields are
+    still exactly what plain inheritance from the level below would already produce, so nothing
+    was actually set explicitly here. Used at construction time to decide whether a level (Pulse
+    Train, Pulse Train Repetition) should start collapsed or already expanded; see TimingPanel's
+    own docstring."""
+
+    return field_a == source_a and field_b == source_b
+
+
 class _TimingLevel(QWidget):
     """
     One named group of timing fields, collapsible or not, mirrors the TUS calculator's own
@@ -91,9 +101,11 @@ class TimingPanel(ApplyPanel):
     that calls it once with all of them together, rather than calling it per field.
 
     Grouped into the same three collapsible levels as the TUS calculator (see _TimingLevel):
-    Pulse Train and Pulse Train Repetition start collapsed, since the common case ("one pulse
-    train, repeated once") already has a complete, self-consistent result from Pulse alone (see
-    configure_timing()'s own cascading defaults); most protocols never need to open them.
+    Pulse Train and Pulse Train Repetition each start collapsed only if their own values are
+    still exactly what plain inheritance from the level below would already show (see
+    _is_inherited() below); most fresh protocols never need to open them, but a loaded one whose
+    file actually set either level explicitly starts with that level already expanded, so a
+    researcher never has to go hunting for values that are already sitting there, just hidden.
 
     A collapsed level means "inherit from the level below", the same thing leaving that
     parameter out of configure_timing() means: _apply() passes None for a collapsed level's own
@@ -143,11 +155,17 @@ class TimingPanel(ApplyPanel):
         self.pulse_level.add_row("Ramp shape:", self.ramp_shape_combo)
         self.pulse_level.add_row("Ramp duration:", self.ramp_dur_spin)
 
-        self.pulse_train_level = _TimingLevel("Pulse Train", collapsed=True)
+        train_inherited = _is_inherited(protocol.pulse_rep_int, protocol.pulse_dur,
+                                        protocol.pulse_train_dur, protocol.pulse_rep_int)
+        self.pulse_train_level = _TimingLevel("Pulse Train", collapsed=train_inherited)
         self.pulse_train_level.add_row("Pulse repetition interval:", self.pulse_rep_int_spin)
         self.pulse_train_level.add_row("Pulse train duration:", self.pulse_train_dur_spin)
 
-        self.pulse_train_rep_level = _TimingLevel("Pulse Train Repetition", collapsed=True)
+        train_rep_inherited = _is_inherited(
+            protocol.pulse_train_rep_int, protocol.pulse_train_dur,
+            protocol.pulse_train_rep_dur, protocol.pulse_train_rep_int)
+        self.pulse_train_rep_level = _TimingLevel("Pulse Train Repetition",
+                                                  collapsed=train_rep_inherited)
         self.pulse_train_rep_level.add_row("Pulse train repetition interval:",
                                            self.pulse_train_rep_int_spin)
         self.pulse_train_rep_level.add_row("Pulse train repetition duration:",

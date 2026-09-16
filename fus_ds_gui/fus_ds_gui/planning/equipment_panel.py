@@ -72,6 +72,29 @@ class EquipmentPanel(QWidget):
 
         return self._driving_system_combo.currentData()
 
+    def select_driving_system(self, driving_sys):
+        """
+        Selects driving_sys in the dropdown by serial, not object identity: a caller like
+        protocol_io.load() constructs its own DrivingSystem instance while parsing a file, never
+        the same object already sitting in this combo.
+
+        Parameters:
+            driving_sys (DrivingSystem): The driving system to select.
+
+        Returns:
+            bool: True if a matching entry was found and selected, False otherwise (e.g.
+            driving_sys is a CITRUS one, filtered out of this dropdown entirely, or has since
+            become inactive in ds_config.ini). PlanningTab.load_protocol() raises FDSConfigError
+            on False, since a loaded protocol naming a driving system this dropdown can't offer
+            can't be edited here at all.
+        """
+
+        for i in range(self._driving_system_combo.count()):
+            if self._driving_system_combo.itemData(i).serial == driving_sys.serial:
+                self._driving_system_combo.setCurrentIndex(i)
+                return True
+        return False
+
     def driving_systems(self):
         """
         Returns:
