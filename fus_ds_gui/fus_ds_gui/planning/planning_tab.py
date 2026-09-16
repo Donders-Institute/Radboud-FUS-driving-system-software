@@ -49,6 +49,11 @@ class PlanningTab(QWidget):
 
         self.timing_layout = QVBoxLayout()
 
+        # One shared Apply for the whole tab, not one per slot/timing panel: applies every
+        # panel that currently exists at once, see _on_apply_clicked()'s own docstring.
+        self.apply_button = QPushButton("Apply")
+        self.apply_button.clicked.connect(self._on_apply_clicked)
+
         self.validation_title = QLabel("Validation:")
         self.validation_label = QLabel()
         self.validation_label.setWordWrap(True)
@@ -58,6 +63,7 @@ class PlanningTab(QWidget):
         layout.addLayout(self.slots_layout)
         layout.addWidget(self.add_slot_button)
         layout.addLayout(self.timing_layout)
+        layout.addWidget(self.apply_button)
         layout.addWidget(self.validation_title)
         layout.addWidget(self.validation_label)
         layout.addStretch()
@@ -98,10 +104,12 @@ class PlanningTab(QWidget):
         if driving_system is None:
             self.builder = None
             self.add_slot_button.setEnabled(False)
+            self.apply_button.setEnabled(False)
             self._refresh_validation()
             return
 
         self.builder = ProtocolBuilder(driving_system)
+        self.apply_button.setEnabled(True)
 
         self.timing_panel = TimingPanel(self.builder)
         self.timing_panel.applied.connect(self._refresh_validation)
@@ -142,8 +150,9 @@ class PlanningTab(QWidget):
             for editor in self._slot_editors
             if editor.transducer_combo.currentData() is not None
         }
+        title = f"Slot {len(self._slot_editors) + 1}"
         editor = SlotEditor(self.builder, excluded_transducer_serials=already_chosen,
-                            existing_slot=existing_slot, failed_slot=failed_slot)
+                            existing_slot=existing_slot, failed_slot=failed_slot, title=title)
         editor.applied.connect(self._on_slot_applied)
         editor.transducer_selection_changed.connect(self._refresh_transducer_exclusions)
         self._slot_editors.append(editor)
@@ -226,6 +235,19 @@ class PlanningTab(QWidget):
         self._refresh_validation()
         self._update_add_button_enabled()
 
+    def _on_apply_clicked(self):
+        """Applies every panel that currently exists via its own try_apply(), continuing past
+        any individual failure: a mistake in one slot must not block a correctly-configured
+        sibling slot or the timing panel from being applied too. Each panel's own error_label
+        already shows its own failure inline; _refresh_validation() at the end reflects
+        whatever combination of successes/failures resulted, even if nothing succeeded at all."""
+
+        if self.timing_panel is not None:
+            self.timing_panel.try_apply()
+        for editor in self._slot_editors:
+            editor.try_apply()
+        self._refresh_validation()
+
     def _refresh_validation(self):
         if self.builder is None:
             self.validation_label.setStyleSheet("")
@@ -235,30 +257,17 @@ class PlanningTab(QWidget):
 
         # Called even before any transducer slot has been added: ProtocolBuilder.validate()'s
         # own timing checks don't need one, so a timing problem is reported right away rather
-        # than only after a slot editor's own Apply has also been clicked.
+        # than only after Apply has also been clicked.
         errors = self.builder.validate()
-        slot_count = len(self.builder.protocol.slots)
-        max_slots = self.builder.driving_system.max_tran_slots
-        still_configuring = 0 < slot_count < max_slots
-        if still_configuring:
-            # Expected, not a real problem, while more slots can still be added; other errors
-            # still show. Matched by prefix, see igt_ds.py's _channel_count_mismatch_message().
-            errors = [error for error in errors
-                      if not error.startswith('Number of available channels')]
         if errors:
             self.validation_label.setStyleSheet("color: red;")
             self.validation_label.setText("\n".join(f"- {error}" for error in errors))
-        elif slot_count == 0:
+        elif not self.builder.protocol.slots:
             # Distinct from "No problems found." below: nothing has actually been added to the
             # protocol yet, even though timing itself checks out so far.
             self.validation_label.setStyleSheet("")
             self.validation_label.setText(
-                "Configure a transducer slot below and click its Apply button to begin.")
-        elif still_configuring:
-            self.validation_label.setStyleSheet("")
-            self.validation_label.setText(
-                f"Configure {max_slots - slot_count} more transducer slot(s) below and click "
-                "Apply to continue.")
+                "Configure a transducer slot below and click Apply to begin.")
         else:
             self.validation_label.setStyleSheet("")
             self.validation_label.setText("No problems found.")

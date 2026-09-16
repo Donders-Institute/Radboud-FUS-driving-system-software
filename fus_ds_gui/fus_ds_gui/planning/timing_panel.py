@@ -34,10 +34,10 @@ def _is_inherited(field_a, source_a, field_b, source_b):
 
 class _TimingLevel(QWidget):
     """
-    One named group of timing fields, collapsible or not, mirrors the TUS calculator's own
-    Pulse/Pulse Train (PT)/Pulse Train Repetition (PTR) levels
-    (https://www.socsci.ru.nl/fusinitiative/tuscalculator/), including that only the latter two
-    carry a collapse toggle there; "Pulse" is always shown.
+    One named group of timing fields, mirrors the TUS calculator's own Pulse/Pulse Train (PT)/
+    Pulse Train Repetition (PTR) levels (https://www.socsci.ru.nl/fusinitiative/tuscalculator/).
+    "Pulse" always shows the same toggle-button styling as PT/PTR (see locked below), but,
+    unlike them, is never actually collapsible: it's always shown.
 
     More than a visibility toggle: TimingPanel treats "collapsed" as "inherit from the level
     below" (see its own docstring). A collapsed level's own field(s) are kept in sync with that
@@ -45,8 +45,10 @@ class _TimingLevel(QWidget):
     stale just because it isn't currently visible.
     """
 
-    def __init__(self, title, collapsible=True, collapsed=False, parent=None):
+    def __init__(self, title, collapsed=False, locked=False, parent=None):
         super().__init__(parent)
+
+        self._locked = locked
 
         self.content = QWidget()
         self.content_form = QFormLayout(self.content)
@@ -55,19 +57,20 @@ class _TimingLevel(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        if collapsible:
-            self.toggle_button = QToolButton()
-            self.toggle_button.setText(title)
-            self.toggle_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.toggle_button = QToolButton()
+        self.toggle_button.setText(title)
+        self.toggle_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        if locked:
+            # Same look as an ordinary expandable level (icon + text, always expanded), but not
+            # checkable at all: nothing toggles it, so unlike setEnabled(False) it never renders
+            # greyed out either.
+            self._set_arrow(True)
+        else:
             self.toggle_button.setCheckable(True)
             self.toggle_button.setChecked(not collapsed)
             self._set_arrow(not collapsed)
             self.toggle_button.toggled.connect(self._on_toggled)
-            layout.addWidget(self.toggle_button)
-        else:
-            self.toggle_button = None
-            heading = QLabel(f"<b>{title}</b>")
-            layout.addWidget(heading)
+        layout.addWidget(self.toggle_button)
 
         layout.addWidget(self.content)
 
@@ -80,10 +83,10 @@ class _TimingLevel(QWidget):
         """
         Returns:
             bool: True if this level's own content is currently visible; always True for a
-            non-collapsible level (there's no toggle_button to check at all).
+            locked level (there's no way to actually collapse one).
         """
 
-        return self.toggle_button is None or self.toggle_button.isChecked()
+        return self._locked or self.toggle_button.isChecked()
 
     def _on_toggled(self, expanded):
         self.content.setVisible(expanded)
@@ -150,7 +153,7 @@ class TimingPanel(ApplyPanel):
         self.pulse_train_rep_dur_spin.setSuffix(' s')
         self.pulse_train_rep_dur_spin.setValue(protocol.pulse_train_rep_dur / 1e3)
 
-        self.pulse_level = _TimingLevel("Pulse", collapsible=False)
+        self.pulse_level = _TimingLevel("Pulse", locked=True)
         self.pulse_level.add_row("Pulse duration:", self.pulse_dur_spin)
         self.pulse_level.add_row("Ramp shape:", self.ramp_shape_combo)
         self.pulse_level.add_row("Ramp duration:", self.ramp_dur_spin)
@@ -171,11 +174,14 @@ class TimingPanel(ApplyPanel):
         self.pulse_train_rep_level.add_row("Pulse train repetition duration:",
                                            self.pulse_train_rep_dur_spin)
 
+        self.title_label = QLabel("Timing")
+        self.title_label.setStyleSheet("font-weight: bold;")
+
         layout = QVBoxLayout(self)
+        layout.addWidget(self.title_label)
         layout.addWidget(self.pulse_level)
         layout.addWidget(self.pulse_train_level)
         layout.addWidget(self.pulse_train_rep_level)
-        layout.addWidget(self.apply_button)
         layout.addWidget(self.error_label)
 
         # Whatever a collapsed level's own field(s) show must track the value they'd actually

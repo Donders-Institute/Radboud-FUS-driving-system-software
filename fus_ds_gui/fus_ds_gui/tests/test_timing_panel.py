@@ -28,16 +28,26 @@ def builder(patch_config):
     return ProtocolBuilder(ds)
 
 
+def test_panel_has_a_timing_title(qtbot, builder):
+    panel = TimingPanel(builder)
+    qtbot.addWidget(panel)
+
+    assert panel.title_label.text() == "Timing"
+
+
 def test_pulse_level_is_not_collapsible_and_always_visible(qtbot, builder):
-    """Matches the TUS calculator's own layout: "Pulse" has no toggle at all; only Pulse
-    Train and Pulse Train Repetition do (see _TimingLevel's own docstring)."""
+    """Matches the TUS calculator's own layout: "Pulse" is never actually collapsible, only
+    Pulse Train and Pulse Train Repetition are (see _TimingLevel's own docstring). It still
+    shows the same toggle-button styling as those two, just locked, not a plain heading."""
     panel = TimingPanel(builder)
     qtbot.addWidget(panel)
     panel.show()  # isVisible() reflects real, effective visibility, not just the widget's own
     # setVisible() policy: it's always False for a widget whose top-level parent was never
     # shown, regardless of that policy, so these visibility assertions need a shown panel.
 
-    assert panel.pulse_level.toggle_button is None
+    assert panel.pulse_level.toggle_button is not None
+    assert panel.pulse_level.toggle_button.isCheckable() is False
+    assert panel.pulse_level.is_expanded() is True
     assert panel.pulse_level.content.isVisible() is True
 
 
@@ -117,7 +127,7 @@ def test_apply_ignores_a_collapsed_levels_stale_value_and_inherits_instead(qtbot
     panel.pulse_train_dur_spin.setValue(15.0)
 
     with qtbot.waitSignal(panel.applied, timeout=1000):
-        panel.apply_button.click()
+        panel.try_apply()
 
     assert builder.protocol.pulse_train_dur == pytest.approx(3.0)
     assert builder.protocol.pulse_rep_int == pytest.approx(3.0)
@@ -249,7 +259,7 @@ def test_apply_configures_timing_on_the_protocol(qtbot, builder):
     panel.pulse_train_rep_dur_spin.setValue(0.5)  # seconds
 
     with qtbot.waitSignal(panel.applied, timeout=1000):
-        panel.apply_button.click()
+        panel.try_apply()
 
     assert builder.protocol.pulse_dur == pytest.approx(1.0)
     assert builder.protocol.pulse_rep_int == pytest.approx(2.0)
@@ -262,7 +272,7 @@ def test_apply_shows_inline_error_on_fds_error(qtbot, builder):
     qtbot.addWidget(panel)
     panel.pulse_dur_spin.setValue(0.0)  # invalid: must be > 0
 
-    panel.apply_button.click()
+    panel.try_apply()
 
     assert not panel.error_label.isHidden()
     assert panel.error_label.text()

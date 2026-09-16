@@ -61,6 +61,31 @@ def builder(patch_config):
     return ProtocolBuilder(ds)
 
 
+def test_no_title_shown_by_default(qtbot, builder):
+    editor = SlotEditor(builder)
+    qtbot.addWidget(editor)
+
+    assert editor._title_label.isVisible() is False
+
+
+def test_title_shown_when_given(qtbot, builder):
+    editor = SlotEditor(builder, title="Slot 1")
+    qtbot.addWidget(editor)
+    editor.show()
+
+    assert editor._title_label.text() == "Slot 1"
+    assert editor._title_label.isVisible() is True
+
+
+def test_set_title_updates_the_label(qtbot, builder):
+    editor = SlotEditor(builder, title="Slot 1")
+    qtbot.addWidget(editor)
+
+    editor.set_title("Slot 2")
+
+    assert editor._title_label.text() == "Slot 2"
+
+
 def test_populates_transducer_and_option_dropdowns(qtbot, builder):
     """A fresh editor starts on the 'no transducer selected' placeholder (see
     SlotEditor._populate_transducer_combo()'s own docstring), not auto-picking the first
@@ -223,7 +248,7 @@ def test_apply_raises_when_no_transducer_is_selected(qtbot, builder):
     editor = SlotEditor(builder)
     qtbot.addWidget(editor)
 
-    editor.apply_button.click()
+    editor.try_apply()
 
     assert editor.slot is None
     assert 'Choose a transducer first' in editor.error_label.text()
@@ -237,7 +262,7 @@ def test_apply_adds_a_new_slot(qtbot, builder):
     editor.power_value_spin.setValue(0.5)
 
     with qtbot.waitSignal(editor.applied, timeout=1000):
-        editor.apply_button.click()
+        editor.try_apply()
 
     assert editor.slot is not None
     assert len(builder.protocol.slots) == 1
@@ -252,7 +277,7 @@ def test_apply_shows_inline_error_on_fds_error(qtbot, builder):
     # transducer_slot.py's _enforce_max_pressure().
     editor.power_value_spin.setValue(999.0)
 
-    editor.apply_button.click()
+    editor.try_apply()
 
     assert editor.slot is None
     assert not editor.error_label.isHidden()
@@ -267,11 +292,11 @@ def test_apply_edits_an_already_added_slot_without_re_adding(qtbot, builder):
     editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN_A
     editor.focus_value_spin.setValue(20)
     editor.power_value_spin.setValue(0.5)
-    editor.apply_button.click()
+    editor.try_apply()
     first_slot = editor.slot
 
     editor.focus_value_spin.setValue(30)
-    editor.apply_button.click()
+    editor.try_apply()
 
     assert editor.slot is first_slot
     assert len(builder.protocol.slots) == 1
@@ -333,7 +358,7 @@ def test_apply_defaults_dephasing_degree_to_none(qtbot, builder):
     qtbot.addWidget(editor)
     editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN_A
 
-    editor.apply_button.click()
+    editor.try_apply()
 
     assert editor.slot.dephasing_degree is None
 
@@ -346,7 +371,7 @@ def test_apply_adds_a_new_slot_with_oper_freq_and_cyclic_dephasing(qtbot, builde
     editor.dephasing_mode_combo.setCurrentIndex(1)  # Cyclic
     editor.dephasing_degree_spin.setValue(45.0)
 
-    editor.apply_button.click()
+    editor.try_apply()
 
     assert editor.slot.oper_freq == 500
     assert editor.slot.dephasing_degree == [45.0]
@@ -360,7 +385,7 @@ def test_apply_adds_a_new_slot_with_a_per_element_dephasing_override(qtbot, buil
     editor.dephasing_mode_combo.setCurrentIndex(2)  # Per-element override
     editor.dephasing_values_edit.setText("10, 20")
 
-    editor.apply_button.click()
+    editor.try_apply()
 
     assert editor.slot.dephasing_degree == [10.0, 20.0]
 
@@ -374,7 +399,7 @@ def test_apply_rejects_a_per_element_override_with_the_wrong_count(qtbot, builde
     editor.dephasing_mode_combo.setCurrentIndex(2)  # Per-element override
     editor.dephasing_values_edit.setText("10, 20, 30")
 
-    editor.apply_button.click()
+    editor.try_apply()
 
     assert editor.slot is None
     assert 'does not correspond to number of transducer elements' in editor.error_label.text()
@@ -387,7 +412,7 @@ def test_apply_rejects_unparseable_per_element_values(qtbot, builder):
     editor.dephasing_mode_combo.setCurrentIndex(2)  # Per-element override
     editor.dephasing_values_edit.setText("not, numbers")
 
-    editor.apply_button.click()
+    editor.try_apply()
 
     assert editor.slot is None
     assert 'comma-separated list of numbers' in editor.error_label.text()
@@ -399,13 +424,13 @@ def test_apply_updates_transducer_forwards_oper_freq_and_dephasing_degree(qtbot,
     editor = SlotEditor(builder)
     qtbot.addWidget(editor)
     editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN_A
-    editor.apply_button.click()
+    editor.try_apply()
 
     editor.transducer_combo.setCurrentIndex(2)  # UNITTEST_TRAN_B
     editor.oper_freq_spin.setValue(700)
     editor.dephasing_mode_combo.setCurrentIndex(1)  # Cyclic
     editor.dephasing_degree_spin.setValue(120.0)
-    editor.apply_button.click()
+    editor.try_apply()
 
     assert editor.slot.transducer.serial == 'UNITTEST_TRAN_B'
     assert editor.slot.oper_freq == 700
@@ -538,7 +563,7 @@ def test_editing_and_reapplying_an_existing_slot_configures_it_in_place(qtbot, b
     qtbot.addWidget(editor)
     editor.focus_value_spin.setValue(30)
 
-    editor.apply_button.click()
+    editor.try_apply()
 
     assert editor.slot is slot
     assert len(builder.protocol.slots) == 1
@@ -592,7 +617,7 @@ def test_reapplying_an_existing_slot_with_a_list_power_value_is_refused(qtbot, b
         dephasing_degree=None)
     editor._load_existing_slot(stand_in_slot)
 
-    editor.apply_button.click()
+    editor.try_apply()
 
     assert not editor.error_label.isHidden()
     assert 'per element' in editor.error_label.text()
@@ -614,7 +639,7 @@ def test_reapplying_an_existing_slot_allows_a_genuinely_different_power_value(qt
     editor._load_existing_slot(stand_in_slot)
     editor.power_value_spin.setValue(50)  # genuinely different from the pre-filled 70.0
 
-    editor.apply_button.click()
+    editor.try_apply()
 
     assert len(calls) == 1
     assert editor.error_label.isHidden()
@@ -637,7 +662,7 @@ def test_reapplying_an_existing_slot_allows_switching_to_another_power_option(qt
     editor.power_option_combo.setCurrentIndex(index)
     editor.power_value_spin.setValue(0.5)
 
-    editor.apply_button.click()
+    editor.try_apply()
 
     assert calls == [('Focus wrt exit plane [mm]', 20.0, 'Max. pressure in free water [MPa]',
                       0.5)]
@@ -854,7 +879,7 @@ def test_failed_slot_can_still_be_applied_as_a_new_slot(qtbot, builder):
     qtbot.addWidget(editor)
     editor.power_value_spin.setValue(0.5)  # fix the value that failed
 
-    editor.apply_button.click()
+    editor.try_apply()
 
     assert editor.slot is not None
     assert len(builder.protocol.slots) == 1
@@ -881,7 +906,7 @@ def test_failed_slot_with_an_untouched_list_power_value_cannot_silently_apply_a_
     editor = SlotEditor(builder, failed_slot=(slot_def, FDSValidationError('boom')))
     qtbot.addWidget(editor)
 
-    editor.apply_button.click()  # power_value_spin left exactly as pre-filled
+    editor.try_apply()  # power_value_spin left exactly as pre-filled
 
     assert editor.slot is None
     assert 'per element' in editor.error_label.text()
@@ -904,7 +929,7 @@ def test_failed_slot_with_a_list_power_value_allows_a_genuinely_different_value(
     qtbot.addWidget(editor)
     editor.power_value_spin.setValue(50)  # genuinely different from the pre-filled 999.0
 
-    editor.apply_button.click()
+    editor.try_apply()
 
     assert 'per element' not in editor.error_label.text()
 
@@ -927,7 +952,7 @@ def test_failed_slot_with_a_list_power_value_allows_switching_to_another_power_o
     editor.power_option_combo.setCurrentIndex(index)
     editor.power_value_spin.setValue(0.5)
 
-    editor.apply_button.click()
+    editor.try_apply()
 
     assert editor.slot is not None
     assert editor.error_label.isHidden()
@@ -1072,7 +1097,7 @@ def test_apply_passes_an_x_y_z_tuple_for_the_xyz_focus_option(qtbot, patch_confi
     editor.focus_value_z_spin.setValue(30.0)
     editor.power_value_spin.setValue(0.5)
 
-    editor.apply_button.click()
+    editor.try_apply()
 
     # 'Focus xyz wrt exit plane [mm]' isn't UNITTEST_IGT's native focus param in this fixture
     # (only the plain, non-xyz exit-plane option is), so _set_focus_xyz() needs a real

@@ -88,13 +88,15 @@ class SlotEditor(ApplyPanel):
     transducer_selection_changed = Signal()
 
     def __init__(self, builder, excluded_transducer_serials=(), existing_slot=None,
-                 failed_slot=None, parent=None):
+                 failed_slot=None, title=None, parent=None):
         """
         Parameters:
             builder (ProtocolBuilder): Backs this editor; see this class's own docstring.
             excluded_transducer_serials (Iterable[str]): Transducers already claimed by a
                 sibling slot editor, excluded from this one's own dropdown (see
                 set_excluded_transducers()).
+            title (str): Shown in bold above this editor's own fields, e.g. "Slot 1" (see
+                set_title()); helps tell editors apart once more than one is on screen.
             existing_slot (TransducerSlot): An already-configured slot to pre-fill every field
                 from, e.g. one just returned by protocol_loader.load_protocol() (see
                 PlanningTab.load_protocol()). Every field below shows that slot's own already-
@@ -180,6 +182,7 @@ class SlotEditor(ApplyPanel):
         self.oper_freq_spin.setRange(0, 100000)
 
         self._build_dephasing_fields()
+        self._build_title_label(title)
 
         self._focus_value_label = QLabel("Focus value:")
 
@@ -208,8 +211,8 @@ class SlotEditor(ApplyPanel):
         self._load_initial_state(existing_slot, failed_slot)
 
         layout = QVBoxLayout(self)
+        layout.addWidget(self._title_label)
         layout.addLayout(self._form)
-        layout.addWidget(self.apply_button)
         layout.addWidget(self.error_label)
 
     def _build_focus_xyz_widgets(self):
@@ -411,6 +414,14 @@ class SlotEditor(ApplyPanel):
             combo.removeItem(index)
         setattr(self, raw_attr, None)
 
+    def _build_title_label(self, title):
+        """Extracted out of __init__ purely to keep its own statement count under pylint's
+        limit."""
+
+        self._title_label = QLabel()
+        self._title_label.setStyleSheet("font-weight: bold;")
+        self.set_title(title)
+
     def _build_dephasing_fields(self):
         """Builds the mode selector plus its two mutually exclusive value widgets; see this
         class's own docstring for what each mode means. Row visibility toggles between them the
@@ -443,6 +454,13 @@ class SlotEditor(ApplyPanel):
 
         self._excluded_transducer_serials = frozenset(serials)
         self._populate_transducer_combo()
+
+    def set_title(self, title):
+        """Updates the bold title shown above this editor's own fields (e.g. "Slot 1"), or
+        hides it entirely when title is None."""
+
+        self._title_label.setText(title or "")
+        self._title_label.setVisible(bool(title))
 
     def _populate_transducer_combo(self):
         """

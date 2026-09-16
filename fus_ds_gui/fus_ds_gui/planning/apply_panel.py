@@ -7,7 +7,7 @@ See the LICENSE file for full license text.
 """
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QLabel, QPushButton, QWidget
+from PySide6.QtWidgets import QLabel, QWidget
 
 from fus_driving_systems.config.logging_config import get_logger
 from fus_driving_systems.exceptions import FDSError
@@ -15,11 +15,12 @@ from fus_driving_systems.exceptions import FDSError
 
 class ApplyPanel(QWidget):
     """
-    Base for a Planning-tab panel with an "Apply" button and an inline FDSError display,
-    shared by SlotEditor and TimingPanel, which otherwise duplicated this exact boilerplate
-    (flagged by pylint's own duplicate-code check). A subclass only needs to build its own
-    widgets and implement _apply() (the actual backend call, which may raise FDSError); this
-    class handles wiring the button, catching the error, and emitting applied().
+    Base for a Planning-tab panel with an inline FDSError display, shared by SlotEditor and
+    TimingPanel, which otherwise duplicated this exact boilerplate (flagged by pylint's own
+    duplicate-code check). A subclass only needs to build its own widgets and implement
+    _apply() (the actual backend call, which may raise FDSError); this class handles catching
+    the error and emitting applied(). PlanningTab's own shared Apply button (not owned by this
+    class or any subclass) is what actually calls try_apply() on every panel at once.
 
     Signals:
         applied(): Emitted after every successful Apply.
@@ -29,9 +30,6 @@ class ApplyPanel(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-
-        self.apply_button = QPushButton("Apply")
-        self.apply_button.clicked.connect(self._on_apply_clicked)
 
         self.error_label = QLabel()
         self.error_label.setWordWrap(True)
@@ -43,16 +41,21 @@ class ApplyPanel(QWidget):
 
         raise NotImplementedError
 
-    def _on_apply_clicked(self):
+    def try_apply(self):
+        """Attempts _apply(), updating error_label either way. Returns True on success, False
+        on a caught FDSError, so a caller applying several panels at once (see PlanningTab's own
+        shared Apply button) can tell which of them actually succeeded."""
+
         try:
             self._apply()
         except FDSError as e:
             get_logger().error("Could not apply %s: %s", type(self).__name__, e)
             self._show_error(str(e))
-            return
+            return False
 
         self._clear_error()
         self.applied.emit()
+        return True
 
     def _show_error(self, message):
         self.error_label.setText(message)

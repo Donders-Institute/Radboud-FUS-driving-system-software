@@ -219,7 +219,7 @@ def test_save_action_does_nothing_when_the_dialog_is_cancelled(qtbot, patch_conf
     _select_first_driving_system(window)
     editor = window.planning_tab._slot_editors[0]
     editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN
-    editor.apply_button.click()
+    editor.try_apply()
     monkeypatch.setattr(QFileDialog, 'getSaveFileName',
                         staticmethod(lambda *args, **kwargs: ('', '')))
 
@@ -237,7 +237,7 @@ def test_save_action_shows_an_error_dialog_on_failure(qtbot, tmp_path, patch_con
     _select_first_driving_system(window)
     editor = window.planning_tab._slot_editors[0]
     editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN
-    editor.apply_button.click()
+    editor.try_apply()
     save_path = str(tmp_path / 'nested' / 'does' / 'not' / 'exist' / 'saved.yaml')
     monkeypatch.setattr(QFileDialog, 'getSaveFileName',
                         staticmethod(lambda *args, **kwargs: (save_path, '')))
@@ -278,7 +278,7 @@ def test_save_action_writes_the_current_protocol(qtbot, tmp_path, patch_config, 
     _select_first_driving_system(window)
     editor = window.planning_tab._slot_editors[0]
     editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN
-    editor.apply_button.click()
+    editor.try_apply()
     save_path = str(tmp_path / 'saved.yaml')
     monkeypatch.setattr(QFileDialog, 'getSaveFileName',
                         staticmethod(lambda *args, **kwargs: (save_path, '')))
@@ -333,7 +333,7 @@ def test_save_action_disabled_while_validation_has_problems(qtbot, patch_config)
     editor = window.planning_tab._slot_editors[0]
     editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN
 
-    editor.apply_button.click()
+    editor.try_apply()
 
     assert window.planning_tab.builder.validate()  # sanity check: genuinely still invalid
     assert window._save_action.isEnabled() is False

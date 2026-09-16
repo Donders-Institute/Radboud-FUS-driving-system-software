@@ -81,7 +81,17 @@ def test_starts_with_no_driving_system_selected(qtbot, single_slot_setup):
     assert tab._slot_editors == []
     assert tab.timing_panel is None
     assert tab.add_slot_button.isEnabled() is False
+    assert tab.apply_button.isEnabled() is False
     assert tab.validation_label.text() == "Select a driving system above to begin."
+
+
+def test_apply_button_enabled_once_a_driving_system_is_chosen(qtbot, single_slot_setup):
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+
+    _select_first_driving_system(tab)
+
+    assert tab.apply_button.isEnabled() is True
 
 
 def test_validation_label_shows_placeholder_before_any_slot(qtbot, single_slot_setup):
@@ -90,7 +100,7 @@ def test_validation_label_shows_placeholder_before_any_slot(qtbot, single_slot_s
     _select_first_driving_system(tab)
 
     assert tab.validation_label.text() == (
-        "Configure a transducer slot below and click its Apply button to begin.")
+        "Configure a transducer slot below and click Apply to begin.")
     assert tab.validation_label.styleSheet() == ""
 
 
@@ -143,6 +153,22 @@ def test_add_slot_button_enabled_when_room_for_more(qtbot, patch_config):
 
     assert len(tab._slot_editors) == 2
     assert tab.add_slot_button.isEnabled() is False  # now at the limit
+
+
+def test_slot_editors_are_titled_by_position(qtbot, patch_config):
+    """Tells editors apart once more than one is on screen (see SlotEditor.set_title()'s own
+    docstring)."""
+    _configure_driving_system(patch_config, 'UNITTEST_IGT', max_tran_slots=2)
+    patch_config.set('Equipment', 'Transducers', 'UNITTEST_TRAN')
+    _configure_transducer(patch_config)
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+    _select_first_driving_system(tab)
+
+    tab.add_slot_button.click()
+
+    assert tab._slot_editors[0]._title_label.text() == "Slot 1"
+    assert tab._slot_editors[1]._title_label.text() == "Slot 2"
 
 
 def test_choosing_a_transducer_excludes_it_from_other_slot_editors(qtbot, patch_config):
@@ -207,6 +233,53 @@ def test_switching_a_transducer_frees_it_up_for_other_slot_editors(qtbot, patch_
     assert 'UNITTEST_TRAN_A' in _transducer_serials(editor_2.transducer_combo)
 
 
+def test_apply_button_applies_timing_and_the_slot_together(qtbot, single_slot_setup):
+    """One shared Apply for the whole tab, not one per slot/timing panel: clicking it once
+    must apply both, without needing to interact with either panel's own (now nonexistent)
+    button."""
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+    _select_first_driving_system(tab)
+    editor = tab._slot_editors[0]
+    editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN
+    editor.focus_value_spin.setValue(20)
+    editor.power_value_spin.setValue(0.5)
+    tab.timing_panel.pulse_dur_spin.setValue(7)
+
+    tab.apply_button.click()
+
+    assert editor.slot is not None
+    assert tab.builder.protocol.pulse_dur == pytest.approx(7)
+
+
+def test_apply_button_applies_a_valid_slot_even_when_another_fails(qtbot, patch_config):
+    """A mistake in one slot must not block a correctly-configured sibling slot from being
+    applied too (same partial-success principle as protocol_io.load()'s own failed_slots)."""
+    _configure_driving_system(patch_config, 'UNITTEST_IGT', max_tran_slots=2)
+    patch_config.set('Equipment.Driving system.UNITTEST_IGT', 'Transducer compatibility',
+                     'UNITTEST_TRAN_A\nUNITTEST_TRAN_B')
+    patch_config.set('Equipment', 'Transducers', 'UNITTEST_TRAN_A\nUNITTEST_TRAN_B')
+    _configure_transducer(patch_config, 'UNITTEST_TRAN_A')
+    _configure_transducer(patch_config, 'UNITTEST_TRAN_B')
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+    _select_first_driving_system(tab)
+    tab.add_slot_button.click()
+    editor_1, editor_2 = tab._slot_editors
+    editor_1.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN_A
+    editor_1.focus_value_spin.setValue(20)
+    editor_1.power_value_spin.setValue(0.5)
+    # editor_2 deliberately left on its own "no transducer selected" placeholder.
+
+    tab.apply_button.click()
+
+    assert editor_1.slot is not None
+    assert editor_1.error_label.isHidden()
+    assert editor_2.slot is None
+    assert not editor_2.error_label.isHidden()
+    assert 'Choose a transducer first' in editor_2.error_label.text()
+
+
 def test_validation_label_updates_after_applying_a_slot(qtbot, single_slot_setup):
     tab = PlanningTab()
     qtbot.addWidget(tab)
@@ -216,7 +289,7 @@ def test_validation_label_updates_after_applying_a_slot(qtbot, single_slot_setup
     editor.focus_value_spin.setValue(20)
     editor.power_value_spin.setValue(0.5)
 
-    editor.apply_button.click()
+    editor.try_apply()
 
     assert tab.validation_label.text() == "No problems found."
     assert tab.validation_label.styleSheet() == ""
@@ -240,12 +313,11 @@ def test_validation_label_turns_red_when_there_are_problems(
     assert 'red' in tab.validation_label.styleSheet()
 
 
-def test_validation_label_shows_a_neutral_hint_while_more_slots_are_still_needed(
+def test_validation_label_shows_the_channel_count_mismatch_as_a_real_error(
         qtbot, patch_config, monkeypatch):
-    """IGT's own channel-count-mismatch message is expected, not a real problem, for as long as
-    a multi-slot driving system genuinely still has room for more: a researcher who just
-    correctly applied slot 1 of 2 shouldn't see a red error about slot 2 not existing yet (see
-    _refresh_validation()'s own comment)."""
+    """The shared Apply button applies everything together, so there's no expected
+    "mid-workflow" state to soften this for anymore; each incomplete slot already shows its
+    own inline error too."""
     _configure_driving_system(patch_config, 'UNITTEST_IGT', max_tran_slots=2, manufacturer='IGT',
                               power_option='Max. pressure in free water [MPa]')
     patch_config.set('Equipment', 'Transducers', 'UNITTEST_TRAN')
@@ -257,7 +329,7 @@ def test_validation_label_shows_a_neutral_hint_while_more_slots_are_still_needed
     editor.transducer_combo.setCurrentIndex(1)
     editor.focus_value_spin.setValue(20)
     editor.power_value_spin.setValue(0.5)
-    editor.apply_button.click()
+    editor.try_apply()
     monkeypatch.setattr(tab.builder, 'validate', lambda: [
         'Number of available channels (4) does not match the combined elements of the 1 '
         'transducer slot(s) (2). Configure the remaining transducer slot(s), or choose a '
@@ -266,38 +338,7 @@ def test_validation_label_shows_a_neutral_hint_while_more_slots_are_still_needed
 
     tab._refresh_validation()
 
-    assert tab.validation_label.text() == (
-        "Configure 1 more transducer slot(s) below and click Apply to continue.")
-    assert tab.validation_label.styleSheet() == ""
-
-
-def test_validation_label_still_shows_a_real_error_while_more_slots_are_needed(
-        qtbot, patch_config, monkeypatch):
-    """A genuine problem with a slot already applied (e.g. "Amplitude is None") must still show,
-    even while the driving system still has room for more slots: only the channel-count-mismatch
-    message itself is treated as expected in that case, not every other error too."""
-    _configure_driving_system(patch_config, 'UNITTEST_IGT', max_tran_slots=2, manufacturer='IGT',
-                              power_option='Max. pressure in free water [MPa]')
-    patch_config.set('Equipment', 'Transducers', 'UNITTEST_TRAN')
-    _configure_transducer(patch_config)
-    tab = PlanningTab()
-    qtbot.addWidget(tab)
-    _select_first_driving_system(tab)
-    editor = tab._slot_editors[0]
-    editor.transducer_combo.setCurrentIndex(1)
-    editor.focus_value_spin.setValue(20)
-    editor.power_value_spin.setValue(0.5)
-    editor.apply_button.click()
-    monkeypatch.setattr(tab.builder, 'validate', lambda: [
-        'Number of available channels (4) does not match the combined elements of the 1 '
-        'transducer slot(s) (2). Configure the remaining transducer slot(s), or choose a '
-        'driving system whose available channels match how many transducers you intend to use.',
-        'Amplitude is None.',
-    ])
-
-    tab._refresh_validation()
-
-    assert tab.validation_label.text() == "- Amplitude is None."
+    assert tab.validation_label.text().startswith('- Number of available channels')
     assert 'red' in tab.validation_label.styleSheet()
 
 
