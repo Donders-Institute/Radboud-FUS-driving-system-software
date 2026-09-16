@@ -229,7 +229,7 @@ class PlanningTab(QWidget):
     def _refresh_validation(self):
         if self.builder is None:
             self.validation_label.setStyleSheet("")
-            self.validation_label.setText("")
+            self.validation_label.setText("Select a driving system above to begin.")
             self.validation_changed.emit()
             return
 
@@ -237,15 +237,28 @@ class PlanningTab(QWidget):
         # own timing checks don't need one, so a timing problem is reported right away rather
         # than only after a slot editor's own Apply has also been clicked.
         errors = self.builder.validate()
+        slot_count = len(self.builder.protocol.slots)
+        max_slots = self.builder.driving_system.max_tran_slots
+        still_configuring = 0 < slot_count < max_slots
+        if still_configuring:
+            # Expected, not a real problem, while more slots can still be added; other errors
+            # still show. Matched by prefix, see igt_ds.py's _channel_count_mismatch_message().
+            errors = [error for error in errors
+                      if not error.startswith('Number of available channels')]
         if errors:
             self.validation_label.setStyleSheet("color: red;")
             self.validation_label.setText("\n".join(f"- {error}" for error in errors))
-        elif not self.builder.protocol.slots:
+        elif slot_count == 0:
             # Distinct from "No problems found." below: nothing has actually been added to the
             # protocol yet, even though timing itself checks out so far.
             self.validation_label.setStyleSheet("")
             self.validation_label.setText(
                 "Configure a transducer slot below and click its Apply button to begin.")
+        elif still_configuring:
+            self.validation_label.setStyleSheet("")
+            self.validation_label.setText(
+                f"Configure {max_slots - slot_count} more transducer slot(s) below and click "
+                "Apply to continue.")
         else:
             self.validation_label.setStyleSheet("")
             self.validation_label.setText("No problems found.")

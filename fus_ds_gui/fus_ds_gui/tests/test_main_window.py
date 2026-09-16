@@ -44,6 +44,13 @@ def _configure_driving_system(patch_config, serial='UNITTEST_IGT'):
     patch_config.set(tran_section, 'Active?', 'True')
 
 
+def _select_first_driving_system(window):
+    """PlanningTab starts on EquipmentPanel's own 'no driving system selected' placeholder (see
+    EquipmentPanel.reload_driving_systems()'s own docstring), not auto-picking the first
+    configured one; most tests below need a real one actually selected first."""
+    window.planning_tab.equipment_panel._driving_system_combo.setCurrentIndex(1)
+
+
 def _build_protocol_file(tmp_path, patch_config):
     from fus_driving_systems.tus_protocol import TUSProtocol
 
@@ -209,6 +216,7 @@ def test_save_action_does_nothing_when_the_dialog_is_cancelled(qtbot, patch_conf
     _configure_driving_system(patch_config)
     window = MainWindow()
     qtbot.addWidget(window)
+    _select_first_driving_system(window)
     editor = window.planning_tab._slot_editors[0]
     editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN
     editor.apply_button.click()
@@ -226,6 +234,7 @@ def test_save_action_shows_an_error_dialog_on_failure(qtbot, tmp_path, patch_con
     _configure_driving_system(patch_config)
     window = MainWindow()
     qtbot.addWidget(window)
+    _select_first_driving_system(window)
     editor = window.planning_tab._slot_editors[0]
     editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN
     editor.apply_button.click()
@@ -266,6 +275,7 @@ def test_save_action_writes_the_current_protocol(qtbot, tmp_path, patch_config, 
     _configure_driving_system(patch_config)
     window = MainWindow()
     qtbot.addWidget(window)
+    _select_first_driving_system(window)
     editor = window.planning_tab._slot_editors[0]
     editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN
     editor.apply_button.click()
@@ -319,6 +329,7 @@ def test_save_action_disabled_while_validation_has_problems(qtbot, patch_config)
     patch_config.set(tran_section, 'Active?', 'True')
     window = MainWindow()
     qtbot.addWidget(window)
+    _select_first_driving_system(window)
     editor = window.planning_tab._slot_editors[0]
     editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN
 

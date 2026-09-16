@@ -54,6 +54,13 @@ def _transducer_serials(combo):
             for i in range(combo.count())]
 
 
+def _select_first_driving_system(tab):
+    """PlanningTab starts on EquipmentPanel's own 'no driving system selected' placeholder (see
+    EquipmentPanel.reload_driving_systems()'s own docstring), not auto-picking the first
+    configured one; most tests below need a real one actually selected first."""
+    tab.equipment_panel._driving_system_combo.setCurrentIndex(1)
+
+
 @pytest.fixture
 def single_slot_setup(patch_config):
     """One driving system with max_tran_slots=1 and one compatible transducer, so the "Add
@@ -63,9 +70,24 @@ def single_slot_setup(patch_config):
     _configure_transducer(patch_config)
 
 
+def test_starts_with_no_driving_system_selected(qtbot, single_slot_setup):
+    """A researcher must deliberately choose a driving system, never build a protocol for
+    whichever one happens to be listed first in ds_config.ini without having picked it
+    themselves (see EquipmentPanel.reload_driving_systems()'s own docstring)."""
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+
+    assert tab.builder is None
+    assert tab._slot_editors == []
+    assert tab.timing_panel is None
+    assert tab.add_slot_button.isEnabled() is False
+    assert tab.validation_label.text() == "Select a driving system above to begin."
+
+
 def test_validation_label_shows_placeholder_before_any_slot(qtbot, single_slot_setup):
     tab = PlanningTab()
     qtbot.addWidget(tab)
+    _select_first_driving_system(tab)
 
     assert tab.validation_label.text() == (
         "Configure a transducer slot below and click its Apply button to begin.")
@@ -79,6 +101,7 @@ def test_validation_label_reports_a_timing_error_before_any_slot_is_applied(
     docstring)."""
     tab = PlanningTab()
     qtbot.addWidget(tab)
+    _select_first_driving_system(tab)
 
     tab.builder.configure_timing(pulse_dur=10, pulse_rep_int=5)
     tab._refresh_validation()
@@ -90,6 +113,7 @@ def test_validation_label_reports_a_timing_error_before_any_slot_is_applied(
 def test_builds_one_slot_editor_and_timing_panel_on_startup(qtbot, single_slot_setup):
     tab = PlanningTab()
     qtbot.addWidget(tab)
+    _select_first_driving_system(tab)
 
     assert len(tab._slot_editors) == 1
     assert tab.timing_panel is not None
@@ -99,6 +123,7 @@ def test_builds_one_slot_editor_and_timing_panel_on_startup(qtbot, single_slot_s
 def test_add_slot_button_disabled_at_max_tran_slots(qtbot, single_slot_setup):
     tab = PlanningTab()
     qtbot.addWidget(tab)
+    _select_first_driving_system(tab)
 
     assert tab.add_slot_button.isEnabled() is False
 
@@ -110,6 +135,7 @@ def test_add_slot_button_enabled_when_room_for_more(qtbot, patch_config):
 
     tab = PlanningTab()
     qtbot.addWidget(tab)
+    _select_first_driving_system(tab)
 
     assert tab.add_slot_button.isEnabled() is True
 
@@ -129,6 +155,7 @@ def test_choosing_a_transducer_excludes_it_from_other_slot_editors(qtbot, patch_
 
     tab = PlanningTab()
     qtbot.addWidget(tab)
+    _select_first_driving_system(tab)
     tab.add_slot_button.click()
     editor_1, editor_2 = tab._slot_editors
     # Both editors start on the "no transducer selected" placeholder (see SlotEditor.
@@ -159,6 +186,7 @@ def test_switching_a_transducer_frees_it_up_for_other_slot_editors(qtbot, patch_
 
     tab = PlanningTab()
     qtbot.addWidget(tab)
+    _select_first_driving_system(tab)
     tab.add_slot_button.click()
     editor_1, editor_2 = tab._slot_editors
     editor_1.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN_A
@@ -182,6 +210,7 @@ def test_switching_a_transducer_frees_it_up_for_other_slot_editors(qtbot, patch_
 def test_validation_label_updates_after_applying_a_slot(qtbot, single_slot_setup):
     tab = PlanningTab()
     qtbot.addWidget(tab)
+    _select_first_driving_system(tab)
     editor = tab._slot_editors[0]
     editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN
     editor.focus_value_spin.setValue(20)
@@ -202,11 +231,73 @@ def test_validation_label_turns_red_when_there_are_problems(
     real slot/timing setup would only couple it to that rule's own wording/existence."""
     tab = PlanningTab()
     qtbot.addWidget(tab)
+    _select_first_driving_system(tab)
 
     monkeypatch.setattr(tab.builder, 'validate', lambda: ['Something is wrong.'])
     tab._refresh_validation()
 
     assert tab.validation_label.text() == "- Something is wrong."
+    assert 'red' in tab.validation_label.styleSheet()
+
+
+def test_validation_label_shows_a_neutral_hint_while_more_slots_are_still_needed(
+        qtbot, patch_config, monkeypatch):
+    """IGT's own channel-count-mismatch message is expected, not a real problem, for as long as
+    a multi-slot driving system genuinely still has room for more: a researcher who just
+    correctly applied slot 1 of 2 shouldn't see a red error about slot 2 not existing yet (see
+    _refresh_validation()'s own comment)."""
+    _configure_driving_system(patch_config, 'UNITTEST_IGT', max_tran_slots=2, manufacturer='IGT',
+                              power_option='Max. pressure in free water [MPa]')
+    patch_config.set('Equipment', 'Transducers', 'UNITTEST_TRAN')
+    _configure_transducer(patch_config)
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+    _select_first_driving_system(tab)
+    editor = tab._slot_editors[0]
+    editor.transducer_combo.setCurrentIndex(1)
+    editor.focus_value_spin.setValue(20)
+    editor.power_value_spin.setValue(0.5)
+    editor.apply_button.click()
+    monkeypatch.setattr(tab.builder, 'validate', lambda: [
+        'Number of available channels (4) does not match the combined elements of the 1 '
+        'transducer slot(s) (2). Configure the remaining transducer slot(s), or choose a '
+        'driving system whose available channels match how many transducers you intend to use.'
+    ])
+
+    tab._refresh_validation()
+
+    assert tab.validation_label.text() == (
+        "Configure 1 more transducer slot(s) below and click Apply to continue.")
+    assert tab.validation_label.styleSheet() == ""
+
+
+def test_validation_label_still_shows_a_real_error_while_more_slots_are_needed(
+        qtbot, patch_config, monkeypatch):
+    """A genuine problem with a slot already applied (e.g. "Amplitude is None") must still show,
+    even while the driving system still has room for more slots: only the channel-count-mismatch
+    message itself is treated as expected in that case, not every other error too."""
+    _configure_driving_system(patch_config, 'UNITTEST_IGT', max_tran_slots=2, manufacturer='IGT',
+                              power_option='Max. pressure in free water [MPa]')
+    patch_config.set('Equipment', 'Transducers', 'UNITTEST_TRAN')
+    _configure_transducer(patch_config)
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+    _select_first_driving_system(tab)
+    editor = tab._slot_editors[0]
+    editor.transducer_combo.setCurrentIndex(1)
+    editor.focus_value_spin.setValue(20)
+    editor.power_value_spin.setValue(0.5)
+    editor.apply_button.click()
+    monkeypatch.setattr(tab.builder, 'validate', lambda: [
+        'Number of available channels (4) does not match the combined elements of the 1 '
+        'transducer slot(s) (2). Configure the remaining transducer slot(s), or choose a '
+        'driving system whose available channels match how many transducers you intend to use.',
+        'Amplitude is None.',
+    ])
+
+    tab._refresh_validation()
+
+    assert tab.validation_label.text() == "- Amplitude is None."
     assert 'red' in tab.validation_label.styleSheet()
 
 
@@ -252,6 +343,7 @@ def test_load_protocol_does_not_leave_the_previous_slot_editor_as_a_stray_window
     removeWidget()+deleteLater() is used instead."""
     tab = PlanningTab()
     qtbot.addWidget(tab)
+    _select_first_driving_system(tab)
     original_editor = tab._slot_editors[0]
     original_timing_panel = tab.timing_panel
     protocol = _build_protocol('UNITTEST_IGT', [('UNITTEST_TRAN', 40, 0.5)])
@@ -386,6 +478,7 @@ def test_load_protocol_builds_an_extra_editor_per_failed_slot(qtbot, single_slot
 def test_current_protocol_returns_the_builder_protocol(qtbot, single_slot_setup):
     tab = PlanningTab()
     qtbot.addWidget(tab)
+    _select_first_driving_system(tab)
 
     assert tab.current_protocol() is tab.builder.protocol
 

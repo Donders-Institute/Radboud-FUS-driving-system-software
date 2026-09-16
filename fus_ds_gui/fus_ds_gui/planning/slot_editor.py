@@ -204,7 +204,7 @@ class SlotEditor(ApplyPanel):
         self._update_focus_range()
         self._update_power_options()
         self._update_dephasing_value_fields(self.dephasing_mode_combo.currentText())
-        self._apply_dephasing_support()
+        self._update_transducer_dependent_visibility()
         self._load_initial_state(existing_slot, failed_slot)
 
         layout = QVBoxLayout(self)
@@ -313,7 +313,10 @@ class SlotEditor(ApplyPanel):
         an out-of-range value to its own normal range (see _widen_range_to_fit()), and an option
         combo would otherwise fall back to whichever real option it already happens to default
         to (see _select_or_show_raw()) -- either would leave the researcher looking at a
-        seemingly valid field with no hint that this is not what the file actually said.
+        seemingly valid field with no hint that this is not what the file actually said. Every
+        field stays visible even when the transducer itself wasn't found (see the unmatched-
+        serial case below): _update_transducer_dependent_visibility()'s own "nothing to show
+        yet" default is for a blank, not-yet-touched editor, not this one.
         """
 
         combo = self.transducer_combo
@@ -355,8 +358,23 @@ class SlotEditor(ApplyPanel):
             _widen_range_to_fit(self.oper_freq_spin, slot_def['oper_freq'])
             self.oper_freq_spin.setValue(slot_def['oper_freq'])
         self._load_existing_dephasing(slot_def.get('dephasing_degree'))
+        self._show_every_field_for_review()
 
         self._show_error(str(exc))
+
+    def _show_every_field_for_review(self):
+        """Forces every field visible regardless of _update_transducer_dependent_visibility()'s
+        own "nothing to show without a transducer" default: unlike a blank editor, a failed
+        slot_def already has real (if possibly wrong) values to show, transducer match or
+        not (see _load_failed_slot()'s own docstring)."""
+
+        for row_widget in (self.focus_option_combo, self.power_option_combo,
+                           self.power_value_spin, self.oper_freq_spin):
+            self._form.setRowVisible(row_widget, True)
+        self._update_focus_value_fields(self.focus_option_combo.currentText())
+        if self.builder.supports_dephasing():
+            self._form.setRowVisible(self.dephasing_mode_combo, True)
+            self._update_dephasing_value_fields(self.dephasing_mode_combo.currentText())
 
     def _select_or_show_raw(self, combo, text, raw_attr):
         """Selects text in combo if it's one of the real options currently offered; otherwise
@@ -392,16 +410,6 @@ class SlotEditor(ApplyPanel):
         if index >= 0:
             combo.removeItem(index)
         setattr(self, raw_attr, None)
-
-    def _apply_dephasing_support(self):
-        """Hides the whole dephasing section outright for a SonicConcepts-backed builder; see
-        ProtocolBuilder.supports_dephasing()'s own docstring for why."""
-
-        if self.builder.supports_dephasing():
-            return
-        self._form.setRowVisible(self.dephasing_mode_combo, False)
-        self._form.setRowVisible(self.dephasing_degree_spin, False)
-        self._form.setRowVisible(self.dephasing_values_edit, False)
 
     def _build_dephasing_fields(self):
         """Builds the mode selector plus its two mutually exclusive value widgets; see this
@@ -521,7 +529,39 @@ class SlotEditor(ApplyPanel):
         self.dephasing_values_edit.setToolTip(
             f"Comma-separated phase values [deg], exactly {tran.elements} for {tran.name}."
             if tran is not None else "")
+        self._update_transducer_dependent_visibility()
         self.transducer_selection_changed.emit()
+
+    def _update_transducer_dependent_visibility(self):
+        """Hides every field below the transducer picker until a real transducer is actually
+        chosen: focus/power ranges, calibration availability, and even how many dephasing
+        values are expected all depend on which one is picked, so showing these fields with
+        meaningless defaults before that choice is made would look like something already
+        worth configuring. Re-evaluated on every transducer change (not just once in __init__),
+        so switching back to the placeholder hides them again too. Supersedes what used to be a
+        separate, SonicConcepts-only _apply_dephasing_support(): that decision (see
+        ProtocolBuilder.supports_dephasing()'s own docstring) never actually changes for this
+        editor's own lifetime, so folding it in here instead of calling it separately is safe."""
+
+        has_transducer = self.transducer_combo.currentData() is not None
+        self._form.setRowVisible(self.focus_option_combo, has_transducer)
+        self._form.setRowVisible(self.power_option_combo, has_transducer)
+        self._form.setRowVisible(self.power_value_spin, has_transducer)
+        self._form.setRowVisible(self.oper_freq_spin, has_transducer)
+
+        if has_transducer:
+            self._update_focus_value_fields(self.focus_option_combo.currentText())
+        else:
+            self._form.setRowVisible(self.focus_value_spin, False)
+            self._form.setRowVisible(self.focus_value_xyz_widget, False)
+
+        show_dephasing = has_transducer and self.builder.supports_dephasing()
+        self._form.setRowVisible(self.dephasing_mode_combo, show_dephasing)
+        if show_dephasing:
+            self._update_dephasing_value_fields(self.dephasing_mode_combo.currentText())
+        else:
+            self._form.setRowVisible(self.dephasing_degree_spin, False)
+            self._form.setRowVisible(self.dephasing_values_edit, False)
 
     def _focus_range_offset(self, tran):
         """

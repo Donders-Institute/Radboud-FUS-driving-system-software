@@ -53,13 +53,23 @@ def test_citrus_lowercase_manufacturer_is_still_excluded(qtbot, patch_config):
     assert panel.driving_systems() == []
 
 
+def test_starts_on_the_no_driving_system_selected_placeholder(qtbot, igt_and_citrus):
+    """A researcher must deliberately choose a driving system, never build a protocol for
+    whichever one happens to be listed first in ds_config.ini without having picked it
+    themselves (see reload_driving_systems()'s own docstring)."""
+    panel = EquipmentPanel()
+    qtbot.addWidget(panel)
+
+    assert panel.selected_driving_system() is None
+
+
 def test_selected_driving_system_returns_the_matching_object(qtbot, igt_and_citrus):
     panel = EquipmentPanel()
     qtbot.addWidget(panel)
 
-    selected = panel.selected_driving_system()
+    panel._driving_system_combo.setCurrentIndex(1)  # UNITTEST_IGT
 
-    assert selected.serial == 'UNITTEST_IGT'
+    assert panel.selected_driving_system().serial == 'UNITTEST_IGT'
 
 
 def test_driving_system_changed_emits_the_newly_selected_object(qtbot, patch_config):
@@ -71,7 +81,7 @@ def test_driving_system_changed_emits_the_newly_selected_object(qtbot, patch_con
     qtbot.addWidget(panel)
 
     with qtbot.waitSignal(panel.driving_system_changed, timeout=1000) as blocker:
-        panel._driving_system_combo.setCurrentIndex(1)
+        panel._driving_system_combo.setCurrentIndex(2)  # UNITTEST_B (1 is UNITTEST_A)
 
     assert blocker.args[0].serial == 'UNITTEST_B'
 
@@ -121,7 +131,7 @@ def test_select_driving_system_returns_false_when_not_offered(qtbot, igt_and_cit
     found = panel.select_driving_system(citrus_instance)
 
     assert found is False
-    assert panel.selected_driving_system().serial == 'UNITTEST_IGT'  # unchanged
+    assert panel.selected_driving_system() is None  # unchanged: still the placeholder
 
 
 def test_reload_driving_systems_picks_up_a_config_change(qtbot, patch_config):

@@ -75,6 +75,52 @@ def test_populates_transducer_and_option_dropdowns(qtbot, builder):
     assert editor.power_option_combo.currentText() == 'Max. pressure in free water [MPa]'
 
 
+def test_other_fields_hidden_until_a_transducer_is_chosen(qtbot, builder):
+    """Focus/power ranges, calibration availability, and dephasing element counts all depend
+    on which transducer is picked, so showing these fields with meaningless defaults before
+    that choice is made would look like something already worth configuring (see
+    _update_transducer_dependent_visibility()'s own docstring)."""
+    editor = SlotEditor(builder)
+    qtbot.addWidget(editor)
+    editor.show()
+
+    assert editor.focus_option_combo.isVisible() is False
+    assert editor.focus_value_spin.isVisible() is False
+    assert editor.focus_value_xyz_widget.isVisible() is False
+    assert editor.power_option_combo.isVisible() is False
+    assert editor.power_value_spin.isVisible() is False
+    assert editor.oper_freq_spin.isVisible() is False
+    assert editor.dephasing_mode_combo.isVisible() is False
+
+
+def test_other_fields_shown_once_a_transducer_is_chosen(qtbot, builder):
+    editor = SlotEditor(builder)
+    qtbot.addWidget(editor)
+    editor.show()
+
+    editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN_A
+
+    assert editor.focus_option_combo.isVisible() is True
+    assert editor.focus_value_spin.isVisible() is True
+    assert editor.power_option_combo.isVisible() is True
+    assert editor.power_value_spin.isVisible() is True
+    assert editor.oper_freq_spin.isVisible() is True
+    assert editor.dephasing_mode_combo.isVisible() is True
+
+
+def test_other_fields_hide_again_when_switching_back_to_the_placeholder(qtbot, builder):
+    editor = SlotEditor(builder)
+    qtbot.addWidget(editor)
+    editor.show()
+    editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN_A
+
+    editor.transducer_combo.setCurrentIndex(0)  # back to "-- Select a transducer --"
+
+    assert editor.focus_option_combo.isVisible() is False
+    assert editor.power_option_combo.isVisible() is False
+    assert editor.dephasing_mode_combo.isVisible() is False
+
+
 def test_focus_range_follows_selected_transducer(qtbot, builder):
     editor = SlotEditor(builder)
     qtbot.addWidget(editor)
@@ -770,7 +816,9 @@ def test_failed_slot_with_a_missing_power_option_leaves_the_combo_untouched(qtbo
 def test_failed_slot_with_unknown_transducer_leaves_the_placeholder_selected(qtbot, builder):
     """A slot_def naming a transducer this driving system doesn't even offer (or that failed on
     the transducer step itself) still shows every other field, rather than crashing looking one
-    up that was never there."""
+    up that was never there. This is the one case _update_transducer_dependent_visibility()'s
+    own "nothing to show without a transducer" default must NOT apply to (see
+    _load_failed_slot()'s own docstring): the raw values still need reviewing regardless."""
 
     slot_def = {
         'transducer_serial': 'NOT_A_REAL_TRANSDUCER',
@@ -783,9 +831,13 @@ def test_failed_slot_with_unknown_transducer_leaves_the_placeholder_selected(qtb
 
     editor = SlotEditor(builder, failed_slot=(slot_def, exc))
     qtbot.addWidget(editor)
+    editor.show()
 
     assert editor.transducer_combo.currentData() is None
     assert 'Unknown transducer serial' in editor.error_label.text()
+    assert editor.focus_option_combo.isVisible() is True
+    assert editor.power_option_combo.isVisible() is True
+    assert editor.power_value_spin.isVisible() is True
 
 
 def test_failed_slot_can_still_be_applied_as_a_new_slot(qtbot, builder):
@@ -975,6 +1027,7 @@ def test_single_focus_field_shown_by_default(qtbot, patch_config):
     editor = _build_editor_with_xyz_focus_option(patch_config, tran_b_can_3d_steer=True)
     qtbot.addWidget(editor)
     editor.show()
+    editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN_A: no xyz option unlocked
 
     assert editor.focus_value_spin.isVisible() is True
     assert editor.focus_value_xyz_widget.isVisible() is False

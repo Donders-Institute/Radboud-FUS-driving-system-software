@@ -28,8 +28,9 @@ class EquipmentPanel(QWidget):
     always uses engineering_mode=False, so a researcher can't flip this by accident.
 
     Signals:
-        driving_system_changed(object): Emitted with the newly selected DrivingSystem instance
-            (or None once the dropdown is empty).
+        driving_system_changed(object): Emitted with the newly selected DrivingSystem instance,
+            or None while the leading placeholder is selected (including at startup, before a
+            researcher has chosen one) or once the dropdown is entirely empty.
     """
 
     driving_system_changed = Signal(object)
@@ -49,9 +50,17 @@ class EquipmentPanel(QWidget):
         """
         (Re)populates the driving system dropdown from the current configuration file, with
         CITRUS filtered out. Safe to call again later if ds_config.ini changes during a session.
+
+        Always includes a leading "no driving system selected" placeholder (itemData None), on
+        top of every non-excluded active one, matching SlotEditor's own transducer_combo (see
+        its _populate_transducer_combo()'s own docstring): the dropdown starts here rather than
+        auto-picking the first configured driving system, so a researcher can't accidentally
+        start building a protocol for whichever one happens to be listed first in ds_config.ini
+        without having chosen it themselves.
         """
 
         self._driving_system_combo.clear()
+        self._driving_system_combo.addItem("-- Select a driving system --", None)
 
         try:
             available = driving_system.get_ds_list()
@@ -90,7 +99,8 @@ class EquipmentPanel(QWidget):
         """
 
         for i in range(self._driving_system_combo.count()):
-            if self._driving_system_combo.itemData(i).serial == driving_sys.serial:
+            item = self._driving_system_combo.itemData(i)
+            if item is not None and item.serial == driving_sys.serial:
                 self._driving_system_combo.setCurrentIndex(i)
                 return True
         return False
@@ -98,11 +108,12 @@ class EquipmentPanel(QWidget):
     def driving_systems(self):
         """
         Returns:
-            List of every DrivingSystem instance currently in the dropdown, in display order.
+            List of every DrivingSystem instance currently in the dropdown, in display order
+            (never including the leading "no driving system selected" placeholder itself).
         """
 
         combo = self._driving_system_combo
-        return [combo.itemData(i) for i in range(combo.count())]
+        return [combo.itemData(i) for i in range(combo.count()) if combo.itemData(i) is not None]
 
     def _on_selection_changed(self, _index):
         self.driving_system_changed.emit(self.selected_driving_system())
