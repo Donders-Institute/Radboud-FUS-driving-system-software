@@ -6,7 +6,7 @@
 # See standalone_plain.py (also in this folder) if you want the full, manually-written Python
 # equivalent instead, or need something this file's fields don't cover.
 
-driving_sys_serial: IGT-32-ch_comb_2x10-ch  # print(driving_system.get_ds_serials()) for options
+driving_sys_serial: IGT-32-ch_comb_1x10-ch  # print(driving_system.get_ds_serials()) for options
 
 # Fires the entire, already fully-timed protocol at once with a single external trigger --
 # equivalent to execute_protocol(), just gated behind that one trigger. Use 'TriggerOnePulseTrain'

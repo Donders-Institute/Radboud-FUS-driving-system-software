@@ -80,7 +80,7 @@ try:
     # to check available driving systems: print(driving_system.get_ds_serials())
     # choose one driving system from that list as input
     ds_info = driving_system.DrivingSystem()
-    ds_info.set_ds_info('IGT-32-ch_comb_2x10-ch')
+    ds_info.set_ds_info('IGT-32-ch_comb_1x10-ch')
 
     igt_driving_sys = igt_ds.IGT(log_dir)
 
