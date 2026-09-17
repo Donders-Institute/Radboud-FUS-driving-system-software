@@ -24,9 +24,14 @@ class ApplyPanel(QWidget):
 
     Signals:
         applied(): Emitted after every successful Apply.
+        changed(): Emitted by a subclass whenever any of its own value-bearing widgets changes,
+            so PlanningTab can unlock a previously-applied protocol the moment a panel no
+            longer matches it (see PlanningTab's own lock/unlock docstring). Declared here so
+            both subclasses share one definition; each subclass wires its own widgets to it.
     """
 
     applied = Signal()
+    changed = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)

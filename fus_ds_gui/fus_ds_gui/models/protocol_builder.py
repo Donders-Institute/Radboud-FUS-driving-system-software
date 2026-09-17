@@ -310,3 +310,18 @@ class ProtocolBuilder:
         """
 
         return self._ds_instance.validate_protocol(self.protocol)
+
+    def create_control_instance(self):
+        """
+        A fresh, unconnected ControlDrivingSystem instance for the Executing panel to actually
+        connect/send/execute on -- distinct from self's own internal _ds_instance, which stays a
+        throwaway, never-connected instance used only for validate()/validate_protocol() above.
+        The Executing panel owns this instance's whole connected lifetime on its own worker
+        thread; it must never be shared with _ds_instance's own (GUI-thread, validation-only)
+        lifecycle, or the two could end up touched from two threads at once.
+
+        Returns:
+            ControlDrivingSystem: A new IGT/SonicConcepts instance for this driving system.
+        """
+
+        return _create_ds_instance(self.driving_system)

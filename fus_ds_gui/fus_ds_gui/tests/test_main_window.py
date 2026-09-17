@@ -1,18 +1,18 @@
 # -*- coding: utf-8 -*-
-"""Smoke tests for MainWindow: launches with exactly the two documented tabs, plus its own File
-menu (Load/Save/Approve). Every QFileDialog call is monkeypatched to return a controlled path
-directly, rather than actually shown: a real modal dialog would block the test suite waiting
-for a pick that never comes."""
+"""Smoke tests for MainWindow: launches with Planning/Executing side by side in a splitter,
+plus its own File menu (Load/Save/Approve). Every QFileDialog call is monkeypatched to return a
+controlled path directly, rather than actually shown: a real modal dialog would block the test
+suite waiting for a pick that never comes."""
 import pytest
 from PySide6.QtWidgets import QFileDialog, QMessageBox
 
-from fus_ds_gui.executing.executing_tab import ExecutingTab
+from fus_ds_gui.executing.executing_panel import ExecutingPanel
 from fus_ds_gui.main_window import MainWindow
 from fus_ds_gui.models import protocol_io
 from fus_ds_gui.planning.planning_tab import PlanningTab
 
 
-def _configure_driving_system(patch_config, serial='UNITTEST_IGT'):
+def _configure_driving_system(patch_config, serial='UNITTEST_IGT', max_tran_slots=1):
     # Sonic Concepts, not IGT: IGT.validate_protocol() also requires slot.ampl to be set, which
     # is only ever derived from a *real*, active calibration combo (a genuine hardware fact:
     # IGT's native power parameter is always amplitude, whatever power option was chosen), not
@@ -31,7 +31,7 @@ def _configure_driving_system(patch_config, serial='UNITTEST_IGT'):
     patch_config.set(section, 'Focus options', 'Focus wrt exit plane [mm]')
     patch_config.set(section, 'Native power parameters', 'Global power [mW]')
     patch_config.set(section, 'Native focus parameters', 'Focus wrt exit plane [mm]')
-    patch_config.set(section, 'Max. transducer slots', '1')
+    patch_config.set(section, 'Max. transducer slots', str(max_tran_slots))
     patch_config.set(section, 'Active?', 'True')
     patch_config.set('Equipment', 'Transducers', 'UNITTEST_TRAN')
     tran_section = 'Equipment.Transducer.UNITTEST_TRAN'
@@ -63,17 +63,57 @@ def _build_protocol_file(tmp_path, patch_config):
     return path
 
 
-def test_launches_with_planning_and_executing_tabs(qtbot):
+def test_launches_with_planning_and_executing_panels_side_by_side(qtbot):
     window = MainWindow()
     qtbot.addWidget(window)
 
-    tabs = window.centralWidget()
+    splitter = window.centralWidget()
 
-    assert tabs.count() == 2
-    assert tabs.tabText(0) == "Planning"
-    assert tabs.tabText(1) == "Executing"
-    assert isinstance(tabs.widget(0), PlanningTab)
-    assert isinstance(tabs.widget(1), ExecutingTab)
+    assert splitter.count() == 2
+    assert isinstance(splitter.widget(0), PlanningTab)
+    assert isinstance(splitter.widget(1), ExecutingPanel)
+    assert splitter.widget(0) is window.planning_tab
+    assert splitter.widget(1) is window.executing_panel
+
+
+def test_window_shrinks_back_after_leaving_advanced_mode(qtbot, patch_config):
+    """A QMainWindow already on screen doesn't shrink itself back down once its content does
+    (see MainWindow._shrink_to_fit_content()'s own docstring). Without that fix, the window
+    stays stuck at whatever height Advanced mode's taller form last grew it to, leaving
+    Demo mode's own, shorter form with dead whitespace below it."""
+    _configure_driving_system(patch_config)
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.show()
+    _select_first_driving_system(window)
+    qtbot.wait(50)
+    demo_height = window.height()
+
+    window.planning_tab.advanced_mode_checkbox.setChecked(True)
+    qtbot.wait(50)
+    window.planning_tab.advanced_mode_checkbox.setChecked(False)
+
+    qtbot.waitUntil(lambda: window.height() <= demo_height + 5, timeout=1000)
+
+
+def test_window_shrinks_back_after_switching_to_fewer_transducer_slots(qtbot, patch_config):
+    """Same underlying Qt limitation as
+    test_window_shrinks_back_after_leaving_advanced_mode: switching to a driving system with
+    fewer max_tran_slots (e.g. a "1x10 ch." variant after a "2x10 ch." one) rebuilds the
+    Planning tab with fewer slot editors, shrinking its own content the same way."""
+    _configure_driving_system(patch_config, 'UNITTEST_2SLOT', max_tran_slots=2)
+    _configure_driving_system(patch_config, 'UNITTEST_1SLOT', max_tran_slots=1)
+    patch_config.set('Equipment', 'Driving systems', 'UNITTEST_2SLOT\nUNITTEST_1SLOT')
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.show()
+    window.planning_tab.equipment_panel._driving_system_combo.setCurrentIndex(1)  # 2-slot
+    qtbot.wait(50)
+    grown_height = window.height()
+
+    window.planning_tab.equipment_panel._driving_system_combo.setCurrentIndex(2)  # 1-slot
+
+    qtbot.waitUntil(lambda: window.height() < grown_height, timeout=1000)
 
 
 def test_approve_action_disabled_until_a_file_is_known(qtbot, patch_config):
@@ -219,7 +259,7 @@ def test_save_action_does_nothing_when_the_dialog_is_cancelled(qtbot, patch_conf
     _select_first_driving_system(window)
     editor = window.planning_tab._slot_editors[0]
     editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN
-    editor.try_apply()
+    window.planning_tab.apply_button.click()  # locks, see _update_save_action_enabled()
     monkeypatch.setattr(QFileDialog, 'getSaveFileName',
                         staticmethod(lambda *args, **kwargs: ('', '')))
 
@@ -237,7 +277,7 @@ def test_save_action_shows_an_error_dialog_on_failure(qtbot, tmp_path, patch_con
     _select_first_driving_system(window)
     editor = window.planning_tab._slot_editors[0]
     editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN
-    editor.try_apply()
+    window.planning_tab.apply_button.click()  # locks, see _update_save_action_enabled()
     save_path = str(tmp_path / 'nested' / 'does' / 'not' / 'exist' / 'saved.yaml')
     monkeypatch.setattr(QFileDialog, 'getSaveFileName',
                         staticmethod(lambda *args, **kwargs: (save_path, '')))
@@ -278,7 +318,7 @@ def test_save_action_writes_the_current_protocol(qtbot, tmp_path, patch_config, 
     _select_first_driving_system(window)
     editor = window.planning_tab._slot_editors[0]
     editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN
-    editor.try_apply()
+    window.planning_tab.apply_button.click()  # locks, see _update_save_action_enabled()
     save_path = str(tmp_path / 'saved.yaml')
     monkeypatch.setattr(QFileDialog, 'getSaveFileName',
                         staticmethod(lambda *args, **kwargs: (save_path, '')))
@@ -288,6 +328,26 @@ def test_save_action_writes_the_current_protocol(qtbot, tmp_path, patch_config, 
     reloaded = protocol_io.load(save_path)
     assert reloaded.protocol.driving_sys.serial == 'UNITTEST_IGT'
     assert window._approve_action.isEnabled() is True
+
+
+def test_save_action_disabled_while_unlocked(qtbot, patch_config):
+    """current_protocol() only ever reflects what was last Applied (see
+    PlanningTab.is_locked()'s own docstring); an edit made since then must disable Save again,
+    even though can_save() alone would still say the last-applied protocol is fine. Otherwise
+    saving would silently write stale values instead of whatever the form currently shows."""
+    _configure_driving_system(patch_config)
+    window = MainWindow()
+    qtbot.addWidget(window)
+    _select_first_driving_system(window)
+    editor = window.planning_tab._slot_editors[0]
+    editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN
+    window.planning_tab.apply_button.click()
+    assert window._save_action.isEnabled() is True  # sanity check
+
+    editor.power_value_spin.setValue(0.6)
+
+    assert window.planning_tab.can_save() is True  # still valid, just no longer applied
+    assert window._save_action.isEnabled() is False
 
 
 def test_save_action_disabled_when_nothing_to_save(qtbot, patch_config):
@@ -346,6 +406,27 @@ def test_on_save_protocol_warns_if_called_despite_being_disabled(
     _configure_driving_system(patch_config)
     window = MainWindow()
     qtbot.addWidget(window)
+    warnings = []
+    monkeypatch.setattr(QMessageBox, 'warning', staticmethod(lambda *args: warnings.append(args)))
+
+    window._on_save_protocol()
+
+    assert len(warnings) == 1
+
+
+def test_on_save_protocol_warns_when_called_despite_being_unlocked(
+        qtbot, patch_config, monkeypatch):
+    """Defends _on_save_protocol() itself against the same is_locked() gap as the test above,
+    in case something ever forces a trigger while can_save() is True but unlocked."""
+    _configure_driving_system(patch_config)
+    window = MainWindow()
+    qtbot.addWidget(window)
+    _select_first_driving_system(window)
+    editor = window.planning_tab._slot_editors[0]
+    editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN
+    window.planning_tab.apply_button.click()
+    editor.power_value_spin.setValue(0.6)  # unlocks again
+    assert window.planning_tab.can_save() is True  # sanity check
     warnings = []
     monkeypatch.setattr(QMessageBox, 'warning', staticmethod(lambda *args: warnings.append(args)))
 

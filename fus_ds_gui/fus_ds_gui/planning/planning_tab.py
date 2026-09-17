@@ -28,9 +28,12 @@ class PlanningTab(QWidget):
         validation_changed(): Emitted every time _refresh_validation() runs, i.e. whenever
             can_save()'s own answer might have changed. MainWindow listens for this to keep its
             own Save action's enabled state in sync, rather than polling it.
+        lock_changed(bool): Emitted whenever is_locked()'s own answer changes; see its own
+            docstring. The Executing panel listens for this to gate Send on it.
     """
 
     validation_changed = Signal()
+    lock_changed = Signal(bool)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -38,6 +41,7 @@ class PlanningTab(QWidget):
         self.builder = None
         self._slot_editors = []
         self.timing_panel = None
+        self._locked = False
 
         self.equipment_panel = EquipmentPanel()
         self.equipment_panel.driving_system_changed.connect(self._on_driving_system_changed)
@@ -45,6 +49,7 @@ class PlanningTab(QWidget):
         # Always starts unchecked (Demo mode); never persisted across app restarts.
         self.advanced_mode_checkbox = QCheckBox("Advanced mode")
         self.advanced_mode_checkbox.toggled.connect(self._on_advanced_mode_toggled)
+        self.advanced_mode_checkbox.toggled.connect(self._mark_dirty)
 
         self.slots_layout = QVBoxLayout()
 
@@ -87,16 +92,47 @@ class PlanningTab(QWidget):
     def can_save(self):
         """
         Returns:
-            bool: True if the current protocol has at least one slot and no validation
-            problems, matching what MainWindow's own Save action gates on: saving a protocol
-            builder.validate() itself already flags as wrong would only produce a YAML file
-            that's misleading (or, for something like IGT's own "Amplitude is None" check,
-            outright missing an intended value) the moment anyone actually looks at it.
+            bool: True if the current protocol has at least one slot, no validation problems,
+            and no slot editor or the timing panel is currently showing its own unresolved
+            error (see _has_unresolved_panel_error()). That last check matters because
+            builder.validate() only ever checks what actually reached protocol.slots, so a slot
+            that failed to apply (or failed to load) is invisible to it, and an otherwise-valid
+            sibling slot could make the rest look fine even though the protocol on screen still
+            has a real, unresolved problem the researcher hasn't actually fixed yet. Without it,
+            saving would silently produce a YAML file quietly missing a slot the researcher
+            meant to include. Matches what MainWindow's own Save action gates on (together with
+            is_locked(), see its own docstring).
         """
 
         if self.builder is None or not self.builder.protocol.slots:
             return False
-        return not self.builder.validate()
+        return not self.builder.validate() and not self._has_unresolved_panel_error()
+
+    def is_locked(self):
+        """
+        Returns:
+            bool: True only right after a fully successful Apply (or a successful
+            load_protocol()), while nothing has been touched since (see _mark_dirty()). Set
+            from can_save() at those two points, not read from it directly here: can_save()
+            alone can't tell "still valid" apart from "valid, but no longer what the researcher
+            is currently looking at". Only a locked protocol matches what's actually on screen
+            closely enough to send/execute; the Executing panel gates Send on this.
+        """
+
+        return self._locked
+
+    def _set_locked(self, locked):
+        if locked != self._locked:
+            self._locked = locked
+            self.lock_changed.emit(locked)
+
+    def _mark_dirty(self, *_args):
+        """Unlocks unconditionally the moment anything changes, regardless of whether the
+        result would still validate cleanly: is_locked() means "matches what was last applied",
+        not just "currently valid". Connected to every SlotEditor/TimingPanel's own `changed`
+        signal, the Advanced mode checkbox, adding a slot, and switching driving system."""
+
+        self._set_locked(False)
 
     def _on_driving_system_changed(self, driving_system):
         """Replaces the current ProtocolBuilder (and every widget bound to it) with a fresh one
@@ -105,6 +141,7 @@ class PlanningTab(QWidget):
 
         self._clear_slot_editors()
         self._clear_timing_panel()
+        self._mark_dirty()  # a different builder entirely is never still "what was applied"
 
         if driving_system is None:
             self.builder = None
@@ -119,6 +156,7 @@ class PlanningTab(QWidget):
         self.timing_panel = TimingPanel(self.builder)
         self.timing_panel.set_advanced_mode(self.advanced_mode_checkbox.isChecked())
         self.timing_panel.applied.connect(self._refresh_validation)
+        self.timing_panel.changed.connect(self._mark_dirty)
         self.timing_layout.addWidget(self.timing_panel)
 
         self._add_slot_editor()
@@ -144,6 +182,7 @@ class PlanningTab(QWidget):
 
     def _add_slot_editor(self):
         self._build_slot_editor()
+        self._mark_dirty()  # a brand new, not-yet-applied slot is never "what was applied"
 
     def _build_slot_editor(self, existing_slot=None, failed_slot=None):
         """Adds one SlotEditor: blank by default, pre-filled from existing_slot, or pre-filled
@@ -161,6 +200,7 @@ class PlanningTab(QWidget):
                             existing_slot=existing_slot, failed_slot=failed_slot, title=title)
         editor.set_advanced_mode(self.advanced_mode_checkbox.isChecked())
         editor.applied.connect(self._on_slot_applied)
+        editor.changed.connect(self._mark_dirty)
         editor.transducer_selection_changed.connect(self._refresh_transducer_exclusions)
         self._slot_editors.append(editor)
         self.slots_layout.addWidget(editor)
@@ -209,6 +249,7 @@ class PlanningTab(QWidget):
         self.timing_panel = TimingPanel(self.builder, seed_demo_defaults=False)
         self.timing_panel.set_advanced_mode(self.advanced_mode_checkbox.isChecked())
         self.timing_panel.applied.connect(self._refresh_validation)
+        self.timing_panel.changed.connect(self._mark_dirty)
         self.timing_layout.addWidget(self.timing_panel)
 
         for slot in protocol.slots:
@@ -217,6 +258,10 @@ class PlanningTab(QWidget):
             self._build_slot_editor(failed_slot=failed_slot)
 
         self._refresh_validation()
+        # A slot that failed to load still shows its own inline error, so can_save() (see its
+        # own docstring) correctly refuses to lock a partial load, the same way it refuses a
+        # partial Apply.
+        self._set_locked(self.can_save())
 
     def _refresh_transducer_exclusions(self):
         """Keeps the same physical transducer from ever being assigned to two slots at once:
@@ -260,13 +305,16 @@ class PlanningTab(QWidget):
         any individual failure: a mistake in one slot must not block a correctly-configured
         sibling slot or the timing panel from being applied too. Each panel's own error_label
         already shows its own failure inline; _refresh_validation() at the end reflects
-        whatever combination of successes/failures resulted, even if nothing succeeded at all."""
+        whatever combination of successes/failures resulted, even if nothing succeeded at all.
+        Locks (see is_locked()'s own docstring) only if every panel succeeded and the result is
+        valid, i.e. can_save(): a partial or failed Apply must never leave Send available."""
 
         if self.timing_panel is not None:
             self.timing_panel.try_apply()
         for editor in self._slot_editors:
             editor.try_apply()
         self._refresh_validation()
+        self._set_locked(self.can_save())
 
     def _refresh_validation(self):
         if self.builder is None:
@@ -279,7 +327,18 @@ class PlanningTab(QWidget):
         # own timing checks don't need one, so a timing problem is reported right away rather
         # than only after Apply has also been clicked.
         errors = self.builder.validate()
-        if errors:
+        if errors and self._has_unresolved_panel_error():
+            # A slot editor's own error_label already explains the real problem (e.g. an
+            # out-of-range value); a failed slot is never added to protocol.slots (see
+            # SlotEditor._apply()), so validate()'s own errors here (e.g. IGT's channel-count
+            # mismatch, expecting every configured slot's channels) are just a downstream
+            # symptom of that same slot, not a separate "add another slot" problem. Repeating
+            # them as if a slot were simply missing is confusing rather than helpful.
+            self.validation_label.setStyleSheet("color: red;")
+            self.validation_label.setText(
+                "Resolve the error(s) shown above the transducer slot(s) below, then click "
+                "Apply again.")
+        elif errors:
             self.validation_label.setStyleSheet("color: red;")
             self.validation_label.setText("\n".join(f"- {error}" for error in errors))
         elif not self.builder.protocol.slots:
@@ -293,3 +352,18 @@ class PlanningTab(QWidget):
             self.validation_label.setText("No problems found.")
 
         self.validation_changed.emit()
+
+    def _has_unresolved_panel_error(self):
+        """
+        Returns:
+            bool: True if any slot editor or the timing panel is currently showing its own
+            inline error_label (ApplyPanel), meaning that panel's own try_apply() never
+            actually succeeded (or, for a loaded slot, never even ran, see
+            SlotEditor._load_failed_slot()). Folded into can_save() itself; see its own
+            docstring.
+        """
+
+        panels = list(self._slot_editors)
+        if self.timing_panel is not None:
+            panels.append(self.timing_panel)
+        return any(not panel.error_label.isHidden() for panel in panels)

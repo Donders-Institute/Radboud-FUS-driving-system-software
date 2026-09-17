@@ -344,6 +344,209 @@ def test_apply_button_applies_a_valid_slot_even_when_another_fails(qtbot, patch_
     assert editor_2.slot is None
     assert not editor_2.error_label.isHidden()
     assert 'Choose a transducer first' in editor_2.error_label.text()
+    # editor_1 alone already validates cleanly, so builder.validate() alone would say this
+    # protocol is fine, but can_save() must still refuse while editor_2's own error is
+    # unresolved (see its own docstring), or a researcher could save/send/execute a protocol
+    # quietly missing a slot they meant to include.
+    assert tab.can_save() is False
+    assert tab.is_locked() is False
+
+
+def test_validation_label_points_at_slot_errors_instead_of_repeating_channel_mismatch(
+        qtbot, patch_config, monkeypatch):
+    """When a slot editor's own error_label already explains the real problem (here: no
+    transducer chosen), validate()'s own errors (e.g. IGT's channel-count mismatch, which just
+    restates that fewer slots ended up configured than expected) would otherwise duplicate that
+    same information in a way that reads as "add another slot" rather than "fix the slot
+    above". Same two-slots-one-fails setup as
+    test_apply_button_applies_a_valid_slot_even_when_another_fails."""
+    _configure_driving_system(patch_config, 'UNITTEST_IGT', max_tran_slots=2)
+    patch_config.set('Equipment.Driving system.UNITTEST_IGT', 'Transducer compatibility',
+                     'UNITTEST_TRAN_A\nUNITTEST_TRAN_B')
+    patch_config.set('Equipment', 'Transducers', 'UNITTEST_TRAN_A\nUNITTEST_TRAN_B')
+    _configure_transducer(patch_config, 'UNITTEST_TRAN_A')
+    _configure_transducer(patch_config, 'UNITTEST_TRAN_B')
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+    _select_first_driving_system(tab)
+    tab.add_slot_button.click()
+    editor_1, editor_2 = tab._slot_editors
+    editor_1.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN_A
+    editor_1.focus_value_spin.setValue(20)
+    editor_1.power_value_spin.setValue(0.5)
+    # editor_2 deliberately left on its own "no transducer selected" placeholder.
+    monkeypatch.setattr(tab.builder, 'validate', lambda: [
+        'Number of available channels (4) does not match the combined elements of the 1 '
+        'transducer slot(s) (2). Configure the remaining transducer slot(s), or choose a '
+        'driving system whose available channels match how many transducers you intend to use.'
+    ])
+
+    tab.apply_button.click()
+
+    assert not editor_2.error_label.isHidden()
+    assert tab.validation_label.text() == (
+        "Resolve the error(s) shown above the transducer slot(s) below, then click Apply "
+        "again.")
+    assert 'red' in tab.validation_label.styleSheet()
+
+
+def _apply_a_valid_slot(tab):
+    """Selects a transducer and a valid focus/power value on the tab's own first (and, for
+    single_slot_setup, only) slot editor, then clicks Apply -- shared setup for the lock/unlock
+    tests below, which only care about the resulting locked state, not building the slot."""
+    editor = tab._slot_editors[0]
+    editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN
+    editor.focus_value_spin.setValue(20)
+    editor.power_value_spin.setValue(0.5)
+    tab.apply_button.click()
+
+
+def test_locks_after_a_fully_successful_apply(qtbot, single_slot_setup):
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+    _select_first_driving_system(tab)
+
+    assert tab.is_locked() is False
+
+    _apply_a_valid_slot(tab)
+
+    assert tab.is_locked() is True
+
+
+def test_stays_unlocked_when_apply_fails(qtbot, single_slot_setup):
+    """No transducer chosen means try_apply() fails (see SlotEditor._apply()'s own "Choose a
+    transducer first." check) and the slot is never added to protocol.slots at all, so
+    can_save() (and so is_locked()) stays False."""
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+    _select_first_driving_system(tab)
+    # The one slot editor deliberately left on its own "no transducer selected" placeholder.
+
+    tab.apply_button.click()
+
+    assert tab.is_locked() is False
+
+
+def test_a_value_change_unlocks_a_previously_locked_tab(qtbot, single_slot_setup):
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+    _select_first_driving_system(tab)
+    _apply_a_valid_slot(tab)
+    assert tab.is_locked() is True
+
+    tab._slot_editors[0].power_value_spin.setValue(0.6)
+
+    assert tab.is_locked() is False
+
+
+def test_a_timing_panel_change_unlocks_a_previously_locked_tab(qtbot, single_slot_setup):
+    """Same as test_a_value_change_unlocks_a_previously_locked_tab above, but for the timing
+    panel rather than a slot editor: is_locked() must catch a change to *any* panel, not just
+    the slot editors, since current_protocol() (what Save/Send actually use) reflects both."""
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+    _select_first_driving_system(tab)
+    _apply_a_valid_slot(tab)
+    assert tab.is_locked() is True
+
+    tab.timing_panel.duty_cycle_spin.setValue(tab.timing_panel.duty_cycle_spin.value() + 1)
+
+    assert tab.is_locked() is False
+
+
+def test_toggling_advanced_mode_unlocks_a_previously_locked_tab(qtbot, single_slot_setup):
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+    _select_first_driving_system(tab)
+    _apply_a_valid_slot(tab)
+    assert tab.is_locked() is True
+
+    tab.advanced_mode_checkbox.setChecked(True)
+
+    assert tab.is_locked() is False
+
+
+def test_adding_a_slot_unlocks_a_previously_locked_tab(qtbot, patch_config):
+    _configure_driving_system(patch_config, 'UNITTEST_IGT', max_tran_slots=2)
+    patch_config.set('Equipment', 'Transducers', 'UNITTEST_TRAN')
+    _configure_transducer(patch_config)
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+    _select_first_driving_system(tab)
+    _apply_a_valid_slot(tab)
+    assert tab.is_locked() is True
+
+    tab.add_slot_button.click()
+
+    assert tab.is_locked() is False
+
+
+def test_switching_driving_system_unlocks_a_previously_locked_tab(qtbot, patch_config):
+    _configure_driving_system(patch_config, 'UNITTEST_A', max_tran_slots=1)
+    _configure_driving_system(patch_config, 'UNITTEST_B', max_tran_slots=1)
+    patch_config.set('Equipment', 'Driving systems', 'UNITTEST_A\nUNITTEST_B')
+    patch_config.set('Equipment', 'Transducers', 'UNITTEST_TRAN')
+    _configure_transducer(patch_config)
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+    _select_first_driving_system(tab)
+    _apply_a_valid_slot(tab)
+    assert tab.is_locked() is True
+
+    tab.equipment_panel._driving_system_combo.setCurrentIndex(2)  # UNITTEST_B
+
+    assert tab.is_locked() is False
+
+
+def test_lock_changed_signal_fires_on_lock_and_unlock(qtbot, single_slot_setup):
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+    _select_first_driving_system(tab)
+
+    with qtbot.waitSignal(tab.lock_changed, timeout=1000) as blocker:
+        _apply_a_valid_slot(tab)
+    assert blocker.args == [True]
+
+    with qtbot.waitSignal(tab.lock_changed, timeout=1000) as blocker:
+        tab._slot_editors[0].power_value_spin.setValue(0.6)
+    assert blocker.args == [False]
+
+
+def test_load_protocol_locks_a_fully_valid_load(qtbot, single_slot_setup):
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+    protocol = _build_protocol('UNITTEST_IGT', [('UNITTEST_TRAN', 40, 0.5)])
+
+    tab.load_protocol(LoadResult(protocol, []))
+
+    assert tab.is_locked() is True
+
+
+def test_load_protocol_stays_unlocked_when_a_sibling_slot_failed_to_load(
+        qtbot, single_slot_setup):
+    """A failed slot_def is never added to protocol.slots (so builder.validate() alone could
+    say the slot(s) that did load are already fine on their own), but it still shows its own
+    inline error (see SlotEditor._load_failed_slot()). can_save() (see its own docstring)
+    refuses to lock while that's unresolved, the same way it refuses a partial Apply, otherwise
+    a researcher could save/send/execute a protocol quietly missing a slot they meant to
+    include, without ever having acknowledged that error."""
+    from fus_driving_systems.exceptions import FDSSafetyError
+
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+    protocol = _build_protocol('UNITTEST_IGT', [('UNITTEST_TRAN', 40, 0.5)])
+    failed_slot_def = {
+        'transducer_serial': 'UNITTEST_TRAN',
+        'focus_option': 'Focus wrt exit plane [mm]',
+        'focus_value': 60,
+        'power_option': 'Global power [mW]',
+        'power_value': 999,
+    }
+    load_result = LoadResult(protocol, [(failed_slot_def, FDSSafetyError('too high'))])
+
+    tab.load_protocol(load_result)
+
+    assert tab.is_locked() is False
 
 
 def test_validation_label_updates_after_applying_a_slot(qtbot, single_slot_setup):

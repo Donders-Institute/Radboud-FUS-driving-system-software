@@ -319,3 +319,17 @@ def test_uses_pulse_train_repetition_false_for_sonic_concepts(patch_config):
     builder = ProtocolBuilder(ds)
 
     assert builder.uses_pulse_train_repetition() is False
+
+
+def test_create_control_instance_returns_a_fresh_instance_each_time(igt_with_transducer):
+    """A distinct instance from builder's own internal _ds_instance (which stays throwaway,
+    used only for validate()), and a distinct instance on every call: the Executing panel must
+    never accidentally reuse one across two separate connections."""
+    builder = ProtocolBuilder(igt_with_transducer)
+
+    first = builder.create_control_instance()
+    second = builder.create_control_instance()
+
+    assert isinstance(first, IGT)
+    assert first is not second
+    assert first is not builder._ds_instance  # pylint: disable=protected-access

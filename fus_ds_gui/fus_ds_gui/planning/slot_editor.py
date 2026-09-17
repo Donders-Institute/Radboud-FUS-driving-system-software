@@ -84,6 +84,7 @@ class SlotEditor(ApplyPanel):
             selection changes (not just on Apply): PlanningTab listens for this on every
             SlotEditor to keep every *other* editor's own transducer_combo excluding whichever
             transducer this one currently has selected (see set_excluded_transducers()).
+        changed(): See ApplyPanel's own docstring.
     """
 
     transducer_selection_changed = Signal()
@@ -218,11 +219,36 @@ class SlotEditor(ApplyPanel):
         self._update_dephasing_value_fields(self.dephasing_mode_combo.currentText())
         self._update_transducer_dependent_visibility()
         self._load_initial_state(existing_slot, failed_slot)
+        self._connect_changed_signals()
 
         layout = QVBoxLayout(self)
         layout.addWidget(self._title_label)
         layout.addLayout(self._form)
         layout.addWidget(self.error_label)
+
+    def _connect_changed_signals(self):
+        """Emits `changed` whenever any of this editor's own value-bearing widgets changes.
+        Connected last in __init__, after every pre-fill (existing_slot/failed_slot) has
+        already run, so loading one never itself counts as a change. Extracted out of __init__
+        purely to keep its own statement count under pylint's limit."""
+
+        for signal in (
+                self.transducer_combo.currentIndexChanged,
+                self.focus_option_combo.currentTextChanged,
+                self.focus_value_spin.valueChanged,
+                self.focus_value_x_spin.valueChanged,
+                self.focus_value_y_spin.valueChanged,
+                self.focus_value_z_spin.valueChanged,
+                self.power_option_combo.currentTextChanged,
+                self.power_value_spin.valueChanged,
+                self.oper_freq_spin.valueChanged,
+                self.dephasing_mode_combo.currentTextChanged,
+                self.dephasing_degree_spin.valueChanged,
+                self.dephasing_values_edit.textChanged):
+            signal.connect(self._emit_changed)
+
+    def _emit_changed(self, *_args):
+        self.changed.emit()
 
     def _build_option_and_value_row(self, option_combo, value_spin):
         """Combines an option combo and its value spinbox onto one row (focus_option_combo/

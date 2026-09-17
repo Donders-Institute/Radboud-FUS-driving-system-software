@@ -202,6 +202,7 @@ class TimingPanel(ApplyPanel):
         layout.addWidget(self.error_label)
 
         self._connect_cascade_refresh_signals()
+        self._connect_changed_signals()
 
         # Always starts in Demo mode; PlanningTab's own toggle calls set_advanced_mode() right
         # after construction if Advanced mode is already active.
@@ -220,6 +221,26 @@ class TimingPanel(ApplyPanel):
         self.pulse_train_dur_spin.valueChanged.connect(self._refresh_cascaded_values)
         self.pulse_train_level.toggle_button.toggled.connect(self._refresh_cascaded_values)
         self.pulse_train_rep_level.toggle_button.toggled.connect(self._refresh_cascaded_values)
+
+    def _connect_changed_signals(self):
+        """Emits `changed` whenever any of this panel's own value-bearing widgets changes. A
+        `_TimingLevel`'s own toggle_button.toggled is deliberately excluded: expanding/
+        collapsing a section doesn't change any value. Extracted out of __init__ purely to keep
+        its own statement count under pylint's limit."""
+
+        for signal in (
+                self.pulse_dur_spin.valueChanged,
+                self.ramp_shape_combo.currentTextChanged,
+                self.ramp_dur_spin.valueChanged,
+                self.pulse_rep_int_spin.valueChanged,
+                self.pulse_train_dur_spin.valueChanged,
+                self.pulse_train_rep_int_spin.valueChanged,
+                self.pulse_train_rep_dur_spin.valueChanged,
+                self.duty_cycle_spin.valueChanged):
+            signal.connect(self._emit_changed)
+
+    def _emit_changed(self, *_args):
+        self.changed.emit()
 
     def _build_pulse_train_rep_dur_spin(self, protocol):
         """Extracted out of __init__ purely to keep its own statement count under pylint's

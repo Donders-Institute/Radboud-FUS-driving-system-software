@@ -8,12 +8,13 @@ See the LICENSE file for full license text.
 
 import pathlib
 
-from PySide6.QtWidgets import QFileDialog, QMainWindow, QMessageBox, QTabWidget
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtWidgets import QFileDialog, QMainWindow, QMessageBox, QSplitter
 
 from fus_driving_systems.exceptions import FDSError
 
 from fus_ds_gui.error_dialogs import show_fds_error
-from fus_ds_gui.executing.executing_tab import ExecutingTab
+from fus_ds_gui.executing.executing_panel import ExecutingPanel
 from fus_ds_gui.models import protocol_io
 from fus_ds_gui.planning.planning_tab import PlanningTab
 
@@ -22,11 +23,19 @@ _EXAMPLE_PROTOCOLS_DIR = pathlib.Path(__file__).resolve().parents[2] / 'example_
 
 _YAML_FILE_FILTER = "Protocol files (*.yaml *.yml)"
 
+# Long enough for Qt's own deferred layout pass (triggered by the many setVisible()/
+# setRowVisible() calls Demo mode's smaller form makes) to fully settle before
+# _shrink_to_fit_content() reads sizeHint(): read too early and it still reflects the
+# larger Advanced-mode layout, undoing the whole point of shrinking back down.
+_SHRINK_DELAY_MS = 50
+
 
 class MainWindow(QMainWindow):
     """
-    Top-level window: a Planning tab (build/load a protocol) and an Executing tab (connect/
-    send/execute it on real hardware). Kept deliberately thin; each tab owns its own widgets.
+    Top-level window: Planning (build/load a protocol) and Executing (connect/send/execute it
+    on real hardware) side by side in a resizable splitter, not tabs, so a researcher never
+    loses sight of what's currently locked and ready to send while looking at the Executing
+    panel (see PlanningTab.is_locked()'s own docstring for why that distinction exists at all).
 
     The File menu's own current-file tracking (self._current_file_path) is separate from
     PlanningTab's own in-progress protocol: switching driving systems, or otherwise rebuilding
@@ -40,19 +49,48 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Radboud FUS Driving System GUI")
 
         self.planning_tab = PlanningTab()
-        self.executing_tab = ExecutingTab()
+        self.executing_panel = ExecutingPanel(self.planning_tab)
 
-        tabs = QTabWidget()
-        tabs.addTab(self.planning_tab, "Planning")
-        tabs.addTab(self.executing_tab, "Executing")
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.addWidget(self.planning_tab)
+        splitter.addWidget(self.executing_panel)
 
-        self.setCentralWidget(tabs)
+        self.setCentralWidget(splitter)
 
         self._current_file_path = None
         self._build_file_menu()
 
         self.planning_tab.validation_changed.connect(self._update_save_action_enabled)
+        self.planning_tab.lock_changed.connect(self._update_save_action_enabled)
         self._update_save_action_enabled()
+
+        self.planning_tab.advanced_mode_checkbox.toggled.connect(
+            self._on_advanced_mode_toggled)
+        self.planning_tab.equipment_panel.driving_system_changed.connect(
+            self._schedule_shrink_to_fit)
+
+    def _on_advanced_mode_toggled(self, advanced):
+        """Demo mode's own form needs less height than Advanced mode's; see
+        _schedule_shrink_to_fit()'s own docstring for why this is needed at all. Only leaving
+        Advanced mode can ever need a shrink here, so growing (entering Advanced mode) skips
+        it."""
+
+        if not advanced:
+            self._schedule_shrink_to_fit()
+
+    def _schedule_shrink_to_fit(self, *_args):
+        """A QMainWindow already on screen doesn't shrink itself back down once its content
+        does (unlike growing, which it already handles on its own), a known Qt limitation, not
+        something specific to this window. Switching to a driving system needing fewer slots
+        (e.g. a "1x10 ch." variant after a "2x10 ch." one) can shrink the Planning tab's own
+        content the same way leaving Advanced mode does, so both are wired here. Deferred via
+        _SHRINK_DELAY_MS; see its own comment."""
+
+        QTimer.singleShot(_SHRINK_DELAY_MS, self._shrink_to_fit_content)
+
+    def _shrink_to_fit_content(self):
+        central = self.centralWidget()
+        self.resize(self.width(), self.menuBar().height() + central.sizeHint().height())
 
     def _build_file_menu(self):
         file_menu = self.menuBar().addMenu("&File")
@@ -65,12 +103,13 @@ class MainWindow(QMainWindow):
         self._approve_action.setEnabled(False)
 
     def _update_save_action_enabled(self):
-        """Disables Save outright while PlanningTab.can_save() is False (no slot configured
-        yet, or the protocol currently fails its own validation, see that method's own
-        docstring for why), rather than only catching this once the researcher already clicked
-        it."""
+        """Disables Save until is_locked(): current_protocol() only reflects the last Applied
+        state, so saving while unlocked would save stale values, not what's shown. is_locked()
+        alone covers can_save() too, since it's only ever set from it (see PlanningTab's own
+        docstrings). Same reasoning as Send's own gating, see
+        ExecutingPanel._refresh_send_enabled()."""
 
-        self._save_action.setEnabled(self.planning_tab.can_save())
+        self._save_action.setEnabled(self.planning_tab.is_locked())
 
     def _on_load_protocol(self):
         # Defaults to example_protocols/ (the shipped examples are the most useful place to
@@ -100,12 +139,20 @@ class MainWindow(QMainWindow):
         self._approve_action.setEnabled(not load_result.failed_slots)
 
     def _on_save_protocol(self):
-        # The Save action is disabled whenever this is False (see _update_save_action_enabled()),
-        # so this only defends against a stale/forced trigger, not the normal path.
+        # The Save action is disabled whenever is_locked() is False (see
+        # _update_save_action_enabled()), so this only defends against a stale/forced trigger,
+        # not the normal path. can_save() is checked here too, on top of is_locked() itself,
+        # purely to tell the two ways of being unlocked apart for a more specific message.
         if not self.planning_tab.can_save():
             QMessageBox.warning(self, "Cannot save",
                                 "Configure at least one transducer slot, and resolve any "
                                 "validation problems, before saving.")
+            return
+
+        if not self.planning_tab.is_locked():
+            QMessageBox.warning(self, "Cannot save",
+                                "Click Apply on the Planning tab first: saving now would save "
+                                "the last applied version, not what's currently shown.")
             return
 
         protocol = self.planning_tab.current_protocol()
