@@ -233,6 +233,72 @@ def test_switching_a_transducer_frees_it_up_for_other_slot_editors(qtbot, patch_
     assert 'UNITTEST_TRAN_A' in _transducer_serials(editor_2.transducer_combo)
 
 
+def test_advanced_mode_checkbox_starts_unchecked(qtbot, single_slot_setup):
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+
+    assert tab.advanced_mode_checkbox.isChecked() is False
+
+
+def test_toggling_advanced_mode_propagates_to_existing_panels(qtbot, single_slot_setup):
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+    tab.show()
+    _select_first_driving_system(tab)
+    editor = tab._slot_editors[0]
+    # isVisible() requires both tab (the top-level window) and each descendant widget to have
+    # been shown themselves, not just have a visible ancestor.
+    editor.show()
+    tab.timing_panel.show()
+    editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN
+
+    tab.advanced_mode_checkbox.setChecked(True)
+
+    # oper_freq_spin, not focus_option_combo: the option pickers are visible in both modes
+    # now (see SlotEditor.set_advanced_mode()'s own docstring), only oper_freq/dephasing
+    # actually differ, so only they can tell Demo and Advanced apart here.
+    assert editor.oper_freq_spin.isVisible() is True
+    assert tab.timing_panel.pulse_train_level.toggle_button.isVisible() is True
+
+
+def test_slot_editor_added_while_advanced_mode_is_active_starts_advanced(qtbot, patch_config):
+    _configure_driving_system(patch_config, 'UNITTEST_IGT', max_tran_slots=2)
+    patch_config.set('Equipment', 'Transducers', 'UNITTEST_TRAN')
+    _configure_transducer(patch_config)
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+    tab.show()
+    _select_first_driving_system(tab)
+    tab.advanced_mode_checkbox.setChecked(True)
+
+    tab.add_slot_button.click()
+
+    new_editor = tab._slot_editors[1]
+    new_editor.show()
+    new_editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN
+    # oper_freq_spin, not focus_option_combo: see the identical comment in
+    # test_toggling_advanced_mode_propagates_to_existing_panels.
+    assert new_editor.oper_freq_spin.isVisible() is True
+
+
+def test_changing_driving_system_keeps_advanced_mode_for_the_new_timing_panel(
+        qtbot, patch_config):
+    _configure_driving_system(patch_config, 'UNITTEST_A', max_tran_slots=1)
+    _configure_driving_system(patch_config, 'UNITTEST_B', max_tran_slots=1)
+    patch_config.set('Equipment', 'Driving systems', 'UNITTEST_A\nUNITTEST_B')
+    patch_config.set('Equipment', 'Transducers', 'UNITTEST_TRAN')
+    _configure_transducer(patch_config)
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+    tab.show()
+    tab.advanced_mode_checkbox.setChecked(True)
+
+    tab.equipment_panel._driving_system_combo.setCurrentIndex(1)
+    tab.timing_panel.show()
+
+    assert tab.timing_panel.pulse_train_level.toggle_button.isVisible() is True
+
+
 def test_apply_button_applies_timing_and_the_slot_together(qtbot, single_slot_setup):
     """One shared Apply for the whole tab, not one per slot/timing panel: clicking it once
     must apply both, without needing to interact with either panel's own (now nonexistent)
@@ -457,6 +523,19 @@ def test_load_protocol_expands_timing_levels_set_explicitly_by_the_file(qtbot, s
 
     assert tab.timing_panel.pulse_train_level.is_expanded() is True
     assert tab.timing_panel.pulse_train_rep_level.is_expanded() is True
+
+
+def test_load_protocol_keeps_advanced_mode_for_the_new_panels(qtbot, single_slot_setup):
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+    tab.show()
+    tab.advanced_mode_checkbox.setChecked(True)
+    protocol = _build_protocol('UNITTEST_IGT', [('UNITTEST_TRAN', 40, 0.5)])
+
+    tab.load_protocol(LoadResult(protocol, []))
+    tab.timing_panel.show()
+
+    assert tab.timing_panel.pulse_train_level.toggle_button.isVisible() is True
 
 
 def test_load_protocol_refreshes_validation(qtbot, single_slot_setup):

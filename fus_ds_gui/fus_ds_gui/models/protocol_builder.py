@@ -199,6 +199,33 @@ class ProtocolBuilder:
         return get_config_value(get_logger(), config, 'Ramp', 'option.rect',
                                 'Rectangular - no ramping')
 
+    def pressure_power_option(self):
+        """
+        The 'Max. pressure in free water [MPa]' power option label, however it's actually named
+        in config, read via the same 'Power'/'Option.press' lookup TransducerSlot._set_press()
+        itself uses. Needed so the GUI's own Demo mode pressure cap (see demo_max_pressure()) can
+        recognize this specific option without hardcoding its display name.
+
+        Returns:
+            str: The configured pressure-in-free-water option label.
+        """
+
+        return get_config_value(get_logger(), config, 'Power', 'Option.press',
+                                'Max. pressure in free water [MPa]')
+
+    def demo_max_pressure(self):
+        """
+        The GUI's own, stricter pressure ceiling for Demo mode (see SlotEditor._apply()),
+        enforced on top of the backend's own get_max_pressure() limit, not instead of it.
+
+        Returns:
+            float: The configured demo maximum pressure in free water [MPa].
+        """
+
+        return float(get_config_value(
+            get_logger(), config, 'Power', 'Demo maximum pressure allowed in free water [MPa]',
+            0.6, True))
+
     def supports_dephasing(self):
         """
         Returns:
@@ -206,6 +233,20 @@ class ProtocolBuilder:
             (sonic_concepts_ds.py) never reads TransducerSlot.dephasing_degree anywhere, so
             configuring it there would silently have no effect; the GUI hides the whole
             dephasing section in that case rather than let a researcher configure a no-op.
+        """
+
+        return isinstance(self._ds_instance, IGT)
+
+    def uses_pulse_train_repetition(self):
+        """
+        Returns:
+            bool: True only for an IGT-backed driving system, whose own firmware repeats a
+            pulse train via pulse_train_rep_int/pulse_train_rep_dur. SonicConcepts's own
+            backend (sonic_concepts_ds.py) never reads either field: it sends pulse_train_dur
+            directly as the device's own total sonication duration (its "TIMER" register)
+            instead, with no train-repetition concept at all. Demo mode's own "Total duration"
+            field (see TimingPanel._apply()) needs to know which of the two actually controls
+            the operator's intended total duration on this driving system.
         """
 
         return isinstance(self._ds_instance, IGT)

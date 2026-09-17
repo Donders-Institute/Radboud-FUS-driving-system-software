@@ -7,7 +7,7 @@ See the LICENSE file for full license text.
 """
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QLabel, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QCheckBox, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from fus_driving_systems.config.logging_config import get_logger
 from fus_driving_systems.exceptions import FDSConfigError
@@ -42,6 +42,10 @@ class PlanningTab(QWidget):
         self.equipment_panel = EquipmentPanel()
         self.equipment_panel.driving_system_changed.connect(self._on_driving_system_changed)
 
+        # Always starts unchecked (Demo mode); never persisted across app restarts.
+        self.advanced_mode_checkbox = QCheckBox("Advanced mode")
+        self.advanced_mode_checkbox.toggled.connect(self._on_advanced_mode_toggled)
+
         self.slots_layout = QVBoxLayout()
 
         self.add_slot_button = QPushButton("Add transducer slot")
@@ -60,6 +64,7 @@ class PlanningTab(QWidget):
 
         layout = QVBoxLayout(self)
         layout.addWidget(self.equipment_panel)
+        layout.addWidget(self.advanced_mode_checkbox)
         layout.addLayout(self.slots_layout)
         layout.addWidget(self.add_slot_button)
         layout.addLayout(self.timing_layout)
@@ -112,6 +117,7 @@ class PlanningTab(QWidget):
         self.apply_button.setEnabled(True)
 
         self.timing_panel = TimingPanel(self.builder)
+        self.timing_panel.set_advanced_mode(self.advanced_mode_checkbox.isChecked())
         self.timing_panel.applied.connect(self._refresh_validation)
         self.timing_layout.addWidget(self.timing_panel)
 
@@ -153,6 +159,7 @@ class PlanningTab(QWidget):
         title = f"Slot {len(self._slot_editors) + 1}"
         editor = SlotEditor(self.builder, excluded_transducer_serials=already_chosen,
                             existing_slot=existing_slot, failed_slot=failed_slot, title=title)
+        editor.set_advanced_mode(self.advanced_mode_checkbox.isChecked())
         editor.applied.connect(self._on_slot_applied)
         editor.transducer_selection_changed.connect(self._refresh_transducer_exclusions)
         self._slot_editors.append(editor)
@@ -197,7 +204,10 @@ class PlanningTab(QWidget):
         self._clear_slot_editors()
         self._clear_timing_panel()
 
-        self.timing_panel = TimingPanel(self.builder)
+        # seed_demo_defaults=False: this protocol's own pulse_dur/pulse_rep_int are real,
+        # already-chosen values, not an untouched cascade to replace with a demo example.
+        self.timing_panel = TimingPanel(self.builder, seed_demo_defaults=False)
+        self.timing_panel.set_advanced_mode(self.advanced_mode_checkbox.isChecked())
         self.timing_panel.applied.connect(self._refresh_validation)
         self.timing_layout.addWidget(self.timing_panel)
 
@@ -234,6 +244,16 @@ class PlanningTab(QWidget):
     def _on_slot_applied(self):
         self._refresh_validation()
         self._update_add_button_enabled()
+
+    def _on_advanced_mode_toggled(self, advanced):
+        """Propagates the toggle to every panel that currently exists; a panel created later
+        (see _build_slot_editor()/_on_driving_system_changed()/load_protocol()) reads the
+        checkbox's own current state directly instead of waiting for this signal."""
+
+        if self.timing_panel is not None:
+            self.timing_panel.set_advanced_mode(advanced)
+        for editor in self._slot_editors:
+            editor.set_advanced_mode(advanced)
 
     def _on_apply_clicked(self):
         """Applies every panel that currently exists via its own try_apply(), continuing past

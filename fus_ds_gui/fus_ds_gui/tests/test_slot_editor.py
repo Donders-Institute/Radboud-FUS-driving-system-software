@@ -118,7 +118,28 @@ def test_other_fields_hidden_until_a_transducer_is_chosen(qtbot, builder):
     assert editor.dephasing_mode_combo.isVisible() is False
 
 
-def test_other_fields_shown_once_a_transducer_is_chosen(qtbot, builder):
+def test_other_fields_shown_once_a_transducer_is_chosen_in_advanced_mode(qtbot, builder):
+    editor = SlotEditor(builder)
+    qtbot.addWidget(editor)
+    editor.show()
+    editor.set_advanced_mode(True)
+
+    editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN_A
+
+    assert editor.focus_option_combo.isVisible() is True
+    assert editor.focus_option_combo.isEnabled() is True
+    assert editor.focus_value_spin.isVisible() is True
+    assert editor.power_option_combo.isVisible() is True
+    assert editor.power_option_combo.isEnabled() is True
+    assert editor.power_value_spin.isVisible() is True
+    assert editor.oper_freq_spin.isVisible() is True
+    assert editor.dephasing_mode_combo.isVisible() is True
+
+
+def test_demo_mode_still_shows_the_option_pickers_once_a_transducer_is_chosen(qtbot, builder):
+    """Demo mode (the default, see set_advanced_mode()'s own docstring) only hides oper_freq/
+    dephasing: the focus/power option pickers stay visible and editable in either mode, since
+    every offered option is already non-engineering-only."""
     editor = SlotEditor(builder)
     qtbot.addWidget(editor)
     editor.show()
@@ -126,17 +147,45 @@ def test_other_fields_shown_once_a_transducer_is_chosen(qtbot, builder):
     editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN_A
 
     assert editor.focus_option_combo.isVisible() is True
+    assert editor.focus_option_combo.isEnabled() is True
+    assert editor.focus_option_combo.currentText() == 'Focus wrt exit plane [mm]'
     assert editor.focus_value_spin.isVisible() is True
     assert editor.power_option_combo.isVisible() is True
+    assert editor.power_option_combo.isEnabled() is True
+    assert editor.power_option_combo.currentText() == 'Max. pressure in free water [MPa]'
     assert editor.power_value_spin.isVisible() is True
-    assert editor.oper_freq_spin.isVisible() is True
-    assert editor.dephasing_mode_combo.isVisible() is True
+    assert editor.oper_freq_spin.isVisible() is False
+    assert editor.dephasing_mode_combo.isVisible() is False
+
+
+def test_demo_mode_shows_a_non_pressure_power_option_too(qtbot, patch_config):
+    """A driving system whose only power option is global power (e.g. Sonic Concepts) must
+    show that correctly too, not just IGT's own pressure option."""
+    _configure_driving_system(patch_config, 'UNITTEST_SC')
+    patch_config.set('Equipment.Driving system.UNITTEST_SC', 'Manufacturer', 'Sonic Concepts')
+    patch_config.set('Equipment.Driving system.UNITTEST_SC', 'Power options', 'Global power [mW]')
+    patch_config.set('Equipment.Driving system.UNITTEST_SC', 'Native power parameters',
+                     'Global power [mW]')
+    patch_config.set('Equipment', 'Transducers', 'UNITTEST_TRAN_A')
+    _configure_transducer(patch_config, 'UNITTEST_TRAN_A')
+    from fus_driving_systems import driving_system
+    ds = driving_system.DrivingSystem()
+    ds.set_ds_info('UNITTEST_SC')
+    builder = ProtocolBuilder(ds)
+    editor = SlotEditor(builder)
+    qtbot.addWidget(editor)
+
+    editor.transducer_combo.setCurrentIndex(1)
+
+    assert editor.power_option_combo.currentText() == 'Global power [mW]'
+    assert editor.power_option_combo.isEnabled() is True
 
 
 def test_other_fields_hide_again_when_switching_back_to_the_placeholder(qtbot, builder):
     editor = SlotEditor(builder)
     qtbot.addWidget(editor)
     editor.show()
+    editor.set_advanced_mode(True)
     editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN_A
 
     editor.transducer_combo.setCurrentIndex(0)  # back to "-- Select a transducer --"
@@ -284,6 +333,48 @@ def test_apply_shows_inline_error_on_fds_error(qtbot, builder):
     assert editor.error_label.text()
     # A plain-colored message blends in with the rest of the tab; see ApplyPanel.__init__.
     assert 'red' in editor.error_label.styleSheet()
+
+
+def test_apply_refuses_pressure_above_the_demo_cap_in_demo_mode(qtbot, builder, patch_config):
+    patch_config.set('Power', 'Demo maximum pressure allowed in free water [MPa]', '0.5')
+    editor = SlotEditor(builder)
+    qtbot.addWidget(editor)
+    editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN_A
+    editor.power_value_spin.setValue(0.6)  # above the demo cap, below the backend's own limit
+
+    editor.try_apply()
+
+    assert editor.slot is None
+    assert 'Demo mode' in editor.error_label.text()
+
+
+def test_apply_allows_pressure_above_the_demo_cap_in_advanced_mode(qtbot, builder, patch_config):
+    patch_config.set('Power', 'Demo maximum pressure allowed in free water [MPa]', '0.5')
+    editor = SlotEditor(builder)
+    qtbot.addWidget(editor)
+    editor.set_advanced_mode(True)
+    editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN_A
+    editor.focus_value_spin.setValue(20)
+    editor.power_value_spin.setValue(0.6)  # above the demo cap, still below the backend's limit
+
+    editor.try_apply()
+
+    assert editor.slot is not None
+    assert editor.error_label.isHidden()
+
+
+def test_apply_allows_pressure_at_the_demo_cap_in_demo_mode(qtbot, builder, patch_config):
+    patch_config.set('Power', 'Demo maximum pressure allowed in free water [MPa]', '0.5')
+    editor = SlotEditor(builder)
+    qtbot.addWidget(editor)
+    editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN_A
+    editor.focus_value_spin.setValue(20)
+    editor.power_value_spin.setValue(0.5)  # exactly at the cap: strict '>', not '>='
+
+    editor.try_apply()
+
+    assert editor.slot is not None
+    assert editor.error_label.isHidden()
 
 
 def test_apply_edits_an_already_added_slot_without_re_adding(qtbot, builder):

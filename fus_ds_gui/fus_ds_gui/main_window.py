@@ -73,11 +73,9 @@ class MainWindow(QMainWindow):
         self._save_action.setEnabled(self.planning_tab.can_save())
 
     def _on_load_protocol(self):
-        # Defaults to example_protocols/ (the shipped examples, including a ready-to-load IGT
-        # demo protocol, are the most useful place to start browsing from, whether loading a
-        # demo or navigating elsewhere to a real one), falling back to the researcher's own
-        # home directory only if that folder isn't present at all (e.g. a packaged install
-        # shipped without it).
+        # Defaults to example_protocols/ (the shipped examples are the most useful place to
+        # start browsing from), falling back to the researcher's own home directory only if
+        # that folder isn't present at all (e.g. a packaged install shipped without it).
         start_dir = (str(_EXAMPLE_PROTOCOLS_DIR) if _EXAMPLE_PROTOCOLS_DIR.is_dir()
                      else str(pathlib.Path.home()))
         self._load_from_dialog(start_dir)

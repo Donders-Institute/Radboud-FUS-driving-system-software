@@ -10,9 +10,10 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (QComboBox, QDoubleSpinBox, QFormLayout, QHBoxLayout, QLabel,
                                QLineEdit, QSpinBox, QVBoxLayout, QWidget)
 
-from fus_driving_systems.exceptions import FDSValidationError
+from fus_driving_systems.exceptions import FDSSafetyError, FDSValidationError
 
 from fus_ds_gui.planning.apply_panel import ApplyPanel
+from fus_ds_gui.planning.form_alignment import align_form_labels
 
 _DEPHASING_NONE = "No dephasing"
 _DEPHASING_CYCLIC = "Cyclic (one degree, applied to every element)"
@@ -117,6 +118,9 @@ class SlotEditor(ApplyPanel):
 
         self.builder = builder
         self.slot = None  # Set once this editor's first Apply succeeds.
+        # Always starts in Demo mode; PlanningTab's own toggle calls set_advanced_mode() right
+        # after construction if Advanced mode is already active.
+        self._advanced_mode = False
         # The power option a failed slot_def's own per-element list was pre-filled from (see
         # _load_failed_slot()), or None. Not institution-specific: which power options require
         # engineering_mode is itself config-driven (_requires_engineering_mode()'s own
@@ -168,7 +172,7 @@ class SlotEditor(ApplyPanel):
             lambda _i: self._prune_raw_option(self.power_option_combo, '_raw_power_option'))
 
         self.power_value_spin = QDoubleSpinBox()
-        self.power_value_spin.setDecimals(3)
+        self.power_value_spin.setDecimals(2)
         # 0, not negative: every backend power setter (_set_global_power/_set_press/_set_volt/
         # _set_ampl in transducer_slot.py) validates its value with check_pos=True, so a negative
         # value is never valid for any power option, on either driving system.
@@ -185,18 +189,23 @@ class SlotEditor(ApplyPanel):
         self._build_title_label(title)
 
         self._focus_value_label = QLabel("Focus value:")
+        self._focus_row_widget = self._build_option_and_value_row(
+            self.focus_option_combo, self.focus_value_spin)
+        self._power_row_widget = self._build_option_and_value_row(
+            self.power_option_combo, self.power_value_spin)
 
         self._form = QFormLayout()
-        self._form.addRow("Transducer:", self.transducer_combo)
-        self._form.addRow("Focus option:", self.focus_option_combo)
-        self._form.addRow(self._focus_value_label, self.focus_value_spin)
-        self._form.addRow("Focus value (x, y, z):", self.focus_value_xyz_widget)
-        self._form.addRow("Power option:", self.power_option_combo)
-        self._form.addRow("Power value:", self.power_value_spin)
-        self._form.addRow("Operating frequency:", self.oper_freq_spin)
-        self._form.addRow("Dephasing mode:", self.dephasing_mode_combo)
-        self._form.addRow("Dephasing degree:", self.dephasing_degree_spin)
-        self._form.addRow("Dephasing values:", self.dephasing_values_edit)
+        for label, widget in (
+                ("Transducer:", self.transducer_combo),
+                (self._focus_value_label, self._focus_row_widget),
+                ("Focus value (x, y, z):", self.focus_value_xyz_widget),
+                ("Power:", self._power_row_widget),
+                ("Operating frequency:", self.oper_freq_spin),
+                ("Dephasing mode:", self.dephasing_mode_combo),
+                ("Dephasing degree:", self.dephasing_degree_spin),
+                ("Dephasing values:", self.dephasing_values_edit)):
+            self._form.addRow(label, widget)
+        align_form_labels(self._form)
 
         # Only safe from here on: _update_focus_options()/_update_focus_value_fields() both
         # need self._form (setRowVisible()) to already exist. _update_focus_options() must run
@@ -214,6 +223,19 @@ class SlotEditor(ApplyPanel):
         layout.addWidget(self._title_label)
         layout.addLayout(self._form)
         layout.addWidget(self.error_label)
+
+    def _build_option_and_value_row(self, option_combo, value_spin):
+        """Combines an option combo and its value spinbox onto one row (focus_option_combo/
+        focus_value_spin, power_option_combo/power_value_spin): which unit is used and its
+        actual value belong together at a glance. Only for the single-value case;
+        focus_value_xyz_widget keeps its own row, three extra spinboxes wouldn't fit here."""
+
+        widget = QWidget()
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(option_combo)
+        layout.addWidget(value_spin)
+        return widget
 
     def _build_focus_xyz_widgets(self):
         """Builds focus_value_x/y/z_spin plus the row widget combining them; extracted out of
@@ -371,8 +393,7 @@ class SlotEditor(ApplyPanel):
         slot_def already has real (if possibly wrong) values to show, transducer match or
         not (see _load_failed_slot()'s own docstring)."""
 
-        for row_widget in (self.focus_option_combo, self.power_option_combo,
-                           self.power_value_spin, self.oper_freq_spin):
+        for row_widget in (self._focus_row_widget, self._power_row_widget, self.oper_freq_spin):
             self._form.setRowVisible(row_widget, True)
         self._update_focus_value_fields(self.focus_option_combo.currentText())
         if self.builder.supports_dephasing():
@@ -550,6 +571,16 @@ class SlotEditor(ApplyPanel):
         self._update_transducer_dependent_visibility()
         self.transducer_selection_changed.emit()
 
+    def set_advanced_mode(self, advanced):
+        """Hides/shows the fields Demo mode simplifies away (see this method's own callers in
+        PlanningTab): operating frequency and dephasing. The focus/power option pickers and
+        value fields all stay visible and editable regardless of mode; every option offered is
+        already non-engineering-only (see ProtocolBuilder.focus_options()/power_options()), so
+        there's nothing unsafe left to restrict further here."""
+
+        self._advanced_mode = advanced
+        self._update_transducer_dependent_visibility()
+
     def _update_transducer_dependent_visibility(self):
         """Hides every field below the transducer picker until a real transducer is actually
         chosen: focus/power ranges, calibration availability, and even how many dephasing
@@ -559,21 +590,25 @@ class SlotEditor(ApplyPanel):
         so switching back to the placeholder hides them again too. Supersedes what used to be a
         separate, SonicConcepts-only _apply_dephasing_support(): that decision (see
         ProtocolBuilder.supports_dephasing()'s own docstring) never actually changes for this
-        editor's own lifetime, so folding it in here instead of calling it separately is safe."""
+        editor's own lifetime, so folding it in here instead of calling it separately is safe.
+
+        Also folds in Demo mode's own, further restriction (see set_advanced_mode()): unlike
+        has_transducer, self._advanced_mode only hides oper_freq/dephasing, never the option/
+        value fields."""
 
         has_transducer = self.transducer_combo.currentData() is not None
-        self._form.setRowVisible(self.focus_option_combo, has_transducer)
-        self._form.setRowVisible(self.power_option_combo, has_transducer)
-        self._form.setRowVisible(self.power_value_spin, has_transducer)
-        self._form.setRowVisible(self.oper_freq_spin, has_transducer)
+        self._form.setRowVisible(self._focus_row_widget, has_transducer)
+        self._form.setRowVisible(self._power_row_widget, has_transducer)
+        self._form.setRowVisible(self.oper_freq_spin, has_transducer and self._advanced_mode)
 
         if has_transducer:
             self._update_focus_value_fields(self.focus_option_combo.currentText())
         else:
-            self._form.setRowVisible(self.focus_value_spin, False)
+            self.focus_value_spin.setVisible(False)
             self._form.setRowVisible(self.focus_value_xyz_widget, False)
 
-        show_dephasing = has_transducer and self.builder.supports_dephasing()
+        show_dephasing = (has_transducer and self._advanced_mode
+                          and self.builder.supports_dephasing())
         self._form.setRowVisible(self.dephasing_mode_combo, show_dephasing)
         if show_dephasing:
             self._update_dephasing_value_fields(self.dephasing_mode_combo.currentText())
@@ -684,11 +719,12 @@ class SlotEditor(ApplyPanel):
         self.power_option_combo.setCurrentIndex(index if index >= 0 else 0)
 
     def _update_focus_value_fields(self, focus_option):
-        """Switches focus value entry between the single field (every ordinary focus option) and
-        the three (x, y, z) fields (the two 3D options); see this class's own docstring."""
+        """Switches focus value entry between the single field (every ordinary focus option,
+        shown alongside focus_option_combo in the same row) and the three (x, y, z) fields (the
+        two 3D options, shown on their own row instead); see this class's own docstring."""
 
         is_xyz = focus_option in self.builder.xyz_focus_options()
-        self._form.setRowVisible(self.focus_value_spin, not is_xyz)
+        self.focus_value_spin.setVisible(not is_xyz)
         self._form.setRowVisible(self.focus_value_xyz_widget, is_xyz)
 
     def _on_focus_option_changed(self, focus_option):
@@ -759,6 +795,14 @@ class SlotEditor(ApplyPanel):
         power_value = self.power_value_spin.value()
         oper_freq = self.oper_freq_spin.value()
         dephasing_degree = self._resolve_dephasing_degree(transducer)
+
+        # Demo mode's own, stricter ceiling, enforced here on top of the backend's own
+        # get_max_pressure() limit, not instead of it (see ProtocolBuilder.demo_max_pressure()).
+        if (not self._advanced_mode and power_option == self.builder.pressure_power_option()
+                and power_value > self.builder.demo_max_pressure()):
+            raise FDSSafetyError(
+                f"{power_value} MPa exceeds Demo mode's own maximum of "
+                f"{self.builder.demo_max_pressure()} MPa. Use a lower pressure in Demo mode.")
 
         if self.slot is None:
             # Blocked only while power_value_spin still shows the exact, untouched first entry

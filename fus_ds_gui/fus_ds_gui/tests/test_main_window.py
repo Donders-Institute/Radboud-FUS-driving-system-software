@@ -193,7 +193,7 @@ protocols:
 
 def test_load_action_defaults_to_the_example_protocols_directory(
         qtbot, patch_config, monkeypatch):
-    """Defaults to example_protocols/ (the shipped demo protocols) so a researcher can still
+    """Defaults to example_protocols/ (the shipped examples) so a researcher can still
     navigate elsewhere from there for a real one."""
     from fus_ds_gui.main_window import _EXAMPLE_PROTOCOLS_DIR
 

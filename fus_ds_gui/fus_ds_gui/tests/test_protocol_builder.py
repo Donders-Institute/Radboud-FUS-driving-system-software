@@ -286,3 +286,36 @@ def test_validate_is_clean_for_a_well_formed_protocol(patch_config):
     builder.configure_timing(pulse_dur=1, pulse_rep_int=2, pulse_train_dur=10)
 
     assert builder.validate() == []
+
+
+def test_pressure_power_option_reads_the_configured_label(igt_with_transducer):
+    builder = ProtocolBuilder(igt_with_transducer)
+
+    assert builder.pressure_power_option() == 'Max. pressure in free water [MPa]'
+
+
+def test_demo_max_pressure_reads_the_configured_value(patch_config, igt_with_transducer):
+    patch_config.set('Power', 'Demo maximum pressure allowed in free water [MPa]', '0.5')
+    builder = ProtocolBuilder(igt_with_transducer)
+
+    assert builder.demo_max_pressure() == pytest.approx(0.5)
+
+
+def test_uses_pulse_train_repetition_true_for_igt(igt_with_transducer):
+    builder = ProtocolBuilder(igt_with_transducer)
+
+    assert builder.uses_pulse_train_repetition() is True
+
+
+def test_uses_pulse_train_repetition_false_for_sonic_concepts(patch_config):
+    _configure_driving_system(patch_config, 'UNITTEST_SC', manufacturer='Sonic Concepts')
+    section = 'Equipment.Driving system.UNITTEST_SC'
+    patch_config.set(section, 'Power options', 'Global power [mW]')
+    patch_config.set(section, 'Native power parameters', 'Global power [mW]')
+    _configure_transducer(patch_config, 'UNITTEST_TRAN')
+    from fus_driving_systems import driving_system
+    ds = driving_system.DrivingSystem()
+    ds.set_ds_info('UNITTEST_SC')
+    builder = ProtocolBuilder(ds)
+
+    assert builder.uses_pulse_train_repetition() is False

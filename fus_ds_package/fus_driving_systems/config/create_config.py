@@ -232,6 +232,12 @@ MAX_ALLOWED_PRESSURE = 1.4  # MPa
 MAX_PRESSURE_KEY = 'Maximum pressure allowed in free water [MPa]'
 config['Power'][MAX_PRESSURE_KEY] = str(MAX_ALLOWED_PRESSURE)
 
+# Enforced only by fus_ds_gui's own Demo mode (SlotEditor._apply()), on top of the limit
+# above, not instead of it: a stricter, GUI-only ceiling.
+DEMO_MAX_ALLOWED_PRESSURE = 0.6  # MPa
+DEMO_MAX_PRESSURE_KEY = 'Demo maximum pressure allowed in free water [MPa]'
+config['Power'][DEMO_MAX_PRESSURE_KEY] = str(DEMO_MAX_ALLOWED_PRESSURE)
+
 # Focus options
 FOC_WRT_EXIT = 'Focus wrt exit plane [mm]'
 FOC_WRT_BOWL = 'Focus wrt mid bowl [mm]'
@@ -951,6 +957,16 @@ MAX_PRESSURE_WARNING = (
 )
 generated_contents = generated_contents.replace(
     MAX_PRESSURE_LINE, MAX_PRESSURE_WARNING + MAX_PRESSURE_LINE)
+
+DEMO_MAX_PRESSURE_LINE = f'{DEMO_MAX_PRESSURE_KEY.lower()} = {DEMO_MAX_ALLOWED_PRESSURE}'
+DEMO_MAX_PRESSURE_WARNING = (
+    '; Enforced only by fus_ds_gui\'s own Demo mode, on top of the limit above, not instead\n'
+    '; of it. Hand-editing this value is fine, but it will be silently overwritten if this\n'
+    '; file is regenerated via create_config.py, or replaced by installing a new package\n'
+    '; release.\n'
+)
+generated_contents = generated_contents.replace(
+    DEMO_MAX_PRESSURE_LINE, DEMO_MAX_PRESSURE_WARNING + DEMO_MAX_PRESSURE_LINE)
 
 # Same idea for min. focus/max. focus, but these two keys appear once per transducer (each with
 # its own value) rather than once globally, so a plain string .replace() can't target every
