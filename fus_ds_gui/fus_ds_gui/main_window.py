@@ -37,9 +37,10 @@ class MainWindow(QMainWindow):
     loses sight of what's currently locked and ready to send while looking at the Executing
     panel (see PlanningTab.is_locked()'s own docstring for why that distinction exists at all).
 
-    The File menu's own current-file tracking (self._current_file_path) is separate from
-    PlanningTab's own in-progress protocol: switching driving systems, or otherwise rebuilding
-    the Planning tab's own widgets, never touches it. Only an actual Load/Save does, since it's
+    Drives PlanningTab's load_button/save_button/approve_button directly (see that class's own
+    docstring for why). self._current_file_path, this class's own state, is separate from
+    PlanningTab's in-progress protocol: switching driving systems, or otherwise rebuilding the
+    Planning tab's own widgets, never touches it. Only an actual Load/Save does, since it's
     about "which file on disk are we talking about", not "what does the form show".
     """
 
@@ -58,11 +59,13 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(splitter)
 
         self._current_file_path = None
-        self._build_file_menu()
+        self.planning_tab.load_button.clicked.connect(self._on_load_protocol)
+        self.planning_tab.save_button.clicked.connect(self._on_save_protocol)
+        self.planning_tab.approve_button.clicked.connect(self._on_approve_current_file)
 
-        self.planning_tab.validation_changed.connect(self._update_save_action_enabled)
-        self.planning_tab.lock_changed.connect(self._update_save_action_enabled)
-        self._update_save_action_enabled()
+        self.planning_tab.validation_changed.connect(self._update_save_button_enabled)
+        self.planning_tab.lock_changed.connect(self._update_save_button_enabled)
+        self._update_save_button_enabled()
 
         self.planning_tab.advanced_mode_checkbox.toggled.connect(
             self._on_advanced_mode_toggled)
@@ -89,27 +92,16 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(_SHRINK_DELAY_MS, self._shrink_to_fit_content)
 
     def _shrink_to_fit_content(self):
-        central = self.centralWidget()
-        self.resize(self.width(), self.menuBar().height() + central.sizeHint().height())
+        self.resize(self.width(), self.centralWidget().sizeHint().height())
 
-    def _build_file_menu(self):
-        file_menu = self.menuBar().addMenu("&File")
-
-        self._load_action = file_menu.addAction("&Load protocol...", self._on_load_protocol)
-        self._save_action = file_menu.addAction("&Save protocol...", self._on_save_protocol)
-        file_menu.addSeparator()
-        self._approve_action = file_menu.addAction(
-            "&Approve current file", self._on_approve_current_file)
-        self._approve_action.setEnabled(False)
-
-    def _update_save_action_enabled(self):
+    def _update_save_button_enabled(self):
         """Disables Save until is_locked(): current_protocol() only reflects the last Applied
         state, so saving while unlocked would save stale values, not what's shown. is_locked()
         alone covers can_save() too, since it's only ever set from it (see PlanningTab's own
         docstrings). Same reasoning as Send's own gating, see
         ExecutingPanel._refresh_send_enabled()."""
 
-        self._save_action.setEnabled(self.planning_tab.is_locked())
+        self.planning_tab.save_button.setEnabled(self.planning_tab.is_locked())
 
     def _on_load_protocol(self):
         # Defaults to example_protocols/ (the shipped examples are the most useful place to
@@ -136,11 +128,11 @@ class MainWindow(QMainWindow):
         # Approving hashes exactly the file on disk at self._current_file_path (see
         # protocol_io.approve()): if any slot in it failed to construct, that file is known to
         # be broken, so it must not be approvable until it's fixed and saved again.
-        self._approve_action.setEnabled(not load_result.failed_slots)
+        self.planning_tab.approve_button.setEnabled(not load_result.failed_slots)
 
     def _on_save_protocol(self):
-        # The Save action is disabled whenever is_locked() is False (see
-        # _update_save_action_enabled()), so this only defends against a stale/forced trigger,
+        # save_button is disabled whenever is_locked() is False (see
+        # _update_save_button_enabled()), so this only defends against a stale/forced trigger,
         # not the normal path. can_save() is checked here too, on top of is_locked() itself,
         # purely to tell the two ways of being unlocked apart for a more specific message.
         if not self.planning_tab.can_save():
@@ -169,7 +161,7 @@ class MainWindow(QMainWindow):
             return
 
         self._current_file_path = path
-        self._approve_action.setEnabled(True)
+        self.planning_tab.approve_button.setEnabled(True)
 
     def _on_approve_current_file(self):
         try:

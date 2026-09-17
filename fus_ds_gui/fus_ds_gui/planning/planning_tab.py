@@ -7,7 +7,7 @@ See the LICENSE file for full license text.
 """
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QCheckBox, QLabel, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from fus_driving_systems.config.logging_config import get_logger
 from fus_driving_systems.exceptions import FDSConfigError
@@ -27,9 +27,14 @@ class PlanningTab(QWidget):
     Signals:
         validation_changed(): Emitted every time _refresh_validation() runs, i.e. whenever
             can_save()'s own answer might have changed. MainWindow listens for this to keep its
-            own Save action's enabled state in sync, rather than polling it.
+            own save_button's enabled state in sync, rather than polling it.
         lock_changed(bool): Emitted whenever is_locked()'s own answer changes; see its own
             docstring. The Executing panel listens for this to gate Send on it.
+
+    load_button/save_button/approve_button are plain widgets, not wired to anything here:
+    MainWindow owns the actual file dialogs and self._current_file_path (see its own docstring
+    for why that tracking belongs there, not here), and connects/drives these directly, the same
+    way it already does for ConnectionPanel/ExecutionPanel's own widgets.
     """
 
     validation_changed = Signal()
@@ -63,6 +68,15 @@ class PlanningTab(QWidget):
         self.apply_button = QPushButton("Apply")
         self.apply_button.clicked.connect(self._on_apply_clicked)
 
+        # See this class's own docstring for why these three are plain, undriven widgets here.
+        self.load_button = QPushButton("Load protocol...")
+        self.save_button = QPushButton("Save protocol...")
+        self.approve_button = QPushButton("Approve protocol")
+        self.approve_button.setEnabled(False)  # MainWindow enables it once a file is known
+        file_buttons_layout = QHBoxLayout()
+        for button in (self.load_button, self.save_button, self.approve_button):
+            file_buttons_layout.addWidget(button)
+
         self.validation_title = QLabel("Validation:")
         self.validation_label = QLabel()
         self.validation_label.setWordWrap(True)
@@ -74,6 +88,7 @@ class PlanningTab(QWidget):
         layout.addWidget(self.add_slot_button)
         layout.addLayout(self.timing_layout)
         layout.addWidget(self.apply_button)
+        layout.addLayout(file_buttons_layout)
         layout.addWidget(self.validation_title)
         layout.addWidget(self.validation_label)
         layout.addStretch()

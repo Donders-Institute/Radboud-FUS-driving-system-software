@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Smoke tests for MainWindow: launches with Planning/Executing side by side in a splitter,
-plus its own File menu (Load/Save/Approve). Every QFileDialog call is monkeypatched to return a
-controlled path directly, rather than actually shown: a real modal dialog would block the test
-suite waiting for a pick that never comes."""
+"""Smoke tests for MainWindow: launches with Planning/Executing side by side in a splitter, and
+drives PlanningTab's own load_button/save_button/approve_button. Every QFileDialog call is
+monkeypatched to return a controlled path directly, rather than actually shown: a real modal
+dialog would block the test suite waiting for a pick that never comes."""
 import pytest
 from PySide6.QtWidgets import QFileDialog, QMessageBox
 
@@ -120,7 +120,7 @@ def test_approve_action_disabled_until_a_file_is_known(qtbot, patch_config):
     window = MainWindow()
     qtbot.addWidget(window)
 
-    assert window._approve_action.isEnabled() is False
+    assert window.planning_tab.approve_button.isEnabled() is False
 
 
 def test_load_action_populates_the_planning_tab(qtbot, tmp_path, patch_config, monkeypatch):
@@ -130,12 +130,12 @@ def test_load_action_populates_the_planning_tab(qtbot, tmp_path, patch_config, m
     window = MainWindow()
     qtbot.addWidget(window)
 
-    window._load_action.trigger()
+    window.planning_tab.load_button.click()
 
     protocol = window.planning_tab.current_protocol()
     assert protocol.driving_sys.serial == 'UNITTEST_IGT'
     assert len(protocol.slots) == 1
-    assert window._approve_action.isEnabled() is True
+    assert window.planning_tab.approve_button.isEnabled() is True
 
 
 def test_load_action_does_nothing_when_the_dialog_is_cancelled(qtbot, patch_config, monkeypatch):
@@ -144,9 +144,9 @@ def test_load_action_does_nothing_when_the_dialog_is_cancelled(qtbot, patch_conf
     window = MainWindow()
     qtbot.addWidget(window)
 
-    window._load_action.trigger()  # must not raise
+    window.planning_tab.load_button.click()  # must not raise
 
-    assert window._approve_action.isEnabled() is False
+    assert window.planning_tab.approve_button.isEnabled() is False
 
 
 def test_load_action_shows_an_error_dialog_on_a_malformed_file(qtbot, tmp_path, patch_config,
@@ -161,10 +161,11 @@ def test_load_action_shows_an_error_dialog_on_a_malformed_file(qtbot, tmp_path, 
     window = MainWindow()
     qtbot.addWidget(window)
 
-    window._load_action.trigger()
+    window.planning_tab.load_button.click()
 
     assert len(shown) == 1
-    assert window._approve_action.isEnabled() is False  # unchanged, load never succeeded
+    # unchanged, load never succeeded
+    assert window.planning_tab.approve_button.isEnabled() is False
 
 
 def test_load_action_recovers_a_slot_exceeding_the_safety_limit_without_a_dialog(
@@ -219,7 +220,7 @@ protocols:
     window = MainWindow()
     qtbot.addWidget(window)
 
-    window._load_action.trigger()
+    window.planning_tab.load_button.click()
 
     assert shown == []
     editor = window.planning_tab._slot_editors[0]
@@ -228,7 +229,7 @@ protocols:
     assert not editor.error_label.isHidden()
     # Approve hashes exactly this file on disk; it must stay disabled while that file is known
     # to contain a slot that failed to construct.
-    assert window._approve_action.isEnabled() is False
+    assert window.planning_tab.approve_button.isEnabled() is False
 
 
 def test_load_action_defaults_to_the_example_protocols_directory(
@@ -247,7 +248,7 @@ def test_load_action_defaults_to_the_example_protocols_directory(
     window = MainWindow()
     qtbot.addWidget(window)
 
-    window._load_action.trigger()
+    window.planning_tab.load_button.click()
 
     assert seen_start_dirs == [str(_EXAMPLE_PROTOCOLS_DIR)]
 
@@ -259,13 +260,13 @@ def test_save_action_does_nothing_when_the_dialog_is_cancelled(qtbot, patch_conf
     _select_first_driving_system(window)
     editor = window.planning_tab._slot_editors[0]
     editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN
-    window.planning_tab.apply_button.click()  # locks, see _update_save_action_enabled()
+    window.planning_tab.apply_button.click()  # locks, see _update_save_button_enabled()
     monkeypatch.setattr(QFileDialog, 'getSaveFileName',
                         staticmethod(lambda *args, **kwargs: ('', '')))
 
-    window._save_action.trigger()  # must not raise
+    window.planning_tab.save_button.click()  # must not raise
 
-    assert window._approve_action.isEnabled() is False
+    assert window.planning_tab.approve_button.isEnabled() is False
 
 
 def test_save_action_shows_an_error_dialog_on_failure(qtbot, tmp_path, patch_config, monkeypatch):
@@ -277,7 +278,7 @@ def test_save_action_shows_an_error_dialog_on_failure(qtbot, tmp_path, patch_con
     _select_first_driving_system(window)
     editor = window.planning_tab._slot_editors[0]
     editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN
-    window.planning_tab.apply_button.click()  # locks, see _update_save_action_enabled()
+    window.planning_tab.apply_button.click()  # locks, see _update_save_button_enabled()
     save_path = str(tmp_path / 'nested' / 'does' / 'not' / 'exist' / 'saved.yaml')
     monkeypatch.setattr(QFileDialog, 'getSaveFileName',
                         staticmethod(lambda *args, **kwargs: (save_path, '')))
@@ -285,10 +286,10 @@ def test_save_action_shows_an_error_dialog_on_failure(qtbot, tmp_path, patch_con
     monkeypatch.setattr('fus_ds_gui.main_window.show_fds_error',
                         lambda parent, exc: shown.append(exc))
 
-    window._save_action.trigger()
+    window.planning_tab.save_button.click()
 
     assert len(shown) == 1
-    assert window._approve_action.isEnabled() is False
+    assert window.planning_tab.approve_button.isEnabled() is False
 
 
 def test_approve_action_shows_an_error_dialog_on_failure(
@@ -298,7 +299,7 @@ def test_approve_action_shows_an_error_dialog_on_failure(
                         staticmethod(lambda *args, **kwargs: (path, '')))
     window = MainWindow()
     qtbot.addWidget(window)
-    window._load_action.trigger()
+    window.planning_tab.load_button.click()
     # The approved file gets removed from under it, so approve_protocol() itself now fails to
     # read it back.
     (tmp_path / 'protocol.yaml').unlink()
@@ -306,7 +307,7 @@ def test_approve_action_shows_an_error_dialog_on_failure(
     monkeypatch.setattr('fus_ds_gui.main_window.show_fds_error',
                         lambda parent, exc: shown.append(exc))
 
-    window._approve_action.trigger()
+    window.planning_tab.approve_button.click()
 
     assert len(shown) == 1
 
@@ -318,16 +319,16 @@ def test_save_action_writes_the_current_protocol(qtbot, tmp_path, patch_config, 
     _select_first_driving_system(window)
     editor = window.planning_tab._slot_editors[0]
     editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN
-    window.planning_tab.apply_button.click()  # locks, see _update_save_action_enabled()
+    window.planning_tab.apply_button.click()  # locks, see _update_save_button_enabled()
     save_path = str(tmp_path / 'saved.yaml')
     monkeypatch.setattr(QFileDialog, 'getSaveFileName',
                         staticmethod(lambda *args, **kwargs: (save_path, '')))
 
-    window._save_action.trigger()
+    window.planning_tab.save_button.click()
 
     reloaded = protocol_io.load(save_path)
     assert reloaded.protocol.driving_sys.serial == 'UNITTEST_IGT'
-    assert window._approve_action.isEnabled() is True
+    assert window.planning_tab.approve_button.isEnabled() is True
 
 
 def test_save_action_disabled_while_unlocked(qtbot, patch_config):
@@ -342,12 +343,12 @@ def test_save_action_disabled_while_unlocked(qtbot, patch_config):
     editor = window.planning_tab._slot_editors[0]
     editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN
     window.planning_tab.apply_button.click()
-    assert window._save_action.isEnabled() is True  # sanity check
+    assert window.planning_tab.save_button.isEnabled() is True  # sanity check
 
     editor.power_value_spin.setValue(0.6)
 
     assert window.planning_tab.can_save() is True  # still valid, just no longer applied
-    assert window._save_action.isEnabled() is False
+    assert window.planning_tab.save_button.isEnabled() is False
 
 
 def test_save_action_disabled_when_nothing_to_save(qtbot, patch_config):
@@ -358,7 +359,7 @@ def test_save_action_disabled_when_nothing_to_save(qtbot, patch_config):
     window = MainWindow()
     qtbot.addWidget(window)
 
-    assert window._save_action.isEnabled() is False
+    assert window.planning_tab.save_button.isEnabled() is False
 
 
 def test_save_action_disabled_while_validation_has_problems(qtbot, patch_config):
@@ -396,7 +397,7 @@ def test_save_action_disabled_while_validation_has_problems(qtbot, patch_config)
     editor.try_apply()
 
     assert window.planning_tab.builder.validate()  # sanity check: genuinely still invalid
-    assert window._save_action.isEnabled() is False
+    assert window.planning_tab.save_button.isEnabled() is False
 
 
 def test_on_save_protocol_warns_if_called_despite_being_disabled(
@@ -442,8 +443,8 @@ def test_approve_action_writes_a_hash_sidecar(qtbot, tmp_path, patch_config, mon
     monkeypatch.setattr(QMessageBox, 'information', staticmethod(lambda *args: None))
     window = MainWindow()
     qtbot.addWidget(window)
-    window._load_action.trigger()
+    window.planning_tab.load_button.click()
 
-    window._approve_action.trigger()
+    window.planning_tab.approve_button.click()
 
     assert (tmp_path / 'protocol.yaml.sha256').exists()
