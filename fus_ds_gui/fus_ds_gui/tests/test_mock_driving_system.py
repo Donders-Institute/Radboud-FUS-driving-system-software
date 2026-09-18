@@ -58,6 +58,43 @@ def _build_igt_protocol():
     return protocol
 
 
+def _configure_sc(patch_config):
+    patch_config.set('Equipment', 'Driving systems', 'UNITTEST_SC')
+    section = 'Equipment.Driving system.UNITTEST_SC'
+    patch_config.set(section, 'Name', 'Test SC')
+    patch_config.set(section, 'Manufacturer', 'Sonic Concepts')
+    patch_config.set(section, 'Available channels', '4')
+    patch_config.set(section, 'Connection info', 'MOCK')
+    patch_config.set(section, 'Transducer compatibility', 'UNITTEST_TRAN')
+    patch_config.set(section, 'Power options', 'Global power [mW]')
+    patch_config.set(section, 'Focus options', 'Focus wrt exit plane [mm]')
+    patch_config.set(section, 'Native power parameters', 'Global power [mW]')
+    patch_config.set(section, 'Native focus parameters', 'Focus wrt exit plane [mm]')
+    patch_config.set(section, 'Max. transducer slots', '1')
+    patch_config.set(section, 'Active?', 'True')
+    patch_config.set('Equipment', 'Transducers', 'UNITTEST_TRAN')
+    tran_section = 'Equipment.Transducer.UNITTEST_TRAN'
+    patch_config.set(tran_section, 'Elements', '2')
+    patch_config.set(tran_section, 'Fund. freq.', '300')
+    patch_config.set(tran_section, 'Min. focus', '10')
+    patch_config.set(tran_section, 'Max. focus', '80')
+    patch_config.set(tran_section, 'Exit plane - first element dist.', '5')
+    patch_config.set(tran_section, 'Steer information', '')
+    patch_config.set(tran_section, 'Active?', 'True')
+
+
+def _build_sc_protocol():
+    """Requires _configure_sc(patch_config) to have already run: a real TUSProtocol, since
+    MockSonicConcepts' own send_protocol()/execute_protocol()/wait_for_trigger() now read
+    protocol.slots/pulse_train_dur to log the same timing/intensity confirmation the real
+    SonicConcepts does."""
+
+    protocol = TUSProtocol('UNITTEST_SC')
+    protocol.add_slot('UNITTEST_TRAN', 'Focus wrt exit plane [mm]', 40, 'Global power [mW]', 500)
+    protocol.configure_timing(pulse_dur=1, pulse_train_dur=1)
+    return protocol
+
+
 @pytest.fixture(params=[MockIGT, MockSonicConcepts], ids=['MockIGT', 'MockSonicConcepts'])
 def mock_ds(request, monkeypatch):
     # connect()'s own artificial delay would otherwise slow this down for no benefit here.
@@ -109,11 +146,10 @@ def test_send_protocol_logs_which_transducers_for_igt(patch_config, caplog):
     assert 'sending protocol' in caplog.text.lower()
 
 
-def test_execute_protocol_logs_a_per_slot_summary_before_and_after(patch_config, caplog):
-    """Matches the real IGT.execute_protocol()'s own "About to execute:"/"...executed
-    successfully:" pair (_log_intensity_summary(), GitHub #125/#122), so a researcher gets the
-    same at-a-glance confirmation via the console panel a real connection would give, rather
-    than a GUI-only widget duplicating it (see ExecutionPanel's own docstring)."""
+def test_execute_protocol_logs_expected_duration_then_confirms_completion(patch_config, caplog):
+    """Matches the real IGT.execute_protocol()'s own "Executing (expected duration...)"/
+    "Protocol executed successfully." pair. The focus/power values themselves were already
+    confirmed once, at send_protocol() time, not repeated here."""
     _configure_igt(patch_config)
     protocol = _build_igt_protocol()
     mock_ds = MockIGT()
@@ -123,10 +159,26 @@ def test_execute_protocol_logs_a_per_slot_summary_before_and_after(patch_config,
 
     info_messages = [r.message for r in caplog.records if r.levelname == 'INFO']
     assert len(info_messages) == 2
-    assert 'about to execute' in info_messages[0].lower()
+    assert 'executing' in info_messages[0].lower()
+    assert 'expected duration' in info_messages[0].lower()
     assert 'executed successfully' in info_messages[1].lower()
-    for message in info_messages:
-        assert 'UNITTEST_TRAN' in message
+
+
+def test_send_protocol_logs_confirmation_with_timing_and_intensity(patch_config, caplog):
+    """The timing/intensity a researcher would otherwise not see until execute_protocol() (or
+    not at all, since register_sent_protocol() only logs it on DEBUG), same reasoning as real
+    IGT's own send_protocol() (GitHub #125/#122)."""
+    _configure_igt(patch_config)
+    protocol = _build_igt_protocol()
+    mock_ds = MockIGT()
+
+    with caplog.at_level('INFO'):
+        mock_ds.send_protocol(protocol)
+
+    assert 'sent successfully' in caplog.text.lower()
+    assert 'repetition' in caplog.text.lower()
+    assert 'total duration' in caplog.text.lower()
+    assert 'UNITTEST_TRAN' in caplog.text
 
 
 def test_execute_protocol_blocks_for_the_protocols_own_duration(patch_config, monkeypatch):
@@ -256,21 +308,46 @@ def test_mock_igt_disconnect_clears_sent_protocols(patch_config):
     assert mock_ds.is_protocol_sent(0) is False
 
 
-def test_mock_sc_send_protocol_marks_protocol_sent():
+def test_mock_sc_send_protocol_marks_protocol_sent(patch_config):
+    _configure_sc(patch_config)
     mock_ds = MockSonicConcepts()
 
-    mock_ds.send_protocol(object())
+    mock_ds.send_protocol(_build_sc_protocol())
 
     assert mock_ds.is_protocol_sent() is True
 
 
-def test_mock_sc_disconnect_clears_protocol_sent():
+def test_mock_sc_disconnect_clears_protocol_sent(patch_config):
+    _configure_sc(patch_config)
     mock_ds = MockSonicConcepts()
-    mock_ds.send_protocol(object())
+    mock_ds.send_protocol(_build_sc_protocol())
 
     mock_ds.disconnect()
 
     assert mock_ds.is_protocol_sent() is False
+
+
+def test_mock_sc_send_protocol_logs_confirmation_with_timing(patch_config, caplog):
+    _configure_sc(patch_config)
+    mock_ds = MockSonicConcepts()
+
+    with caplog.at_level('INFO'):
+        mock_ds.send_protocol(_build_sc_protocol())
+
+    assert 'UNITTEST_TRAN' in caplog.text
+    assert 'sent successfully' in caplog.text.lower()
+    assert '1.00 ms total duration' in caplog.text
+
+
+def test_mock_sc_execute_protocol_logs_expected_duration_then_confirmation(patch_config, caplog):
+    _configure_sc(patch_config)
+    mock_ds = MockSonicConcepts()
+
+    with caplog.at_level('INFO'):
+        mock_ds.execute_protocol(_build_sc_protocol())
+
+    assert 'expected duration' in caplog.text.lower()
+    assert 'protocol executed' in caplog.text.lower()
 
 
 def test_mock_igt_validate_protocol_skips_amplitude_is_none(patch_config):
@@ -291,13 +368,15 @@ def test_mock_igt_validate_protocol_skips_amplitude_is_none(patch_config):
     assert not any('Amplitude is None' in error for error in errors)
 
 
-def test_mock_sc_wait_for_trigger_logs_armed(caplog):
+def test_mock_sc_wait_for_trigger_logs_armed(patch_config, caplog):
+    _configure_sc(patch_config)
     mock_ds = MockSonicConcepts()
 
     with caplog.at_level('INFO'):
-        mock_ds.wait_for_trigger(object())
+        mock_ds.wait_for_trigger(_build_sc_protocol())
 
     assert 'armed' in caplog.text.lower()
+    assert 'expected duration' in caplog.text.lower()
 
 
 def test_mock_sc_abort_logs_and_does_not_raise(caplog):

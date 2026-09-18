@@ -39,6 +39,13 @@ class SonicConcepts(ds.ControlDrivingSystem):
         gen: Generator object.
     """
 
+    def __init__(self):
+        super().__init__()
+        # Stored at send_protocol() time (not read from execute_protocol()/wait_for_trigger()'s
+        # own protocol argument, which the success path never otherwise touches, see those
+        # methods' own docstrings on reconnecting from a dropped connection instead).
+        self._sent_pulse_train_dur = None
+
     def connect(self, connect_info):
         """
         Connects to the Sonic Concepts ultrasound driving system.
@@ -117,7 +124,8 @@ class SonicConcepts(ds.ControlDrivingSystem):
                 and etcetera) and the equipment used (driving system and transducer)
         """
 
-        get_logger().info('Validating protocol...')
+        slot = protocol.slots[0]
+        get_logger().info('Validating protocol (transducer: %s)...', slot.transducer.serial)
 
         self._validate_or_raise(protocol)
 
@@ -131,7 +139,6 @@ class SonicConcepts(ds.ControlDrivingSystem):
 
             self._reset_parameters()
 
-            slot = protocol.slots[0]
             self._set_operating_freq(slot.oper_freq)
             self._set_focus(slot.focus_wrt_exit_plane)
             self._set_global_power(slot.global_power)
@@ -140,6 +147,13 @@ class SonicConcepts(ds.ControlDrivingSystem):
             self._set_ramping(protocol.pulse_ramp_shape, protocol.pulse_ramp_dur)
 
             self.protocol_sent = True
+            self._sent_pulse_train_dur = protocol.pulse_train_dur
+
+            # Confirms the send itself actually succeeded, with the timing/intensity a
+            # researcher would otherwise not see until execute_protocol(), same reasoning as
+            # IGT's own send_protocol() (GitHub #125/#122).
+            get_logger().info('Protocol sent successfully: %.2f ms total duration.\n  %s',
+                              protocol.pulse_train_dur, slot.intensity_summary())
 
         else:
             get_logger().error("No connection with driving system.")
@@ -163,8 +177,6 @@ class SonicConcepts(ds.ControlDrivingSystem):
             protocol(Object): Same protocol already passed to send_protocol().
         """
 
-        get_logger().info('Waiting for trigger...')
-
         # Checked regardless of connection state, and before it: a protocol that was never
         # sent is a caller mistake either way (never connected at all, or connected but
         # forgot to call send_protocol()) -- not something to silently paper over here.
@@ -173,6 +185,16 @@ class SonicConcepts(ds.ControlDrivingSystem):
                        'wait_for_trigger().')
             get_logger().critical(message)
             raise FDSValidationError(message)
+
+        # self._sent_pulse_train_dur, not protocol.pulse_train_dur: the protocol argument here
+        # is otherwise only used for the reconnect-fallback below, never on this, the normal
+        # success path (see this method's own docstring). None only when send_protocol() itself
+        # was bypassed (e.g. a test setting protocol_sent directly).
+        if self._sent_pulse_train_dur is None:
+            get_logger().info('Waiting for trigger...')
+        else:
+            get_logger().info('Waiting for trigger (expected duration once fired: %.2f ms)...',
+                              self._sent_pulse_train_dur)
 
         if self.is_connected():
             self._send_command('TRIGGERMODE=1\r\n')
@@ -195,8 +217,6 @@ class SonicConcepts(ds.ControlDrivingSystem):
         the caller's behalf.
         """
 
-        get_logger().info('Executing protocol...')
-
         # Checked regardless of connection state, and before it: a protocol that was never
         # sent is a caller mistake either way (never connected at all, or connected but
         # forgot to call send_protocol()) -- not something to silently paper over here.
@@ -205,6 +225,16 @@ class SonicConcepts(ds.ControlDrivingSystem):
                        'execute_protocol().')
             get_logger().critical(message)
             raise FDSValidationError(message)
+
+        # Not "Executing protocol...": the START command below returns almost instantly, so
+        # there's nothing left "in progress" to report. self._sent_pulse_train_dur, not
+        # protocol.pulse_train_dur, since protocol is otherwise unused on this path; None only
+        # when send_protocol() itself was bypassed (e.g. a test setting protocol_sent directly).
+        if self._sent_pulse_train_dur is None:
+            get_logger().info('Executing...')
+        else:
+            get_logger().info('Executing (expected duration: %.2f ms)...',
+                              self._sent_pulse_train_dur)
 
         if self.is_connected():
             try:
@@ -218,6 +248,8 @@ class SonicConcepts(ds.ControlDrivingSystem):
                 message = f"Exception: {why}"
                 get_logger().critical(message)
                 raise FDSHardwareError(message) from why
+
+            get_logger().info('Protocol executed.')
 
         else:
             get_logger().warning("No connection with driving system.")

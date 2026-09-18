@@ -221,7 +221,7 @@ class IGT(ds.ControlDrivingSystem):
             f'{self.sent_protocols[buffer_num]["total_protocol_duration_ms"]:.2f} ms total ' +
             'protocol duration.')
 
-    def connect(self, connect_info, log_dir=None, log_name=None, attempt=0):
+    def connect(self, connect_info, log_dir=None, log_name=None):
         """
         Connects to the IGT ultrasound driving system.
 
@@ -229,15 +229,11 @@ class IGT(ds.ControlDrivingSystem):
         recreating the native unifus.FUSSystem() and re-registering a listener on an already
         live connection -- a plausible source of instability (GitHub issue #126).
 
-        On the first attempt, also forces a disconnect on a throwaway FUSSystem() before
-        actually connecting, in case a previous (possibly crashed) session left the native
-        driver holding a connection this fresh process has no handle to -- an experimental
-        mitigation, see the inline comment below (GitHub issue #126). A short delay (config
-        'General'/'Delay before reconnecting [s]') follows every disconnect-then-reconnect
-        below, giving the driver a moment to settle instead of immediately hammering it with
-        another connection attempt -- also #126: an unrelated cause under the driver/OS layer
-        remains the leading hypothesis, but repeatedly retrying without any pause is, on its
-        own, a plausible way for our own code to make an already-fragile driver worse.
+        The native unifus.FUSSystem()/listener and unifus logging are created exactly once, on
+        the very first connect() call, and reused for every later connect()/disconnect() cycle:
+        the wrong initialization order (recreating that native object across reconnection
+        attempts) was crashing the interpreter outright, not raising a catchable exception.
+        connect() no longer recurses for the same reason: retrying is now a plain loop.
 
         Parameters:
             connect_info (str): Path with IGT driving system-specific configuration file.
@@ -248,11 +244,7 @@ class IGT(ds.ControlDrivingSystem):
             (GitHub issue #61).
         """
 
-        # Only checked on the initial, externally-invoked call (attempt == 0) -- an internal
-        # retry recursion (attempt > 0) is already mid-reconnect and has its own explicit
-        # isConnected() check further below; re-checking here too would consume that same
-        # live status early and short-circuit the retry with a stale verdict.
-        if attempt == 0 and self.is_connected():
+        if self.is_connected():
             get_logger().info('Already connected, skipping reconnection.')
             return True
 
@@ -260,29 +252,6 @@ class IGT(ds.ControlDrivingSystem):
 
         reconnect_delay_s = float(get_config_value(get_logger(), config, 'General',
                                                    'Delay before reconnecting [s]', 2))
-
-        if attempt == 0:
-            # Experimental mitigation for the non-deterministic kernel-death crashes
-            # reported in GitHub issue #126. is_connected() (checked above and further
-            # below) only reflects state tracked by *this* process/instance -- a fresh
-            # process (e.g. a new Spyder console the next morning) always starts
-            # disconnected, so it can never reveal whether a previous, possibly crashed
-            # session left the native driver holding a connection open. Forcing a
-            # disconnect on a throwaway
-            # FUSSystem() here gives the driver a chance to release that stale state
-            # before the real attempt below. Unverified whether this actually reduces
-            # kernel deaths -- logged explicitly so frequency can be compared over time.
-            try:
-                get_logger().debug('Forcing a disconnect on a fresh FUSSystem before ' +
-                                   'connecting, in case a previous session left a stale ' +
-                                   'connection (#126).')
-                stale_fus = unifus.FUSSystem()
-                stale_fus.clearListeners()
-                stale_fus.disconnect()
-                time.sleep(reconnect_delay_s)
-            except Exception as e:
-                get_logger().debug('Pre-connect defensive disconnect raised (expected if ' +
-                                   f'there was nothing to clean up): {e}')
 
         if log_dir is None:
             log_dir = get_config_value(get_logger(), config, 'Logging', 'Temporary logging path',
@@ -311,30 +280,36 @@ class IGT(ds.ControlDrivingSystem):
         max_attempts = int(get_config_value(get_logger(), config, 'General',
                                             'Maximum reconnection attempts', 5))
 
-        try:
-            # Establish connection with driving system
-            get_logger().debug('Before unifus.FUSSystem....')
-            self.fus = unifus.FUSSystem()
-            get_logger().debug('After unifus.FUSSystem....')
-        except Exception as e:
-            message = f'Error initializing FUSSystem: {e}'
-            get_logger().critical(message)
-            raise FDSHardwareError(message) from e
+        if self.fus is None:
+            try:
+                # A prefix so the native IGT log sorts and reads alongside this package's
+                # own log_info_*/log_debug_*/log_measurements_* files in the same session
+                # folder, all starting with the same recognizable "log_..." pattern.
+                native_log_prefix = get_config_value(get_logger(), config,
+                                                     'Equipment.Manufacturer.IGT',
+                                                     'Native IGT log filename prefix', 'log_igt_')
+                unifus.setLogPath(log_dir, native_log_prefix + log_name)
+                unifus.setLogLevel(unifus.LogLevel.Debug)
 
-        try:
-            # A prefix so the native IGT log sorts and reads alongside this package's
-            # own log_info_*/log_debug_*/log_measurements_* files in the same session
-            # folder, all starting with the same recognizable "log_..." pattern.
-            native_log_prefix = get_config_value(get_logger(), config,
-                                                 'Equipment.Manufacturer.IGT',
-                                                 'Native IGT log filename prefix', 'log_igt_')
-            unifus.setLogPath(log_dir, native_log_prefix + log_name)
-            unifus.setLogLevel(unifus.LogLevel.Debug)
+                get_logger().debug('After setting logging....')
+            except Exception as e:
+                message = f"Error setting up logging: {e}"
+                get_logger().error(message)
 
-            get_logger().debug('After setting logging....')
-        except Exception as e:
-            message = f"Error setting up logging: {e}"
-            get_logger().error(message)
+            try:
+                # Establish connection with driving system
+                get_logger().debug('Before unifus.FUSSystem....')
+                self.fus = unifus.FUSSystem()
+                get_logger().debug('After unifus.FUSSystem....')
+
+                # Create and register an event listener
+                self.listener = ExecListener()
+                self.fus.registerListener(self.listener)
+                get_logger().debug('After listener....')
+            except Exception as e:
+                message = f'Error initializing FUSSystem: {e}'
+                get_logger().critical(message)
+                raise FDSHardwareError(message) from e
 
         try:
             # Update the name of your configuration file
@@ -348,54 +323,25 @@ class IGT(ds.ControlDrivingSystem):
             get_logger().critical(message)
             raise FDSConfigError(message) from e
 
-        try:
-            # Create and register an event listener
-            self.listener = ExecListener()
-            self.fus.registerListener(self.listener)
-            get_logger().debug('After listener....')
+        for cur_attempt in range(max_attempts):
+            try:
+                self.fus.connect()
+                self.listener.wait_connection()
+                get_logger().debug('After wait_connection()....')
 
-            self.fus.connect()
-            self.listener.wait_connection()
-            get_logger().debug('After wait_connection()....')
-        except Exception as e:
-            get_logger().error(f"Error during connection or listener registration: {e}")
+                if self.is_connected():
+                    self.gen = self.fus.gen()
+                    self.n_channels = self.gen.getParam(unifus.GenParam.ChannelCount)
+                    get_logger().info("Driving system is connected. Generator: %s channels",
+                                      self.n_channels)
+                    return True
+            except Exception as e:
+                get_logger().error(f"Exception during connection: {e}")
 
-            if attempt < max_attempts:
-                get_logger().warning('Try to disconnect and reconnect...')
-                self.disconnect()
+            get_logger().warning("Error: connection failed.")
+            if cur_attempt + 1 < max_attempts:
+                get_logger().warning('Try to reconnect...')
                 time.sleep(reconnect_delay_s)
-                return self.connect(connect_info, log_dir, log_name, attempt=attempt+1)
-
-            message = f'Maximum amount of {max_attempts} for reconnecting is reached.'
-            get_logger().critical(message)
-            raise FDSHardwareError(message) from e
-
-        # Narrowly scoped to just the SDK calls -- the retry/raise logic below deliberately
-        # sits outside this try, so a nested FDSConfigError/FDSHardwareError from the recursive
-        # connect() call a few lines down propagates as-is instead of being caught and rewrapped
-        # by the except below.
-        try:
-            connected = self.is_connected()
-            if connected:
-                self.gen = self.fus.gen()
-                self.n_channels = self.gen.getParam(unifus.GenParam.ChannelCount)
-        except Exception as e:
-            message = f"Error after connection check: {e}"
-            get_logger().critical(message)
-            raise FDSHardwareError(message) from e
-
-        if connected:
-            get_logger().info("Driving system is connected. Generator: %s channels",
-                              self.n_channels)
-            return True
-
-        get_logger().warning("Error: connection failed.")
-
-        if attempt < max_attempts:
-            get_logger().warning('Try to disconnect and reconnect...')
-            self.disconnect()
-            time.sleep(reconnect_delay_s)
-            return self.connect(connect_info, log_dir, log_name, attempt=attempt+1)
 
         message = f'Maximum amount of {max_attempts} for reconnecting is reached.'
         get_logger().critical(message)
@@ -774,12 +720,11 @@ class IGT(ds.ControlDrivingSystem):
     def _log_intensity_summary(self, buffer_num, header):
         """
         Logs `header` at INFO level, followed by the intensity lines register_sent_protocol()
-        captured for this buffer at send_protocol() time -- shared by the "about to execute/wait
-        for trigger" and "confirmed executed" log points (GitHub #125/#122), so a researcher
-        knows what they're waiting for before a (possibly blocking) wait, and gets the same
-        information again once execution is confirmed successful. Always reflects what was
-        actually sent (see _build_intensity_lines()'s own docstring for why that's not the same
-        as re-reading the TUSProtocol/TransducerSlot objects live at this later point.
+        captured for this buffer at send_protocol() time: the one point the focus/power
+        actually sent is confirmed (GitHub #125/#122); execute_protocol()/wait_for_trigger()
+        only reference the expected duration afterward, not repeat this. Always reflects what
+        was actually sent (see _build_intensity_lines()'s own docstring for why that's not the
+        same as re-reading the TUSProtocol/TransducerSlot objects live at this later point.
 
         Parameters:
             buffer_num (int): Which hardware buffer to report on (starting at 0).
@@ -948,6 +893,18 @@ class IGT(ds.ControlDrivingSystem):
                 message = f"Error sending protocol to buffer {buffer_num}: {e}"
                 get_logger().critical(message)
                 raise FDSHardwareError(message) from e
+
+            # Confirms the send itself actually succeeded, with the timing/intensity a
+            # researcher would otherwise only find on DEBUG (register_sent_protocol()) or not
+            # at all until execute_protocol()/wait_for_trigger() much later.
+            sent_protocol_info = self.sent_protocols[buffer_num]
+            self._log_intensity_summary(
+                buffer_num,
+                f'Protocol sent successfully (buffer {buffer_num}): {protocol0.pulse_dur:.2f} '
+                f'ms pulse every {protocol0.pulse_rep_int:.2f} ms, '
+                f'{sent_protocol_info["n_pulse_train_rep"]} repetition(s) with '
+                f'{sent_protocol_info["pulse_train_delay"]:.2f} ms delay between, '
+                f'{sent_protocol_info["total_protocol_duration_ms"]:.2f} ms total duration.')
 
         else:
             get_logger().warning("No connection with driving system.")
@@ -1310,11 +1267,11 @@ class IGT(ds.ControlDrivingSystem):
                 get_logger().critical(message)
                 raise FDSValidationError(message)
 
-            get_logger().info(f"Waiting for a total of {n_triggers} trigger(s)...")
-
-            # Logged before arming, so a researcher knows what will fire once the external
-            # trigger comes in, before they go trigger it themselves (GitHub #125).
-            self._log_intensity_summary(buffer_num, 'This will fire once triggered:')
+            # The expected duration is repeated here since a researcher watching this specific
+            # wait would otherwise have to scroll back for it.
+            get_logger().info(
+                'Waiting for a total of %s trigger(s) (expected duration: %.2f ms)...',
+                n_triggers, sent_protocol_info.get('total_protocol_duration_ms') or 0)
 
             # Pure computation, not an SDK call -- kept outside the try below so a bug in it
             # isn't mislabeled as a hardware failure.
@@ -1407,7 +1364,7 @@ class IGT(ds.ControlDrivingSystem):
             get_logger().critical(message)
             raise FDSHardwareError(message)
 
-        self._log_intensity_summary(buffer_num, 'Triggered protocol executed successfully:')
+        get_logger().info('Triggered protocol executed successfully.')
 
     def has_execution_error(self):
         """
@@ -1492,8 +1449,9 @@ class IGT(ds.ControlDrivingSystem):
                                          exec_flags)
 
                 # Logged right before the (potentially long) blocking wait below, so a
-                # researcher watching the log knows what they're waiting for (GitHub #125).
-                self._log_intensity_summary(buffer_num, 'About to execute:')
+                # researcher watching the log knows how long to expect it to take.
+                get_logger().info('Executing (expected duration: %.2f ms)...',
+                                  sent_protocol_info.get('total_protocol_duration_ms') or 0)
 
                 self.gen.startSequence()
                 # wait_protocol() returns False specifically on timeout (see its own docstring
@@ -1526,11 +1484,8 @@ class IGT(ds.ControlDrivingSystem):
                 get_logger().critical(message)
                 raise FDSHardwareError(message) from why
 
-            # Confirms execution actually succeeded (GitHub #122), naming exactly what was
-            # fired (GitHub #125) -- distinct from "About to execute" above even though the
-            # values are identical, since the two log points confirm different things:
-            # intent, and actual outcome.
-            self._log_intensity_summary(buffer_num, 'Protocol executed successfully:')
+            # Confirms execution actually succeeded (GitHub #122).
+            get_logger().info('Protocol executed successfully.')
 
         else:
             # Reached only once a protocol is confirmed sent (above) -- reconnecting and
@@ -1584,7 +1539,6 @@ class IGT(ds.ControlDrivingSystem):
             self.gen.setPulseModulation([], 0, [], 0)  # disable any modulation
 
         if self.fus is not None:
-            self.fus.clearListeners()
             self.fus.disconnect()
 
             if not self.is_connected():

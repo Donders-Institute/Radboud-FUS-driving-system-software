@@ -195,9 +195,8 @@ class TestConnect:
 
     @pytest.fixture(autouse=True)
     def _no_real_sleep(self, mocker):
-        """connect() now sleeps briefly after every disconnect-then-reconnect (including the
-        attempt==0 defensive disconnect, GitHub issue #126) -- patched away so this test class
-        doesn't actually pause for real seconds."""
+        """connect() sleeps briefly between failed retry attempts (GitHub issue #126);
+        patched away so this test class doesn't actually pause for real seconds."""
         mocker.patch("fus_driving_systems.igt.igt_ds.time.sleep")
 
     def test_connect_uses_session_log_dir_for_native_igt_log_when_available(
@@ -275,82 +274,50 @@ class TestConnect:
         mock_fus_system.loadConfig.assert_called_once()
         mock_fus_system.connect.assert_called_once()
 
-    def test_connect_forces_a_defensive_disconnect_before_the_first_attempt(self, mocker,
-                                                                            mock_fus_system,
-                                                                            tmp_path):
-        """Experimental mitigation for GitHub issue #126: a throwaway FUSSystem() is
-        disconnected before the real connect attempt, in case a previous (possibly crashed)
-        session left the native driver holding a stale connection this fresh process has no
-        handle to. unifus.FUSSystem() is patched to always return mock_fus_system (see
-        conftest.py), so the throwaway instance and the "real" one are indistinguishable here
-        -- what matters is that clearListeners()/disconnect() get called exactly once before
-        the real connect flow proceeds."""
-        mock_fus_system.isConnected.return_value = True
-        fake_gen = mocker.Mock()
-        fake_gen.getParam.return_value = 8
-        mock_fus_system.gen.return_value = fake_gen
-        instance = IGT(log_dir=str(tmp_path))
-
-        result = instance.connect('igt/config/gen_test.json', log_dir=str(tmp_path))
-
-        assert result is True
-        assert mock_fus_system.clearListeners.call_count == 1
-        assert mock_fus_system.disconnect.call_count == 1
-
-    def test_connect_survives_when_the_defensive_disconnect_itself_raises(self, mocker,
-                                                                          mock_fus_system,
-                                                                          tmp_path):
-        """The defensive disconnect is a best-effort experiment, not a requirement -- if it
-        raises (e.g. nothing was there to clean up), connect() must still proceed normally."""
-        mock_fus_system.isConnected.return_value = True
-        mock_fus_system.disconnect.side_effect = RuntimeError("nothing to disconnect")
-        fake_gen = mocker.Mock()
-        fake_gen.getParam.return_value = 8
-        mock_fus_system.gen.return_value = fake_gen
-        instance = IGT(log_dir=str(tmp_path))
-
-        result = instance.connect('igt/config/gen_test.json', log_dir=str(tmp_path))
-
-        assert result is True
-
-    def test_connect_sleeps_after_the_defensive_disconnect_using_configured_delay(
-            self, mocker, mock_fus_system, tmp_path, patch_config):
-        """GitHub issue #126: repeatedly hammering the driver without any pause is, on its
-        own, a plausible way to worsen an already-fragile connection -- a configurable delay
-        follows every disconnect-then-reconnect, starting with the attempt==0 defensive one.
-
-        The patched time.sleep is process-wide (the real time module, not a copy scoped to
-        igt_ds.py), so it also picks up ExecListener.wait_connection()'s own unrelated 0.2s
-        poll interval -- assertions below count only the reconnect-delay calls, not the full
-        call list, to avoid coupling this test to that unrelated polling detail."""
-        patch_config.set('General', 'Delay before reconnecting [s]', '3')
-        sleep_mock = mocker.patch("fus_driving_systems.igt.igt_ds.time.sleep")
-        mock_fus_system.isConnected.return_value = True
+    def test_connect_creates_fus_and_listener_only_once_across_reconnects(
+            self, mocker, mock_fus_system, tmp_path):
+        """The wrong initialization order (recreating unifus.FUSSystem()/the listener across
+        reconnection attempts) was crashing the interpreter outright (see this method's own
+        docstring): both must be created on the first connect() only, and reused as-is by
+        every later disconnect()/connect() cycle."""
+        fus_system_mock = mocker.patch("fus_driving_systems.igt.igt_ds.unifus.FUSSystem",
+                                       return_value=mock_fus_system)
+        # connected after connect()'s own retry check; disconnected by disconnect()'s own
+        # final check and by connect()'s "already connected?" guard on the second call;
+        # connected again after the second connect()'s own retry check.
+        mock_fus_system.isConnected.side_effect = [True, False, False, True]
         fake_gen = mocker.Mock()
         fake_gen.getParam.return_value = 8
         mock_fus_system.gen.return_value = fake_gen
         instance = IGT(log_dir=str(tmp_path))
 
         instance.connect('igt/config/gen_test.json', log_dir=str(tmp_path))
+        instance.disconnect()
+        instance.connect('igt/config/gen_test.json', log_dir=str(tmp_path))
 
-        assert sleep_mock.call_args_list.count(mocker.call(3.0)) == 1
+        fus_system_mock.assert_called_once()
+        mock_fus_system.registerListener.assert_called_once()
 
     def test_connect_sleeps_between_retries_using_configured_delay(self, mocker, mock_fus_system,
                                                                    tmp_path, patch_config):
-        """See the docstring above for why this only counts the reconnect-delay calls rather
-        than asserting on the full call list."""
-        patch_config.set('General', 'Maximum reconnection attempts', '1')
+        """Repeatedly hammering the driver without any pause is, on its own, a plausible way
+        to worsen an already-fragile connection: a configurable delay follows every failed
+        attempt except the last (there's nothing left to wait for once giving up).
+
+        The patched time.sleep is process-wide (the real time module, not a copy scoped to
+        igt_ds.py), so it also picks up ExecListener.wait_connection()'s own unrelated 0.2s
+        poll interval; counting only the reconnect-delay calls avoids coupling this test to
+        that unrelated polling detail."""
+        patch_config.set('General', 'Maximum reconnection attempts', '2')
         patch_config.set('General', 'Delay before reconnecting [s]', '5')
         sleep_mock = mocker.patch("fus_driving_systems.igt.igt_ds.time.sleep")
         mock_fus_system.isConnected.return_value = False
         instance = IGT(log_dir=str(tmp_path))
-        mocker.patch.object(instance, 'disconnect')  # not under test here
 
         with pytest.raises(FDSHardwareError):
             instance.connect('igt/config/gen_test.json', log_dir=str(tmp_path))
 
-        # once for the attempt==0 defensive disconnect, once for the actual retry
-        assert sleep_mock.call_args_list.count(mocker.call(5.0)) == 2
+        assert sleep_mock.call_args_list.count(mocker.call(5.0)) == 1
 
     def test_connect_raises_immediately_when_fus_system_construction_fails(self, mocker, tmp_path):
         mocker.patch("fus_driving_systems.igt.igt_ds.unifus.FUSSystem",
@@ -362,43 +329,25 @@ class TestConnect:
 
     def test_connect_retries_then_raises_when_never_reports_connected(
             self, mocker, mock_fus_system, tmp_path, patch_config):
-        patch_config.set('General', 'Maximum reconnection attempts', '1')
+        patch_config.set('General', 'Maximum reconnection attempts', '3')
         mock_fus_system.isConnected.return_value = False
         instance = IGT(log_dir=str(tmp_path))
-        mocker.patch.object(instance, 'disconnect')  # not under test here
 
         with pytest.raises(FDSHardwareError):
             instance.connect('igt/config/gen_test.json', log_dir=str(tmp_path))
 
-        assert instance.disconnect.call_count == 1  # exactly one retry attempted
-
-    def test_connect_surfaces_config_error_from_a_retry_attempt_as_such(
-            self, mocker, mock_fus_system, tmp_path, patch_config):
-        """Regression test: the recursive retry call used to sit inside the same try/except
-        that wraps the post-connection-check block -- a retry attempt whose own loadConfig()
-        fails with FDSConfigError would fall through that block's broad except and get
-        mislabeled as FDSHardwareError instead. loadConfig() succeeds on the first attempt (so
-        the retry is actually reached) and fails on the second."""
-        patch_config.set('General', 'Maximum reconnection attempts', '1')
-        mock_fus_system.isConnected.return_value = False
-        mock_fus_system.loadConfig.side_effect = [None, RuntimeError('config boom')]
-        instance = IGT(log_dir=str(tmp_path))
-        mocker.patch.object(instance, 'disconnect')  # not under test here
-
-        with pytest.raises(FDSConfigError):
-            instance.connect('igt/config/gen_test.json', log_dir=str(tmp_path))
+        assert mock_fus_system.connect.call_count == 3  # every attempt genuinely retried
 
     def test_connect_returns_true_after_a_successful_retry(self, mocker, mock_fus_system,
                                                            tmp_path, patch_config):
         """The boolean return value must propagate through a retry, not just the first
-        (failed) attempt -- connect() recurses via 'return self.connect(...)'."""
-        patch_config.set('General', 'Maximum reconnection attempts', '1')
+        (failed) attempt."""
+        patch_config.set('General', 'Maximum reconnection attempts', '2')
         mock_fus_system.isConnected.side_effect = [False, True]  # fails once, then succeeds
         fake_gen = mocker.Mock()
         fake_gen.getParam.return_value = 8
         mock_fus_system.gen.return_value = fake_gen
         instance = IGT(log_dir=str(tmp_path))
-        mocker.patch.object(instance, 'disconnect')  # not under test here
 
         result = instance.connect('igt/config/gen_test.json', log_dir=str(tmp_path))
 
@@ -1055,13 +1004,41 @@ class TestSendProtocol:
                      return_value=100.0)
 
         fake_protocol = SimpleNamespace(
-            buffer_num=0, pulse_train_rep_dur=20, pulse_train_rep_int=10,
-            pulse_ramp_shape='Rectangular - no ramping', **_ready(_slot()))
+            buffer_num=0, pulse_dur=1.0, pulse_rep_int=2.0, pulse_train_rep_dur=20,
+            pulse_train_rep_int=10, pulse_ramp_shape='Rectangular - no ramping',
+            **_ready(_slot()))
 
         connected_instance.send_protocol([fake_protocol])
 
         connected_instance.gen.sendSequence.assert_called_once_with(0, [fake_pulse, fake_pulse])
         assert connected_instance.is_protocol_sent(0) is True
+
+    def test_logs_confirmation_with_timing_and_intensity(self, mocker, connected_instance,
+                                                         caplog, patch_config):
+        """The one point the focus/power actually sent is confirmed (GitHub #125/#122);
+        execute_protocol()/wait_for_trigger() only reference the expected duration afterward,
+        not repeat this (see _log_intensity_summary()'s own docstring)."""
+        patch_config.set('Ramp', 'Option.rect', 'Rectangular - no ramping')
+        mocker.patch.object(connected_instance, 'validate_protocol', return_value=[])
+        fake_pulse = mocker.Mock()
+        mocker.patch.object(connected_instance, '_define_pulse_group',
+                            return_value=(fake_pulse, [1.0, 2.0]))
+        mocker.patch.object(connected_instance, '_define_pulse_train',
+                            return_value=([fake_pulse, fake_pulse], 5.0))
+        mocker.patch('fus_driving_systems.igt.igt_ds.unifus.sequenceDurationMs',
+                     return_value=100.0)
+
+        fake_protocol = SimpleNamespace(
+            buffer_num=0, pulse_dur=1.0, pulse_rep_int=2.0, pulse_train_rep_dur=20,
+            pulse_train_rep_int=10, pulse_ramp_shape='Rectangular - no ramping',
+            **_ready(_slot()))
+
+        with caplog.at_level('INFO'):
+            connected_instance.send_protocol([fake_protocol])
+
+        assert 'Protocol sent successfully (buffer 0): 1.00 ms pulse every 2.00 ms, ' \
+            '2 repetition(s)' in caplog.text
+        assert 'TRAN-A: fake intensity summary' in caplog.text
 
     def test_wraps_send_sequence_failure_as_hardware_error(
             self, mocker, connected_instance, patch_config):
@@ -1169,8 +1146,8 @@ class TestSendProtocol:
             buffer_num=0,
             driving_sys=SimpleNamespace(connect_info='igt/config/gen_test.json', available_ch=1,
                                         max_buffers=2),
-            slots=[_slot()], pulse_train_rep_dur=20, pulse_train_rep_int=10,
-            pulse_ramp_shape='Rectangular - no ramping')
+            slots=[_slot()], pulse_dur=1.0, pulse_rep_int=2.0, pulse_train_rep_dur=20,
+            pulse_train_rep_int=10, pulse_ramp_shape='Rectangular - no ramping')
 
         instance.send_protocol([fake_protocol])
 
@@ -1200,10 +1177,12 @@ class TestSendProtocol:
         # test_exits_when_interleaved_protocols_target_different_buffers below) -- both use
         # buffer_num=0 here, matching this file's usual convention of using 0 unless a test is
         # specifically about buffer selection.
-        protocol1 = SimpleNamespace(buffer_num=0, pulse_rep_int=10, pulse_train_dur=999,
+        protocol1 = SimpleNamespace(buffer_num=0, pulse_dur=1.0, pulse_rep_int=10,
+                                    pulse_train_dur=999,
                                     pulse_ramp_shape='Rectangular - no ramping', pulse_ramp_dur=0,
                                     **_ready(_slot()))
-        protocol2 = SimpleNamespace(buffer_num=0, pulse_rep_int=15, pulse_train_dur=999,
+        protocol2 = SimpleNamespace(buffer_num=0, pulse_dur=1.0, pulse_rep_int=15,
+                                    pulse_train_dur=999,
                                     pulse_ramp_shape='Rectangular - no ramping', pulse_ramp_dur=0,
                                     **_ready(_slot()))
 
@@ -1233,13 +1212,13 @@ class TestSendProtocol:
         # Every interleaved protocol must target the same buffer -- see the two-protocol test
         # above.
         protocols = [
-            SimpleNamespace(buffer_num=0, pulse_rep_int=10, pulse_train_dur=999,
+            SimpleNamespace(buffer_num=0, pulse_dur=1.0, pulse_rep_int=10, pulse_train_dur=999,
                             pulse_ramp_shape='Rectangular - no ramping', pulse_ramp_dur=0,
                             **_ready(_slot())),
-            SimpleNamespace(buffer_num=0, pulse_rep_int=10, pulse_train_dur=999,
+            SimpleNamespace(buffer_num=0, pulse_dur=1.0, pulse_rep_int=10, pulse_train_dur=999,
                             pulse_ramp_shape='Rectangular - no ramping', pulse_ramp_dur=0,
                             **_ready(_slot())),
-            SimpleNamespace(buffer_num=0, pulse_rep_int=10, pulse_train_dur=999,
+            SimpleNamespace(buffer_num=0, pulse_dur=1.0, pulse_rep_int=10, pulse_train_dur=999,
                             pulse_ramp_shape='Rectangular - no ramping', pulse_ramp_dur=0,
                             **_ready(_slot())),
         ]
@@ -1323,9 +1302,9 @@ class TestSendProtocol:
         mocker.patch('fus_driving_systems.igt.igt_ds.unifus.sequenceDurationMs',
                      return_value=100.0)
 
-        fake_protocol = SimpleNamespace(buffer_num=0, pulse_train_rep_dur=20,
-                                        pulse_train_rep_int=10, pulse_ramp_shape='Linear',
-                                        **_ready(_slot()))
+        fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=1.0, pulse_rep_int=2.0,
+                                        pulse_train_rep_dur=20, pulse_train_rep_int=10,
+                                        pulse_ramp_shape='Linear', **_ready(_slot()))
 
         connected_instance.send_protocol([fake_protocol])
 
@@ -1600,10 +1579,10 @@ class TestExecuteProtocol:
 
         connected_instance.listener.wait_protocol.assert_called_once()
 
-    def test_logs_intensity_summary_before_and_after_execution(self, connected_instance, caplog):
-        """GitHub #125/#122: a researcher should see what's about to run before the (possibly
-        blocking) wait, and get the same confirmation once execution is actually confirmed
-        successful."""
+    def test_logs_expected_duration_then_confirms_completion(self, connected_instance, caplog):
+        """The focus/power values themselves were already confirmed once, at send_protocol()
+        time (GitHub #125/#122); only the expected duration is repeated here, so a researcher
+        watching this specific wait can work out roughly when it'll be done."""
         fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=0.5, pulse_ramp_dur=0,
                                         pulse_ramp_shape='Rectangular - no ramping',
                                         slots=[_slot(serial='TRAN-A')])
@@ -1615,9 +1594,8 @@ class TestExecuteProtocol:
         with caplog.at_level('INFO'):
             connected_instance.execute_protocol([fake_protocol])
 
-        assert 'About to execute:' in caplog.text
-        assert 'Protocol executed successfully:' in caplog.text
-        assert caplog.text.count('TRAN-A: fake intensity summary') == 2
+        assert 'Executing (expected duration: 500.00 ms)...' in caplog.text
+        assert 'Protocol executed successfully.' in caplog.text
 
     def test_raises_when_given_protocol_does_not_match_sent(self, connected_instance):
         """is_protocol_sent(buffer_num) alone only proves *something* was sent to this buffer,
@@ -2126,9 +2104,9 @@ class TestWaitForTrigger:
             connected_instance.wait_for_trigger([fake_protocol], 'TriggerOnePulseTrain',
                                                 n_triggers=3)
 
-    def test_logs_intensity_summary_before_arming(self, connected_instance, caplog, patch_config):
-        """GitHub #125: a researcher should see what's about to fire before going to trigger it
-        themselves and wait for the result."""
+    def test_logs_expected_duration_before_arming(self, connected_instance, caplog, patch_config):
+        """The focus/power values that will fire were already confirmed once, at
+        send_protocol() time (GitHub #125); only the expected duration is repeated here."""
         patch_config.set('Trigger', 'Option.pulse_train', 'TriggerOnePulseTrain')
         patch_config.set('Trigger', 'Option.whole_protocol', 'TriggerWholeProtocol')
         fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=0.5, pulse_ramp_dur=0,
@@ -2136,14 +2114,15 @@ class TestWaitForTrigger:
                                         slots=[_slot(serial='TRAN-A')])
         connected_instance.sent_protocols = {0: {
             'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
+            'total_protocol_duration_ms': 500.0,
             'intensity_lines': connected_instance._build_intensity_lines([fake_protocol], 0)}}
 
         with caplog.at_level('INFO'):
             connected_instance.wait_for_trigger([fake_protocol], 'TriggerOnePulseTrain',
                                                 n_triggers=3)
 
-        assert 'This will fire once triggered:' in caplog.text
-        assert 'TRAN-A: fake intensity summary' in caplog.text
+        assert 'Waiting for a total of 3 trigger(s) (expected duration: 500.00 ms)...' \
+            in caplog.text
 
     def test_raises_when_given_protocol_does_not_match_sent(self, connected_instance,
                                                             patch_config):
@@ -2245,20 +2224,16 @@ class TestWaitForTriggerResult:
 
         connected_instance.listener.wait_protocol.assert_called_once_with(10.0)
 
-    def test_logs_intensity_summary_on_confirmed_success(self, connected_instance, caplog):
-        """GitHub #122/#125: confirms what was actually fired once the driving system reports
-        the triggered execution succeeded -- sourced from what send_protocol() actually sent to
-        this buffer, not from a caller-supplied protocol."""
-        sent_protocol = SimpleNamespace(buffer_num=0, slots=[_slot(serial='TRAN-A')])
-        connected_instance.sent_protocols[0] = {
-            'intensity_lines': connected_instance._build_intensity_lines([sent_protocol], 0),
-            'armed': True}
+    def test_logs_confirmation_on_confirmed_success(self, connected_instance, caplog):
+        """Confirms the triggered execution succeeded once the driving system reports it: the
+        focus/power values that fired were already confirmed once, at send_protocol() time
+        (GitHub #122/#125), not repeated here."""
+        connected_instance.sent_protocols[0] = {'armed': True}
 
         with caplog.at_level('INFO'):
             connected_instance.wait_for_trigger_result(0, timeout_s=10.0)
 
-        assert 'Triggered protocol executed successfully:' in caplog.text
-        assert 'TRAN-A: fake intensity summary' in caplog.text
+        assert 'Triggered protocol executed successfully.' in caplog.text
 
     def test_raises_when_nothing_was_ever_sent_to_this_buffer(self, connected_instance):
         """A buffer_num that was never actually sent to (e.g. a caller typo, or calling this
@@ -2348,13 +2323,16 @@ class TestAbort:
 class TestDisconnect:
 
     def test_stops_protocol_and_marks_disconnected(self, mocker, connected_instance):
+        """clearListeners() is deliberately not called here: unlike a real disconnect from the
+        driver's own point of view, this instance's fus/listener are meant to survive for the
+        next connect() to reuse (see connect()'s own docstring)."""
         mocker.patch("fus_driving_systems.igt.igt_ds.time.sleep")
         connected_instance.fus.isConnected.return_value = False
 
         connected_instance.disconnect()
 
         connected_instance.gen.stopSequence.assert_called_once()
-        connected_instance.fus.clearListeners.assert_called_once()
+        connected_instance.fus.clearListeners.assert_not_called()
         connected_instance.fus.disconnect.assert_called_once()
         assert connected_instance.is_connected() is False
 
