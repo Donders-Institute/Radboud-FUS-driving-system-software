@@ -273,7 +273,7 @@ class TransducerSlot:
 
             elif self.chosen_power in self.driving_sys.native_power_params:
                 info += (f"{self.chosen_power} is already {self.driving_sys.serial}'s native " +
-                         "power parameter -- no pressure correction needed. \n ")
+                         "power parameter, no pressure correction needed. \n ")
             else:
                 info += ("Pressure correction with an increasing focal depth not available in " +
                          "the configuration file for this driving system and transducer " +

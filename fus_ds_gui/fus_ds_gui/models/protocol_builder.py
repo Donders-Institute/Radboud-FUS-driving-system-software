@@ -15,14 +15,19 @@ from fus_driving_systems.sonic_concepts.sonic_concepts_ds import SonicConcepts
 from fus_driving_systems.tus_protocol import TUSProtocol
 from fus_driving_systems.utils import get_config_value
 
+from fus_ds_gui.models.mock_driving_system import MockIGT, MockSonicConcepts
+
 # Maps DrivingSystem.manufact (uppercased) to the concrete ControlDrivingSystem subclass that
 # actually implements it. Adding a new manufacturer to fus_driving_systems (its own
 # ControlDrivingSystem subclass, see the core package's own README) must also register that
 # subclass here; this dict is the only place the GUI learns such a class exists at all. CITRUS
-# is deliberately absent.
+# is deliberately absent. Mock IGT/Mock SC, unlike the real IGT/SonicConcepts, live in
+# fus_ds_gui itself, see their own docstrings.
 _DRIVING_SYSTEM_CLASSES = {
     'IGT': IGT,
     'SONIC CONCEPTS': SonicConcepts,
+    'MOCK IGT': MockIGT,
+    'MOCK SC': MockSonicConcepts,
 }
 
 

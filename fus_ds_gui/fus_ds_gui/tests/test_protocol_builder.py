@@ -10,6 +10,7 @@ from fus_driving_systems.exceptions import FDSConfigError
 from fus_driving_systems.igt.igt_ds import IGT
 from fus_driving_systems.sonic_concepts.sonic_concepts_ds import SonicConcepts
 
+from fus_ds_gui.models.mock_driving_system import MockIGT, MockSonicConcepts
 from fus_ds_gui.models.protocol_builder import ProtocolBuilder, _create_ds_instance
 
 
@@ -80,6 +81,24 @@ def test_create_ds_instance_maps_sonic_concepts_case_insensitively(patch_config)
     ds.set_ds_info('UNITTEST_SC')
 
     assert isinstance(_create_ds_instance(ds), SonicConcepts)
+
+
+def test_create_ds_instance_maps_mock_igt_case_insensitively(patch_config):
+    _configure_driving_system(patch_config, 'UNITTEST_MOCK_IGT', manufacturer='mock igt')
+    from fus_driving_systems import driving_system
+    ds = driving_system.DrivingSystem()
+    ds.set_ds_info('UNITTEST_MOCK_IGT')
+
+    assert isinstance(_create_ds_instance(ds), MockIGT)
+
+
+def test_create_ds_instance_maps_mock_sc_case_insensitively(patch_config):
+    _configure_driving_system(patch_config, 'UNITTEST_MOCK_SC', manufacturer='mock sc')
+    from fus_driving_systems import driving_system
+    ds = driving_system.DrivingSystem()
+    ds.set_ds_info('UNITTEST_MOCK_SC')
+
+    assert isinstance(_create_ds_instance(ds), MockSonicConcepts)
 
 
 def test_create_ds_instance_raises_for_unsupported_manufacturer(patch_config):
@@ -316,6 +335,33 @@ def test_uses_pulse_train_repetition_false_for_sonic_concepts(patch_config):
     from fus_driving_systems import driving_system
     ds = driving_system.DrivingSystem()
     ds.set_ds_info('UNITTEST_SC')
+    builder = ProtocolBuilder(ds)
+
+    assert builder.uses_pulse_train_repetition() is False
+
+
+def test_uses_pulse_train_repetition_true_for_mock_igt(patch_config):
+    """MockIGT is a real IGT instance (see its own docstring), so this must behave exactly like
+    the real IGT case above, not like the old, single, manufacturer-agnostic Mock did."""
+    _configure_driving_system(patch_config, 'UNITTEST_MOCK_IGT', manufacturer='Mock IGT')
+    _configure_transducer(patch_config, 'UNITTEST_TRAN')
+    from fus_driving_systems import driving_system
+    ds = driving_system.DrivingSystem()
+    ds.set_ds_info('UNITTEST_MOCK_IGT')
+    builder = ProtocolBuilder(ds)
+
+    assert builder.uses_pulse_train_repetition() is True
+
+
+def test_uses_pulse_train_repetition_false_for_mock_sc(patch_config):
+    _configure_driving_system(patch_config, 'UNITTEST_MOCK_SC', manufacturer='Mock SC')
+    section = 'Equipment.Driving system.UNITTEST_MOCK_SC'
+    patch_config.set(section, 'Power options', 'Global power [mW]')
+    patch_config.set(section, 'Native power parameters', 'Global power [mW]')
+    _configure_transducer(patch_config, 'UNITTEST_TRAN')
+    from fus_driving_systems import driving_system
+    ds = driving_system.DrivingSystem()
+    ds.set_ds_info('UNITTEST_MOCK_SC')
     builder = ProtocolBuilder(ds)
 
     assert builder.uses_pulse_train_repetition() is False

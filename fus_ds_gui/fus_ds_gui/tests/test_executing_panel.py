@@ -160,7 +160,10 @@ def test_a_later_edit_disables_send_again(qtbot, planning_tab_sc):
     assert panel.execution_panel.lock_hint_label.isVisible() is True
 
 
-def test_on_sent_shows_the_sent_protocol_summary_and_enables_execute(qtbot, planning_tab_igt):
+def test_on_sent_shows_a_plain_confirmation_and_enables_execute(qtbot, planning_tab_igt):
+    """Deliberately just a plain confirmation, not the protocol's own field values: see
+    ExecutionPanel's own docstring for why those belong to the console log instead (the driving
+    system's own send_protocol()/execute_protocol() already log them there)."""
     _select_first_driving_system(planning_tab_igt)
     _apply_a_valid_slot(planning_tab_igt)
     panel = ExecutingPanel(planning_tab_igt)
@@ -169,8 +172,56 @@ def test_on_sent_shows_the_sent_protocol_summary_and_enables_execute(qtbot, plan
 
     panel._on_sent()
 
-    assert panel.execution_panel.sent_protocol_label.text() == str(panel._sent_protocol)
+    assert panel.execution_panel.sent_protocol_label.text() == (
+        "Protocol sent. See the console below for details.")
     assert panel.execution_panel.execute_button.isEnabled() is True
+
+
+def test_on_sent_disables_send_until_something_changes(qtbot, planning_tab_sc):
+    """Nothing changed since this exact send, so Send staying enabled would just invite
+    resending the same, unmodified protocol again for no reason."""
+    _select_first_driving_system(planning_tab_sc)
+    _apply_a_valid_slot(planning_tab_sc)
+    panel = ExecutingPanel(planning_tab_sc)
+    qtbot.addWidget(panel)
+    panel._worker = MagicMock()
+    panel._on_connected(True)
+    assert panel.execution_panel.send_button.isEnabled() is True  # sanity check
+    panel._sent_protocol = planning_tab_sc.current_protocol()
+
+    panel._on_sent()
+
+    assert panel.execution_panel.send_button.isEnabled() is False
+
+    planning_tab_sc._slot_editors[0].power_value_spin.setValue(0.6)  # unlocks
+    _apply_a_valid_slot(planning_tab_sc)  # re-applying re-locks
+
+    assert panel.execution_panel.send_button.isEnabled() is True
+
+
+def test_editing_after_send_disables_execute_again(qtbot, planning_tab_sc):
+    """PlanningTab.builder.protocol is mutated in place on every Apply, never replaced, so
+    self._sent_protocol (the same object) would otherwise keep reflecting whatever was edited
+    and re-applied after it was actually sent, with Execute still wrongly enabled from that
+    earlier send (see ExecutingPanel._invalidate_sent_protocol()'s own docstring). Needs a real
+    is_locked() transition (not just directly calling _on_sent()), so planning_tab_sc, not
+    planning_tab_igt: only Apply against a Sonic-Concepts-manufactured config can actually lock,
+    see that fixture's own docstring."""
+    _select_first_driving_system(planning_tab_sc)
+    _apply_a_valid_slot(planning_tab_sc)
+    assert planning_tab_sc.is_locked() is True  # sanity check
+    panel = ExecutingPanel(planning_tab_sc)
+    qtbot.addWidget(panel)
+    panel._sent_protocol = planning_tab_sc.current_protocol()
+    panel._on_sent()
+    assert panel.execution_panel.execute_button.isEnabled() is True  # sanity check
+
+    planning_tab_sc._slot_editors[0].power_value_spin.setValue(0.6)
+
+    assert panel._sent_protocol is None
+    assert panel.execution_panel.execute_button.isEnabled() is False
+    assert panel.execution_panel.sent_protocol_label.text() == (
+        "Protocol changed since it was sent. Send it again before executing.")
 
 
 def test_start_countdown_uses_pulse_train_rep_dur_for_igt(qtbot, planning_tab_igt):
@@ -222,7 +273,7 @@ def test_on_executed_finishes_immediately_for_igt(qtbot, planning_tab_igt):
 
     panel._on_executed()
 
-    assert panel.execution_panel.countdown_label.isHidden() is True
+    assert panel.execution_panel.countdown_label.text() == "Execution complete."
     assert panel.execution_panel.execute_button.isEnabled() is True
     assert panel._countdown_timer.isActive() is False
 
@@ -260,7 +311,7 @@ def test_countdown_reaching_zero_finishes_execution_for_sonic_concepts(qtbot, pa
 
     panel._on_countdown_tick()  # reaches 0
 
-    assert panel.execution_panel.countdown_label.isHidden() is True
+    assert panel.execution_panel.countdown_label.text() == "Execution complete."
     assert panel.execution_panel.execute_button.isEnabled() is True
 
 
@@ -282,7 +333,7 @@ def test_countdown_reaching_zero_does_not_finish_execution_for_igt(qtbot, planni
 
     panel._on_executed()
 
-    assert panel.execution_panel.countdown_label.isHidden() is True
+    assert panel.execution_panel.countdown_label.text() == "Execution complete."
     assert panel.execution_panel.execute_button.isEnabled() is True
 
 
@@ -365,3 +416,54 @@ def test_connect_click_runs_the_real_worker(qtbot, planning_tab_igt, monkeypatch
 
     panel.connection_panel.disconnect_button.click()
     qtbot.waitUntil(lambda: panel._worker is None, timeout=2000)
+
+
+def test_switching_driving_system_while_connected_disconnects_the_stale_worker(
+        qtbot, patch_config, monkeypatch):
+    """Without this, switching equipment while still connected would leave the old worker
+    connected underneath a Planning tab now showing a different driving system entirely.
+    Applying and sending a new protocol for it would silently go through that stale connection
+    instead (see ExecutingPanel._on_driving_system_changed()'s own docstring)."""
+    _configure_igt(patch_config, 'UNITTEST_IGT')
+    _configure_sonic_concepts(patch_config, 'UNITTEST_SC')
+    patch_config.set('Equipment', 'Driving systems', 'UNITTEST_IGT\nUNITTEST_SC')
+    planning_tab = PlanningTab()
+    qtbot.addWidget(planning_tab)
+    planning_tab.equipment_panel._driving_system_combo.setCurrentIndex(1)  # UNITTEST_IGT
+    panel = ExecutingPanel(planning_tab)
+    qtbot.addWidget(panel)
+    mock_ds = MagicMock(spec=IGT)
+    mock_ds.is_connected.return_value = True
+    monkeypatch.setattr(planning_tab.builder, 'create_control_instance', lambda: mock_ds)
+    panel.connection_panel.connect_button.click()
+    qtbot.waitUntil(
+        lambda: panel.connection_panel.status_label.text() == "Connected", timeout=2000)
+
+    planning_tab.equipment_panel._driving_system_combo.setCurrentIndex(2)  # UNITTEST_SC
+
+    qtbot.waitUntil(lambda: panel._worker is None, timeout=2000)
+    assert panel.connection_panel.status_label.text() == "Not connected"
+    assert panel.connection_panel.connect_button.isEnabled() is True
+
+
+def test_switching_driving_system_resets_the_sent_protocol_status(qtbot, patch_config):
+    """A protocol sent for a previously selected driving system belongs to that driving
+    system, not the newly chosen one; leaving it shown (and Execute enabled for it) would be
+    just as misleading as the stale worker above."""
+    _configure_igt(patch_config, 'UNITTEST_IGT')
+    _configure_sonic_concepts(patch_config, 'UNITTEST_SC')
+    patch_config.set('Equipment', 'Driving systems', 'UNITTEST_IGT\nUNITTEST_SC')
+    planning_tab = PlanningTab()
+    qtbot.addWidget(planning_tab)
+    planning_tab.equipment_panel._driving_system_combo.setCurrentIndex(1)  # UNITTEST_IGT
+    panel = ExecutingPanel(planning_tab)
+    qtbot.addWidget(panel)
+    panel._sent_protocol = planning_tab.current_protocol()
+    panel._on_sent()
+    assert panel.execution_panel.execute_button.isEnabled() is True  # sanity check
+
+    planning_tab.equipment_panel._driving_system_combo.setCurrentIndex(2)  # UNITTEST_SC
+
+    assert panel._sent_protocol is None
+    assert panel.execution_panel.sent_protocol_label.text() == "Nothing sent yet."
+    assert panel.execution_panel.execute_button.isEnabled() is False

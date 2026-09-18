@@ -12,14 +12,12 @@ from PySide6.QtWidgets import QLabel, QPushButton, QVBoxLayout, QWidget
 
 class ExecutionPanel(QWidget):
     """
-    Send/Execute buttons, the sent-protocol summary, and an estimated execution countdown. A
+    Send/Execute buttons, the sent-protocol status, and an estimated execution countdown. A
     thin composition widget, see ConnectionPanel's own docstring for why.
 
-    sent_protocol_label always shows the protocol that was actually last sent (via str(), the
-    same textual summary the core package itself already produces), separate from whatever the
-    Planning tab currently shows: the two can diverge if the researcher keeps editing after
-    sending, and this panel must always answer "what did I actually just send," not "what does
-    the form currently say."
+    sent_protocol_label only ever shows a plain "sent"/"not sent yet" status: the driving
+    system's own send_protocol()/execute_protocol() already log the real details to the
+    console panel, so repeating them here would just be a duplicate to keep in sync.
 
     Signals:
         send_clicked(): Emitted when the Send button is clicked.
@@ -47,9 +45,11 @@ class ExecutionPanel(QWidget):
         self.execute_button.clicked.connect(self.execute_clicked)
         self.execute_button.setEnabled(False)
 
-        # Labeled as an estimate throughout: IGT only confirms completion once
+        # Labeled as an estimate while counting down: IGT only confirms completion once
         # execute_protocol() itself returns; Sonic Concepts gives no ground truth at all (see
         # ProtocolBuilder.uses_pulse_train_repetition()'s own docstring on that asymmetry).
+        # Stays visible once done too (text becomes "Execution complete."), so finishing is
+        # never just a countdown silently disappearing.
         self.countdown_label = QLabel()
         self.countdown_label.setVisible(False)
 

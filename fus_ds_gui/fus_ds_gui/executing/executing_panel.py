@@ -75,9 +75,31 @@ class ExecutingPanel(QWidget):
 
         planning_tab.lock_changed.connect(self._refresh_send_enabled)
         planning_tab.equipment_panel.driving_system_changed.connect(
-            self._refresh_driving_system_label)
+            self._on_driving_system_changed)
         self._refresh_driving_system_label()
         self._refresh_send_enabled()
+
+    def _on_driving_system_changed(self):
+        """Switching equipment while still connected would otherwise leave a stale worker
+        connected to the driving system that's no longer selected: building and applying a new
+        protocol for the newly chosen one, then clicking Send, would silently go through that
+        old connection instead. Disconnects first (asynchronously, like clicking Disconnect
+        would) if a connection is active; _on_disconnected() refreshes the label itself once
+        that completes, so the immediate call below only matters while still connected. Also
+        clears whatever was last sent, for the same reason: it belonged to the driving system
+        that's no longer selected."""
+
+        if self._worker is not None:
+            self._on_disconnect_clicked()
+        self._reset_sent_state()
+        self._refresh_driving_system_label()
+
+    def _reset_sent_state(self):
+        self._countdown_timer.stop()
+        self._sent_protocol = None
+        self.execution_panel.sent_protocol_label.setText("Nothing sent yet.")
+        self.execution_panel.execute_button.setEnabled(False)
+        self.execution_panel.countdown_label.setVisible(False)
 
     def _refresh_driving_system_label(self):
         builder = self._planning_tab.builder
@@ -93,6 +115,25 @@ class ExecutingPanel(QWidget):
         locked = self._planning_tab.is_locked()
         self.execution_panel.lock_hint_label.setVisible(not locked)
         self.execution_panel.send_button.setEnabled(locked and self._worker is not None)
+        if not locked:
+            self._invalidate_sent_protocol()
+
+    def _invalidate_sent_protocol(self):
+        """PlanningTab.builder.protocol is mutated in place on every Apply, never replaced (see
+        its own docstring), so self._sent_protocol, the same object, would otherwise keep
+        reflecting whatever was edited and re-applied after it was actually sent, with Execute
+        still enabled from that earlier send. IGT's own execute_protocol() already refuses this
+        (_assert_not_reconfigured_since_send(), a real FDSSafetyError, not just a log message),
+        but Sonic Concepts has no equivalent check at all. Disabling Execute here the moment
+        anything changes protects both alike, and catches it before a researcher clicks Execute
+        at all rather than after. A no-op while nothing has been sent yet."""
+
+        if self._sent_protocol is None:
+            return
+        self._sent_protocol = None
+        self.execution_panel.sent_protocol_label.setText(
+            "Protocol changed since it was sent. Send it again before executing.")
+        self.execution_panel.execute_button.setEnabled(False)
 
     def _on_connect_clicked(self):
         builder = self._planning_tab.builder
@@ -185,8 +226,15 @@ class ExecutingPanel(QWidget):
         self._send_requested.emit(protocol)
 
     def _on_sent(self):
-        self.execution_panel.sent_protocol_label.setText(str(self._sent_protocol))
+        # Deliberately just a plain confirmation, not the protocol's own field values: see
+        # ExecutionPanel's own docstring for why those belong to the console log instead.
+        self.execution_panel.sent_protocol_label.setText(
+            "Protocol sent. See the console below for details.")
         self.execution_panel.execute_button.setEnabled(True)
+        # Nothing changed since this exact send, so sending again would just resend the same
+        # protocol, disabled until either editing it again unlocks (_invalidate_sent_protocol()
+        # re-enables via _refresh_send_enabled() once re-applied) or a fresh connection is made.
+        self.execution_panel.send_button.setEnabled(False)
 
     def _on_execute_clicked(self):
         self._start_countdown(self._sent_protocol)
@@ -208,7 +256,7 @@ class ExecutingPanel(QWidget):
 
     def _finish_execution(self):
         self._countdown_timer.stop()
-        self.execution_panel.countdown_label.setVisible(False)
+        self.execution_panel.countdown_label.setText("Execution complete.")
         self.execution_panel.execute_button.setEnabled(True)
 
     def _start_countdown(self, protocol):

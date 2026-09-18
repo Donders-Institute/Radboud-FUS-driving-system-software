@@ -122,7 +122,7 @@ class TUSProtocol():
         info = ''
 
         for i, slot in enumerate(self._slots):
-            info += f"--- Transducer slot {i} (counting from 0, i.e. slots[{i}]) --- \n "
+            info += f"Transducer slot {i} (counting from 0, i.e. slots[{i}]):\n "
             info += str(slot)
 
         info += f"Pulse duration [ms]: {self._timing_param['pulse_dur']} \n "
