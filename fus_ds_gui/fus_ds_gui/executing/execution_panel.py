@@ -21,11 +21,13 @@ class ExecutionPanel(QWidget):
 
     Signals:
         send_clicked(): Emitted when the Send button is clicked.
-        execute_clicked(): Emitted when the Execute button is clicked.
+        execute_clicked(): Emitted when the Execute/Arm button is clicked.
+        abort_clicked(): Emitted when the Abort button is clicked.
     """
 
     send_clicked = Signal()
     execute_clicked = Signal()
+    abort_clicked = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -45,6 +47,12 @@ class ExecutionPanel(QWidget):
         self.execute_button.clicked.connect(self.execute_clicked)
         self.execute_button.setEnabled(False)
 
+        # Runs on its own dedicated worker thread (see ExecutingPanel), so it can reach the
+        # hardware even while Execute/Arm is stuck in a blocking call on the main one.
+        self.abort_button = QPushButton("Abort")
+        self.abort_button.clicked.connect(self.abort_clicked)
+        self.abort_button.setEnabled(False)
+
         # Labeled as an estimate while counting down: IGT only confirms completion once
         # execute_protocol() itself returns; Sonic Concepts gives no ground truth at all (see
         # ProtocolBuilder.uses_pulse_train_repetition()'s own docstring on that asymmetry).
@@ -58,4 +66,5 @@ class ExecutionPanel(QWidget):
         layout.addWidget(self.sent_protocol_label)
         layout.addWidget(self.send_button)
         layout.addWidget(self.execute_button)
+        layout.addWidget(self.abort_button)
         layout.addWidget(self.countdown_label)

@@ -16,6 +16,7 @@ from fus_driving_systems.igt.igt_ds import IGT
 from fus_driving_systems.sonic_concepts.sonic_concepts_ds import SonicConcepts
 
 from fus_ds_gui.executing.executing_panel import ExecutingPanel
+from fus_ds_gui.executing.trigger_panel import WHOLE_PROTOCOL
 from fus_ds_gui.planning.planning_tab import PlanningTab
 
 
@@ -356,6 +357,59 @@ def test_worker_error_shows_a_dialog_and_resets_connection_state(
     assert panel.connection_panel.status_label.text() == "Not connected"
 
 
+def test_worker_error_is_suppressed_when_it_follows_a_successful_abort(
+        qtbot, planning_tab_igt, monkeypatch):
+    """A successful abort makes the blocked call it interrupted raise too, once it unwinds,
+    already reflected by _on_aborted(), so this must not also pop a confusing second dialog and
+    tear the connection down."""
+    panel = ExecutingPanel(planning_tab_igt)
+    qtbot.addWidget(panel)
+    panel._worker = MagicMock()
+    panel._thread = MagicMock()
+    shown = []
+    monkeypatch.setattr('fus_ds_gui.executing.executing_panel.show_fds_error',
+                        lambda parent, exc: shown.append(exc))
+    panel._on_abort_clicked()
+
+    panel._on_worker_error(FDSHardwareError("aborted before completion"))
+
+    assert shown == []
+    assert panel._worker is not None
+    assert panel._abort_pending is False
+
+
+def test_abort_pending_self_clears_after_the_grace_period(qtbot, planning_tab_igt, monkeypatch):
+    """Sonic Concepts' own non-blocking calls never raise a follow-up error after a successful
+    abort at all, so the suppression flag must not stay stuck forever, or a genuinely
+    unrelated later error would be wrongly swallowed too."""
+    panel = ExecutingPanel(planning_tab_igt)
+    qtbot.addWidget(panel)
+    panel._on_abort_clicked()
+    panel._on_aborted()
+    assert panel._abort_pending is True  # sanity check: still within the grace period
+
+    qtbot.wait(1100)
+
+    assert panel._abort_pending is False
+
+
+def test_abort_command_itself_failing_is_never_suppressed(qtbot, planning_tab_igt, monkeypatch):
+    panel = ExecutingPanel(planning_tab_igt)
+    qtbot.addWidget(panel)
+    panel._worker = MagicMock()
+    panel._thread = MagicMock()
+    shown = []
+    monkeypatch.setattr('fus_ds_gui.executing.executing_panel.show_fds_error',
+                        lambda parent, exc: shown.append(exc))
+    panel._on_abort_clicked()
+
+    exc = FDSHardwareError("abort itself failed")
+    panel._on_abort_command_failed(exc)
+
+    assert shown == [exc]
+    assert panel._worker is None
+
+
 def test_sonic_concepts_confirmation_declined_disconnects_and_shows_a_safety_error(
         qtbot, patch_config, monkeypatch):
     _configure_sonic_concepts(patch_config)
@@ -467,3 +521,152 @@ def test_switching_driving_system_resets_the_sent_protocol_status(qtbot, patch_c
     assert panel._sent_protocol is None
     assert panel.execution_panel.sent_protocol_label.text() == "Nothing sent yet."
     assert panel.execution_panel.execute_button.isEnabled() is False
+
+
+def test_execute_button_relabels_to_arm_when_trigger_checked(qtbot, planning_tab_igt):
+    panel = ExecutingPanel(planning_tab_igt)
+    qtbot.addWidget(panel)
+    assert panel.execution_panel.execute_button.text() == "Execute"  # sanity check
+
+    panel.trigger_panel.use_trigger_checkbox.setChecked(True)
+
+    assert panel.execution_panel.execute_button.text() == "Arm"
+
+
+def test_trigger_mode_controls_shown_only_for_igt(qtbot, planning_tab_igt, patch_config):
+    _select_first_driving_system(planning_tab_igt)
+    panel = ExecutingPanel(planning_tab_igt)
+    qtbot.addWidget(panel)
+    panel.show()
+    assert panel.trigger_panel.trigger_mode_combo.isVisible() is True
+
+    _configure_sonic_concepts(patch_config)
+    sc_tab = PlanningTab()
+    qtbot.addWidget(sc_tab)
+    _select_first_driving_system(sc_tab)
+    sc_panel = ExecutingPanel(sc_tab)
+    qtbot.addWidget(sc_panel)
+    sc_panel.show()
+
+    assert sc_panel.trigger_panel.trigger_mode_combo.isVisible() is False
+
+
+def test_execute_clicked_while_triggered_arms_instead_of_executing(qtbot, planning_tab_igt):
+    _select_first_driving_system(planning_tab_igt)
+    _apply_a_valid_slot(planning_tab_igt)
+    planning_tab_igt.builder.configure_timing(pulse_dur=1, pulse_train_rep_dur=5)
+    panel = ExecutingPanel(planning_tab_igt)
+    qtbot.addWidget(panel)
+    panel.show()
+    panel.trigger_panel.use_trigger_checkbox.setChecked(True)
+    panel._sent_protocol = planning_tab_igt.current_protocol()
+    armed = []
+    panel._arm_requested.connect(lambda *a: armed.append(a))
+
+    panel._on_execute_clicked()
+
+    assert armed == [(panel._sent_protocol, WHOLE_PROTOCOL, None)]
+    assert panel.trigger_panel.waiting_label.isVisible() is True
+    assert panel.execution_panel.execute_button.isEnabled() is False
+    assert panel.execution_panel.abort_button.isEnabled() is True
+
+
+def test_armed_updates_the_waiting_label(qtbot, planning_tab_igt):
+    _select_first_driving_system(planning_tab_igt)
+    panel = ExecutingPanel(planning_tab_igt)
+    qtbot.addWidget(panel)
+    panel.trigger_panel.use_trigger_checkbox.setChecked(True)
+    panel._sent_protocol = planning_tab_igt.current_protocol()
+    panel._on_execute_clicked()
+
+    panel._on_armed()
+
+    assert "Waiting for external trigger" in panel.trigger_panel.waiting_label.text()
+
+
+def test_executed_after_triggered_igt_run_finishes_via_waiting_label(qtbot, planning_tab_igt):
+    _select_first_driving_system(planning_tab_igt)
+    panel = ExecutingPanel(planning_tab_igt)
+    qtbot.addWidget(panel)
+    panel.trigger_panel.use_trigger_checkbox.setChecked(True)
+    panel._sent_protocol = planning_tab_igt.current_protocol()
+    panel._on_execute_clicked()
+    panel._on_armed()
+
+    panel._on_executed()
+
+    assert panel.trigger_panel.waiting_label.text() == "Triggered protocol executed successfully."
+    assert panel.execution_panel.execute_button.isEnabled() is True
+    assert panel.execution_panel.abort_button.isEnabled() is False
+
+
+def test_abort_clicked_emits_abort_requested(qtbot, planning_tab_igt):
+    panel = ExecutingPanel(planning_tab_igt)
+    qtbot.addWidget(panel)
+    requested = []
+    panel._abort_requested.connect(lambda: requested.append(True))
+
+    panel._on_abort_clicked()
+
+    assert requested == [True]
+
+
+def test_on_aborted_resets_ui_but_keeps_sent_protocol(qtbot, planning_tab_igt):
+    _select_first_driving_system(planning_tab_igt)
+    panel = ExecutingPanel(planning_tab_igt)
+    qtbot.addWidget(panel)
+    panel.show()
+    panel.trigger_panel.use_trigger_checkbox.setChecked(True)  # avoids needing timing configured
+    panel._sent_protocol = planning_tab_igt.current_protocol()
+    panel._on_execute_clicked()
+
+    panel._on_aborted()
+
+    assert panel._sent_protocol is not None
+    assert panel.execution_panel.execute_button.isEnabled() is True
+    assert panel.execution_panel.abort_button.isEnabled() is False
+    # The triggered run's own label shows "Aborted." and stays visible, same reasoning as
+    # _finish_execution(): a label that just disappears looks identical to one still running.
+    assert panel.trigger_panel.waiting_label.isVisible() is True
+    assert panel.trigger_panel.waiting_label.text() == "Aborted."
+    assert panel.execution_panel.countdown_label.isVisible() is False
+
+
+def test_on_aborted_shows_aborted_on_the_countdown_label_for_a_plain_execute(
+        qtbot, planning_tab_igt):
+    _select_first_driving_system(planning_tab_igt)
+    _apply_a_valid_slot(planning_tab_igt)
+    planning_tab_igt.builder.configure_timing(pulse_dur=1, pulse_train_rep_dur=5)
+    panel = ExecutingPanel(planning_tab_igt)
+    qtbot.addWidget(panel)
+    panel.show()
+    panel._sent_protocol = planning_tab_igt.current_protocol()
+    panel._on_execute_clicked()  # trigger checkbox left unchecked
+
+    panel._on_aborted()
+
+    assert panel.execution_panel.countdown_label.isVisible() is True
+    assert panel.execution_panel.countdown_label.text() == "Aborted."
+    assert panel.trigger_panel.waiting_label.isVisible() is False
+
+
+def test_connect_creates_a_second_abort_worker_and_thread(qtbot, planning_tab_igt, monkeypatch):
+    _select_first_driving_system(planning_tab_igt)
+    panel = ExecutingPanel(planning_tab_igt)
+    qtbot.addWidget(panel)
+    mock_ds = MagicMock(spec=IGT)
+    mock_ds.is_connected.return_value = True
+    monkeypatch.setattr(planning_tab_igt.builder, 'create_control_instance', lambda: mock_ds)
+
+    panel.connection_panel.connect_button.click()
+    qtbot.waitUntil(
+        lambda: panel.connection_panel.status_label.text() == "Connected", timeout=2000)
+
+    assert panel._abort_worker is not None
+    assert panel._abort_thread is not None
+    assert panel._abort_worker is not panel._worker
+    assert panel._abort_thread is not panel._thread
+    assert panel._abort_worker.ds_instance is mock_ds
+
+    panel.connection_panel.disconnect_button.click()
+    qtbot.waitUntil(lambda: panel._abort_worker is None, timeout=2000)

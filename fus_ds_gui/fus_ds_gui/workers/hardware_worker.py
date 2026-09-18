@@ -9,6 +9,10 @@ See the LICENSE file for full license text.
 from PySide6.QtCore import QObject, Signal, Slot
 
 from fus_driving_systems.exceptions import FDSError
+from fus_driving_systems.igt.igt_ds import IGT
+
+# A researcher can take a while to physically press an external trigger.
+_TRIGGER_RESULT_TIMEOUT_S = 300
 
 
 class DrivingSystemWorker(QObject):
@@ -35,6 +39,9 @@ class DrivingSystemWorker(QObject):
             whole protocol duration on IGT; returns almost immediately on Sonic Concepts, with
             no confirmation the sonication itself actually finished (see
             ProtocolBuilder.uses_pulse_train_repetition()'s own docstring on that asymmetry).
+            Also emitted after a triggered IGT execution is confirmed done (do_wait_for_trigger).
+        armed(): Emitted once a protocol is armed to fire on an external trigger.
+        aborted(): Emitted after a successful abort().
         error(object): Emitted instead of any of the above whenever the wrapped call raises
             FDSError; carries the caught exception itself, not a string, so
             error_dialogs.show_fds_error() can dispatch on its real type.
@@ -44,6 +51,8 @@ class DrivingSystemWorker(QObject):
     disconnected = Signal()
     sent = Signal()
     executed = Signal()
+    armed = Signal()
+    aborted = Signal()
     error = Signal(object)
 
     def __init__(self, ds_instance):
@@ -93,3 +102,35 @@ class DrivingSystemWorker(QObject):
             self.error.emit(e)
             return
         self.executed.emit()
+
+    @Slot(object, object, object)
+    def do_wait_for_trigger(self, protocol, trigger_option, n_triggers):
+        """Arms the already-sent protocol to fire on an external trigger. IGT also blocks here
+        until the triggered execution itself is confirmed done (or times out); Sonic Concepts
+        gives no such confirmation at all, see IGT.wait_for_trigger_result()/
+        SonicConcepts.wait_for_trigger()'s own docstrings."""
+
+        try:
+            if isinstance(self.ds_instance, IGT):
+                self.ds_instance.wait_for_trigger(protocol, trigger_option, n_triggers)
+                self.armed.emit()
+                self.ds_instance.wait_for_trigger_result(timeout_s=_TRIGGER_RESULT_TIMEOUT_S)
+            else:
+                self.ds_instance.wait_for_trigger(protocol)
+                self.armed.emit()
+                return
+        except FDSError as e:
+            self.error.emit(e)
+            return
+        self.executed.emit()
+
+    @Slot()
+    def do_abort(self):
+        """Stops a running/armed protocol; see this class's own docstring."""
+
+        try:
+            self.ds_instance.abort()
+        except FDSError as e:
+            self.error.emit(e)
+            return
+        self.aborted.emit()

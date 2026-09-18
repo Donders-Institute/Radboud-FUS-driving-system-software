@@ -9,11 +9,13 @@ buffer_num, SonicConcepts' (inherited from the base class) doesn't.
 """
 import pytest
 
+from fus_driving_systems.exceptions import FDSHardwareError
 from fus_driving_systems.igt.igt_ds import IGT
 from fus_driving_systems.sonic_concepts.sonic_concepts_ds import SonicConcepts
 from fus_driving_systems.tus_protocol import TUSProtocol
 
-from fus_ds_gui.models.mock_driving_system import MockIGT, MockSonicConcepts
+from fus_ds_gui.models.mock_driving_system import (MOCK_TRIGGER_PRESS_DELAY_S, MockIGT,
+                                                   MockSonicConcepts)
 
 
 def _configure_igt(patch_config):
@@ -136,12 +138,88 @@ def test_execute_protocol_blocks_for_the_protocols_own_duration(patch_config, mo
     protocol = _build_igt_protocol()
     protocol.configure_timing(pulse_dur=1, pulse_train_rep_dur=5)
     mock_ds = MockIGT()
-    slept = []
-    monkeypatch.setattr('fus_ds_gui.models.mock_driving_system.time.sleep', slept.append)
+    waited = []
+    monkeypatch.setattr('threading.Event.wait', lambda self, timeout=None: waited.append(timeout))
 
     mock_ds.execute_protocol(protocol)
 
-    assert slept == [5.0]
+    assert waited == [5.0]
+
+
+def test_abort_interrupts_execute_protocol(patch_config, monkeypatch):
+    """abort() stands in for stopping real hardware mid-run: a demo run cut short has no clean
+    success to report, matching what a real timed-out wait_protocol() would look like."""
+    _configure_igt(patch_config)
+    protocol = _build_igt_protocol()
+    protocol.configure_timing(pulse_dur=1, pulse_train_rep_dur=5)
+    mock_ds = MockIGT()
+    monkeypatch.setattr('threading.Event.wait', lambda self, timeout=None: True)  # aborted
+
+    with pytest.raises(FDSHardwareError):
+        mock_ds.execute_protocol(protocol)
+
+
+def test_wait_for_trigger_then_result_logs_waiting_then_fired(patch_config, caplog, monkeypatch):
+    _configure_igt(patch_config)
+    mock_ds = MockIGT()
+    monkeypatch.setattr('threading.Event.wait', lambda self, timeout=None: False)  # not aborted
+
+    with caplog.at_level('INFO'):
+        mock_ds.wait_for_trigger(_build_igt_protocol(), 'TriggerWholeProtocol')
+        mock_ds.wait_for_trigger_result()
+
+    assert 'waiting for a total of 1 trigger' in caplog.text.lower()
+    assert 'triggered protocol executed successfully' in caplog.text.lower()
+
+
+def test_wait_for_trigger_result_waits_longer_for_more_triggers(
+        patch_config, monkeypatch):
+    """Real hardware only ever reports one combined result for the whole armed group of
+    n_triggers, never progress per individual trigger (onSequenceResult() fires once, after all
+    of them have fired), so the Mock waits once, for all of them together, rather than
+    logging (or resolving) each one separately."""
+    _configure_igt(patch_config)
+    mock_ds = MockIGT()
+    waited = []
+    monkeypatch.setattr('threading.Event.wait', lambda self, timeout=None: waited.append(timeout))
+
+    mock_ds.wait_for_trigger(_build_igt_protocol(), 'TriggerOnePulseTrain', n_triggers=3)
+    mock_ds.wait_for_trigger_result()
+
+    assert len(waited) == 1  # one combined wait, not one per trigger
+    # 3 triggers * (press delay + pulse_train_dur); pulse_train_dur is 1 ms, see
+    # _build_igt_protocol()'s own configure_timing() call.
+    assert waited[0] == pytest.approx(3 * (MOCK_TRIGGER_PRESS_DELAY_S + 0.001))
+
+
+def test_wait_for_trigger_result_uses_the_whole_protocol_duration_for_whole_protocol_trigger(
+        patch_config, monkeypatch):
+    """A "TriggerWholeProtocol" trigger fires the entire protocol (all repetitions) on a single
+    trigger, exactly like a plain execute_protocol() would, unlike "TriggerOnePulseTrain",
+    which fires only one pulse train per trigger. Using pulse_train_dur here (much shorter than
+    the whole protocol) would make the demo finish long before real hardware ever would."""
+    _configure_igt(patch_config)
+    protocol = _build_igt_protocol()
+    protocol.configure_timing(pulse_dur=1, pulse_train_dur=10, pulse_train_rep_dur=5)
+    mock_ds = MockIGT()
+    waited = []
+    monkeypatch.setattr('threading.Event.wait', lambda self, timeout=None: waited.append(timeout))
+
+    mock_ds.wait_for_trigger(protocol, 'TriggerWholeProtocol')
+    mock_ds.wait_for_trigger_result()
+
+    assert len(waited) == 1  # a single trigger, whatever n_triggers may have been passed
+    assert waited[0] == pytest.approx(MOCK_TRIGGER_PRESS_DELAY_S + 5.0)  # + pulse_train_rep_dur
+
+
+def test_wait_for_trigger_result_raises_when_aborted(patch_config, monkeypatch):
+    _configure_igt(patch_config)
+    mock_ds = MockIGT()
+    monkeypatch.setattr('threading.Event.wait', lambda self, timeout=None: True)  # aborted
+
+    mock_ds.wait_for_trigger(_build_igt_protocol(), 'TriggerWholeProtocol')
+    with pytest.raises(FDSHardwareError):
+        mock_ds.wait_for_trigger_result()
 
 
 def test_mock_igt_is_a_real_igt_instance():
@@ -211,3 +289,21 @@ def test_mock_igt_validate_protocol_skips_amplitude_is_none(patch_config):
     errors = MockIGT().validate_protocol(protocol)
 
     assert not any('Amplitude is None' in error for error in errors)
+
+
+def test_mock_sc_wait_for_trigger_logs_armed(caplog):
+    mock_ds = MockSonicConcepts()
+
+    with caplog.at_level('INFO'):
+        mock_ds.wait_for_trigger(object())
+
+    assert 'armed' in caplog.text.lower()
+
+
+def test_mock_sc_abort_logs_and_does_not_raise(caplog):
+    mock_ds = MockSonicConcepts()
+
+    with caplog.at_level('INFO'):
+        mock_ds.abort()  # must not raise
+
+    assert 'aborted' in caplog.text.lower()

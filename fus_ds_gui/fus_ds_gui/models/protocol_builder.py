@@ -256,6 +256,17 @@ class ProtocolBuilder:
 
         return isinstance(self._ds_instance, IGT)
 
+    def supports_trigger_options(self):
+        """
+        Returns:
+            bool: True only for an IGT-backed driving system (its own get_trigger_options());
+            Sonic Concepts has one fixed trigger behavior, no modes to pick from. Deliberately
+            separate from uses_pulse_train_repetition(): they coincide today, but describe
+            unrelated things, and a future manufacturer could have one without the other.
+        """
+
+        return isinstance(self._ds_instance, IGT)
+
     def compatible_transducers(self):
         """
         Returns:
