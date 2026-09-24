@@ -20,5 +20,6 @@ setup(name='fus_ds_gui',
       author='Margely Cornelissen',
       author_email='margely.cornelissen@ru.nl',
       packages=find_packages(),
+      package_data={'fus_ds_gui': ['resources/*.png']},
       install_requires=['PySide6'],
       zip_safe=False)

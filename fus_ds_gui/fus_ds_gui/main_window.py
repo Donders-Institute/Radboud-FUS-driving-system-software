@@ -6,10 +6,12 @@ SPDX-License-Identifier: MIT
 See the LICENSE file for full license text.
 """
 
+import importlib.resources
 import pathlib
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtWidgets import QFileDialog, QMainWindow, QMessageBox, QSplitter
+from PySide6.QtGui import QGuiApplication, QIcon, QPixmap
+from PySide6.QtWidgets import QFileDialog, QLabel, QMainWindow, QMessageBox, QSplitter
 
 from fus_driving_systems.exceptions import FDSError
 
@@ -21,6 +23,9 @@ from fus_ds_gui.planning.planning_tab import PlanningTab
 # fus_ds_gui/fus_ds_gui/main_window.py -> fus_ds_gui/ -> repo root -> example_protocols/
 _EXAMPLE_PROTOCOLS_DIR = pathlib.Path(__file__).resolve().parents[2] / 'example_protocols'
 
+_RESOURCES = importlib.resources.files('fus_ds_gui').joinpath('resources')
+_LOGO_HEIGHT_PX = 56
+
 _YAML_FILE_FILTER = "Protocol files (*.yaml *.yml)"
 
 # Long enough for Qt's own deferred layout pass (triggered by the many setVisible()/
@@ -28,6 +33,16 @@ _YAML_FILE_FILTER = "Protocol files (*.yaml *.yml)"
 # _shrink_to_fit_content() reads sizeHint(): read too early and it still reflects the
 # larger Advanced-mode layout, undoing the whole point of shrinking back down.
 _SHRINK_DELAY_MS = 50
+
+
+def _logo_filename():
+    """The dark variant swaps the logo's black text for white and drops its white background
+    to transparent (see resources/, generated from the original) so it stays legible when the
+    OS is in dark mode instead of sitting in a jarring white box."""
+
+    if QGuiApplication.styleHints().colorScheme() == Qt.ColorScheme.Dark:
+        return 'fus_centre_logo_dark.png'
+    return 'fus_centre_logo.png'
 
 
 class MainWindow(QMainWindow):
@@ -47,16 +62,27 @@ class MainWindow(QMainWindow):
     def __init__(self, parent=None):
         super().__init__(parent)
 
-        self.setWindowTitle("Radboud FUS Driving System GUI")
+        self.setWindowTitle("Radboud FUS Driving System Software GUI")
+        self.setWindowIcon(QIcon(str(_RESOURCES.joinpath('app_icon.png'))))
 
         self.planning_tab = PlanningTab()
         self.executing_panel = ExecutingPanel(self.planning_tab)
 
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.addWidget(self.planning_tab)
-        splitter.addWidget(self.executing_panel)
+        self.splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.splitter.addWidget(self.planning_tab)
+        self.splitter.addWidget(self.executing_panel)
 
-        self.setCentralWidget(splitter)
+        self.setCentralWidget(self.splitter)
+
+        # setMenuWidget(), not a layout wrapping the splitter: that would break
+        # _shrink_to_fit_content()'s sizeHint()-based resize.
+        logo_label = QLabel()
+        logo_pixmap = QPixmap(str(_RESOURCES.joinpath(_logo_filename())))
+        logo_label.setPixmap(logo_pixmap.scaledToHeight(
+            _LOGO_HEIGHT_PX, Qt.TransformationMode.SmoothTransformation))
+        logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        logo_label.setContentsMargins(8, 10, 8, 10)
+        self.setMenuWidget(logo_label)
 
         self._current_file_path = None
         self.planning_tab.load_button.clicked.connect(self._on_load_protocol)

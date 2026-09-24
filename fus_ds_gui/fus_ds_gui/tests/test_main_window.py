@@ -67,7 +67,7 @@ def test_launches_with_planning_and_executing_panels_side_by_side(qtbot):
     window = MainWindow()
     qtbot.addWidget(window)
 
-    splitter = window.centralWidget()
+    splitter = window.splitter
 
     assert splitter.count() == 2
     assert isinstance(splitter.widget(0), PlanningTab)

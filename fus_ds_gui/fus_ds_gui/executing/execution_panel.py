@@ -9,6 +9,8 @@ See the LICENSE file for full license text.
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QLabel, QPushButton, QVBoxLayout, QWidget
 
+from fus_ds_gui.styles import ACCENT_BUTTON_STYLE
+
 
 class ExecutionPanel(QWidget):
     """
@@ -46,6 +48,7 @@ class ExecutionPanel(QWidget):
         self.execute_button = QPushButton("Execute")
         self.execute_button.clicked.connect(self.execute_clicked)
         self.execute_button.setEnabled(False)
+        self.execute_button.setStyleSheet(ACCENT_BUTTON_STYLE)
 
         # Runs on its own dedicated worker thread (see ExecutingPanel), so it can reach the
         # hardware even while Execute/Arm is stuck in a blocking call on the main one.

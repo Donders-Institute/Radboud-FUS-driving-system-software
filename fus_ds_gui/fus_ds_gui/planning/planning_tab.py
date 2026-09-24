@@ -16,6 +16,7 @@ from fus_ds_gui.models.protocol_builder import ProtocolBuilder
 from fus_ds_gui.planning.equipment_panel import EquipmentPanel
 from fus_ds_gui.planning.slot_editor import SlotEditor
 from fus_ds_gui.planning.timing_panel import TimingPanel
+from fus_ds_gui.styles import ACCENT_BUTTON_STYLE
 
 
 class PlanningTab(QWidget):
@@ -67,6 +68,7 @@ class PlanningTab(QWidget):
         # panel that currently exists at once, see _on_apply_clicked()'s own docstring.
         self.apply_button = QPushButton("Apply")
         self.apply_button.clicked.connect(self._on_apply_clicked)
+        self.apply_button.setStyleSheet(ACCENT_BUTTON_STYLE)
 
         # See this class's own docstring for why these three are plain, undriven widgets here.
         self.load_button = QPushButton("Load protocol...")
@@ -139,6 +141,9 @@ class PlanningTab(QWidget):
     def _set_locked(self, locked):
         if locked != self._locked:
             self._locked = locked
+            # Locked means the protocol on screen already matches what was applied, so there's
+            # nothing left for Apply to actually do; the accent is reserved for "click this".
+            self.apply_button.setStyleSheet("" if locked else ACCENT_BUTTON_STYLE)
             self.lock_changed.emit(locked)
 
     def _mark_dirty(self, *_args):
