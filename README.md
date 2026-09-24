@@ -9,6 +9,10 @@
   <img src="/images/Radboud-logo.jpg" alt="ru_logo" width="auto" height="70" />
 </div>
 
+> 🖥️ **Just want to use the GUI?** No Python or installation needed: download the ready-to-run
+> Windows application from the [Latest Release](https://github.com/Donders-Institute/Radboud-FUS-driving-system-software/releases/latest)
+> (look for `FDS_GUI-*-windows.zip`), extract it, and double-click `FDS_GUI.exe`. See
+> [Download the GUI](#gui) below for details.
 
 <!-- TABLE OF CONTENTS -->
 
@@ -21,6 +25,7 @@
 - [💻 Getting Started](#getting-started)
   - [🔧 Installation](#install)
   - [📋 Usage](#usage)
+- [🖥️ Download the GUI](#gui)
 - [🧰 Configuration](#config)
   - [⚙️ Configuring System Parameters](#other-config)
   - [📻 How to add your own equipment](#add-equip)
@@ -227,6 +232,40 @@ How to use the script:
 		```
 		start_venv_and_ide.bat "" "" "DCCN"
 		```
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+<!-- GUI -->
+
+# 🖥️ Download the GUI <a name="gui"></a>
+
+A standalone Windows application for building, loading, and running protocols through a GUI
+(Planning and Executing tabs), for anyone who doesn't want to write their own scripts.
+
+## Option 1: Download the ready-to-use executable (recommended for most users)
+
+1. Visit the [Latest Release](https://github.com/Donders-Institute/Radboud-FUS-driving-system-software/releases/latest).
+2. Download `FDS_GUI-*-windows.zip`.
+3. Extract it anywhere, then double-click `FDS_GUI.exe` inside the extracted folder.
+
+No Python installation is required for this. To launch it from your desktop instead of digging
+into the extracted folder each time, right-click `FDS_GUI.exe` and choose "Send to > Desktop
+(create shortcut)". Don't move or copy the `.exe` on its own; it needs the `_internal` folder
+that sits next to it.
+
+## Option 2: Build it yourself
+
+Useful if you're developing the GUI itself, or want a build from an unreleased commit. From the
+root of a cloned repository (see "Step 1" under [Installation](#install) above; the two
+`pip install` commands below only resolve correctly from there, not from inside `fus_ds_gui/`),
+with your virtual environment active:
+```
+pip install -r fus_ds_gui/requirements-gui.txt
+pip install -r fus_ds_gui/requirements-build.txt
+cd fus_ds_gui
+pyinstaller fus_ds_gui.spec --noconfirm
+```
+The build appears in `fus_ds_gui/dist/FDS_GUI/` (run `FDS_GUI.exe` inside it).
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -746,8 +785,6 @@ Now you are ready to use your new standalone script to drive the new equipment.
 <!-- FUTURE FEATURES -->
 
 # 🔭 Future Features <a name="future-features"></a>
-
-- [ ] Interactive GUI for visualization, planning, and execution of ultrasound protocols
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 

@@ -6,8 +6,10 @@ SPDX-License-Identifier: MIT
 See the LICENSE file for full license text.
 """
 
+import importlib.metadata
 import importlib.resources
 import pathlib
+import sys
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QGuiApplication, QIcon, QPixmap
@@ -20,8 +22,14 @@ from fus_ds_gui.executing.executing_panel import ExecutingPanel
 from fus_ds_gui.models import protocol_io
 from fus_ds_gui.planning.planning_tab import PlanningTab
 
-# fus_ds_gui/fus_ds_gui/main_window.py -> fus_ds_gui/ -> repo root -> example_protocols/
-_EXAMPLE_PROTOCOLS_DIR = pathlib.Path(__file__).resolve().parents[2] / 'example_protocols'
+if getattr(sys, 'frozen', False):
+    # PyInstaller extracts/unpacks bundled datas under sys._MEIPASS (see fus_ds_gui.spec's own
+    # 'example_protocols' entry), not next to main_window.py's own frozen location.
+    _meipass = sys._MEIPASS  # pylint: disable=protected-access
+    _EXAMPLE_PROTOCOLS_DIR = pathlib.Path(_meipass) / 'example_protocols'
+else:
+    # fus_ds_gui/fus_ds_gui/main_window.py -> fus_ds_gui/ -> repo root -> example_protocols/
+    _EXAMPLE_PROTOCOLS_DIR = pathlib.Path(__file__).resolve().parents[2] / 'example_protocols'
 
 _RESOURCES = importlib.resources.files('fus_ds_gui').joinpath('resources')
 _LOGO_HEIGHT_PX = 56
@@ -33,6 +41,24 @@ _YAML_FILE_FILTER = "Protocol files (*.yaml *.yml)"
 # _shrink_to_fit_content() reads sizeHint(): read too early and it still reflects the
 # larger Advanced-mode layout, undoing the whole point of shrinking back down.
 _SHRINK_DELAY_MS = 50
+
+
+def _package_version(package_name):
+    """The installed version of package_name, or 'unknown' if its metadata isn't available (a
+    source checkout that was never `pip install`ed, or a frozen build that forgot to bundle it;
+    see fus_ds_gui.spec's own copy_metadata() calls). Mirrors
+    fus_driving_systems.config.logging_config._get_package_version()'s own reasoning: read from
+    installed metadata, not a separately-maintained constant, so it can't drift out of sync."""
+
+    try:
+        return importlib.metadata.version(package_name)
+    except importlib.metadata.PackageNotFoundError:
+        return 'unknown'
+
+
+def _window_title():
+    return (f'Radboud FUS Driving System Software GUI v{_package_version("fus_ds_gui")} '
+            f'(FDS v{_package_version("fus_driving_systems")})')
 
 
 def _logo_filename():
@@ -62,7 +88,7 @@ class MainWindow(QMainWindow):
     def __init__(self, parent=None):
         super().__init__(parent)
 
-        self.setWindowTitle("Radboud FUS Driving System Software GUI")
+        self.setWindowTitle(_window_title())
         self.setWindowIcon(QIcon(str(_RESOURCES.joinpath('app_icon.png'))))
 
         self.planning_tab = PlanningTab()

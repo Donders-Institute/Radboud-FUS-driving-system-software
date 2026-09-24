@@ -1,0 +1,44 @@
+name: Build GUI executable
+
+# Runs on the same v* tags as release-version-check.yml, so every release automatically gets a
+# ready-to-run Windows build attached; nobody has to run PyInstaller by hand for a release.
+"on":
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write  # to attach the build to the GitHub Release
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install GUI and build dependencies
+        run: |
+          pip install -r fus_ds_gui/requirements-gui.txt
+          pip install -r fus_ds_gui/requirements-build.txt
+
+      - name: Build the executable
+        working-directory: fus_ds_gui
+        run: pyinstaller fus_ds_gui.spec --noconfirm
+
+      - name: Zip the build
+        # Zips FDS_GUI/*, not the FDS_GUI folder itself: FDS_GUI.exe ends up right at the top
+        # of the extracted zip, next to _internal/, not one folder level down.
+        working-directory: fus_ds_gui/dist/FDS_GUI
+        run: Compress-Archive -Path * -DestinationPath "../FDS_GUI-${{ github.ref_name }}-windows.zip"
+
+      - name: Attach the build to the GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: fus_ds_gui/dist/FDS_GUI-${{ github.ref_name }}-windows.zip
