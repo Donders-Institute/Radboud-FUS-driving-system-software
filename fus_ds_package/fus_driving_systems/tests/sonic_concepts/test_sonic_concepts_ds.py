@@ -321,6 +321,35 @@ def test_send_protocol_calls_setters_in_order_and_marks_sent(mocker, connected_i
     ]
 
 
+def test_send_protocol_logs_confirmation_with_timing_and_intensity(
+        mocker, connected_instance, caplog):
+    """The one point the focus/power actually sent is confirmed (GitHub #125/#122);
+    execute_protocol() only references the expected duration afterward, not repeat this."""
+    for name in ['_reset_parameters', '_set_operating_freq', '_set_focus',
+                 '_set_global_power', '_set_burst_and_period', '_set_timer', '_set_ramping']:
+        mocker.patch.object(connected_instance, name)
+    fake_slot = mocker.Mock(oper_freq=300, focus_wrt_exit_plane=50, global_power=2,
+                            transducer=mocker.Mock(serial='TRAN-A'))
+    fake_slot.intensity_summary.return_value = 'TRAN-A: fake intensity summary'
+    fake_protocol = mocker.Mock()
+    fake_protocol.slots = [fake_slot]
+    fake_protocol.pulse_dur = 1
+    fake_protocol.pulse_rep_int = 2
+    fake_protocol.pulse_train_dur = 10
+    fake_protocol.pulse_train_rep_int = 10
+    fake_protocol.pulse_train_rep_dur = 10
+    fake_protocol.pulse_ramp_shape = 'Linear'
+    fake_protocol.pulse_ramp_dur = 1
+
+    with caplog.at_level('INFO'):
+        connected_instance.send_protocol(fake_protocol)
+
+    assert 'TRAN-A' in caplog.text
+    assert 'Protocol sent successfully: 1.00 ms pulse every 2.00 ms, 10.00 ms total ' \
+        'duration.' in caplog.text
+    assert 'TRAN-A: fake intensity summary' in caplog.text
+
+
 def test_validate_protocol_flags_global_power_none(mocker, connected_instance):
     """This driving system only ever reads protocol.slots[0].global_power (send_protocol()
     unconditionally calls _set_global_power(slot.global_power)) -- nothing enforces that the
@@ -485,6 +514,17 @@ def test_wait_for_trigger_sends_triggermode_when_protocol_sent(mocker, connected
     mock_send_command.assert_called_once_with('TRIGGERMODE=1\r\n')
 
 
+def test_wait_for_trigger_logs_expected_duration(mocker, connected_instance, caplog):
+    connected_instance._sent_pulse_train_dur = 10.0
+    connected_instance.protocol_sent = True
+    mocker.patch.object(connected_instance, '_send_command')
+
+    with caplog.at_level('INFO'):
+        connected_instance.wait_for_trigger(None)
+
+    assert 'Waiting for trigger (expected duration once fired: 10.00 ms)...' in caplog.text
+
+
 def test_wait_for_trigger_raises_when_not_yet_sent(mocker, connected_instance):
     connected_instance.protocol_sent = False
     mock_send_command = mocker.patch.object(connected_instance, '_send_command')
@@ -535,6 +575,22 @@ def test_execute_protocol_writes_start_command_when_protocol_sent(connected_inst
     connected_instance.execute_protocol(None)
 
     connected_instance.gen.write.assert_called_once_with(b'START\r')
+
+
+def test_execute_protocol_logs_expected_duration_then_confirmation(
+        mocker, connected_instance, caplog):
+    """Not "Protocol executed.": the START command below returns almost instantly, well before
+    the sonication itself actually finishes, so a past-tense claim of completion would be
+    misleading (real hardware gives no confirmation of that either way)."""
+    connected_instance._sent_pulse_train_dur = 10.0
+    connected_instance.protocol_sent = True
+    connected_instance.gen.readline.return_value = b'OK\n'
+
+    with caplog.at_level('INFO'):
+        connected_instance.execute_protocol(None)
+
+    assert 'Executing (expected duration: 10.00 ms)...' in caplog.text
+    assert 'Protocol execution started.' in caplog.text
 
 
 def test_execute_protocol_raises_on_exception(connected_instance):

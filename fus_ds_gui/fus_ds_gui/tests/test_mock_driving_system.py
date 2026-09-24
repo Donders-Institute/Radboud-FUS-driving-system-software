@@ -347,7 +347,7 @@ def test_mock_sc_execute_protocol_logs_expected_duration_then_confirmation(patch
         mock_ds.execute_protocol(_build_sc_protocol())
 
     assert 'expected duration' in caplog.text.lower()
-    assert 'protocol executed' in caplog.text.lower()
+    assert 'protocol execution started' in caplog.text.lower()
 
 
 def test_mock_igt_validate_protocol_skips_amplitude_is_none(patch_config):

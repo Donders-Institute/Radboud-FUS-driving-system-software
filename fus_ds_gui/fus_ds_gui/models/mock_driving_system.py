@@ -198,13 +198,14 @@ class MockSonicConcepts(SonicConcepts):
         get_logger().info("Mock SC: sending protocol...")
         self.protocol_sent = True
         get_logger().info(
-            "Mock SC: protocol sent successfully: %.2f ms total duration.\n  %s",
+            "Mock SC: protocol sent successfully: %.2f ms pulse every %.2f ms, %.2f ms "
+            "total duration.\n  %s", protocol.pulse_dur, protocol.pulse_rep_int,
             protocol.pulse_train_dur, slot.intensity_summary())
 
     def execute_protocol(self, protocol):
         get_logger().info("Mock SC: executing (expected duration: %.2f ms)...",
                           protocol.pulse_train_dur)
-        get_logger().info("Mock SC: protocol executed.")
+        get_logger().info("Mock SC: protocol execution started.")
 
     def wait_for_trigger(self, protocol):
         get_logger().info(

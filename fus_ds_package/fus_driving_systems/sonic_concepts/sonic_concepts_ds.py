@@ -152,8 +152,10 @@ class SonicConcepts(ds.ControlDrivingSystem):
             # Confirms the send itself actually succeeded, with the timing/intensity a
             # researcher would otherwise not see until execute_protocol(), same reasoning as
             # IGT's own send_protocol() (GitHub #125/#122).
-            get_logger().info('Protocol sent successfully: %.2f ms total duration.\n  %s',
-                              protocol.pulse_train_dur, slot.intensity_summary())
+            get_logger().info(
+                'Protocol sent successfully: %.2f ms pulse every %.2f ms, %.2f ms total '
+                'duration.\n  %s', protocol.pulse_dur, protocol.pulse_rep_int,
+                protocol.pulse_train_dur, slot.intensity_summary())
 
         else:
             get_logger().error("No connection with driving system.")
@@ -249,7 +251,7 @@ class SonicConcepts(ds.ControlDrivingSystem):
                 get_logger().critical(message)
                 raise FDSHardwareError(message) from why
 
-            get_logger().info('Protocol executed.')
+            get_logger().info('Protocol execution started.')
 
         else:
             get_logger().warning("No connection with driving system.")
