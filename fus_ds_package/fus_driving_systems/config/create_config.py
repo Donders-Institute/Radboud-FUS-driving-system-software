@@ -79,7 +79,8 @@ def _add_driving_system(serial, name, manufacturer, available_channels, connecti
 
 
 def _add_transducer(serial, name, manufacturer, elements, fund_freq, min_focus, max_focus,
-                    exit_plane_dist=0, steer_information='', can_3d_steer=False, active=True):
+                    exit_plane_dist=0, steer_information='', can_3d_steer=False,
+                    min_focus_x=0, max_focus_x=0, min_focus_y=0, max_focus_y=0, active=True):
     """
     Builds one '[Equipment.Transducer.<serial>]' section from keyword arguments.
 
@@ -105,6 +106,12 @@ def _add_transducer(serial, name, manufacturer, elements, fund_freq, min_focus, 
         can_3d_steer (bool): Whether this transducer's own element geometry supports lateral
             (x/y) steering, not just depth, see Transducer.can_3d_steer. Must be False unless
             steer_information ends in '.ini' (checked at read time in transducer.py).
+        min_focus_x (float): Minimum allowed lateral x offset [mm], only enforced when
+            can_3d_steer is True. Defaults to 0 (not min_focus's generous default), so an
+            unconfigured 3D transducer fails closed instead of allowing any offset.
+        max_focus_x (float): Maximum allowed lateral x offset [mm]. See min_focus_x.
+        min_focus_y (float): Minimum allowed lateral y offset [mm]. See min_focus_x.
+        max_focus_y (float): Maximum allowed lateral y offset [mm]. See min_focus_x.
         active (bool): Whether this transducer is active and available for use.
     """
 
@@ -119,6 +126,10 @@ def _add_transducer(serial, name, manufacturer, elements, fund_freq, min_focus, 
     config[section]['Max. focus'] = str(max_focus)
     config[section]['Steer information'] = steer_information
     config[section]['Can 3D steer?'] = str(can_3d_steer)
+    config[section]['Min. focus x'] = str(min_focus_x)
+    config[section]['Max. focus x'] = str(max_focus_x)
+    config[section]['Min. focus y'] = str(min_focus_y)
+    config[section]['Max. focus y'] = str(max_focus_y)
     config[section]['Active?'] = str(active)
 
 
@@ -264,6 +275,14 @@ config['Focus']['Engineering-only options'] = ''
 # read (see the comment there); Default.exit was never actually read by anything at all.
 config['Focus']['Default.minimum'] = str(15)  # [mm]
 config['Focus']['Default.maximum'] = str(1000)  # [mm]
+
+# Lateral (x/y) steering limits, only enforced for a can_3d_steer=True transducer (see
+# _set_focus_xyz() in transducer_slot.py). Defaulted to 0, unlike the generous depth default
+# above: every transducer is valid at x=y=0, so this fails closed until real geometry is known.
+config['Focus']['Default.minimum.x'] = str(0)  # [mm]
+config['Focus']['Default.maximum.x'] = str(0)  # [mm]
+config['Focus']['Default.minimum.y'] = str(0)  # [mm]
+config['Focus']['Default.maximum.y'] = str(0)  # [mm]
 
 # Ramp options
 RAMP_RECT = 'Rectangular - no ramping'
@@ -848,7 +867,8 @@ _add_transducer(
 #
 # TODO: exit_plane_dist/min_focus/max_focus and each Clover's own steer_information .ini file
 # are all placeholders; real Clover geometry and 3D steer calibration data aren't available
-# yet.
+# yet. min_focus_x/max_focus_x/min_focus_y/max_focus_y are left at their safe (0, no lateral
+# offset) default for the same reason; fill them in once Clover's real steering range is known.
 _add_transducer(
     CLOVER_TRANS[0], name='Clover 52 ch. #1', manufacturer=IMASONIC,
     elements=52, fund_freq=350, exit_plane_dist=0,

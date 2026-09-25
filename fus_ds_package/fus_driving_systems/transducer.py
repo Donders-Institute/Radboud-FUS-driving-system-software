@@ -33,6 +33,11 @@ class Transducer:
         exit_plane_dist (float): Distance between exit plane and first element [mm].
         min_foc (float): Minimum focal depth of the transducer [mm].
         max_foc (float): Maximum focal depth of the transducer [mm].
+        min_foc_x (float): Minimum allowed lateral x offset [mm]. Only enforced for a
+                           can_3d_steer transducer, see TransducerSlot._set_focus_xyz().
+        max_foc_x (float): Maximum allowed lateral x offset [mm]. See min_foc_x.
+        min_foc_y (float): Minimum allowed lateral y offset [mm]. See min_foc_x.
+        max_foc_y (float): Maximum allowed lateral y offset [mm]. See min_foc_x.
         steer_info (str):  ONLY USED FOR IGT! Path to the steer information of the transducer.
         can_3d_steer (Boolean): Whether this transducer's own element geometry supports lateral
                                 (x/y) steering in addition to depth (z), not just whether a
@@ -62,6 +67,14 @@ class Transducer:
                                               'Default.minimum', 0))  # [mm]
         self.max_foc = float(get_config_value(get_logger(), config, 'Focus',
                                               'Default.maximum', 1000))  # [mm]
+        self.min_foc_x = float(get_config_value(get_logger(), config, 'Focus',
+                                                'Default.minimum.x', 0))  # [mm]
+        self.max_foc_x = float(get_config_value(get_logger(), config, 'Focus',
+                                                'Default.maximum.x', 0))  # [mm]
+        self.min_foc_y = float(get_config_value(get_logger(), config, 'Focus',
+                                                'Default.minimum.y', 0))  # [mm]
+        self.max_foc_y = float(get_config_value(get_logger(), config, 'Focus',
+                                                'Default.maximum.y', 0))  # [mm]
         self.steer_info = None
         self.can_3d_steer = False
         self.is_active = True
@@ -114,6 +127,16 @@ class Transducer:
         self.max_foc = float(get_config_value(get_logger(), config, section, 'Max. focus',
                                               default_max))
 
+        # Falls back to self.min_foc_x itself, already set from Default.minimum.x in __init__.
+        self.min_foc_x = float(get_config_value(get_logger(), config, section, 'Min. focus x',
+                                                self.min_foc_x))
+        self.max_foc_x = float(get_config_value(get_logger(), config, section, 'Max. focus x',
+                                                self.max_foc_x))
+        self.min_foc_y = float(get_config_value(get_logger(), config, section, 'Min. focus y',
+                                                self.min_foc_y))
+        self.max_foc_y = float(get_config_value(get_logger(), config, section, 'Max. focus y',
+                                                self.max_foc_y))
+
         self.steer_info = get_config_value(get_logger(), config, section, 'Steer information',
                                            None, True)
         self.can_3d_steer = get_config_value(
@@ -151,6 +174,11 @@ class Transducer:
         info += ("Transducer steer table (Note: only used i.c.w. IGT driving sys.):" +
                  f" {self.steer_info} \n ")
         info += f"Transducer can 3D steer: {self.can_3d_steer} \n "
+        if self.can_3d_steer:
+            info += f"Transducer min./max. lateral x [mm]: {self.min_foc_x:.2f} / " \
+                    f"{self.max_foc_x:.2f} \n "
+            info += f"Transducer min./max. lateral y [mm]: {self.min_foc_y:.2f} / " \
+                    f"{self.max_foc_y:.2f} \n "
 
         return info
 

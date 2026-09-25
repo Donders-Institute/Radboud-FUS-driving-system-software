@@ -631,14 +631,17 @@ protocols:
         chosen_focus_value's own docstring); yaml.safe_dump has no representer for tuple, so
         _dump_slot() must convert it to a list first. The mid-bowl xyz option, not the exit-
         plane one: the latter needs an active calibration combo to convert, which this
-        synthetic (driving system, transducer) pair doesn't have."""
+        synthetic (driving system, transducer) pair doesn't have. x/y are 0 here (not two
+        distinct nonzero values): Clover_1's real lateral steering range isn't configured yet
+        (see create_config.py's own TODO), so 0 is the only value its own min/max foc x/y
+        (also 0 by default) actually accepts today."""
         original_path = _write_yaml(tmp_path, """
 driving_sys_serial: IGT-256-ch_comb_1x52-ch
 protocols:
   - slots:
       - transducer_serial: Clover_1
         focus_option: Focus xyz wrt mid bowl [mm]
-        focus_value: [1, 2, 60]
+        focus_value: [0, 0, 60]
         power_option: Amplitude [%]
         power_value: 30
     timing:
@@ -651,8 +654,8 @@ protocols:
         reloaded, *_ = load_protocol(saved_path, engineering_mode=True)
 
         slot = reloaded[0].slots[0]
-        assert slot.focus_offset_x == 1
-        assert slot.focus_offset_y == 2
+        assert slot.focus_offset_x == 0
+        assert slot.focus_offset_y == 0
         assert slot.focus_wrt_mid_bowl == 60
 
     def test_saves_a_nonzero_buffer_num(self, tmp_path):

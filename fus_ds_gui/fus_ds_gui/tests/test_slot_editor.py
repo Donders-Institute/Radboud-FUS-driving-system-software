@@ -1112,6 +1112,12 @@ def _build_editor_with_xyz_focus_option(patch_config, tran_b_can_3d_steer=False)
         patch_config.set('Equipment.Transducer.UNITTEST_TRAN_B', 'Can 3D steer?', 'True')
         patch_config.set('Equipment.Transducer.UNITTEST_TRAN_B', 'Steer information',
                          'unittest_steer.ini')
+        # Wide enough for every (x, y) value used by tests below: without this, min_foc_x/etc.
+        # default to 0 (see Transducer's own docstring), clamping any nonzero test value away.
+        patch_config.set('Equipment.Transducer.UNITTEST_TRAN_B', 'Min. focus x', '-10')
+        patch_config.set('Equipment.Transducer.UNITTEST_TRAN_B', 'Max. focus x', '10')
+        patch_config.set('Equipment.Transducer.UNITTEST_TRAN_B', 'Min. focus y', '-10')
+        patch_config.set('Equipment.Transducer.UNITTEST_TRAN_B', 'Max. focus y', '10')
 
     from fus_driving_systems import driving_system
     ds = driving_system.DrivingSystem()
@@ -1126,6 +1132,62 @@ def test_focus_xyz_option_hidden_for_a_non_3d_steering_transducer(qtbot, patch_c
     options = [editor.focus_option_combo.itemText(i)
                for i in range(editor.focus_option_combo.count())]
     assert options == ['Focus wrt exit plane [mm]']
+
+
+def test_xyz_fields_bounded_to_transducer_lateral_range(qtbot, patch_config):
+    """focus_value_x_spin/focus_value_y_spin get their range from min_foc_x/max_foc_x/
+    min_foc_y/max_foc_y, the same way focus_value_spin already does from min_foc/max_foc; the
+    xyz widget's own z field shares that same min_foc/max_foc too, since it's the same
+    underlying depth quantity, just shown in a different widget while in xyz mode."""
+    editor = _build_editor_with_xyz_focus_option(patch_config, tran_b_can_3d_steer=True)
+    qtbot.addWidget(editor)
+
+    editor.transducer_combo.setCurrentIndex(2)  # UNITTEST_TRAN_B: min/max focus x/y = -10/10
+
+    assert editor.focus_value_x_spin.minimum() == pytest.approx(-10)
+    assert editor.focus_value_x_spin.maximum() == pytest.approx(10)
+    assert editor.focus_value_y_spin.minimum() == pytest.approx(-10)
+    assert editor.focus_value_y_spin.maximum() == pytest.approx(10)
+    assert '-10.0 to 10.0 mm' in editor.focus_value_x_spin.toolTip()
+    assert editor._focus_x_label.text() == "x (-10.0 to 10.0):"
+    assert editor._focus_y_label.text() == "y (-10.0 to 10.0):"
+    assert editor.focus_value_z_spin.minimum() == pytest.approx(10)  # UNITTEST_TRAN_B: min_foc
+    assert editor.focus_value_z_spin.maximum() == pytest.approx(80)  # UNITTEST_TRAN_B: max_foc
+    assert editor._focus_z_label.text() == "z (10.0 to 80.0):"
+
+
+def test_xyz_fields_default_to_zero_lateral_range_when_unconfigured(qtbot, patch_config):
+    """A can_3d_steer transducer with no 'Min./Max. focus x/y' of its own (e.g. Clover today,
+    see create_config.py's own TODO) bounds the xyz fields to 0, not to focus_value_spin's own,
+    much wider min_foc/max_foc-derived range. Built inline, not via
+    _build_editor_with_xyz_focus_option(): that helper's own tran_b_can_3d_steer=True always
+    sets a wide lateral range too, for every other test's convenience."""
+    _configure_driving_system(patch_config, 'UNITTEST_IGT')
+    patch_config.set('Equipment.Driving system.UNITTEST_IGT', 'Focus options',
+                     'Focus wrt exit plane [mm]\nFocus xyz wrt exit plane [mm]')
+    patch_config.set('Equipment', 'Transducers', 'UNITTEST_TRAN_A\nUNITTEST_TRAN_B')
+    _configure_transducer(patch_config, 'UNITTEST_TRAN_A')
+    _configure_transducer(patch_config, 'UNITTEST_TRAN_B')
+    patch_config.set('Equipment.Transducer.UNITTEST_TRAN_B', 'Can 3D steer?', 'True')
+    patch_config.set('Equipment.Transducer.UNITTEST_TRAN_B', 'Steer information',
+                     'unittest_steer.ini')
+
+    from fus_driving_systems import driving_system
+    ds = driving_system.DrivingSystem()
+    ds.set_ds_info('UNITTEST_IGT')
+    editor = SlotEditor(ProtocolBuilder(ds))
+    qtbot.addWidget(editor)
+
+    editor.transducer_combo.setCurrentIndex(2)  # UNITTEST_TRAN_B
+
+    assert editor.focus_value_x_spin.minimum() == pytest.approx(0)
+    assert editor.focus_value_x_spin.maximum() == pytest.approx(0)
+    assert editor.focus_value_y_spin.minimum() == pytest.approx(0)
+    assert editor.focus_value_y_spin.maximum() == pytest.approx(0)
+    # Shown on the field's own label, not just its tooltip: a 0-0 range must not look like the
+    # field is simply broken, with no visible explanation why nothing can be typed.
+    assert editor._focus_x_label.text() == "x (0.0 to 0.0):"
+    assert editor._focus_y_label.text() == "y (0.0 to 0.0):"
 
 
 def test_focus_xyz_option_appears_for_a_3d_steering_capable_transducer(qtbot, patch_config):

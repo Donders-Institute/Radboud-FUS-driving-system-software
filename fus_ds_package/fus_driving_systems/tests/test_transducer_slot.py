@@ -1520,7 +1520,8 @@ def test_set_focus_xyz_exit_plane_does_not_require_engineering_mode(patch_config
     slot = _bare_slot()
     slot._engineering_mode = False
     slot._transducer = SimpleNamespace(can_3d_steer=True, exit_plane_dist=5, min_foc=0,
-                                       max_foc=100, name='tran')
+                                       max_foc=100, min_foc_x=0, max_foc_x=0, min_foc_y=0,
+                                       max_foc_y=0, name='tran')
     slot.driving_sys = SimpleNamespace(
         focus_options=['Focus xyz wrt exit plane [mm]', 'Focus xyz wrt mid bowl [mm]'],
         native_focus_params=['Focus xyz wrt exit plane [mm]'])
@@ -1535,7 +1536,8 @@ def test_set_focus_xyz_mid_bowl_native_sets_x_y_z_and_derived_exit_plane(patch_c
     slot = _bare_slot()
     slot._engineering_mode = True
     slot._transducer = SimpleNamespace(can_3d_steer=True, exit_plane_dist=5, min_foc=0,
-                                       max_foc=100, name='tran')
+                                       max_foc=100, min_foc_x=-10, max_foc_x=10, min_foc_y=-10,
+                                       max_foc_y=10, name='tran')
     slot.driving_sys = SimpleNamespace(
         focus_options=['Focus xyz wrt exit plane [mm]', 'Focus xyz wrt mid bowl [mm]'],
         native_focus_params=['Focus xyz wrt mid bowl [mm]'])
@@ -1557,7 +1559,8 @@ def test_set_focus_xyz_exit_plane_native_sets_x_y_z_and_derived_mid_bowl(patch_c
     slot = _bare_slot()
     slot._engineering_mode = False
     slot._transducer = SimpleNamespace(can_3d_steer=True, exit_plane_dist=5, min_foc=0,
-                                       max_foc=100, name='tran')
+                                       max_foc=100, min_foc_x=-10, max_foc_x=10, min_foc_y=-10,
+                                       max_foc_y=10, name='tran')
     slot.driving_sys = SimpleNamespace(
         focus_options=['Focus xyz wrt exit plane [mm]', 'Focus xyz wrt mid bowl [mm]'],
         native_focus_params=['Focus xyz wrt exit plane [mm]'])
@@ -1576,7 +1579,8 @@ def test_set_focus_xyz_mid_bowl_native_exits_when_derived_exit_plane_out_of_rang
     slot = _bare_slot()
     slot._engineering_mode = True
     slot._transducer = SimpleNamespace(can_3d_steer=True, exit_plane_dist=5, min_foc=50,
-                                       max_foc=100, name='tran')
+                                       max_foc=100, min_foc_x=0, max_foc_x=0, min_foc_y=0,
+                                       max_foc_y=0, name='tran')
     slot.driving_sys = SimpleNamespace(
         focus_options=['Focus xyz wrt mid bowl [mm]'],
         native_focus_params=['Focus xyz wrt mid bowl [mm]'])
@@ -1591,7 +1595,8 @@ def test_set_focus_xyz_non_native_exits_when_combo_inactive(patch_config):
     3D calibration."""
     slot = _bare_slot()
     slot._engineering_mode = True
-    slot._transducer = SimpleNamespace(can_3d_steer=True, serial='TRAN-A')
+    slot._transducer = SimpleNamespace(can_3d_steer=True, serial='TRAN-A', min_foc_x=0,
+                                       max_foc_x=0, min_foc_y=0, max_foc_y=0)
     slot.driving_sys = SimpleNamespace(
         focus_options=['Focus xyz wrt exit plane [mm]', 'Focus xyz wrt mid bowl [mm]'],
         native_focus_params=['Focus xyz wrt mid bowl [mm]'])
@@ -1599,6 +1604,54 @@ def test_set_focus_xyz_non_native_exits_when_combo_inactive(patch_config):
 
     with pytest.raises(FDSValidationError, match='3D calibration data'):
         slot._set_focus_xyz('Focus xyz wrt exit plane [mm]', (0, 0, 30))
+
+
+def test_set_focus_xyz_exits_when_x_outside_lateral_range(patch_config):
+    slot = _bare_slot()
+    slot._engineering_mode = True
+    slot._transducer = SimpleNamespace(can_3d_steer=True, exit_plane_dist=5, min_foc=0,
+                                       max_foc=100, min_foc_x=-5, max_foc_x=5, min_foc_y=-5,
+                                       max_foc_y=5, name='tran')
+    slot.driving_sys = SimpleNamespace(
+        focus_options=['Focus xyz wrt mid bowl [mm]'],
+        native_focus_params=['Focus xyz wrt mid bowl [mm]'])
+    slot._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
+
+    with pytest.raises(FDSValidationError, match='lateral x range'):
+        slot._set_focus_xyz('Focus xyz wrt mid bowl [mm]', (10, 0, 30))
+
+
+def test_set_focus_xyz_exits_when_y_outside_lateral_range(patch_config):
+    slot = _bare_slot()
+    slot._engineering_mode = True
+    slot._transducer = SimpleNamespace(can_3d_steer=True, exit_plane_dist=5, min_foc=0,
+                                       max_foc=100, min_foc_x=-5, max_foc_x=5, min_foc_y=-5,
+                                       max_foc_y=5, name='tran')
+    slot.driving_sys = SimpleNamespace(
+        focus_options=['Focus xyz wrt mid bowl [mm]'],
+        native_focus_params=['Focus xyz wrt mid bowl [mm]'])
+    slot._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
+
+    with pytest.raises(FDSValidationError, match='lateral y range'):
+        slot._set_focus_xyz('Focus xyz wrt mid bowl [mm]', (0, -10, 30))
+
+
+def test_set_focus_xyz_with_default_zero_lateral_range_rejects_any_offset(patch_config):
+    """A can_3d_steer transducer with no lateral x/y config at all (e.g. Clover today, see
+    create_config.py's own TODO) defaults to min_foc_x=max_foc_x=min_foc_y=max_foc_y=0, so it
+    fails closed on any real offset instead of silently allowing an unvalidated one."""
+    slot = _bare_slot()
+    slot._engineering_mode = True
+    slot._transducer = SimpleNamespace(can_3d_steer=True, exit_plane_dist=5, min_foc=0,
+                                       max_foc=100, min_foc_x=0, max_foc_x=0, min_foc_y=0,
+                                       max_foc_y=0, name='tran')
+    slot.driving_sys = SimpleNamespace(
+        focus_options=['Focus xyz wrt mid bowl [mm]'],
+        native_focus_params=['Focus xyz wrt mid bowl [mm]'])
+    slot._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
+
+    with pytest.raises(FDSValidationError, match='lateral x range'):
+        slot._set_focus_xyz('Focus xyz wrt mid bowl [mm]', (1, 0, 30))
 
 
 # --- transducer ---------------------------------------------------------------

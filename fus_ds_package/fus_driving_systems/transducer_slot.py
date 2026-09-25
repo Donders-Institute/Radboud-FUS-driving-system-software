@@ -1452,6 +1452,23 @@ class TransducerSlot:
         validate_value(y, 'Focus y offset [mm] (y)', True, False, False, False)
         validate_value(z, 'Focus z [mm] (z)', True, True, False, False)
 
+        # Unlike z below, x/y need no exit-plane/mid-bowl conversion: exit_plane_dist only
+        # shifts z, a lateral position is the same in either frame.
+        if not self._transducer.min_foc_x <= x <= self._transducer.max_foc_x:
+            message = (
+                f'Focus x offset of {x:.2f} [mm] is not within the set lateral x range of ' +
+                f'{self._transducer.min_foc_x:.2f} and {self._transducer.max_foc_x:.2f} [mm] ' +
+                f'of transducer {self._transducer.name}.')
+            get_logger().critical(message)
+            raise FDSValidationError(message)
+        if not self._transducer.min_foc_y <= y <= self._transducer.max_foc_y:
+            message = (
+                f'Focus y offset of {y:.2f} [mm] is not within the set lateral y range of ' +
+                f'{self._transducer.min_foc_y:.2f} and {self._transducer.max_foc_y:.2f} [mm] ' +
+                f'of transducer {self._transducer.name}.')
+            get_logger().critical(message)
+            raise FDSValidationError(message)
+
         # Set before anything below reads them, closing the same "read stale sibling state"
         # ordering hazard already fixed repeatedly elsewhere in this class.
         self._focus_offset_x = x

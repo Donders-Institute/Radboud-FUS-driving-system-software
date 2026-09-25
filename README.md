@@ -696,6 +696,8 @@ _add_transducer(
     # hardware.
     steer_information='path\\to\\steer\\info',  # only if applicable
     can_3d_steer=False,  # see "3D (lateral) steering" below
+    # Only meaningful when can_3d_steer=True; see "3D (lateral) steering" below.
+    min_focus_x=0, max_focus_x=0, min_focus_y=0, max_focus_y=0,
     active=True,
 )
 ```
@@ -711,6 +713,10 @@ min. focus = 0
 max. focus = 100
 steer information = path\to\steer\info
 can 3d steer? = False
+min. focus x = 0
+max. focus x = 0
+min. focus y = 0
+max. focus y = 0
 active? = True
 ```
 
@@ -724,6 +730,7 @@ The transducer identifier must match one of the identifiers defined in the '[Equ
 - **max. focus**: Maximum allowed focus with respect to exit plane in millimeters. Same overwrite behavior as *min. focus* above, once a calibration is active.
 - **steer information**: Path to steering information file if applicable
 - **can 3d steer?**: Whether this transducer's own element geometry supports lateral (x/y) steering, not just depth, see "3D (lateral) steering" below. Only valid for a `.ini`-based *steer information* (a `.xlsx` lookup table has no x/y concept). Defaults to `False`.
+- **min./max. focus x**, **min./max. focus y**: Minimum/maximum allowed lateral offset in millimeters, only meaningful (and only ever enforced) for a `can_3d_steer=True` transducer, see "3D (lateral) steering" below. Unlike *min./max. focus*, these default to `0` (no lateral offset at all) when omitted, not a generous range: a transducer's real 3D steering geometry not yet being configured should fail closed, not silently allow an unvalidated offset.
 - **active?**: Whether this transducer is active and available for use
 
 #### 4. Add Equipment Combinations (advanced feature, if needed)
@@ -758,6 +765,8 @@ For a `can_3d_steer=True` transducer, the same four `_add_combination(...)` file
 IGT transducers with a `.ini`-based *steer information* can, in principle, be steered laterally (x/y) as well as in depth (z). `TUSProtocol.add_slot()`/`protocol.slots[i].configure()`/`update_transducer()` accept `Focus xyz wrt exit plane [mm]`/`Focus xyz wrt mid bowl [mm]` as a `focus_option`, taking an `(x, y, z)` tuple in millimeters as `focus_value` instead of a bare float. `x`/`y` are lateral offsets in the transducer's own coordinate space (the same frame `transducer_xyz.Transducer.compute_phases()`'s `point_mm` already uses); `z` is the focal depth in whichever reference frame (exit plane or mid bowl) you chose.
 
 This only works for a transducer with `can_3d_steer=True` (see step 3). Setting an xyz option on a transducer without `can_3d_steer=True` exits with a clear error.
+
+`x`/`y` are checked against that transducer's own *min./max. focus x*/*min./max. focus y* (see step 3), the lateral equivalent of *min./max. focus* for `z`. Unlike `z`, this check needs no exit-plane/mid-bowl conversion at all: a lateral offset is identical regardless of which depth reference frame is chosen. These default to `0` (no lateral offset allowed) when a transducer doesn't configure its own, so a `can_3d_steer=True` transducer without real steering-range data yet (e.g. one still using placeholder geometry) fails closed on any actual offset instead of silently allowing an unvalidated one.
 
 `Focus xyz wrt mid bowl [mm]` is native for IGT (no calibration needed at all, the same reason scalar mid bowl needs none), so it works for a `can_3d_steer=True` transducer even without any 3D calibration data. `Focus xyz wrt exit plane [mm]` is not native, and converting it requires 3D calibration data: setting it without an active one exits with a clear "requires 3D calibration data" error, the same way any other non-native parameter without an active calibration does.
 

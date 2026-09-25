@@ -17,7 +17,9 @@ def _configure_transducer_section_only(patch_config, serial, name='Test Transduc
                                        manufacturer='Test Manufacturer', elements='128',
                                        fund_freq='300',
                                        exit_plane_dist='10.0', min_focus='20.0',
-                                       max_focus='80.0', steer_info='igt/config/steer.xlsx',
+                                       max_focus='80.0', min_focus_x='-2.0', max_focus_x='2.0',
+                                       min_focus_y='-3.0', max_focus_y='3.0',
+                                       steer_info='igt/config/steer.xlsx',
                                        active='True'):
     """Configures only the per-serial section, without touching the
     combined 'Equipment'/'Transducers' list -- use this (with an explicit
@@ -31,6 +33,10 @@ def _configure_transducer_section_only(patch_config, serial, name='Test Transduc
     patch_config.set(section, 'Exit plane - first element dist.', exit_plane_dist)
     patch_config.set(section, 'Min. focus', min_focus)
     patch_config.set(section, 'Max. focus', max_focus)
+    patch_config.set(section, 'Min. focus x', min_focus_x)
+    patch_config.set(section, 'Max. focus x', max_focus_x)
+    patch_config.set(section, 'Min. focus y', min_focus_y)
+    patch_config.set(section, 'Max. focus y', max_focus_y)
     patch_config.set(section, 'Steer information', steer_info)
     patch_config.set(section, 'Active?', active)
 
@@ -56,9 +62,29 @@ def test_init_sets_expected_defaults(patch_config):
     assert tran.exit_plane_dist == 0
     assert tran.min_foc == 5.0
     assert tran.max_foc == 200.0
+    # Not seeded from Default.minimum/maximum above: these have their own, deliberately
+    # narrower (0) defaults, see Default.minimum.x's own comment in create_config.py.
+    assert tran.min_foc_x == 0.0
+    assert tran.max_foc_x == 0.0
+    assert tran.min_foc_y == 0.0
+    assert tran.max_foc_y == 0.0
     assert tran.steer_info is None
     assert tran.can_3d_steer is False
     assert tran.is_active is True
+
+
+def test_init_sets_lateral_defaults_from_config(patch_config):
+    patch_config.set('Focus', 'Default.minimum.x', '-7')
+    patch_config.set('Focus', 'Default.maximum.x', '7')
+    patch_config.set('Focus', 'Default.minimum.y', '-9')
+    patch_config.set('Focus', 'Default.maximum.y', '9')
+
+    tran = transducer.Transducer()
+
+    assert tran.min_foc_x == -7.0
+    assert tran.max_foc_x == 7.0
+    assert tran.min_foc_y == -9.0
+    assert tran.max_foc_y == 9.0
 
 
 def test_str_includes_all_fields():
@@ -71,6 +97,10 @@ def test_str_includes_all_fields():
     tran.exit_plane_dist = 10.0
     tran.min_foc = 20.0
     tran.max_foc = 80.0
+    tran.min_foc_x = -2.0
+    tran.max_foc_x = 2.0
+    tran.min_foc_y = -3.0
+    tran.max_foc_y = 3.0
     tran.steer_info = 'igt/config/steer.xlsx'
     tran.can_3d_steer = True
 
@@ -79,6 +109,8 @@ def test_str_includes_all_fields():
     assert 'My Transducer' in text
     assert 'ACME' in text
     assert '128' in text
+    assert '-2.00' in text
+    assert '-3.00' in text
     assert '300' in text
     assert '10.0' in text
     assert '20.0' in text
@@ -115,9 +147,38 @@ def test_set_transducer_info_populates_fields_from_config(patch_config):
     assert tran.exit_plane_dist == 10.0
     assert tran.min_foc == 20.0
     assert tran.max_foc == 80.0
+    assert tran.min_foc_x == -2.0
+    assert tran.max_foc_x == 2.0
+    assert tran.min_foc_y == -3.0
+    assert tran.max_foc_y == 3.0
     assert tran.steer_info == 'igt/config/steer.xlsx'
     assert tran.can_3d_steer is False
     assert tran.is_active is True
+
+
+def test_set_transducer_info_falls_back_to_zero_lateral_range_when_unset(patch_config):
+    """A transducer section without its own 'Min./Max. focus x/y' (e.g. Clover today, see
+    create_config.py's own TODO) falls back to Default.minimum.x/maximum.x/minimum.y/maximum.y,
+    which default to 0, not min_foc/max_foc's own, much wider defaults."""
+    patch_config.set('Equipment', 'Transducers', 'UNITTEST_TRAN')
+    section = 'Equipment.Transducer.UNITTEST_TRAN'
+    patch_config.set(section, 'Name', 'Test Transducer')
+    patch_config.set(section, 'Manufacturer', 'Test Manufacturer')
+    patch_config.set(section, 'Elements', '128')
+    patch_config.set(section, 'Fund. freq.', '300')
+    patch_config.set(section, 'Exit plane - first element dist.', '10.0')
+    patch_config.set(section, 'Min. focus', '20.0')
+    patch_config.set(section, 'Max. focus', '80.0')
+    patch_config.set(section, 'Steer information', 'igt/config/steer.xlsx')
+    patch_config.set(section, 'Active?', 'True')
+
+    tran = transducer.Transducer()
+    tran.set_transducer_info('UNITTEST_TRAN')
+
+    assert tran.min_foc_x == 0.0
+    assert tran.max_foc_x == 0.0
+    assert tran.min_foc_y == 0.0
+    assert tran.max_foc_y == 0.0
 
 
 def test_set_transducer_info_reads_can_3d_steer_true_for_ini_steer_info(patch_config):

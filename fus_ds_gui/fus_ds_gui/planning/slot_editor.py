@@ -270,12 +270,17 @@ class SlotEditor(ApplyPanel):
         self.focus_value_x_spin = _mm_spinbox()
         self.focus_value_y_spin = _mm_spinbox()
         self.focus_value_z_spin = _mm_spinbox()
+        # Text kept up to date with each field's own valid range in _update_focus_range().
+        self._focus_x_label = QLabel("x:")
+        self._focus_y_label = QLabel("y:")
+        self._focus_z_label = QLabel("z:")
         self.focus_value_xyz_widget = QWidget()
         xyz_layout = QHBoxLayout(self.focus_value_xyz_widget)
         xyz_layout.setContentsMargins(0, 0, 0, 0)
-        for label, spin in (("x:", self.focus_value_x_spin), ("y:", self.focus_value_y_spin),
-                            ("z:", self.focus_value_z_spin)):
-            xyz_layout.addWidget(QLabel(label))
+        for label, spin in ((self._focus_x_label, self.focus_value_x_spin),
+                            (self._focus_y_label, self.focus_value_y_spin),
+                            (self._focus_z_label, self.focus_value_z_spin)):
+            xyz_layout.addWidget(label)
             xyz_layout.addWidget(spin)
 
     def _load_initial_state(self, existing_slot, failed_slot):
@@ -661,23 +666,16 @@ class SlotEditor(ApplyPanel):
         return 0.0
 
     def _update_focus_range(self):
-        """Bounds the single-value focus spinbox to the currently selected transducer's own
-        min_foc/max_foc, offset for the currently selected focus_option when needed (see
-        _focus_range_offset()). A helpful default, not the actual source of truth (the backend's
-        own curve-range checks are, and still run on Apply regardless). Doesn't apply to the
-        (x, y, z) fields: min_foc/max_foc describe the z-axis-only (depth) range, whereas z
-        there is only one of three independent coordinates, and x/y have no equivalent
-        config-driven bound at all today.
-
-        Also puts that range in the row label and the spinbox's own tooltip: QDoubleSpinBox
-        silently clamps an out-of-range typed value to the nearest bound with no visual cue at
-        all, so without this a researcher has no way to tell why their entry changed.
-
-        A failed slot_def's own raw, still-unconfirmed focus_value (self._raw_focus_value, see
-        _load_failed_slot()) is a special case of that same silent-clamp problem: narrowing the
-        range here would otherwise erase it the moment the researcher picks a different, real
-        focus_option (still showing the file's own out-of-range value was the whole point of
-        loading it this way). Flagged via error_label instead of erased.
+        """Bounds focus_value_spin, and the xyz widget's own z field (both to the same min_foc/
+        max_foc, offset per _focus_range_offset()), plus its x/y fields (to min_foc_x/max_foc_x/
+        min_foc_y/max_foc_y, no offset needed: x/y has no exit-plane/mid-bowl distinction). A
+        helpful default, not the source of truth: the backend's own checks still run on Apply.
+        Also sets each field's label/tooltip, since QDoubleSpinBox clamps out-of-range values
+        silently otherwise. A failed slot_def's own raw out-of-range value surviving this
+        narrowing (see _load_failed_slot()) only matters for the scalar field (self.
+        _raw_focus_value): the xyz fields have no equivalent, since _on_transducer_changed()
+        itself always runs this before resetting them to a fresh default anyway, so whatever
+        they currently hold at that point is never a value worth preserving.
         """
 
         tran = self.transducer_combo.currentData()
@@ -709,6 +707,19 @@ class SlotEditor(ApplyPanel):
         else:
             self._focus_value_label.setText(f"Focus value ({range_text}):")
             self.focus_value_spin.setToolTip(f"Valid range for {tran.name}: {range_text}")
+
+        for spin, label, min_val, max_val, axis, desc in (
+                (self.focus_value_x_spin, self._focus_x_label, tran.min_foc_x, tran.max_foc_x,
+                 'x', 'lateral x'),
+                (self.focus_value_y_spin, self._focus_y_label, tran.min_foc_y, tran.max_foc_y,
+                 'y', 'lateral y'),
+                (self.focus_value_z_spin, self._focus_z_label, min_foc, max_foc, 'z', 'z')):
+            spin.setRange(min_val, max_val)
+            # On this field's own label, since the combined row label has no room for all three
+            # ranges; a 0-0 range (e.g. Clover today) must still be visible somewhere.
+            label.setText(f"{axis} ({min_val:.1f} to {max_val:.1f}):")
+            spin.setToolTip(f"Valid {desc} range for {tran.name}: "
+                            f"{min_val:.1f} to {max_val:.1f} mm")
 
     def _update_focus_options(self):
         """Repopulates focus_option_combo for whichever transducer is currently selected; see
