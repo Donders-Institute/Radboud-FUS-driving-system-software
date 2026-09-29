@@ -95,18 +95,6 @@ create_venv.bat "C:\Path\To\Python310\python.exe" FUS_DS_PACKAGE "C:/Users/Me/En
 ```
 The batch file will create a virtual environment, install the required Python packages and the default IDE, Spyder.
 
-<details>
-<summary><b>DCCN specific configuration</b></summary>
-
-To use the DCCN-specific default values, you can provide a fourth input parameter to activate these settings.
-
-Example:
-```
-create_venv.bat "" "" "" "DCCN"
-```
-
-</details>
-
 **Troubleshooting**: If you encounter issues with the batch file not being recognized or errors
 occur during execution, ensure that the batch file has the correct permissions to be executed,
 and that the repository has been cloned correctly and contains the necessary files.
@@ -178,18 +166,6 @@ How to use the script:
 		```
 		- VENV_PATH: Specify the path to the virtual environment (e.g., C:/Users/Me/Envs/MyEnv). If not provided, it defaults to C:/Users/{USERPROFILE}/Envs/FUS_DS_PACKAGE.
 		- IDE: Specify the python interpreter. If not provided, it defaults to spyder.
-
-		<details>
-		<summary><b>DCCN specific configuration</b></summary>
-
-		To use the DCCN-specific default values, you can solely provide the first input parameter to activate these settings.
-
-		Example:
-		```
-		start_venv_and_ide.bat "" "" "DCCN"
-		```
-
-		</details>
 
 ## 🌟 Installation of New Release <a name="install-new-release"></a>
 
