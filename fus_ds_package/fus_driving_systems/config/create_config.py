@@ -396,13 +396,6 @@ IS_TRANS = ['IS_PCD15287_01001', 'IS_PCD15287_01002', 'IS_PCD15473_01001',
             'IS_PCD15473_01002', 'IS_PCD15473_01003', 'IS_PCD15473_01001_OPM',
             'IS_PCD15473_01003_OPM']
 
-# IS_PCD15473_01002 (already active=False below, a known-broken unit that no longer physically
-# exists) is excluded from every compatibility list built from IS_TRANS, not just left inactive:
-# filtered by value here rather than removed from IS_TRANS itself, so every other _add_
-# transducer()/_add_combination() call below keeps referencing the same IS_TRANS[i] it already
-# does, unaffected by this exclusion.
-IS_TRANS_USABLE = [serial for serial in IS_TRANS if serial != IS_TRANS[3]]
-
 # Clover: a 3D-steering-capable (can_3d_steer=True) Imasonic transducer line, one per physical
 # unit (see the 'Imasonic - Clover tranducers' _add_transducer() calls below).
 CLOVER_TRANS = ['Clover_1', 'Clover_2', 'Clover_3']
@@ -439,15 +432,11 @@ MOCK_IGT = 'Mock IGT'
 MOCK_SC = 'Mock SC'
 MOCK_DS = ['Mock-IGT-1', 'Mock-SC-1']
 
-# Every non-OPM, non-broken Imasonic transducer (IS_TRANS_USABLE, already defined above, minus
-# the two _OPM variants: same 10-ch. family, just a different steer-file convention this driving
-# system entry doesn't need to distinguish for a mocked connection): keeps the rest of the
-# Planning tab (focus/power fields, dephasing) fully representative of an actual IGT protocol,
-# only the driving system side of "connect and send" is faked. Max. pressure in free water
-# [MPa], IGT's own usual native power parameter, works here too: MockIGT.validate_protocol()
-# skips the one check (Amplitude is None) that would otherwise need real calibration data, see
-# its own docstring.
-MOCK_IGT_TRANS = [serial for serial in IS_TRANS_USABLE if not serial.endswith('_OPM')]
+# Every non-OPM Imasonic transducer (the _OPM variants are the same 10-ch. family, just a
+# different steer-file convention, not needed for a mocked connection). Max. pressure in free
+# water [MPa] works here too: MockIGT.validate_protocol() skips the one check (Amplitude is
+# None) that would otherwise need real calibration data, see its own docstring.
+MOCK_IGT_TRANS = [serial for serial in IS_TRANS if not serial.endswith('_OPM')]
 _add_driving_system(
     MOCK_DS[0],
     name='Mock IGT (no real hardware)',
@@ -581,7 +570,7 @@ _add_driving_system(
     available_channels=20,
     connection_info=str(os.path.join(
         CONFIG_FILE_FOLDER_IGT_DS, 'gen_Nijmegen32_2x10c_71D8_10W.json')),
-    transducer_compatibility=IS_TRANS_USABLE + DUMMIES,
+    transducer_compatibility=IS_TRANS + DUMMIES,
     power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
     native_power_parameters=POW_AMPL,
     focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL, FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
@@ -600,7 +589,7 @@ _add_driving_system(
     available_channels=10,
     connection_info=str(os.path.join(
         CONFIG_FILE_FOLDER_IGT_DS, 'gen_Nijmegen32_10c_71D8_10W.json')),
-    transducer_compatibility=IS_TRANS_USABLE + DUMMIES,
+    transducer_compatibility=IS_TRANS + DUMMIES,
     power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
     native_power_parameters=POW_AMPL,
     focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL, FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],

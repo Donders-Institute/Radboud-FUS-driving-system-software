@@ -1673,6 +1673,7 @@ def test_transducer_setter_sets_default_oper_freq_and_resets_focus_and_power(pat
     against this API regardless. Power is exactly as transducer-specific as focus -- the
     calibration curve a previously chosen power value was computed against belonged to the old
     transducer -- so it's reset for the same reason, not just focus."""
+    patch_config.set('Equipment.Transducer.TRAN-A', 'Active?', 'True')
     slot = _bare_slot()
     slot.driving_sys = SimpleNamespace(serial='DS1', tran_comp=['TRAN-A'])
     slot._transducer = SimpleNamespace(
@@ -1718,6 +1719,7 @@ def test_transducer_setter_loads_real_curves_when_combo_active(tmp_path, patch_c
     eq_factor at all (see its own docstring), so there's nothing focus/power-related left to set
     up or assert on here -- this used to also characterize that, back when it still ran a guard
     clause for it."""
+    patch_config.set('Equipment.Transducer.TRAN-A', 'Active?', 'True')
     section = 'Equipment.Combination.DS1~TRAN-A'
     patch_config.set(section, 'Active?', 'True')
     eq_file = _write_identity_fit_json(tmp_path, 'eq.json', 0.0, 100.0)
@@ -1756,7 +1758,11 @@ def _fake_transducer(elements=2, fund_freq=300):
     return tran
 
 
-def _driving_sys_for(*tran_serials, max_tran_slots=4, available_ch=208):
+def _driving_sys_for(patch_config, *tran_serials, max_tran_slots=4, available_ch=208):
+    # _set_transducer() checks 'Active?' directly against config: register every serial as
+    # active here so callers don't each have to repeat it.
+    for serial in tran_serials:
+        patch_config.set(f'Equipment.Transducer.{serial}', 'Active?', 'True')
     return SimpleNamespace(
         serial='DS1', max_tran_slots=max_tran_slots, available_ch=available_ch,
         tran_comp=list(tran_serials), power_options=['Amplitude [%]'],
@@ -1769,7 +1775,8 @@ def test_update_transducer_swaps_transducer_and_reconfigures(patch_config):
     patch_config.set('Focus', 'Option.exit', 'Focus wrt exit plane [mm]')
     slot = _bare_slot()
     slot._engineering_mode = True
-    slot.driving_sys = _driving_sys_for('TRAN-A', 'TRAN-B', max_tran_slots=1, available_ch=2)
+    slot.driving_sys = _driving_sys_for(patch_config, 'TRAN-A', 'TRAN-B', max_tran_slots=1,
+                                        available_ch=2)
     slot._transducer = _fake_transducer(elements=2)
     slot.update_transducer('TRAN-A', 'Focus wrt exit plane [mm]', 20, 'Amplitude [%]', 30)
 
@@ -1786,7 +1793,8 @@ def test_update_transducer_defaults_dephasing_degree_to_none_even_when_old_slot_
     patch_config.set('Focus', 'Option.exit', 'Focus wrt exit plane [mm]')
     slot = _bare_slot()
     slot._engineering_mode = True
-    slot.driving_sys = _driving_sys_for('TRAN-A', 'TRAN-B', max_tran_slots=1, available_ch=2)
+    slot.driving_sys = _driving_sys_for(patch_config, 'TRAN-A', 'TRAN-B', max_tran_slots=1,
+                                        available_ch=2)
     slot._transducer = _fake_transducer(elements=2)
     slot.update_transducer('TRAN-A', 'Focus wrt exit plane [mm]', 20, 'Amplitude [%]', 30,
                            dephasing_degree=[90, 180])
@@ -1803,7 +1811,8 @@ def test_update_transducer_validates_new_transducers_element_count(patch_config)
     patch_config.set('Focus', 'Option.exit', 'Focus wrt exit plane [mm]')
     slot = _bare_slot()
     slot._engineering_mode = True
-    slot.driving_sys = _driving_sys_for('TRAN-BIG', max_tran_slots=4, available_ch=208)
+    slot.driving_sys = _driving_sys_for(patch_config, 'TRAN-BIG', max_tran_slots=4,
+                                        available_ch=208)
     slot._transducer = _fake_transducer(elements=60)
 
     with pytest.raises(FDSValidationError, match='60 elements'):
@@ -1815,7 +1824,7 @@ def test_update_transducer_sets_optional_oper_freq(patch_config):
     patch_config.set('Focus', 'Option.exit', 'Focus wrt exit plane [mm]')
     slot = _bare_slot()
     slot._engineering_mode = True
-    slot.driving_sys = _driving_sys_for('TRAN-A', max_tran_slots=1, available_ch=2)
+    slot.driving_sys = _driving_sys_for(patch_config, 'TRAN-A', max_tran_slots=1, available_ch=2)
     slot._transducer = _fake_transducer(elements=2, fund_freq=300)
 
     slot.update_transducer('TRAN-A', 'Focus wrt exit plane [mm]', 20, 'Amplitude [%]', 30,
@@ -1838,7 +1847,8 @@ def test_update_transducer_defaults_oper_freq_to_transducer_fund_freq_when_not_g
     patch_config.set('Focus', 'Option.exit', 'Focus wrt exit plane [mm]')
     slot = _bare_slot()
     slot._engineering_mode = True
-    slot.driving_sys = _driving_sys_for('TRAN-A', 'TRAN-B', max_tran_slots=1, available_ch=2)
+    slot.driving_sys = _driving_sys_for(patch_config, 'TRAN-A', 'TRAN-B', max_tran_slots=1,
+                                        available_ch=2)
     slot._transducer = _fake_transducer(elements=2, fund_freq=300)  # starts on TRAN-A
 
     fund_freq_by_serial = {'TRAN-A': 300, 'TRAN-B': 999}
@@ -2013,6 +2023,7 @@ def test_transducer_setter_leaves_combo_inactive_for_3d_transducer_with_no_3d_co
     """A can_3d_steer=True transducer with no 'Equipment.Combination.*' section at all degrades
     safely: _combo_is_active() stays False, exactly like any other equipment that never needs
     curve-based conversion, _update_conv_param() is never even called."""
+    patch_config.set('Equipment.Transducer.TRAN-A', 'Active?', 'True')
     slot = _bare_slot()
     slot.driving_sys = SimpleNamespace(serial='DS1', tran_comp=['TRAN-A'])
     slot._transducer = SimpleNamespace(

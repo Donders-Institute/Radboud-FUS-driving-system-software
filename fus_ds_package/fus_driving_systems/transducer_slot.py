@@ -356,6 +356,15 @@ class TransducerSlot:
             get_logger().critical(message)
             raise FDSValidationError(message)
 
+        # Checked directly against config here, before set_transducer_info() below mutates
+        # self._transducer in place: fails closed the same way get_tran_serials() does, so an
+        # inactive transducer (e.g. a known-broken unit) can't be selected outside the GUI either.
+        section = 'Equipment.Transducer.' + serial
+        if get_config_value(get_logger(), config, section, 'Active?', 'False') != 'True':
+            message = f'{serial} is not active in the configuration file, so it cannot be used.'
+            get_logger().critical(message)
+            raise FDSValidationError(message)
+
         self._transducer.set_transducer_info(serial)
 
         # Default operating frequency from the new transducer's own fundamental frequency --
