@@ -56,7 +56,8 @@ try:
     # is unused here.
     #
     # require_hash=False (the default) -- set to True once you have a real wait_for_trigger.yaml you
-    # don't want accidentally changed; see README.md's "Load a protocol from a YAML file" section.
+    # don't want accidentally changed; see docs/building-protocols.md's "Load a Protocol from a
+    # YAML File" section.
     protocols, total_alternating_duration_ms, trigger_option, n_triggers, _ = load_protocol(
         'wait_for_trigger.yaml', require_hash=False)
 

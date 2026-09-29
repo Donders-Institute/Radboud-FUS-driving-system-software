@@ -52,7 +52,8 @@ try:
     # directly (execute_protocol()).
     #
     # require_hash=False (the default) -- set to True once you have a real protocol.yaml you don't
-    # want accidentally changed; see README.md's "Load a protocol from a YAML file" section.
+    # want accidentally changed; see docs/building-protocols.md's "Load a Protocol from a YAML
+    # File" section.
     protocols, total_alternating_duration_ms, trigger_option, n_triggers, _ = load_protocol(
         'protocol.yaml', require_hash=False)
     protocol = protocols[0]

@@ -59,7 +59,8 @@ try:
     # nothing to read or pass on for any of the three.
     #
     # require_hash=False (the default) -- set to True once you have a real direct_execute.yaml you
-    # don't want accidentally changed; see README.md's "Load a protocol from a YAML file" section.
+    # don't want accidentally changed; see docs/building-protocols.md's "Load a Protocol from a
+    # YAML File" section.
     protocols, total_alternating_duration_ms, trigger_option, n_triggers, _ = load_protocol(
         'direct_execute.yaml', require_hash=False)
 
