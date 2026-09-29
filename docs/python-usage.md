@@ -93,7 +93,8 @@ Example:
 ```
 create_venv.bat "C:\Path\To\Python310\python.exe" FUS_DS_PACKAGE "C:/Users/Me/Envs"
 ```
-The batch file will create a virtual environment, install the required Python packages and the default IDE, Spyder.
+The batch file will create a virtual environment and install the required Python packages; no
+IDE is included, see "Step 2: Install an IDE" under Usage below.
 
 **Troubleshooting**: If you encounter issues with the batch file not being recognized or errors
 occur during execution, ensure that the batch file has the correct permissions to be executed,
@@ -123,7 +124,14 @@ call [VENV_PATH]\Scripts\activate
 ```
 
 ### Step 2: Install an IDE
-While your virtual environment is activated, you can install any IDE of your choice. Spyder is pre-installed by default. To install another IDE, run:
+While your virtual environment is activated, you can install any IDE of your choice. To install
+Spyder, this repo's suggested default:
+
+```
+pip install spyder==6.0.3
+```
+
+To install another IDE instead, run:
 
 ```
 pip install [IDE]
