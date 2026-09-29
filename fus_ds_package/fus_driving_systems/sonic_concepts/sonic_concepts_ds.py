@@ -297,9 +297,26 @@ class SonicConcepts(ds.ControlDrivingSystem):
             self._connected = False
             get_logger().info("Disconnected.")
 
+    # The TPO's own documented error codes (User Manual, Serial Commands): E1 for an
+    # unrecognized command, E2 for a parameter out of range, E3 for incorrect command syntax.
+    _ERROR_RESPONSES = {
+        'E1': 'unrecognized command',
+        'E2': 'parameter out of range',
+        'E3': 'incorrect command syntax',
+    }
+
     def _send_command(self, command, sleep_time_s=1):
         """
-        Sends a command to the Sonic Concepts ultrasound driving system and waits for the response.
+        Sends a command to the Sonic Concepts ultrasound driving system and waits for the
+        response.
+
+        Raises FDSHardwareError for any of the TPO's own documented error codes (E1/E2/E3, see
+        _ERROR_RESPONSES), or for an empty response (readline() timed out with nothing received,
+        e.g. a lost connection): every command in the User Manual's own command table has a
+        non-empty confirmation echo, so nothing legitimate ever returns empty. Left unchecked, an
+        E1/E3 response (e.g. a typo'd command, or a per-channel command sent while still in local
+        mode, see LOCAL=X) could otherwise surface downstream as a confusing crash instead (e.g.
+        _set_burst_and_period()'s own PERIOD? regex parse, which assumes a valid numeric reply).
 
         Parameters:
             command (str): The command to be sent.
@@ -315,8 +332,15 @@ class SonicConcepts(ds.ControlDrivingSystem):
         response = self.gen.readline().decode("ascii").rstrip()
         get_logger().debug(f"Response from gen: {response}")
 
-        if response == 'E2':
-            message = "Error E2"
+        if response in self._ERROR_RESPONSES:
+            message = (f"Error {response} ({self._ERROR_RESPONSES[response]}) for command: " +
+                       f"{command.strip()}")
+            get_logger().critical(message)
+            raise FDSHardwareError(message)
+
+        if not response:
+            message = (f"No response received for command: {command.strip()} (connection may " +
+                       "be lost or unresponsive).")
             get_logger().critical(message)
             raise FDSHardwareError(message)
 

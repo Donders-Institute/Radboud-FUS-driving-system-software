@@ -51,6 +51,32 @@ def test_send_command_raises_on_e2_response(connected_instance):
         connected_instance._send_command('FOO=1\r\n', sleep_time_s=0)
 
 
+def test_send_command_raises_on_e1_response(connected_instance):
+    """E1 (unrecognized command) is a TPO error code distinct from E2."""
+    connected_instance.gen.readline.return_value = b'E1\n'
+
+    with pytest.raises(FDSHardwareError, match='E1'):
+        connected_instance._send_command('FOO=1\r\n', sleep_time_s=0)
+
+
+def test_send_command_raises_on_e3_response(connected_instance):
+    """E3 (incorrect command syntax) is a TPO error code distinct from E2."""
+    connected_instance.gen.readline.return_value = b'E3\n'
+
+    with pytest.raises(FDSHardwareError, match='E3'):
+        connected_instance._send_command('FOO=1\r\n', sleep_time_s=0)
+
+
+def test_send_command_raises_on_empty_response(connected_instance):
+    """An empty response (readline() timed out with nothing received, e.g. a lost connection) is
+    never legitimate: every command in the TPO's own command table has a non-empty confirmation
+    echo."""
+    connected_instance.gen.readline.return_value = b''
+
+    with pytest.raises(FDSHardwareError):
+        connected_instance._send_command('FOO=1\r\n', sleep_time_s=0)
+
+
 def test_set_operating_freq_converts_khz_to_hz(mocker, connected_instance):
     mock_send = mocker.patch.object(connected_instance, '_send_command')
     connected_instance._set_operating_freq(300)
