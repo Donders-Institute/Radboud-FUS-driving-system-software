@@ -62,6 +62,12 @@ pip install [PATH_TO_CLONED_REPO]\fus_ds_package
 Once installed, `import fus_driving_systems` works from your existing script regardless of where
 either one lives. Skip ahead to [Usage](#usage) from here.
 
+Developing `fus_driving_systems` itself, and want your local edits picked up without
+reinstalling after every change? Install it in editable mode instead:
+```
+pip install -e [PATH_TO_CLONED_REPO]\fus_ds_package
+```
+
 #### Setting Up a New Virtual Environment
 
 Ensure you have the Python version from the table in Step 1 installed and accessible from your command line; download it via the link in that table if you don't have it yet. It is not necessary to add Python to your system's PATH during installation, as virtual environments allow you to manage and switch between Python versions without affecting other projects or code outside the environment.

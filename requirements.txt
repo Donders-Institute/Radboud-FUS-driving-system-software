@@ -10,4 +10,4 @@ spyder==6.0.3
 pytest
 pytest-cov
 pytest-mock
--e ./fus_ds_package
+./fus_ds_package
