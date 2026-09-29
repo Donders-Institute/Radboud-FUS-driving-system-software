@@ -107,6 +107,34 @@ def test_initialize_logger_logs_the_package_version(patch_config, tmp_path, test
     assert 'fus_driving_systems version: 9.9.9' in debug_file.read_text()
 
 
+def test_initialize_logger_warns_when_pressure_limit_modified(patch_config, tmp_path,
+                                                              test_logger_name):
+    """A modified safety limit is otherwise easy to miss among other config detail, so this
+    gets an explicit, always-visible WARNING at the start of every session, not just an entry
+    in the debug file."""
+    patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '2.0')
+    _configure_logging(patch_config, test_logger_name)
+    logging_config.initialize_logger(str(tmp_path), "testrun")
+
+    session_log_dir = Path(logging_config.get_session_log_dir())
+    log_files = list(session_log_dir.glob("*.txt"))
+    info_file = next(f for f in log_files if 'info' in f.name)
+    assert 'MODIFIED pressure limit of 2.0 MPa' in info_file.read_text()
+    assert 'default: 1.4 MPa' in info_file.read_text()
+
+
+def test_initialize_logger_does_not_warn_when_pressure_limit_unchanged(patch_config, tmp_path,
+                                                                       test_logger_name):
+    patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '1.4')
+    _configure_logging(patch_config, test_logger_name)
+    logging_config.initialize_logger(str(tmp_path), "testrun")
+
+    session_log_dir = Path(logging_config.get_session_log_dir())
+    log_files = list(session_log_dir.glob("*.txt"))
+    info_file = next(f for f in log_files if 'info' in f.name)
+    assert 'MODIFIED pressure limit' not in info_file.read_text()
+
+
 def test_initialize_logger_creates_measurements_file_only_once_something_is_logged_to_it(
         patch_config, tmp_path, test_logger_name):
     """The flip side of the test above -- delay=True defers opening the file, not creating the
@@ -448,6 +476,40 @@ def test_sync_logger_logs_the_package_version(tmp_path, mocker):
         logging_config.sync_logger(stand_in_logger, log_dir=str(tmp_path))
 
         assert any('fus_driving_systems version: 9.9.9' in message
+                   for message in capturing_handler.messages)
+    finally:
+        original_logger.handlers = original_handlers
+        original_logger.setLevel(original_level)
+        original_logger.propagate = original_propagate
+
+
+def test_sync_logger_warns_when_pressure_limit_modified(patch_config, tmp_path):
+    """A host application (e.g. SonoRover One) using sync_logger() must get the same warning
+    a script using initialize_logger() would."""
+    patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '2.0')
+    original_logger = logging_config._logger
+    original_handlers = original_logger.handlers
+    original_level = original_logger.level
+    original_propagate = original_logger.propagate
+    stand_in_logger = logging.getLogger("unittest.sync_logger_pressure_marker")
+
+    class _CapturingHandler(logging.Handler):
+        def __init__(self):
+            super().__init__()
+            self.messages = []
+
+        def emit(self, record):
+            self.messages.append(record.getMessage())
+
+    capturing_handler = _CapturingHandler()
+    stand_in_logger.addHandler(capturing_handler)
+    stand_in_logger.setLevel(logging.DEBUG)
+    stand_in_logger.propagate = False
+
+    try:
+        logging_config.sync_logger(stand_in_logger, log_dir=str(tmp_path))
+
+        assert any('MODIFIED pressure limit of 2.0 MPa' in message
                    for message in capturing_handler.messages)
     finally:
         original_logger.handlers = original_handlers

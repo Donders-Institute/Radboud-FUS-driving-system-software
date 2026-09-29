@@ -319,6 +319,37 @@ class ZipRotatingFileHandler(RotatingFileHandler):
             self.stream = self._open()
 
 
+# Mirrors create_config.py's own MAX_ALLOWED_PRESSURE. Duplicated rather than imported:
+# create_config.py is a standalone generator script (running it regenerates ds_config.ini), not
+# a module meant to be imported elsewhere, the same reason config key names are already
+# duplicated as literal strings (e.g. transducer_slot.py's get_max_pressure()) instead of shared
+# constants. Keep this in sync by hand if that value ever changes.
+_SHIPPED_MAX_PRESSURE_MPA = 1.4
+
+
+def _warn_if_pressure_limit_modified():
+    """
+    Logs an explicit WARNING (not just INFO/DEBUG) if the configured 'Maximum pressure allowed
+    in free water [MPa]' differs from what create_config.py ships by default: a cheap,
+    always-visible flag at the start of every session that this session is running with a
+    modified safety limit, since that value is otherwise easy to miss among other config detail.
+    Not a full audit trail (no who/when/why); see the 'Safety Setting' section of
+    docs/configuration.md for the override itself.
+    """
+
+    try:
+        active_mpa = float(get_config_value(
+            None, config, 'Power', 'Maximum pressure allowed in free water [MPa]',
+            _SHIPPED_MAX_PRESSURE_MPA))
+    except (TypeError, ValueError):
+        return  # a malformed value is _enforce_max_pressure()'s job to catch, not this one's
+
+    if active_mpa != _SHIPPED_MAX_PRESSURE_MPA:
+        get_logger().warning(
+            f'This session is running with a MODIFIED pressure limit of {active_mpa} MPa '
+            f'(default: {_SHIPPED_MAX_PRESSURE_MPA} MPa).')
+
+
 def _get_package_version():
     """
     Returns the installed fus_driving_systems package version (e.g. '2.2.3'), read from
@@ -420,6 +451,7 @@ def initialize_logger(log_dir, filename):
     _measurements_logger.propagate = False
 
     _logger.info(f'fus_driving_systems version: {_get_package_version()}')
+    _warn_if_pressure_limit_modified()
 
     return _logger
 
@@ -438,10 +470,10 @@ def sync_logger(new_logger, log_dir=None):
     Also enables crash detection (GitHub issue #126) if it hasn't already been enabled this
     process -- the other of the two whole-package hooks (see enable_crash_detection()),
     covering host applications (e.g. SonoRover One) that use sync_logger() instead of
-    initialize_logger() to set up logging. Also logs the installed package version, same
-    reason: reproducing a result later needs to know which version produced it, and logging
-    it here too guarantees that regardless of which of the two entry points a caller used,
-    the version ends up in the log.
+    initialize_logger() to set up logging. Also logs the installed package version and warns
+    if the pressure safety limit was modified (see _warn_if_pressure_limit_modified()), same
+    reason for both: regardless of which of the two entry points a caller used, they end up
+    in the log either way.
 
     _measurements_logger (see get_measurements_logger()) is deliberately left untouched here --
     no handlers of its own, propagate at its default True -- so its high-volume per-pulse/
@@ -465,6 +497,7 @@ def sync_logger(new_logger, log_dir=None):
     _logger.propagate = new_logger.propagate
 
     _logger.info(f'fus_driving_systems version: {_get_package_version()}')
+    _warn_if_pressure_limit_modified()
 
     if log_dir is None:
         log_dir = get_config_value(None, config, 'Logging', 'Temporary logging path', 'C:\\Temp')
