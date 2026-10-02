@@ -35,7 +35,10 @@ def connected_instance(tmp_path, mocker):
     instance.gen = mocker.Mock()
     instance.fus = mocker.Mock()
     instance.listener = mocker.Mock()
-    instance.connected = True
+    # Mirrors ExecListener's own default (unset/no error) -- a bare Mock() would otherwise
+    # auto-create a truthy attribute here, which execute_protocol() now checks for a failed
+    # protocol execution (see TestExecuteProtocol's exec_error_code tests).
+    instance.listener.exec_error_code = None
     instance.n_channels = 2
     return instance
 

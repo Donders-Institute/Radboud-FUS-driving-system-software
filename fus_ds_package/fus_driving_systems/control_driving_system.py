@@ -1,39 +1,21 @@
 # -*- coding: utf-8 -*-
 """
-Copyright (c) 2024 Margely Cornelissen, Stein Fekkes (Radboud University) and Erik Dumont (Image
-Guided Therapy)
+Copyright (c) 2024 Radboud University
 
-MIT License
+SPDX-License-Identifier: MIT
+See the LICENSE file for full license text.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-**Attribution Notice**:
-If you use this kit in your research or project, please refer to the 'How to Cite' section in the
-README.md file of https://github.com/Donders-Institute/Radboud-FUS-driving-system-software.
+If you use this kit in your research or project, please cite it -- see CITATION.cff or the
+'How to Cite' section of README.md at
+https://github.com/Donders-Institute/Radboud-FUS-driving-system-software.
 """
-
-# Basis import
 
 # Miscellaneous import
 from abc import ABC, abstractmethod
 
 # Own packages
+from fus_driving_systems.config.logging_config import get_logger
+from fus_driving_systems.exceptions import FDSValidationError
 
 
 class ControlDrivingSystem(ABC):
@@ -41,7 +23,6 @@ class ControlDrivingSystem(ABC):
     Abstract base class for an ultrasound driving system.
 
     Attributes:
-        connected (bool): Indicates whether the system is connected.
         gen: Generator object.
         logger_name (str): Name of the logger.
     """
@@ -51,10 +32,13 @@ class ControlDrivingSystem(ABC):
         Initializes the DrivingSystem object.
         """
 
-        # boolean to determine if gen is connected
-        self.connected = False
+        # Private -- subclasses must use is_connected()/set this via their own connect()/
+        # disconnect(), never read/write it directly (nor should any external caller, e.g. a
+        # host application). This is what actually enforces that: is_connected() is the only
+        # supported way to check connection status.
+        self._connected = False
 
-        self.sequence_sent = False
+        self.protocol_sent = False
 
         # generator object
         self.gen = None
@@ -70,20 +54,26 @@ class ControlDrivingSystem(ABC):
         """
 
     @abstractmethod
-    def send_sequence(self, sequence):
+    def send_protocol(self, protocol):
         """
-        Abstract method for sending an ultrasound sequence to the ultrasound driving system.
+        Abstract method for sending an ultrasound protocol to the ultrasound driving system.
 
         Parameters:
-            sequence(Object): contains, amongst other things, of:
-                the ultrasound protocol (focus, pulse duration, pulse rep. interval and etcetera)
-                used equipment (driving system and transducer)
+            protocol(Object): a TUSProtocol instance containing, amongst other things:
+                the timing/power/focus parameters (focus, pulse duration, pulse rep. interval
+                and etcetera) and the equipment used (driving system and transducer)
         """
 
     @abstractmethod
-    def execute_sequence(self):
+    def execute_protocol(self, protocol):
         """
-        Abstract method for executing the previously sent sequence.
+        Abstract method for executing the previously sent protocol.
+
+        Parameters:
+            protocol(Object): a TUSProtocol instance containing, amongst other things:
+                the timing/power/focus parameters (focus, pulse duration, pulse rep. interval
+                and etcetera) and the equipment used (driving system and transducer). IGT's own
+                override accepts a list of these instead, to support interleaving.
         """
 
     @abstractmethod
@@ -91,6 +81,39 @@ class ControlDrivingSystem(ABC):
         """
         Abstract method for disconnecting from the ultrasound driving system.
         """
+
+    def abort(self):
+        """
+        Stops a currently running pulse train/sequence without disconnecting, unlike
+        disconnect(); this is meant to be immediately followed by another send_protocol()/
+        execute_protocol() on the same connection, e.g. a host application's abort button. The
+        default implementation here falls back to disconnect(), since there's no equipment-
+        agnostic way to interrupt execution without a driving-system-specific command; subclasses
+        that can do better (IGT, SonicConcepts) override this.
+        """
+
+        get_logger().warning(
+            "abort() is not implemented for this driving system, falling back to disconnect().")
+        self.disconnect()
+
+    def _ready_to_abort(self):
+        """
+        Checks connection state and logs consistently before a subclass's own abort() override
+        attempts to actually stop a running sequence; shared by IGT.abort()/
+        SonicConcepts.abort() so this guard-and-log boilerplate isn't duplicated in both (each
+        subclass's own stop mechanism differs too much to share the rest of abort() itself).
+
+        Returns:
+            bool: True if connected and the subclass should proceed to actually stop the
+            sequence, False if there's nothing to abort.
+        """
+
+        if not self.is_connected():
+            get_logger().warning("No connection with driving system, nothing to abort.")
+            return False
+
+        get_logger().info('Aborting...')
+        return True
 
     def is_connected(self):
         """
@@ -100,26 +123,26 @@ class ControlDrivingSystem(ABC):
             bool: True if connected, False otherwise.
         """
 
-        return self.connected
+        return self._connected
 
-    def is_sequence_sent(self):
+    def is_protocol_sent(self):
         """
-        Checks whether a sequence has been sent to the ultrasound driving system.
+        Checks whether a protocol has been sent to the ultrasound driving system.
 
         Returns:
-            bool: True if a sequence has been sent, False otherwise.
+            bool: True if a protocol has been sent, False otherwise.
         """
 
-        return self.sequence_sent
+        return self.protocol_sent
 
-    def validate_sequence(self, sequence):
+    def validate_protocol(self, protocol):
         """
-        Validates if the sequence is within the expected ranges.
+        Validates if the protocol is within the expected ranges.
 
         Parameters:
-            sequence(Object): contains, amongst other things, of:
-                the ultrasound protocol (focus, pulse duration, pulse rep. interval and etcetera)
-                used equipment (driving system and transducer)
+            protocol(Object): a TUSProtocol instance containing, amongst other things:
+                the timing/power/focus parameters (focus, pulse duration, pulse rep. interval
+                and etcetera) and the equipment used (driving system and transducer)
 
         Returns:
             List: List of error messages.
@@ -127,41 +150,69 @@ class ControlDrivingSystem(ABC):
 
         error_messages = []
 
-        n_pulses = sequence.pulse_train_dur/sequence.pulse_rep_int
-        if not n_pulses.is_integer():
-            error_messages.append("Number of pulses within the pulse train is not a whole " +
-                                  "number: " +
-                                  f"Pulse Train Duration of {sequence.pulse_train_dur} [ms] " +
-                                  f"divided by Pulse Rep. Interval of {sequence.pulse_rep_int} " +
-                                  f"[ms] is {n_pulses:.2f}.")
+        if protocol.pulse_rep_int == 0:
+            error_messages.append("Pulse Repetition Interval [ms] is not allowed to be 0.")
+        else:
+            n_pulses = protocol.pulse_train_dur/protocol.pulse_rep_int
+            if not n_pulses.is_integer():
+                error_messages.append("Number of pulses within the pulse train is not a whole " +
+                                      "number: " +
+                                      f"Pulse Train Duration of {protocol.pulse_train_dur} " +
+                                      "[ms] divided by Pulse Rep. Interval of " +
+                                      f"{protocol.pulse_rep_int} [ms] is {n_pulses:.2f}.")
 
-        n_pulse_trains = sequence.pulse_train_rep_dur/sequence.pulse_train_rep_int
-        if not n_pulse_trains.is_integer():
-            error_messages.append("Number of pulse trains within the pulse train repetition is " +
-                                  "not a whole number: Pulse Train Repetition Duration of " +
-                                  f"{sequence.pulse_train_rep_dur} [ms] divided by Pulse " +
-                                  "Train Repetition Interval of " +
-                                  f"{sequence.pulse_train_rep_int} [ms] is {n_pulse_trains:.2f}.")
+        if protocol.pulse_train_rep_int == 0:
+            error_messages.append("Pulse Train Repetition Interval [ms] is not allowed to be 0.")
+        else:
+            n_pulse_trains = protocol.pulse_train_rep_dur/protocol.pulse_train_rep_int
+            if not n_pulse_trains.is_integer():
+                error_messages.append(
+                    "Number of pulse trains within the pulse train repetition is " +
+                    "not a whole number: Pulse Train Repetition Duration of " +
+                    f"{protocol.pulse_train_rep_dur} [ms] divided by Pulse " +
+                    "Train Repetition Interval of " +
+                    f"{protocol.pulse_train_rep_int} [ms] is {n_pulse_trains:.2f}.")
 
-        if sequence.pulse_dur > sequence.pulse_rep_int:
+        if protocol.pulse_dur > protocol.pulse_rep_int:
             error_messages.append("Pulse Duration is not allowed to be higher than the Pulse " +
-                                  f"Repetition Interval: {sequence.pulse_dur} [ms] vs. " +
-                                  f"{sequence.pulse_rep_int} [ms], respectively.")
+                                  f"Repetition Interval: {protocol.pulse_dur} [ms] vs. " +
+                                  f"{protocol.pulse_rep_int} [ms], respectively.")
 
-        if sequence.pulse_rep_int > sequence.pulse_train_dur:
+        if protocol.pulse_rep_int > protocol.pulse_train_dur:
             error_messages.append("Pulse Repetiton Interval is not allowed to be higher than " +
-                                  f"the Pulse Train Duration: {sequence.pulse_rep_int} [ms] vs. " +
-                                  f"{sequence.pulse_train_dur} [ms], respectively.")
+                                  f"the Pulse Train Duration: {protocol.pulse_rep_int} [ms] vs. " +
+                                  f"{protocol.pulse_train_dur} [ms], respectively.")
 
-        if sequence.pulse_train_dur > sequence.pulse_train_rep_int:
+        if protocol.pulse_train_dur > protocol.pulse_train_rep_int:
             error_messages.append("Pulse Train Duration is not allowed to be higher than the " +
-                                  f"Pulse Train Repetition Interval: {sequence.pulse_train_dur} " +
-                                  f"[ms] vs. {sequence.pulse_train_rep_int} [ms], respectively.")
+                                  f"Pulse Train Repetition Interval: {protocol.pulse_train_dur} " +
+                                  f"[ms] vs. {protocol.pulse_train_rep_int} [ms], respectively.")
 
-        if sequence.pulse_train_rep_int > sequence.pulse_train_rep_dur:
+        if protocol.pulse_train_rep_int > protocol.pulse_train_rep_dur:
             error_messages.append("Pulse Train Repetition Interval is not allowed to be higher " +
                                   "than the Pulse Train Repetition Duration: " +
-                                  f" {sequence.pulse_train_rep_int} [ms] vs. " +
-                                  f"{sequence.pulse_train_rep_dur} [ms], respectively.")
+                                  f" {protocol.pulse_train_rep_int} [ms] vs. " +
+                                  f"{protocol.pulse_train_rep_dur} [ms], respectively.")
 
         return error_messages
+
+    def _validate_or_raise(self, protocol):
+        """
+        Validates the given protocol and raises FDSValidationError with a clear message if it's
+        invalid. Shared by every driving system's own send_protocol(), rather than copy-pasted
+        per subclass.
+
+        Parameters:
+            protocol(Object): a TUSProtocol instance containing, amongst other things:
+                the timing/power/focus parameters (focus, pulse duration, pulse rep. interval
+                and etcetera) and the equipment used (driving system and transducer)
+
+        Raises:
+            FDSValidationError: If validate_protocol() returned one or more error messages.
+        """
+
+        error_messages = self.validate_protocol(protocol)
+        if error_messages:
+            for error in error_messages:
+                get_logger().critical(error)
+            raise FDSValidationError(' '.join(error_messages))

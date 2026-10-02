@@ -28,7 +28,7 @@ import json
 import numpy as np
 import pytest
 
-from fus_driving_systems import sequence
+from fus_driving_systems import calc_utils
 
 from discovery import discover_calibration_files, manual_pp_eval
 
@@ -70,7 +70,7 @@ def test_loader_matches_manual_polynomial_evaluation(filename, load_json, resour
     that may not be present or may have gone stale.
     """
     raw = load_json(filename)
-    pp, breaks = sequence.extract_and_define_pp(resource_path(filename), return_breaks=True)
+    pp, breaks = calc_utils.extract_and_define_pp(resource_path(filename), return_breaks=True)
 
     coefs = raw["FitParams"]["coefs"]
     test_points = np.linspace(breaks[0], breaks[-1], 25)
@@ -97,11 +97,11 @@ def test_safe_evaluate_pp_matches_direct_call(load_json, resource_path):
     against an independent source (manual polynomial evaluation).
     """
     for filename in ALL_FILES:
-        pp, breaks = sequence.extract_and_define_pp(resource_path(filename), return_breaks=True)
+        pp, breaks = calc_utils.extract_and_define_pp(resource_path(filename), return_breaks=True)
         x_mid = (min(breaks) + max(breaks)) / 2
 
         y_direct = pp(x_mid)
-        y_safe, status = sequence.safe_evaluate_pp(pp, x_mid)
+        y_safe, status = calc_utils.safe_evaluate_pp(pp, x_mid)
 
         assert status, f"safe_evaluate_pp reported failure in-domain for {filename}"
         np.testing.assert_allclose(y_safe, y_direct, rtol=1e-6, atol=1e-8)
@@ -133,7 +133,7 @@ def test_loader_does_not_reverse_coefficients_for_a_synthetic_single_piece_fit(t
     json_path = tmp_path / "synthetic_single_piece.json"
     json_path.write_text(json.dumps(fit_params))
 
-    pp = sequence.extract_and_define_pp(str(json_path))
+    pp = calc_utils.extract_and_define_pp(str(json_path))
 
     test_points = np.linspace(breaks[0], breaks[-1], 25)
     y_pp = pp(test_points)

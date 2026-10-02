@@ -1,36 +1,17 @@
 # -*- coding: utf-8 -*-
 """
-Copyright (c) 2024 Margely Cornelissen, Stein Fekkes (Radboud University) and Erik Dumont (Image
-Guided Therapy)
+Copyright (c) 2024 Radboud University
 
-MIT License
+SPDX-License-Identifier: MIT
+See the LICENSE file for full license text.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-**Attribution Notice**:
-If you use this kit in your research or project, please refer to the 'How to Cite' section in the
-README.md file of https://github.com/Donders-Institute/Radboud-FUS-driving-system-software.
+If you use this kit in your research or project, please cite it -- see CITATION.cff or the
+'How to Cite' section of README.md at
+https://github.com/Donders-Institute/Radboud-FUS-driving-system-software.
 """
 
 # Basis packages
 import re
-import sys
 import time
 import tkinter
 
@@ -42,8 +23,10 @@ import serial
 # Own packages
 from fus_driving_systems import control_driving_system as ds
 from fus_driving_systems.config.config import config_info as config
-from fus_driving_systems.config.logging_config import logger
+from fus_driving_systems.config.logging_config import get_logger
 from fus_driving_systems.utils import get_config_value
+from fus_driving_systems.exceptions import (FDSHardwareError, FDSInternalError, FDSSafetyError,
+                                            FDSValidationError)
 
 
 class SonicConcepts(ds.ControlDrivingSystem):
@@ -56,6 +39,13 @@ class SonicConcepts(ds.ControlDrivingSystem):
         gen: Generator object.
     """
 
+    def __init__(self):
+        super().__init__()
+        # Stored at send_protocol() time (not read from execute_protocol()/wait_for_trigger()'s
+        # own protocol argument, which the success path never otherwise touches, see those
+        # methods' own docstrings on reconnecting from a dropped connection instead).
+        self._sent_pulse_train_dur = None
+
     def connect(self, connect_info):
         """
         Connects to the Sonic Concepts ultrasound driving system.
@@ -64,115 +54,269 @@ class SonicConcepts(ds.ControlDrivingSystem):
             connect_info (str): COM port information.
         """
 
-        logger.info('Connecting...')
+        get_logger().info('Connecting...')
 
-        # When no connection, it is assumed that sent sequence isn't available (anymore)
-        self.sequence_sent = False
+        # When no connection, it is assumed that sent protocol isn't available (anymore)
+        self.protocol_sent = False
 
         self.gen = serial.Serial(connect_info, 115200, timeout=1)
         startup_message = self.gen.readline().decode("ascii").strip()
-        logger.debug("Driving system: %s", startup_message)
+        get_logger().debug("Driving system: %s", startup_message)
 
         if startup_message == 'E2':
-            self.connected = False
+            self._connected = False
             message = "Error E2; connection cannot be made with driving system"
-            logger.critical(message)
-            sys.exit(message)
-        else:
-            self.connected = True
-            logger.debug("Connection with driving system %s is established", startup_message)
+            get_logger().critical(message)
+            raise FDSHardwareError(message)
 
-    def send_sequence(self, sequence):
+        self._connected = True
+        get_logger().debug("Connection with driving system %s is established", startup_message)
+
+    def validate_protocol(self, protocol):
         """
-        Sends an ultrasound sequence to the Sonic Concepts ultrasound driving system.
+        Validates if the protocol is within the expected ranges.
 
         Parameters:
-            sequence(Object): contains, amongst other things, of:
-                the ultrasound protocol (focus, pulse duration, pulse rep. interval and etcetera)
-                used equipment (driving system and transducer)
+            protocol(Object): a TUSProtocol instance containing, amongst other things:
+                the timing/power/focus parameters (focus, pulse duration, pulse rep. interval
+                and etcetera) and the equipment used (driving system and transducer)
+
+        Returns:
+            List: List of error messages.
         """
 
-        logger.info('Sending sequence...')
+        error_messages = super().validate_protocol(protocol)
 
-        logger.debug('Sequence with the following parameters is send to the driving system: \n'
-                     + ' %s', sequence)
+        if not protocol.slots:
+            # Nothing to check yet: validate_protocol() can be called before any transducer
+            # slot has been added at all (e.g. a GUI validating timing on its own), unlike
+            # send_protocol(), which always has protocol.slots[0] to read by the time it runs.
+            return error_messages
+
+        # send_protocol() only ever reads protocol.slots[0] -- this driving system only ever
+        # requires a single transducer slot.
+        slot = protocol.slots[0]
+        if slot.global_power is None:
+            slot_ref = ("transducer slot 0 (counting from 0, i.e. protocol.slots[0]; " +
+                        f"{slot.transducer.serial})")
+            if slot.chosen_power is None:
+                # Never configured at all -- distinct from having chosen a different,
+                # non-'Global power [mW]' option (below): there is no "wrong option" to name
+                # here, so say so directly instead of awkwardly working 'power not yet
+                # configured' into the "chosen option is ..." phrasing meant for the other case.
+                error_messages.append(
+                    f"No power option has been configured yet for {slot_ref} -- this driving " +
+                    "system requires 'Global power [mW]'.")
+            else:
+                error_messages.append(
+                    f"Chosen power option for {slot_ref} is {slot.chosen_power}, but this " +
+                    "driving system only supports 'Global power [mW]'.")
+
+        return error_messages
+
+    def send_protocol(self, protocol):
+        """
+        Sends an ultrasound protocol to the Sonic Concepts ultrasound driving system.
+
+        Parameters:
+            protocol(Object): a TUSProtocol instance containing, amongst other things:
+                the timing/power/focus parameters (focus, pulse duration, pulse rep. interval
+                and etcetera) and the equipment used (driving system and transducer)
+        """
+
+        slot = protocol.slots[0]
+        get_logger().info('Validating protocol (transducer: %s)...', slot.transducer.serial)
+
+        self._validate_or_raise(protocol)
+
+        get_logger().info('Sending protocol...')
+
+        get_logger().debug(
+            'Protocol with the following parameters is send to the driving system: \n' +
+            ' %s', protocol)
 
         if self.is_connected():
 
             self._reset_parameters()
 
-            self._set_operating_freq(sequence.oper_freq)
-            self._set_focus(sequence.focus_wrt_exit_plane)
-            self._set_global_power(sequence.global_power)
-            self._set_burst_and_period(sequence.pulse_dur, sequence.pulse_rep_int)
-            self._set_timer(sequence.pulse_train_dur)
-            self._set_ramping(sequence.pulse_ramp_shape, sequence.pulse_ramp_dur)
+            self._set_operating_freq(slot.oper_freq)
+            self._set_focus(slot.focus_wrt_exit_plane)
+            self._set_global_power(slot.global_power)
+            self._set_burst_and_period(protocol.pulse_dur, protocol.pulse_rep_int)
+            self._set_timer(protocol.pulse_train_dur)
+            self._set_ramping(protocol.pulse_ramp_shape, protocol.pulse_ramp_dur)
 
-            self.sequence_sent = True
+            self.protocol_sent = True
+            self._sent_pulse_train_dur = protocol.pulse_train_dur
 
-            if sequence.wait_for_trigger:
-                self._send_command('TRIGGERMODE=1\r\n')
+            # Confirms the send itself actually succeeded, with the timing/intensity a
+            # researcher would otherwise not see until execute_protocol(), same reasoning as
+            # IGT's own send_protocol() (GitHub #125/#122).
+            get_logger().info(
+                'Protocol sent successfully: %.2f ms pulse every %.2f ms, %.2f ms total '
+                'duration.\n  %s', protocol.pulse_dur, protocol.pulse_rep_int,
+                protocol.pulse_train_dur, slot.intensity_summary())
 
         else:
-            logger.error("No connection with driving system.")
-            logger.error("Reconnecting with driving system...")
+            get_logger().error("No connection with driving system.")
+            get_logger().error("Reconnecting with driving system...")
 
             # if no connection can be made, program stops preventing infinite loop
-            self.connect(sequence.driving_sys.connect_info)
-            self.send_sequence(sequence)
+            self.connect(protocol.driving_sys.connect_info)
+            self.send_protocol(protocol)
 
-    def execute_sequence(self, sequence):
+    def wait_for_trigger(self, protocol):
         """
-        Executes the previously sent sequence on the Sonic Concepts ultrasound driving system.
+        Arms the previously sent protocol to fire on an external trigger, instead of firing
+        immediately via execute_protocol().
+
+        Raises FDSValidationError with a clear message if send_protocol() hasn't been called
+        yet -- unlike a dropped connection (which reconnects and resends automatically, since
+        that's an external failure rather than a caller mistake), this method never sends on
+        the caller's behalf.
+
+        Parameters:
+            protocol(Object): Same protocol already passed to send_protocol().
         """
 
-        logger.info('Executing sequence...')
+        # Checked regardless of connection state, and before it: a protocol that was never
+        # sent is a caller mistake either way (never connected at all, or connected but
+        # forgot to call send_protocol()) -- not something to silently paper over here.
+        if not self.is_protocol_sent():
+            message = ('No protocol has been sent yet -- call send_protocol() before ' +
+                       'wait_for_trigger().')
+            get_logger().critical(message)
+            raise FDSValidationError(message)
+
+        # self._sent_pulse_train_dur, not protocol.pulse_train_dur: the protocol argument here
+        # is otherwise only used for the reconnect-fallback below, never on this, the normal
+        # success path (see this method's own docstring). None only when send_protocol() itself
+        # was bypassed (e.g. a test setting protocol_sent directly).
+        if self._sent_pulse_train_dur is None:
+            get_logger().info('Waiting for trigger...')
+        else:
+            get_logger().info('Waiting for trigger (expected duration once fired: %.2f ms)...',
+                              self._sent_pulse_train_dur)
 
         if self.is_connected():
-            if self.is_sequence_sent():
-                try:
-                    cmd = 'START\r'
-                    self.gen.write(cmd.encode('ascii'))
-                    time.sleep(0.05)
-                    line = self.gen.readline()
-                    logger.debug('START: %s', line)
-
-                except Exception as why:
-                    message = "Exception: %s", str(why)
-                    logger.critical(message)
-                    sys.exit(message)
-            else:
-                logger.warning('The sequence has to be sent first using send_sequence() before ' +
-                               'the driving system can execute a sequence.')
-                logger.warning('Sending sequence...')
-
-                self.send_sequence(sequence)
-                self.execute_sequence(sequence)
-
+            self._send_command('TRIGGERMODE=1\r\n')
         else:
-            logger.warning("No connection with driving system.")
-            logger.warning("Reconnecting with driving system...")
+            get_logger().warning("No connection with driving system.")
+            get_logger().warning("Reconnecting with driving system...")
 
             # if no connection can be made, program stops preventing infinite loop
-            self.connect(sequence.driving_sys.connect_info)
-            self.send_sequence(sequence)
-            self.execute_sequence(sequence)
+            self.connect(protocol.driving_sys.connect_info)
+            self.send_protocol(protocol)
+            self.wait_for_trigger(protocol)
+
+    def execute_protocol(self, protocol):
+        """
+        Executes the previously sent protocol on the Sonic Concepts ultrasound driving system.
+
+        Raises FDSValidationError with a clear message if send_protocol() hasn't been called
+        yet -- unlike a dropped connection (which reconnects and resends automatically, since
+        that's an external failure rather than a caller mistake), this method never sends on
+        the caller's behalf.
+        """
+
+        # Checked regardless of connection state, and before it: a protocol that was never
+        # sent is a caller mistake either way (never connected at all, or connected but
+        # forgot to call send_protocol()) -- not something to silently paper over here.
+        if not self.is_protocol_sent():
+            message = ('No protocol has been sent yet -- call send_protocol() before ' +
+                       'execute_protocol().')
+            get_logger().critical(message)
+            raise FDSValidationError(message)
+
+        # Not "Executing protocol...": the START command below returns almost instantly, so
+        # there's nothing left "in progress" to report. self._sent_pulse_train_dur, not
+        # protocol.pulse_train_dur, since protocol is otherwise unused on this path; None only
+        # when send_protocol() itself was bypassed (e.g. a test setting protocol_sent directly).
+        if self._sent_pulse_train_dur is None:
+            get_logger().info('Executing...')
+        else:
+            get_logger().info('Executing (expected duration: %.2f ms)...',
+                              self._sent_pulse_train_dur)
+
+        if self.is_connected():
+            try:
+                cmd = 'START\r'
+                self.gen.write(cmd.encode('ascii'))
+                time.sleep(0.05)
+                line = self.gen.readline()
+                get_logger().debug('START: %s', line)
+
+            except serial.SerialException as why:
+                message = f"Exception: {why}"
+                get_logger().critical(message)
+                raise FDSHardwareError(message) from why
+
+            get_logger().info('Protocol execution started.')
+
+        else:
+            get_logger().warning("No connection with driving system.")
+            get_logger().warning("Reconnecting with driving system...")
+
+            # if no connection can be made, program stops preventing infinite loop
+            self.connect(protocol.driving_sys.connect_info)
+            self.send_protocol(protocol)
+            self.execute_protocol(protocol)
+
+    def abort(self):
+        """
+        Stops a currently running pulse train/sequence without disconnecting, so the same
+        connection can immediately send/execute another protocol afterwards, unlike
+        disconnect(), which closes the serial connection itself. Reuses the same 'ABORT\\r\\n'
+        command _reset_ramping() already sends before every send_protocol(). A no-op if not
+        connected.
+
+        Raises:
+            FDSHardwareError: If the driving system reports an error response, or the serial
+            connection itself fails.
+        """
+
+        if not self._ready_to_abort():
+            return
+
+        try:
+            self._send_command('ABORT\r\n', 0.5)
+        except serial.SerialException as why:
+            message = f"Exception: {why}"
+            get_logger().critical(message)
+            raise FDSHardwareError(message) from why
 
     def disconnect(self):
         """
         Disconnects from the Sonic Concepts ultrasound driving system.
         """
 
-        logger.info('Disconnecting...')
+        get_logger().info('Disconnecting...')
 
         if self.gen is not None:
             self.gen.close()
-            self.connected = False
-            logger.info("Disconnected.")
+            self._connected = False
+            get_logger().info("Disconnected.")
+
+    # The TPO's own documented error codes (User Manual, Serial Commands): E1 for an
+    # unrecognized command, E2 for a parameter out of range, E3 for incorrect command syntax.
+    _ERROR_RESPONSES = {
+        'E1': 'unrecognized command',
+        'E2': 'parameter out of range',
+        'E3': 'incorrect command syntax',
+    }
 
     def _send_command(self, command, sleep_time_s=1):
         """
-        Sends a command to the Sonic Concepts ultrasound driving system and waits for the response.
+        Sends a command to the Sonic Concepts ultrasound driving system and waits for the
+        response.
+
+        Raises FDSHardwareError for any of the TPO's own documented error codes (E1/E2/E3, see
+        _ERROR_RESPONSES), or for an empty response (readline() timed out with nothing received,
+        e.g. a lost connection): every command in the User Manual's own command table has a
+        non-empty confirmation echo, so nothing legitimate ever returns empty. Left unchecked, an
+        E1/E3 response (e.g. a typo'd command, or a per-channel command sent while still in local
+        mode, see LOCAL=X) could otherwise surface downstream as a confusing crash instead (e.g.
+        _set_burst_and_period()'s own PERIOD? regex parse, which assumes a valid numeric reply).
 
         Parameters:
             command (str): The command to be sent.
@@ -183,15 +327,22 @@ class SonicConcepts(ds.ControlDrivingSystem):
         """
 
         self.gen.write(command.encode("ascii"))
-        logger.debug("Sent to gen: %s", command.strip())
+        get_logger().debug("Sent to gen: %s", command.strip())
         time.sleep(sleep_time_s)
         response = self.gen.readline().decode("ascii").rstrip()
-        logger.debug(f"Response from gen: {response}")
+        get_logger().debug(f"Response from gen: {response}")
 
-        if response == 'E2':
-            message = "Error E2"
-            logger.critical(message)
-            sys.exit(message)
+        if response in self._ERROR_RESPONSES:
+            message = (f"Error {response} ({self._ERROR_RESPONSES[response]}) for command: " +
+                       f"{command.strip()}")
+            get_logger().critical(message)
+            raise FDSHardwareError(message)
+
+        if not response:
+            message = (f"No response received for command: {command.strip()} (connection may " +
+                       "be lost or unresponsive).")
+            get_logger().critical(message)
+            raise FDSHardwareError(message)
 
         return response
 
@@ -259,9 +410,13 @@ class SonicConcepts(ds.ControlDrivingSystem):
             command = f'GLOBALPOWER={global_power}\r\n'
             self._send_command(command, 0.1)
         else:
+            # Should never happen: validate_protocol()'s own slot.global_power is None check
+            # (run via _validate_or_raise() in send_protocol(), before _set_global_power() is
+            # ever called) already rejects this. A guard against a bug in this package itself,
+            # not a caller mistake.
             message = "Power parameter may be set incorrectly. Global power is None."
-            logger.critical(message)
-            sys.exit(message)
+            get_logger().critical(message)
+            raise FDSInternalError(message)
 
     def _set_burst_length(self, burst):
         """
@@ -345,7 +500,7 @@ class SonicConcepts(ds.ControlDrivingSystem):
         # convert ramp_length in milliseconds to micro seconds
         ramp_length = ramp_length * 1e3
 
-        if ramp_mode == get_config_value(logger, config, 'Ramp', 'Option.rect',
+        if ramp_mode == get_config_value(get_logger(), config, 'Ramp', 'Option.rect',
                                          'Rectangular - no ramping'):
             self._reset_ramping()
 
@@ -353,16 +508,17 @@ class SonicConcepts(ds.ControlDrivingSystem):
             command = 'ABORT\r\n'
             self._send_command(command, 0.1)
         else:
-            if ramp_mode == get_config_value(logger, config, 'Ramp', 'Option.lin', 'Linear'):
+            if ramp_mode == get_config_value(get_logger(), config, 'Ramp', 'Option.lin', 'Linear'):
                 ramp_mode = 1
-            elif ramp_mode == get_config_value(logger, config, 'Ramp', 'Option.tuk', 'Tukey'):
+            elif ramp_mode == get_config_value(
+                    get_logger(), config, 'Ramp', 'Option.tuk', 'Tukey'):
                 ramp_mode = 2
             else:
                 message = f"Unknown modulation value: {ramp_mode}"
-                logger.critical(message)
-                sys.exit(message)
+                get_logger().critical(message)
+                raise FDSValidationError(message)
 
-            command = 'RAMPMODE={ramp_mode}\r\n'
+            command = f'RAMPMODE={ramp_mode}\r\n'
             self._send_command(command)
 
             command = f'RAMPLENGTH={ramp_length}\r\n'
@@ -375,7 +531,7 @@ class SonicConcepts(ds.ControlDrivingSystem):
         """
 
         default_message = 'Ensure the correct TRANSDUCER is selected on the driving system.'
-        message = get_config_value(logger, config, 'Equipment.Manufacturer.SC',
+        message = get_config_value(get_logger(), config, 'Equipment.Manufacturer.SC',
                                    'Check tran message', default_message)
 
         master = tkinter.Tk()
@@ -385,11 +541,15 @@ class SonicConcepts(ds.ControlDrivingSystem):
                                     option_1="Confirm")
         response = message_box.get()
 
-        logger.debug(f"Message box closed with response: {response}")
+        get_logger().debug(f"Message box closed with response: {response}")
 
         if response == 'Confirm':
-            logger.debug("Correct transducer selection is confirmed.")
+            get_logger().debug("Correct transducer selection is confirmed.")
         else:
-            message = "Pipeline is cancelled by user."
-            logger.critical(message)
-            sys.exit(message)
+            # Not a data-validation issue: proceeding without confirmation risks physically
+            # firing a protocol built for one transducer through a different one actually
+            # selected on the driving system -- a genuine safety concern, not a caller mistake.
+            message = ("Transducer selection was not confirmed -- refusing to proceed until " +
+                       "the correct transducer is selected on the driving system.")
+            get_logger().critical(message)
+            raise FDSSafetyError(message)

@@ -21,5 +21,5 @@ def connected_instance(mocker):
     downstream of an established connection."""
     instance = SonicConcepts()
     instance.gen = mocker.Mock()
-    instance.connected = True
+    instance._connected = True
     return instance

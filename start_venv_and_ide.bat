@@ -2,16 +2,7 @@
 setlocal
 
 REM Define environment variables
-set "DEFAULT_MODE=default"
-set "MODE=%~3"
-if "%MODE%"=="" set "MODE=%DEFAULT_MODE%"
-
-if "%MODE%" == "DCCN" (
-	set "DEFAULT_VENV_PATH=D:\Users\%USERNAME%\venv310"
-) else (
-	set "DEFAULT_VENV_PATH=%USERPROFILE%\Envs\FUS_DS_PACKAGE"
-)
-
+set "DEFAULT_VENV_PATH=%USERPROFILE%\Envs\FUS_DS_PACKAGE"
 set "DEFAULT_IDE=spyder"
 
 set "VENV_PATH=%~1"

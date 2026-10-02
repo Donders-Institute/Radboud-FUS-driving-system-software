@@ -1,31 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-Copyright (c) 2024 Margely Cornelissen, Stein Fekkes (Radboud University) and Erik Dumont (Image
-Guided Therapy)
+Copyright (c) 2024 Radboud University
 
-MIT License
+SPDX-License-Identifier: MIT
+See the LICENSE file for full license text.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-**Attribution Notice**:
-If you use this kit in your research or project, please refer to the 'How to Cite' section in the
-README.md file of https://github.com/Donders-Institute/Radboud-FUS-driving-system-software.
+If you use this kit in your research or project, please cite it -- see CITATION.cff or the
+'How to Cite' section of README.md at
+https://github.com/Donders-Institute/Radboud-FUS-driving-system-software.
 """
 
 # Basis packages
@@ -39,7 +21,7 @@ import serial
 from fus_driving_systems import control_driving_system as ds
 
 # Access the logger
-from fus_driving_systems.config.logging_config import logger
+from fus_driving_systems.config.logging_config import get_logger
 
 
 class CITRUS(ds.ControlDrivingSystem):
@@ -49,7 +31,16 @@ class CITRUS(ds.ControlDrivingSystem):
 
     Attributes:
         connected (bool): Indicates whether the system is connected.
+        ser_bitsi: Serial connection object for the BITSI interface.
     """
+
+    def __init__(self):
+        """
+        Initializes the CITRUS object.
+        """
+
+        super().__init__()
+        self.ser_bitsi = None
 
     def connect(self, connect_info):
         """
@@ -59,7 +50,7 @@ class CITRUS(ds.ControlDrivingSystem):
             connect_info (str): Path with CITRUS driving system-specific configuration file.
         """
 
-        logger.info('Connecting with BITSI...')
+        get_logger().info('Connecting with BITSI...')
 
         # set up BITSI connection
         self.ser_bitsi = serial.Serial()
@@ -71,28 +62,32 @@ class CITRUS(ds.ControlDrivingSystem):
         self.ser_bitsi.timeout = 1
         self.ser_bitsi.open()
 
-        self.connected = True
+        self._connected = True
 
-    def send_sequence(self, seq):
+    def send_protocol(self, protocol):
         """
-        Validates and sends an ultrasound sequence to the CITRUS ultrasound driving system.
+        Validates and sends an ultrasound protocol to the CITRUS ultrasound driving system.
 
         Parameters:
-            sequence(Object): contains, amongst other things, of:
-                the ultrasound protocol (focus, pulse duration, pulse rep. interval and etcetera)
-                used equipment (driving system and transducer)
+            protocol(Object): a TUSProtocol instance containing, amongst other things:
+                the timing/power/focus parameters (focus, pulse duration, pulse rep. interval
+                and etcetera) and the equipment used (driving system and transducer)
         """
 
-        logger.info('Sending sequence...')
+        get_logger().info('Validating protocol...')
 
-    def execute_sequence(self, seq):
+        self._validate_or_raise(protocol)
+
+        get_logger().info('Sending protocol...')
+
+    def execute_protocol(self, protocol):
         """
-        Executes the previously sent sequence on the CITRUS ultrasound driving system.
+        Executes the previously sent protocol on the CITRUS ultrasound driving system.
         """
 
-        logger.info('Executing sequence...')
+        get_logger().info('Executing protocol...')
 
-        # Stimulation onset (send starting trigger to execute sequence)
+        # Stimulation onset (send starting trigger to execute protocol)
         binary = '00100000'  # 32
         decimal_number = int(binary, 2)
         byte_value = bytes([decimal_number])
@@ -105,9 +100,9 @@ class CITRUS(ds.ControlDrivingSystem):
         Disconnects from the CITRUS ultrasound driving system.
         """
 
-        logger.info('Disconnecting...')
+        get_logger().info('Disconnecting...')
 
         if self.ser_bitsi is not None:
             self.ser_bitsi.close()
 
-        self.connected = False
+        self._connected = False
