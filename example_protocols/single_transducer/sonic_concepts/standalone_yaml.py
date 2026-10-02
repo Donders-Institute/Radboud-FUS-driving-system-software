@@ -46,12 +46,12 @@ try:
     from fus_driving_systems.protocol_loader import load_protocol
 
     # load_protocol() returns a 5-tuple: (protocols, total_alternating_duration_ms, trigger_option,
-    # n_triggers, buffer_num). total_alternating_duration_ms/n_triggers/buffer_num don't apply here
-    # -- SonicConcepts has no interleaving, per-trigger-count, or buffer concept. trigger_option is
+    # n_triggers, buffer_num). total_alternating_duration_ms/n_triggers/buffer_num don't apply here:
+    # SonicConcepts has no interleaving, per-trigger-count, or buffer concept. trigger_option is
     # used below to decide whether to arm for an external trigger (wait_for_trigger()) or execute
     # directly (execute_protocol()).
     #
-    # require_hash=False (the default) -- set to True once you have a real protocol.yaml you don't
+    # require_hash=False (the default): set to True once you have a real protocol.yaml you don't
     # want accidentally changed; see docs/building-protocols.md's "Load a Protocol from a YAML
     # File" section.
     protocols, total_alternating_duration_ms, trigger_option, n_triggers, _ = load_protocol(
@@ -59,12 +59,12 @@ try:
     protocol = protocols[0]
 
     # trigger_option is None when protocol.yaml omits the key entirely, or the literal string 'None'
-    # when it's set explicitly (as protocol.yaml does here) -- either way means no trigger at all.
+    # when it's set explicitly (as protocol.yaml does here): either way means no trigger at all.
     wait_for_trigger = trigger_option not in (None, 'None')
 
-    # The driving system serial only needs to live in protocol.yaml -- load_protocol() already
+    # The driving system serial only needs to live in protocol.yaml: load_protocol() already
     # resolved it into a real DrivingSystem, reachable via the protocol's own driving_sys. The COM
-    # port is machine-specific, though, and not something ds_config.ini can know in advance --
+    # port is machine-specific, though, and not something ds_config.ini can know in advance:
     # override it here so send_protocol()/execute_protocol()'s automatic reconnect (if the
     # connection ever drops) also uses the right port.
     protocol.driving_sys.connect_info = 'COM5'  # COM port the driving system is connected to here
@@ -87,7 +87,7 @@ try:
 
     finally:
         # When the protocol is executed using execute_protocol(), the system is disconnected
-        # automatically -- when using the external trigger instead, disconnect it yourself.
+        # automatically; when using the external trigger instead, disconnect it yourself.
         if not wait_for_trigger:
             sc_ds.disconnect()
 

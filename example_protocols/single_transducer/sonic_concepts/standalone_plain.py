@@ -28,7 +28,7 @@ If you use this kit in your research or project, please refer to the 'How to Cit
 README.md file of https://github.com/Donders-Institute/Radboud-FUS-driving-system-software.
 """
 
-# Sonic Concepts example: a single transducer, built directly in Python (full manual control --
+# Sonic Concepts example: a single transducer, built directly in Python (full manual control,
 # no YAML). See standalone_yaml.py in this same folder for the simpler, YAML-driven equivalent.
 # Note: you can click on each parameter to get more information
 
@@ -57,7 +57,7 @@ try:
     ##############################################################################
 
     # Connecting doesn't require a protocol to exist yet. In practice, you typically connect once
-    # when your experiment starts, then build/adapt protocols iteratively as it progresses -- so
+    # when your experiment starts, then build/adapt protocols iteratively as it progresses, so
     # look up the driving system's connection info directly via DrivingSystem, rather than through
     # a TUSProtocol.
 
@@ -91,15 +91,15 @@ try:
     protocol = tus_protocol.TUSProtocol(ds_info.serial)
 
     # send_protocol()/execute_protocol() automatically reconnect using
-    # protocol.driving_sys.connect_info if the connection ever drops -- propagate this machine's
+    # protocol.driving_sys.connect_info if the connection ever drops: propagate this machine's
     # actual COM port onto the protocol's own driving system too (ds_info above is a separate
     # object), so that automatic reconnect uses the right port instead of falling back to whatever
     # ds_config.ini happens to default to.
     protocol.driving_sys.connect_info = ds_info.connect_info
 
-    # add_slot() fully configures one transducer -- serial, focus, and power all at once (no
+    # add_slot() fully configures one transducer: serial, focus, and power all at once (no
     # partial/half-configured slot). This driving system currently supports only one transducer slot
-    # (see ds_info.max_tran_slots) -- add another add_slot() call for each additional transducer if a
+    # (see ds_info.max_tran_slots): add another add_slot() call for each additional transducer if a
     # future SC driving system ever supports more.
     # to check available transducers: print(transducer.get_tran_serials())
     # choose one transducer from that list as input
@@ -119,18 +119,18 @@ try:
     # Whether to arm the driving system to wait for an external trigger (wait_for_trigger()) instead
     # of executing directly (execute_protocol()). For SC specifically, this is effectively binary:
     # send_protocol()/wait_for_trigger() only ever check whether a trigger is expected at all, never
-    # which kind -- so 'TriggerOnePulseTrain' has no meaningful effect over 'TriggerWholeProtocol'
+    # which kind, so 'TriggerOnePulseTrain' has no meaningful effect over 'TriggerWholeProtocol'
     # here. Unlike IGT's own 'TriggerWholeProtocol' (one trigger arms every repetition at once), SC's
     # driving system waits for a fresh external trigger each time it needs to fire the pulse train.
-    # 'None' (this template's default) means no trigger at all -- executed directly. SonicConcepts
-    # has no get_trigger_options() lookup of its own -- 'None' and 'TriggerWholeProtocol' (see
+    # 'None' (this template's default) means no trigger at all: executed directly. SonicConcepts
+    # has no get_trigger_options() lookup of its own: 'None' and 'TriggerWholeProtocol' (see
     # ds_config.ini's [Trigger] section for the full list shared with IGT) are the only two that make
     # an actual difference for SC.
     TRIGGER_OPTION = 'None'
     # TRIGGER_OPTION = 'TriggerWholeProtocol'
     WAIT_FOR_TRIGGER = TRIGGER_OPTION != 'None'
 
-    # configure_timing() sets every pulse/pulse-train parameter together, in one call -- it's the
+    # configure_timing() sets every pulse/pulse-train parameter together, in one call: it's the
     # only way to set any of them (pulse_dur, pulse_rep_int, pulse_ramp_shape, ... all have getters
     # only), precisely because they cascade/interact with each other and are prone to ordering
     # hazards if set individually and out of order.
@@ -146,11 +146,11 @@ try:
         pulse_ramp_dur=0,  # [ms], ramp duration
 
         # ## pulse train ## #
-        pulse_rep_int=50,  # [ms], pulse repetition interval -- one pulse every 50 ms
+        pulse_rep_int=50,  # [ms], pulse repetition interval: one pulse every 50 ms
 
-        # if you only want one pulse train, you don't need to set this at all -- it defaults to
+        # if you only want one pulse train, you don't need to set this at all: it defaults to
         # pulse_rep_int. Set explicitly here for clarity.
-        pulse_train_dur=200,  # [ms], pulse train duration -- 4 pulses per train (200 / 50)
+        pulse_train_dur=200,  # [ms], pulse train duration: 4 pulses per train (200 / 50)
     )
 
     # to get a summary of your entered protocol: print(protocol)

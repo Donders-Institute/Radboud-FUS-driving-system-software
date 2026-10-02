@@ -50,18 +50,18 @@ try:
 
     # load_protocol() returns a 5-tuple: (protocols, total_alternating_duration_ms, trigger_option,
     # n_triggers, buffer_num). total_alternating_duration_ms is only relevant when interleaving more
-    # than one protocol -- ignored here (a single protocol). trigger_option/n_triggers are used
-    # below, forwarded straight into wait_for_trigger() -- wait_for_trigger.yaml sets trigger_option
+    # than one protocol: ignored here (a single protocol). trigger_option/n_triggers are used
+    # below, forwarded straight into wait_for_trigger(): wait_for_trigger.yaml sets trigger_option
     # to 'TriggerWholeProtocol' and omits n_triggers (not needed for that trigger_option). buffer_num
     # is unused here.
     #
-    # require_hash=False (the default) -- set to True once you have a real wait_for_trigger.yaml you
+    # require_hash=False (the default): set to True once you have a real wait_for_trigger.yaml you
     # don't want accidentally changed; see docs/building-protocols.md's "Load a Protocol from a
     # YAML File" section.
     protocols, total_alternating_duration_ms, trigger_option, n_triggers, _ = load_protocol(
         'wait_for_trigger.yaml', require_hash=False)
 
-    # The driving system serial only needs to live in wait_for_trigger.yaml -- load_protocol()
+    # The driving system serial only needs to live in wait_for_trigger.yaml: load_protocol()
     # already resolved it into a real DrivingSystem, reachable via the protocol's own driving_sys.
     igt_driving_sys = igt_ds.IGT(log_dir)
     igt_driving_sys.connect(protocols[0].driving_sys.connect_info, log_dir, filename)
@@ -69,7 +69,7 @@ try:
     try:
         igt_driving_sys.send_protocol(protocols)
 
-        # Only arms the protocol to fire on the external trigger and returns immediately -- does NOT
+        # Only arms the protocol to fire on the external trigger and returns immediately. Does NOT
         # wait for, or check, the actual execution result. The driving system only reports success/
         # failure once the triggered execution is actually finished, which can happen at an
         # unpredictable moment later (whenever your external trigger fires).
@@ -79,7 +79,7 @@ try:
         # driving system reports the execution failed. Adjust the timeout to match how long your
         # triggered protocol is expected to take. An execution error is always logged immediately
         # when it happens, but your code only actively reacts to it (via sys.exit()) once this is
-        # called -- calling it late means reacting late.
+        # called: calling it late means reacting late.
         igt_driving_sys.wait_for_trigger_result(timeout_s=5.0)
 
     finally:

@@ -28,13 +28,13 @@ If you use this kit in your research or project, please refer to the 'How to Cit
 README.md file of https://github.com/Donders-Institute/Radboud-FUS-driving-system-software.
 """
 
-# IGT example: two protocols interleaved as one alternating group -- transducer A fires its
+# IGT example: two protocols interleaved as one alternating group; transducer A fires its
 # pulse, then transducer B fires its pulse, then A again, and so on, for the whole duration
 # below. This is "pulse train interleaving": each round still counts as one pulse train per
 # transducer (a pulse plus its own off-time), just alternating instead of each transducer
 # repeating its own full pulse train back-to-back before handing off to the other.
 #
-# This is NOT the only way to alternate between two transducers -- if your experiment instead
+# This is NOT the only way to alternate between two transducers: if your experiment instead
 # fires transducer A's complete pulse train repetition, then reconfigures and fires transducer
 # B's complete pulse train repetition (with real time in between, e.g. to reposition/re-plan),
 # you don't need any of this: just call send_protocol()/execute_protocol() twice in a row, once
@@ -58,9 +58,9 @@ filename = "standalone_plain"
 logger = initialize_logger(log_dir, filename)
 
 # This creates a timestamped session folder inside log_dir for this FDS log, and also enables
-# crash detection (faulthandler) for the whole session -- both land in that same folder.
+# crash detection (faulthandler) for the whole session: both land in that same folder.
 # igt_ds.IGT()/connect() below automatically discover and reuse it for the native IGT log too,
-# so every log file from one session ends up together -- convenient for sharing a whole session
+# so every log file from one session ends up together: convenient for sharing a whole session
 # at once (e.g. with IGT for a bug report, GitHub issue #126).
 
 # When this code is embedded in other code with logging, ignore above commands and sync the logger
@@ -75,7 +75,7 @@ try:
     ##############################################################################
 
     # Connecting doesn't require a protocol to exist yet. In practice, you typically connect once
-    # when your experiment starts, then build/adapt protocols iteratively as it progresses -- so
+    # when your experiment starts, then build/adapt protocols iteratively as it progresses, so
     # look up the driving system's connection info directly via DrivingSystem, rather than through
     # a TUSProtocol.
 
@@ -103,7 +103,7 @@ try:
     ##############################################################################
 
     # When interleaving, each protocol contributes exactly one pulse per round of the alternating
-    # group -- not a repeated pulse train of its own. pulse_dur/pulse_rep_int are what matter here
+    # group, not a repeated pulse train of its own. pulse_dur/pulse_rep_int are what matter here
     # (pulse_rep_int decides how much of the shared round this protocol's own pulse occupies); every
     # other timing parameter (pulse_train_dur, pulse_train_rep_int, pulse_train_rep_dur) has no
     # effect in this mode and is left unset below, so it falls back to its own default rather than
@@ -114,7 +114,7 @@ try:
     FOCUS_OPTION = 'Focus wrt exit plane [mm]'
     POWER_OPTION = 'Max. pressure in free water [MPa]'
 
-    # Both protocols below use the same two, physically connected transducers -- defined once here
+    # Both protocols below use the same two, physically connected transducers: defined once here
     # and reused for both, so a change to which transducer is used doesn't need to be repeated (and
     # can't accidentally drift apart between the two protocols).
     # to check available transducers: print(transducer.get_tran_serials())
@@ -123,7 +123,7 @@ try:
     TRANSDUCER_2 = 'IS_PCD15287_01002'
 
     # Ramping is a whole-group setting for the generator, not something each interleaved protocol
-    # configures independently -- send_protocol() below only ever reads it from the first protocol
+    # configures independently: send_protocol() below only ever reads it from the first protocol
     # given (protocol_a), and exits with a clear error if the interleaved protocols don't all declare
     # the same values. Defined once here and reused for both protocols' own configure_timing() calls
     # below so they can never accidentally drift apart.
@@ -132,7 +132,7 @@ try:
 
     # Trigger configuration (trigger_option/n_triggers) is a call-level parameter of
     # IGT.wait_for_trigger() now, not of any one TUSProtocol (see TUSProtocol's own docstring for
-    # why) -- there is exactly one trigger event for the whole interleaved group, so these live here
+    # why): there is exactly one trigger event for the whole interleaved group, so these live here
     # as plain variables instead of on either protocol, reused below when actually sending/waiting
     # on the group.
     TRIGGER_OPTION = 'TriggerWholeProtocol'
@@ -158,7 +158,7 @@ try:
         pulse_rep_int=100,  # [ms], pulse repetition interval
     )
 
-    # Ramping must match protocol_a's exactly (send_protocol() enforces this) -- reusing the same
+    # Ramping must match protocol_a's exactly (send_protocol() enforces this): reusing the same
     # RAMP_SHAPE/RAMP_DUR constants above, rather than repeating the values, makes that impossible to
     # get wrong by accident.
     protocol_b = tus_protocol.TUSProtocol('IGT-32-ch_comb_2x10-ch')
@@ -182,7 +182,7 @@ try:
     )
 
     # How long the alternating group as a whole keeps repeating [ms]. Required whenever more than
-    # one protocol is given -- there's no per-protocol fallback for this (unlike a single protocol,
+    # one protocol is given: there's no per-protocol fallback for this (unlike a single protocol,
     # which derives its own repetition count from its own pulse_train_rep_dur/pulse_train_rep_int).
     total_alternating_duration_ms = 80000
 
@@ -204,7 +204,7 @@ try:
                                          total_alternating_duration_ms)
 
         # wait_for_trigger() above only arms the protocol to fire on the external trigger and
-        # returns immediately -- it does NOT wait for, or check, the actual execution result. The
+        # returns immediately. It does NOT wait for, or check, the actual execution result. The
         # driving system only reports success/failure once the triggered execution is actually
         # finished, which can happen at an unpredictable moment later (whenever your external
         # trigger fires).
@@ -216,7 +216,7 @@ try:
         #
         # Note: an execution error is always logged immediately when it happens (regardless of when
         # you call this), but your code will only actively react to it (via sys.exit()) once
-        # wait_for_trigger_result() is called -- calling it late means reacting late, even though
+        # wait_for_trigger_result() is called: calling it late means reacting late, even though
         # the failure itself was already recorded at the real time it occurred.
         #
         # If you have other work to do while waiting for the external trigger (e.g. waiting on
@@ -228,7 +228,7 @@ try:
         #         ...  # react immediately (log, stop other equipment, sys.exit(), ...)
         #     <do other work / short sleep>
         #
-        # Note: has_execution_error() only tells you whether an error has occurred so far -- not
+        # Note: has_execution_error() only tells you whether an error has occurred so far, not
         # whether the protocol has finished. Your own loop condition (e.g. "still waiting on the
         # scanner") isn't necessarily tied to the protocol's actual completion, so disconnecting
         # right after such a loop can cut off a still-running protocol. If you use this pattern
@@ -241,12 +241,12 @@ try:
         # By the time we reach here, the protocol has actually finished executing either way:
         # execute_protocol() only returns once it's done, and wait_for_trigger_result() above
         # blocks until the triggered execution completes (or its timeout expires). So it's always
-        # safe to disconnect here -- if your code stops abruptly before this point instead (like
+        # safe to disconnect here: if your code stops abruptly before this point instead (like
         # a kernel death/crash), make sure to disconnect the driving system yourself, otherwise it
         # may keep firing ultrasound protocols.
         #
         # If you replaced wait_for_trigger_result() above with your own has_execution_error()
-        # polling loop, this is only safe once you've confirmed the protocol actually finished --
+        # polling loop, this is only safe once you've confirmed the protocol actually finished:
         # see the note above.
         igt_driving_sys.disconnect()
 

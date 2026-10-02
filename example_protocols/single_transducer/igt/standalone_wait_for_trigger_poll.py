@@ -29,8 +29,8 @@ README.md file of https://github.com/Donders-Institute/Radboud-FUS-driving-syste
 """
 
 # IGT example: a single transducer, defined in wait_for_trigger.yaml (same file
-# standalone_wait_for_trigger.py uses -- edit it to change your protocol), armed to fire on a
-# single external trigger. Unlike that script, this one does NOT block waiting for the result --
+# standalone_wait_for_trigger.py uses: edit it to change your protocol), armed to fire on a
+# single external trigger. Unlike that script, this one does NOT block waiting for the result:
 # it polls has_execution_error() in its own loop instead, so it can do other work (e.g. waiting
 # on other equipment) while the trigger hasn't fired yet.
 
@@ -50,18 +50,18 @@ try:
 
     # load_protocol() returns a 5-tuple: (protocols, total_alternating_duration_ms, trigger_option,
     # n_triggers, buffer_num). total_alternating_duration_ms is only relevant when interleaving more
-    # than one protocol -- ignored here (a single protocol). trigger_option/n_triggers are used
-    # below, forwarded straight into wait_for_trigger() -- wait_for_trigger.yaml sets trigger_option
+    # than one protocol: ignored here (a single protocol). trigger_option/n_triggers are used
+    # below, forwarded straight into wait_for_trigger(): wait_for_trigger.yaml sets trigger_option
     # to 'TriggerWholeProtocol' and omits n_triggers (not needed for that trigger_option). buffer_num
     # is unused here.
     #
-    # require_hash=False (the default) -- set to True once you have a real wait_for_trigger.yaml you
+    # require_hash=False (the default): set to True once you have a real wait_for_trigger.yaml you
     # don't want accidentally changed; see docs/building-protocols.md's "Load a Protocol from a
     # YAML File" section.
     protocols, total_alternating_duration_ms, trigger_option, n_triggers, _ = load_protocol(
         'wait_for_trigger.yaml', require_hash=False)
 
-    # The driving system serial only needs to live in wait_for_trigger.yaml -- load_protocol()
+    # The driving system serial only needs to live in wait_for_trigger.yaml: load_protocol()
     # already resolved it into a real DrivingSystem, reachable via the protocol's own driving_sys.
     igt_driving_sys = igt_ds.IGT(log_dir)
     igt_driving_sys.connect(protocols[0].driving_sys.connect_info, log_dir, filename)
@@ -70,7 +70,7 @@ try:
         igt_driving_sys.send_protocol(protocols)
         igt_driving_sys.wait_for_trigger(protocols, trigger_option, n_triggers)
 
-        # has_execution_error() only tells you whether an error has occurred SO FAR -- not whether
+        # has_execution_error() only tells you whether an error has occurred SO FAR, not whether
         # the protocol has finished. Replace the time-based condition below with your own (e.g.
         # "still waiting on the stimuli").
         deadline = time.time() + 5.0
@@ -80,7 +80,7 @@ try:
             time.sleep(0.1)  # <do other work here instead, in a real experiment>
 
         # Your own loop condition above isn't necessarily tied to the protocol's actual completion,
-        # so disconnecting right after it can cut off a still-running protocol -- call
+        # so disconnecting right after it can cut off a still-running protocol: call
         # wait_for_trigger_result() once you expect the trigger to have fired, to confirm the
         # protocol actually finished (and exit if it reports failure) before disconnecting below.
         igt_driving_sys.wait_for_trigger_result(timeout_s=5.0)

@@ -47,20 +47,20 @@ try:
 
     # load_protocol() returns a 5-tuple: (protocols, total_alternating_duration_ms, trigger_option,
     # n_triggers, buffer_num). total_alternating_duration_ms is only relevant when interleaving more
-    # than one protocol -- ignored here (a single protocol, even with 2 slots). trigger_option/
+    # than one protocol: ignored here (a single protocol, even with 2 slots). trigger_option/
     # n_triggers are used below. buffer_num is unused here.
     #
-    # require_hash=False (the default) -- set to True once you have a real protocol.yaml you don't
+    # require_hash=False (the default): set to True once you have a real protocol.yaml you don't
     # want accidentally changed; see docs/building-protocols.md's "Load a Protocol from a YAML
     # File" section.
     protocols, total_alternating_duration_ms, trigger_option, n_triggers, _ = load_protocol(
         'protocol.yaml', require_hash=False)
 
     # trigger_option is None when protocol.yaml omits the key entirely, or the literal string 'None'
-    # when it's set explicitly (as protocol.yaml does here) -- either way means no trigger at all.
+    # when it's set explicitly (as protocol.yaml does here): either way means no trigger at all.
     wait_for_trigger = trigger_option not in (None, 'None')
 
-    # The driving system serial only needs to live in protocol.yaml -- load_protocol() already
+    # The driving system serial only needs to live in protocol.yaml: load_protocol() already
     # resolved it into a real DrivingSystem, reachable via the protocol's own driving_sys.
     igt_driving_sys = igt_ds.IGT(log_dir)
     igt_driving_sys.connect(protocols[0].driving_sys.connect_info, log_dir, filename)
@@ -80,7 +80,7 @@ try:
         else:
             igt_driving_sys.execute_protocol(protocols)
     finally:
-        # Always safe to disconnect here -- execute_protocol()/wait_for_trigger_result() only
+        # Always safe to disconnect here: execute_protocol()/wait_for_trigger_result() only
         # return once it's done. If your code stops abruptly before this point (e.g. a crash),
         # disconnect the driving system yourself, otherwise it may keep firing ultrasound protocols.
         igt_driving_sys.disconnect()

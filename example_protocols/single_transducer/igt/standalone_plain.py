@@ -28,7 +28,7 @@ If you use this kit in your research or project, please refer to the 'How to Cit
 README.md file of https://github.com/Donders-Institute/Radboud-FUS-driving-system-software.
 """
 
-# IGT example: a single transducer, built directly in Python (full manual control -- no YAML).
+# IGT example: a single transducer, built directly in Python (full manual control, no YAML).
 # See standalone_direct_execute.py/standalone_wait_for_trigger.py/
 # standalone_wait_for_trigger_poll.py in this same folder for the simpler, YAML-driven
 # equivalents of the two execution patterns shown together below.
@@ -53,9 +53,9 @@ logger = initialize_logger(log_dir, filename)
 
 # This creates a timestamped session folder inside log_dir (e.g. "2026-08-05_18-00-00_
 # FDS_logs") for this FDS log, and also enables crash detection (faulthandler) for the whole
-# session -- both land in that same folder. igt_ds.IGT()/connect() below automatically
+# session: both land in that same folder. igt_ds.IGT()/connect() below automatically
 # discover and reuse it for the native IGT log too, so every log file from one session ends up
-# together -- convenient for sharing a whole session at once (e.g. with IGT for a bug report,
+# together: convenient for sharing a whole session at once (e.g. with IGT for a bug report,
 # GitHub issue #126).
 
 # When this code is embedded in other code with logging, ignore above commands and sync the logger
@@ -70,7 +70,7 @@ logger = initialize_logger(log_dir, filename)
 
 try:
     # Connecting doesn't require a protocol to exist yet. In practice, you typically connect once
-    # when your experiment starts, then build/adapt protocols iteratively as it progresses -- so
+    # when your experiment starts, then build/adapt protocols iteratively as it progresses, so
     # look up the driving system's connection info directly via DrivingSystem, rather than
     # through a TUSProtocol.
 
@@ -103,11 +103,11 @@ try:
     # equipment: same driving system already used to connect() above
     protocol = tus_protocol.TUSProtocol(ds_info.serial)
 
-    # Each add_slot() call fully configures one transducer -- serial, focus, and power all at
+    # Each add_slot() call fully configures one transducer: serial, focus, and power all at
     # once (no partial/half-configured slot, and no separate available-channels check needed:
     # that's enforced automatically once the driving system's expected number of slots have been
     # added). NOTE: get_focus_options()/get_power_options() only tell you which option NAMES are
-    # valid -- there is no equivalent lookup for valid VALUES. Pick sensible numbers yourself
+    # valid. There is no equivalent lookup for valid VALUES. Pick sensible numbers yourself
     # (add_slot() validates them once given, e.g. focus against the transducer's own min/max
     # range).
     # to check available options for this driving system (no need to add a slot first):
@@ -138,10 +138,10 @@ try:
     # https://www.itrusst.com/tus-calculator
 
     # Trigger configuration (trigger_option/n_triggers) is a call-level parameter of
-    # IGT.wait_for_trigger(), not an attribute of the protocol itself -- defined here as plain
+    # IGT.wait_for_trigger(), not an attribute of the protocol itself: defined here as plain
     # variables instead, reused below when actually sending/waiting for a trigger/executing.
     # Use 'None' (this template's default) to not use a trigger at all; 'TriggerOnePulseTrain' to
-    # fire one pulse train per trigger received (you must also give N_TRIGGERS below -- how many
+    # fire one pulse train per trigger received (you must also give N_TRIGGERS below: how many
     # triggers to expect);
     # 'TriggerWholeProtocol' to fire the entire, already fully-timed protocol at once with a
     # single trigger (equivalent to executing it directly, just gated behind that one trigger).
@@ -150,12 +150,12 @@ try:
     # TRIGGER_OPTION = 'TriggerOnePulseTrain'
     # TRIGGER_OPTION = 'TriggerWholeProtocol'
 
-    # Required when (and only settable when) TRIGGER_OPTION == 'TriggerOnePulseTrain' above --
+    # Required when (and only settable when) TRIGGER_OPTION == 'TriggerOnePulseTrain' above:
     # pulse_train_rep_int/pulse_train_rep_dur don't apply in that mode at all (they apply to
     # every other trigger_option instead, may be given together or just one of the two).
-    N_TRIGGERS = None  # e.g. 4 -- number of triggers expected, one pulse train fires per trigger
+    N_TRIGGERS = None  # e.g. 4: number of triggers expected, one pulse train fires per trigger
 
-    # configure_timing() sets every pulse/pulse-train parameter together, in one call -- each
+    # configure_timing() sets every pulse/pulse-train parameter together, in one call: each
     # individual setter (pulse_dur, pulse_rep_int, ...) cascades its own value forward to every
     # level above it, so calling them one by one in the wrong order can silently overwrite an
     # earlier one (e.g. setting pulse_train_dur before pulse_dur). Passing everything to
@@ -175,15 +175,15 @@ try:
         # Each field below is deliberately a genuinely different value from the one before it
         # (not just mirroring the level below), to show the full timing hierarchy in one place:
         # one pulse, repeated into a pulse train, itself repeated some number of times.
-        pulse_rep_int=50,  # [ms], pulse repetition interval -- one pulse every 50 ms
+        pulse_rep_int=50,  # [ms], pulse repetition interval: one pulse every 50 ms
 
-        # if you only want one pulse train, you don't need to set this at all -- it defaults to
+        # if you only want one pulse train, you don't need to set this at all: it defaults to
         # pulse_rep_int. Set explicitly here for clarity.
-        pulse_train_dur=200,  # [ms], pulse train duration -- 4 pulses per train (200 / 50)
+        pulse_train_dur=200,  # [ms], pulse train duration: 4 pulses per train (200 / 50)
 
         # ## pulse train repetition ## #
         # if you only want one pulse train repetition, you don't need to set either of these at
-        # all -- pulse_train_rep_int defaults to pulse_train_dur, and pulse_train_rep_dur then
+        # all: pulse_train_rep_int defaults to pulse_train_dur, and pulse_train_rep_dur then
         # defaults to that (i.e. "repeat exactly once"). Set explicitly here for clarity.
         # a new train starts every 400 ms (200 ms train, then a 200 ms gap before the next)
         pulse_train_rep_int=400,  # [ms], pulse train repetition interval
@@ -211,7 +211,7 @@ try:
             igt_driving_sys.wait_for_trigger(protocol, TRIGGER_OPTION, N_TRIGGERS)
 
             # wait_for_trigger() above only arms the protocol to fire on the external trigger and
-            # returns immediately -- it does NOT wait for, or check, the actual execution result.
+            # returns immediately. It does NOT wait for, or check, the actual execution result.
             # The driving system only reports success/failure once the triggered execution is
             # actually finished, which can happen at an unpredictable moment later (whenever your
             # external trigger fires).
@@ -224,19 +224,19 @@ try:
             #
             # Note: an execution error is always logged immediately when it happens (regardless
             # of when you call this), but your code will only actively react to it (via a raised
-            # FDSError) once wait_for_trigger_result() is called -- calling it late means
+            # FDSError) once wait_for_trigger_result() is called: calling it late means
             # reacting late, even though the failure itself was already recorded at the real time
             # it occurred.
             #
             # If you have other work to do while waiting for the external trigger (e.g. waiting
             # on other equipment), use the non-blocking has_execution_error() instead, in your
-            # own polling loop, for real-time reaction instead of only finding out at the end --
+            # own polling loop, for real-time reaction instead of only finding out at the end:
             # see standalone_wait_for_trigger_poll.py in this same folder for this pattern on its
             # own.
             igt_driving_sys.wait_for_trigger_result(timeout_s=5.0)
 
         # If no trigger is configured, the protocol is sent and can be executed directly using
-        # the execute_protocol() function -- see standalone_direct_execute.py in this same folder
+        # the execute_protocol() function: see standalone_direct_execute.py in this same folder
         # for this pattern on its own.
         else:
             igt_driving_sys.execute_protocol(protocol)
@@ -245,12 +245,12 @@ try:
         # By the time we reach here, the protocol has actually finished executing either way:
         # execute_protocol() only returns once it's done, and wait_for_trigger_result() above
         # blocks until the triggered execution completes (or its timeout expires). So it's always
-        # safe to disconnect here -- if your code stops abruptly before this point instead (like
+        # safe to disconnect here: if your code stops abruptly before this point instead (like
         # a kernel death/crash), make sure to disconnect the driving system yourself, otherwise it
         # may keep firing ultrasound protocols.
         #
         # If you replaced wait_for_trigger_result() above with your own has_execution_error()
-        # polling loop, this is only safe once you've confirmed the protocol actually finished --
+        # polling loop, this is only safe once you've confirmed the protocol actually finished:
         # see the note above.
         igt_driving_sys.disconnect()
 

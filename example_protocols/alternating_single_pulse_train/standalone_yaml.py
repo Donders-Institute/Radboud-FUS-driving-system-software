@@ -48,16 +48,16 @@ try:
 
     # load_protocol() returns a 5-tuple: (protocols, total_alternating_duration_ms, trigger_option,
     # n_triggers, buffer_num). trigger_option/n_triggers are used below, forwarded straight into
-    # wait_for_trigger() -- protocol.yaml sets trigger_option to 'TriggerWholeProtocol' and omits
+    # wait_for_trigger(): protocol.yaml sets trigger_option to 'TriggerWholeProtocol' and omits
     # n_triggers (not needed for that trigger_option). buffer_num is unused here.
     #
-    # require_hash=False (the default) -- set to True once you have a real protocol.yaml you don't
+    # require_hash=False (the default): set to True once you have a real protocol.yaml you don't
     # want accidentally changed; see docs/building-protocols.md's "Load a Protocol from a YAML
     # File" section.
     protocols, total_alternating_duration_ms, trigger_option, n_triggers, _ = load_protocol(
         'protocol.yaml', require_hash=False)
 
-    # The driving system serial only needs to live in protocol.yaml -- load_protocol() already
+    # The driving system serial only needs to live in protocol.yaml: load_protocol() already
     # resolved it into a real DrivingSystem, reachable via either protocol's own driving_sys (both
     # protocols in an interleaved group always target the same driving system).
     igt_driving_sys = igt_ds.IGT(log_dir)
@@ -66,7 +66,7 @@ try:
     try:
         igt_driving_sys.send_protocol(protocols, total_alternating_duration_ms)
 
-        # wait for the external trigger rather than executing directly -- see standalone_plain.py
+        # wait for the external trigger rather than executing directly: see standalone_plain.py
         # for the has_execution_error()/wait_for_trigger_result() explanation this pattern relies on.
         igt_driving_sys.wait_for_trigger(protocols, trigger_option, n_triggers,
                                          total_alternating_duration_ms)
