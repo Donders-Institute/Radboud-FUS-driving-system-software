@@ -1,43 +1,23 @@
 # -*- coding: utf-8 -*-
 """
-Copyright (c) 2024 Margely Cornelissen, Stein Fekkes (Radboud University) and Erik Dumont (Image
-Guided Therapy)
+Copyright (c) 2024 Radboud University
 
-MIT License
+SPDX-License-Identifier: MIT
+See the LICENSE file for full license text.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-**Attribution Notice**:
-If you use this kit in your research or project, please refer to the 'How to Cite' section in the
-README.md file of https://github.com/Donders-Institute/Radboud-FUS-driving-system-software.
+If you use this kit in your research or project, please cite it -- see CITATION.cff or the
+'How to Cite' section of README.md at
+https://github.com/Donders-Institute/Radboud-FUS-driving-system-software.
 """
-
-# Basic packages
-import sys
 
 # Miscellaneous packages
 import copy
 
 # Own packages
 from fus_driving_systems.config.config import config_info as config
-from fus_driving_systems.config.logging_config import logger
+from fus_driving_systems.config.logging_config import get_logger
 from fus_driving_systems.utils import get_config_value
+from fus_driving_systems.exceptions import FDSConfigError, FDSValidationError
 
 
 class DrivingSystem:
@@ -53,8 +33,21 @@ class DrivingSystem:
         config. file (IGT).
         tran_comp (List[str]): List of transducers the driving system is compatible with.
         power_options (List[str]): List of power options compatible with the driving system.
-        require_conv_eq (bool.): determines if pressure conversion equations are required or
-            pressure can be used as a direct input.
+        focus_options (List[str]): List of focus options compatible with the driving system.
+        native_power_params (List[str]): The power parameter(s) this driving system's hardware
+            accepts directly, without needing a calibration curve to convert them (e.g.
+            amplitude for IGT). Usually a single entry, but a driving system whose hardware
+            genuinely accepts more than one power representation directly can list several.
+        native_focus_params (List[str]): Same idea as native_power_params, for focus.
+        max_tran_slots (int): The number of transducers this driving system can drive
+            simultaneously (see TUSProtocol.add_slot()). Default 1 -- a driving system that
+            doesn't declare a higher value is single-transducer-only.
+        max_buffers (int): The number of hardware buffers this driving system can hold a
+            protocol in at once (see the buffer_num parameter of IGT.send_protocol()/
+            wait_for_trigger()/execute_protocol()) -- each buffer can be pre-loaded with its own
+            protocol ahead of time and triggered/executed independently. Default 1 -- a driving
+            system that doesn't declare a higher value has no real buffer concept at all
+            (buffer_num is then only ever 0).
         is_active (Boolean): Indication if the driving system is used with the code.
     """
 
@@ -71,34 +64,67 @@ class DrivingSystem:
         self.connect_info = None
         self.tran_comp = None
         self.power_options = None
-        self.require_conv_eq = False
+        self.focus_options = None
+        self.native_power_params = None
+        self.native_focus_params = None
+        self.max_tran_slots = 1
+        self.max_buffers = 1
         self.is_active = True
 
     def set_ds_info(self, serial):
         """
         Sets the driving system based on the provided serial number.
 
+        Called by TUSProtocol.__init__() (directly with its own caller-given
+        driving_sys_serial argument) and get_ds_list() -- both can be given a serial that isn't
+        actually in the configuration file (e.g. a typo). That is checked explicitly below,
+        rather than relying on incidentally hitting one of the individual raise_on_missing=True
+        fields further down and having to track down why that one field failed.
+
         Parameters:
             serial (str): Serial number of the driving system.
+
+        Raises:
+            FDSValidationError: If no 'Equipment.Driving system.<serial>' section exists for
+                serial.
         """
 
-        self.serial = serial
         section = 'Equipment.Driving system.' + serial
-        self.name = get_config_value(logger, config, section, 'Name',
+        if section not in config:
+            message = (f'No driving system with serial number {serial} found in ' +
+                       'configuration file.')
+            get_logger().critical(message)
+            raise FDSValidationError(message)
+
+        self.serial = serial
+        self.name = get_config_value(get_logger(), config, section, 'Name',
                                      'Unknown driving system name')
-        self.manufact = get_config_value(logger, config, section, 'Manufacturer',
+        self.manufact = get_config_value(get_logger(), config, section, 'Manufacturer',
                                          'Unknown driving system manufacturer')
-        self.available_ch = int(get_config_value(logger, config, section,
-                                                 'Available channels', 0))
-        self.connect_info = get_config_value(logger, config, section, 'Connection info',
+        self.available_ch = int(get_config_value(get_logger(), config, section,
+                                                 'Available channels', 0, True))
+        self.connect_info = get_config_value(get_logger(), config, section, 'Connection info',
                                              None, True)
-        self.tran_comp = get_config_value(logger, config, section, 'Transducer compatibility',
-                                          '').split('\n')
-        self.power_options = get_config_value(logger, config, section, 'Power options',
+        self.tran_comp = get_config_value(
+            get_logger(), config, section, 'Transducer compatibility', '').split('\n')
+        self.power_options = get_config_value(get_logger(), config, section, 'Power options',
                                               '').split('\n')
-        self.require_conv_eq = get_config_value(
-            logger, config, section, 'Requires conversion equations?', 'False') == 'True'
-        self.is_active = get_config_value(logger, config, section, 'Active?', 'True') == 'True'
+        self.focus_options = get_config_value(get_logger(), config, section, 'Focus options',
+                                              '').split('\n')
+        self.native_power_params = get_config_value(
+            get_logger(), config, section, 'Native power parameters', '', True).split('\n')
+        self.native_focus_params = get_config_value(
+            get_logger(), config, section, 'Native focus parameters', '', True).split('\n')
+        self.max_tran_slots = int(get_config_value(
+            get_logger(), config, section, 'Max. transducer slots', 1))
+        self.max_buffers = int(get_config_value(
+            get_logger(), config, section, 'Max. buffers', 1))
+        # Fails closed: a driving system config section missing 'Active?' entirely is treated as
+        # inactive rather than active, so an incomplete/unreviewed section can't silently become
+        # selectable/connectable. Real, generated ds_config.ini sections always write this key
+        # explicitly (see create_config.py), so this only ever matters for a hand-edited config.
+        self.is_active = get_config_value(
+            get_logger(), config, section, 'Active?', 'False') == 'True'
 
     def __str__(self):
         """
@@ -115,13 +141,19 @@ class DrivingSystem:
         info += f"Driving system available channels: {self.available_ch} \n "
         info += f"Driving system connection info: {self.connect_info} \n "
 
-        tran_comp = '\n '.join(self.tran_comp)
+        tran_comp = ', '.join(self.tran_comp)
         info += f"Driving system tranducer compatibility: {tran_comp} \n "
 
-        power_options = '\n '.join(self.power_options)
+        power_options = ', '.join(self.power_options)
         info += f"Driving system power options: {power_options} \n "
-        info += ("Driving system requires conversion equations?: " +
-                 f"{self.require_conv_eq} \n ")
+        focus_options = ', '.join(self.focus_options)
+        info += f"Driving system focus options: {focus_options} \n "
+        native_power_params = ', '.join(self.native_power_params)
+        info += f"Driving system native power parameter(s): {native_power_params} \n "
+        native_focus_params = ', '.join(self.native_focus_params)
+        info += f"Driving system native focus parameter(s): {native_focus_params} \n "
+        info += f"Driving system max. transducer slots: {self.max_tran_slots} \n "
+        info += f"Driving system max. buffers: {self.max_buffers} \n "
 
         return info
 
@@ -148,22 +180,26 @@ def get_ds_serials():
 
     Returns:
         List[str]: Serial numbers for available driving systems.
+
+    Raises:
+        FDSConfigError: If no active driving system section exists in the configuration file.
     """
 
-    serial_ds = get_config_value(logger, config, 'Equipment', 'Driving systems', '',
+    serial_ds = get_config_value(get_logger(), config, 'Equipment', 'Driving systems', '',
                                  True).split('\n')
 
     active_serials = []
     for serial in serial_ds:
-        # only extract active driving systems
+        # only extract active driving systems -- fails closed, see set_ds_info()'s own comment
+        # on this same default.
         section = 'Equipment.Driving system.' + serial
-        if get_config_value(logger, config, section, 'Active?', 'True') == 'True':
+        if get_config_value(get_logger(), config, section, 'Active?', 'False') == 'True':
             active_serials.append(serial)
 
     if len(active_serials) < 1:
         message = 'No active driving systems found in configuration file.'
-        logger.critical(message)
-        sys.exit(message)
+        get_logger().critical(message)
+        raise FDSConfigError(message)
 
     return active_serials
 
@@ -179,13 +215,9 @@ def get_ds_names():
     names = []
     for serial in get_ds_serials():
         section = 'Equipment.Driving system.' + serial
-        ds_name = get_config_value(logger, config, section, 'Name', 'Unknown driving system name')
+        ds_name = get_config_value(get_logger(), config, section,
+                                   'Name', 'Unknown driving system name')
         names.append(ds_name)
-
-    if len(names) < 1:
-        message = 'No driving systems found in configuration file.'
-        logger.critical(message)
-        sys.exit(message)
 
     return names
 
@@ -200,21 +232,9 @@ def get_ds_list():
 
     ds_list = []
     for serial in get_ds_serials():
-        try:
-            ds = DrivingSystem()
-            ds.set_ds_info(serial)
-        except KeyError:
-            message = (f'No driving system with serial number {serial} found in' +
-                       ' configuration file.')
-            logger.critical(message)
-            sys.exit(message)
-
+        ds = DrivingSystem()
+        ds.set_ds_info(serial)
         ds_list.append(ds)
-
-    if len(ds_list) < 1:
-        message = 'No driving systems found in configuration file.'
-        logger.critical(message)
-        sys.exit(message)
 
     return ds_list
 
@@ -232,5 +252,6 @@ def get_serial_from_name(name):
 
     for ds in get_ds_list():
         if ds.name == name:
-
             return ds.serial
+
+    return None

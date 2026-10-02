@@ -1,31 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-Copyright (c) 2024 Margely Cornelissen, Stein Fekkes (Radboud University) and Erik Dumont (Image
-Guided Therapy)
+Copyright (c) 2024 Radboud University
 
-MIT License
+SPDX-License-Identifier: MIT
+See the LICENSE file for full license text.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-**Attribution Notice**:
-If you use this kit in your research or project, please refer to the 'How to Cite' section in the
-README.md file of https://github.com/Donders-Institute/Radboud-FUS-driving-system-software.
+If you use this kit in your research or project, please cite it -- see CITATION.cff or the
+'How to Cite' section of README.md at
+https://github.com/Donders-Institute/Radboud-FUS-driving-system-software.
 """
 
 # Basic packages
@@ -61,8 +43,24 @@ def read_additional_config(file_path):
 
 
 def sync_config(new_config):
-    global config_info
-    config_info = new_config
+    """
+    Merges an externally provided (e.g. host application's) config into our shared config_info,
+    in place.
+
+    Mutates the existing ConfigParser object in place instead of rebinding this module's
+    'config_info' name to a different object: every module that already did
+    'from fus_driving_systems.config.config import config_info as config' at its own import
+    time holds a reference to that same object, so an in-place merge reaches them regardless of
+    import order -- a plain rebind here would not (they would keep pointing at the old object).
+    Uses the same ConfigParser.update() merge already used by read_additional_config() (a
+    section present in new_config replaces that whole section here; sections absent from
+    new_config are left untouched).
+
+    Parameters:
+        new_config (configparser.ConfigParser): The externally provided config to merge in.
+    """
+
+    config_info.update(new_config)
 
 
 # Automatically read the main configuration file when the module is imported

@@ -11,40 +11,48 @@ File discovery (which transducers/curve types exist) lives in
 discovery.py so it can be shared with test modules that need to build
 parametrize lists at collection time.
 """
+import faulthandler
+import os
 from types import SimpleNamespace
 
 import pytest
 
 from discovery import CONVERSION_DATA_SUBPATH, resolve_conversion_data_dir
 
-# Every module below does 'from ...logging_config import logger' at ITS OWN
-# import time -- that's an import-time binding to whatever logging_config.logger
-# was at that moment (None, since pytest collection imports these modules
-# before any test runs). Reassigning logging_config.logger later (e.g. via
-# initialize_logger()) does not reach these already-bound copies. This is a
-# test-only artifact, not a production bug: every real entry-point script
-# calls initialize_logger() before importing any of these modules, so the
-# real logger is already in place by the time they bind their local name.
-_LOGGER_CONSUMER_MODULES = [
-    "fus_driving_systems.sequence",
-    "fus_driving_systems.driving_system",
-    "fus_driving_systems.transducer",
-    "fus_driving_systems.citrus.citrus_ds",
-    "fus_driving_systems.sonic_concepts.sonic_concepts_ds",
-    "fus_driving_systems.igt.igt_ds",
-    "fus_driving_systems.igt.transducer_xyz",
-    "fus_driving_systems.igt.utils",
-]
-
 
 @pytest.fixture(scope="session", autouse=True)
+def _run_tests_from_a_scratch_directory(tmp_path_factory):
+    """The real unifus.pyd native extension (imported transitively via igt_ds.py, exercised by
+    igt/conftest.py's fixtures) writes its own startup-banner log file the moment a real
+    unifus.FUSSystem() is used during a test -- named unifus_<timestamp>.log by the native
+    library itself, in the current working directory. This isn't configurable from Python:
+    igt_ds.py's own unifus.setLogPath(log_dir, ...) call only affects the *name*, not this
+    initial banner, and no log_dir any test passes around changes where it lands. Running the
+    whole session from a disposable scratch directory (instead of fus_ds_package/, the package's
+    own source tree) keeps this file out of the repo working copy without needing any change to
+    the native library itself -- pytest's own tmp_path_factory retention policy cleans it up
+    over time, the same as any other test-generated tmp_path."""
+    original_cwd = os.getcwd()
+    os.chdir(tmp_path_factory.mktemp('pytest_cwd'))
+
+    yield
+
+    os.chdir(original_cwd)
+
+
+# Every consumer module (tus_protocol.py, driving_system.py, transducer.py, the driving-system
+# subclasses, igt/utils.py, igt/transducer_xyz.py) calls logging_config.get_logger() at each
+# log call site instead of importing 'logger' as a name, so none of them ever cache a
+# reference that could go stale. sync_logger() below mutates the shared logger's
+# handlers/level/propagate in place (see logging_config.py) rather than rebinding
+# logging_config's own 'logger' name to a different object, so every consumer's next
+# get_logger() call picks up the change regardless of import order -- this fixture doesn't
+# need to patch any consumer module directly.
+@pytest.fixture(scope="session", autouse=True)
 def initialize_package_logger():
-    """
-    Overwrites the 'logger' name directly on every consumer module,
-    rather than relying on logging_config's own internal state -- see
-    the _LOGGER_CONSUMER_MODULES comment above for why that's needed.
-    """
-    import importlib
+    """Gives the shared logger a quiet (NullHandler) configuration for the test session, via
+    the same sync_logger() entry point used by host applications (e.g. SonoRover One) that
+    embed this package with their own already-configured logger."""
     import logging
 
     from fus_driving_systems.config import logging_config
@@ -54,15 +62,29 @@ def initialize_package_logger():
         test_logger.addHandler(logging.NullHandler())
     test_logger.setLevel(logging.DEBUG)
 
-    logging_config.logger = test_logger
-    for modname in _LOGGER_CONSUMER_MODULES:
-        try:
-            mod = importlib.import_module(modname)
-        except ImportError:
-            # e.g. igt.* isn't importable without the real unifus.pyd on
-            # this machine -- must not break the whole (autouse) session.
-            continue
-        mod.logger = test_logger
+    logging_config.sync_logger(test_logger)
+
+
+@pytest.fixture(autouse=True)
+def _reset_session_log_dir():
+    """logging_config.initialize_logger() sets a module-level _session_log_dir (see
+    get_session_log_dir()) so the faulthandler/native IGT log files land in the same
+    timestamped folder as the main FDS log, and enable_crash_detection() sets a module-level
+    _faulthandler_file (see is_crash_detection_enabled()) so it only ever runs once per
+    process. Reset both after every test, regardless of outcome, so one test calling
+    initialize_logger()/sync_logger()/enable_crash_detection() can't leak that state into
+    unrelated tests elsewhere in the suite that don't expect it -- these globals would
+    otherwise persist for the rest of the pytest process."""
+    yield
+
+    from fus_driving_systems.config import logging_config
+
+    logging_config._session_log_dir = None
+
+    if logging_config._faulthandler_file is not None:
+        faulthandler.disable()
+        logging_config._faulthandler_file.close()
+        logging_config._faulthandler_file = None
 
 
 @pytest.fixture
@@ -71,12 +93,9 @@ def patch_config():
     Temporarily overrides config_info[section][key] entries and restores
     them after the test. Mutates the real, shared ConfigParser in place
     (config_info) rather than replacing the object -- read_config()/
-    read_additional_config() already work this way, and in-place mutation
-    is what actually propagates to every module that did
-    'from ...config import config_info as config' at its own import time
-    (config.py's own sync_config() does NOT propagate for the same reason
-    the logger needed the fixture above: it rebinds a name instead of
-    mutating the shared object).
+    read_additional_config()/sync_config() all work this way, and in-place
+    mutation is what propagates to every module that did
+    'from ...config import config_info as config' at its own import time.
     """
     from fus_driving_systems.config.config import config_info
 
@@ -112,7 +131,7 @@ def conversion_data_dir():
 def resource_path():
     """
     Returns the package-relative path (forward slashes, no absolute
-    path) as expected by functions like sequence.extract_and_define_pp,
+    path) as expected by functions like calc_utils.extract_and_define_pp,
     which internally resolve it via
     importlib.resources.files('fus_driving_systems').joinpath(...).
     Use this fixture (not fit_path) for those functions.
@@ -130,7 +149,7 @@ def fit_path(conversion_data_dir):
     Returns the full, absolute path to a config file based on its
     filename. Use this ONLY for reading the raw JSON directly via
     open() (see load_json) -- not for functions like
-    sequence.extract_and_define_pp that resolve the path themselves via
+    calc_utils.extract_and_define_pp that resolve the path themselves via
     importlib.resources (see resource_path's note on why absolute
     paths aren't appropriate there). Use resource_path for that.
     """

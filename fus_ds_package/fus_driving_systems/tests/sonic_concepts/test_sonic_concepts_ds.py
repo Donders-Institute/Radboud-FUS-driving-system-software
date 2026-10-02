@@ -8,6 +8,10 @@ single _send_command() choke point, or reads/writes self.gen directly --
 the connected_instance fixture bypasses connect() entirely for those.
 """
 import pytest
+import serial
+
+from fus_driving_systems.exceptions import (FDSHardwareError, FDSInternalError, FDSSafetyError,
+                                            FDSValidationError)
 
 
 def test_connect_establishes_connection_on_normal_response(mock_serial):
@@ -17,18 +21,18 @@ def test_connect_establishes_connection_on_normal_response(mock_serial):
 
     instance.connect('COM3')
 
-    assert instance.connected is True
-    assert instance.sequence_sent is False
+    assert instance._connected is True
+    assert instance.protocol_sent is False
 
 
-def test_connect_exits_on_e2_response(mock_serial):
+def test_connect_raises_on_e2_response(mock_serial):
     from fus_driving_systems.sonic_concepts.sonic_concepts_ds import SonicConcepts
     mock_serial.readline.return_value = b'E2\n'
     instance = SonicConcepts()
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSHardwareError):
         instance.connect('COM3')
-    assert instance.connected is False
+    assert instance._connected is False
 
 
 def test_send_command_writes_and_returns_response(connected_instance):
@@ -40,10 +44,36 @@ def test_send_command_writes_and_returns_response(connected_instance):
     assert response == 'OK'
 
 
-def test_send_command_exits_on_e2_response(connected_instance):
+def test_send_command_raises_on_e2_response(connected_instance):
     connected_instance.gen.readline.return_value = b'E2\n'
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSHardwareError):
+        connected_instance._send_command('FOO=1\r\n', sleep_time_s=0)
+
+
+def test_send_command_raises_on_e1_response(connected_instance):
+    """E1 (unrecognized command) is a TPO error code distinct from E2."""
+    connected_instance.gen.readline.return_value = b'E1\n'
+
+    with pytest.raises(FDSHardwareError, match='E1'):
+        connected_instance._send_command('FOO=1\r\n', sleep_time_s=0)
+
+
+def test_send_command_raises_on_e3_response(connected_instance):
+    """E3 (incorrect command syntax) is a TPO error code distinct from E2."""
+    connected_instance.gen.readline.return_value = b'E3\n'
+
+    with pytest.raises(FDSHardwareError, match='E3'):
+        connected_instance._send_command('FOO=1\r\n', sleep_time_s=0)
+
+
+def test_send_command_raises_on_empty_response(connected_instance):
+    """An empty response (readline() timed out with nothing received, e.g. a lost connection) is
+    never legitimate: every command in the TPO's own command table has a non-empty confirmation
+    echo."""
+    connected_instance.gen.readline.return_value = b''
+
+    with pytest.raises(FDSHardwareError):
         connected_instance._send_command('FOO=1\r\n', sleep_time_s=0)
 
 
@@ -65,8 +95,12 @@ def test_set_global_power_converts_w_to_mw(mocker, connected_instance):
     mock_send.assert_called_once_with('GLOBALPOWER=2000.0\r\n', 0.1)
 
 
-def test_set_global_power_exits_when_none(connected_instance):
-    with pytest.raises(SystemExit):
+def test_set_global_power_raises_when_none(connected_instance):
+    """Regression test: this is a should-never-happen internal guard now -- validate_protocol()'s
+    own slot.global_power is None check (run via _validate_or_raise() in send_protocol(), before
+    _set_global_power() is ever called) already rejects this via the public send_protocol() path.
+    Calling the private setter directly, as here, bypasses that and hits the guard itself."""
+    with pytest.raises(FDSInternalError):
         connected_instance._set_global_power(None)
 
 
@@ -133,26 +167,24 @@ def test_set_ramping_rectangular_resets_and_aborts(mocker, connected_instance, p
     mock_send.assert_called_once_with('ABORT\r\n', 0.1)
 
 
-def test_set_ramping_unknown_mode_exits(mocker, connected_instance, patch_config):
+def test_set_ramping_unknown_mode_raises(mocker, connected_instance, patch_config):
     patch_config.set('Ramp', 'Option.rect', 'Rectangular - no ramping')
     patch_config.set('Ramp', 'Option.lin', 'Linear')
     patch_config.set('Ramp', 'Option.tuk', 'Tukey')
     mocker.patch.object(connected_instance, '_send_command')
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSValidationError):
         connected_instance._set_ramping('Something else', 10)
 
 
-def test_set_ramping_linear_sends_malformed_rampmode_command(mocker, connected_instance,
-                                                             patch_config):
+def test_set_ramping_linear_sends_rampmode_1(mocker, connected_instance, patch_config):
     """
-    Characterizes a real bug found while writing this test: the RAMPMODE
-    command is built as 'RAMPMODE={ramp_mode}\\r\\n' -- a plain string, missing
-    the f-string prefix that RAMPLENGTH's command has one line below it.
-    The literal, un-interpolated text '{ramp_mode}' is sent to the driving
-    system instead of the actual mode number (1 for linear, 2 for Tukey),
-    regardless of which ramp mode was requested. This documents the
-    current, broken wire format -- it is not asserting this is correct.
+    Regression test for a real bug found while writing this test: the
+    RAMPMODE command used to be built as 'RAMPMODE={ramp_mode}\\r\\n' -- a
+    plain string, missing the f-string prefix that RAMPLENGTH's command has
+    one line below it. The literal, un-interpolated text '{ramp_mode}' was
+    sent to the driving system instead of the actual mode number, regardless
+    of which ramp mode was requested. Fixed by adding the missing f-prefix.
     """
     patch_config.set('Ramp', 'Option.rect', 'Rectangular - no ramping')
     patch_config.set('Ramp', 'Option.lin', 'Linear')
@@ -162,14 +194,43 @@ def test_set_ramping_linear_sends_malformed_rampmode_command(mocker, connected_i
     connected_instance._set_ramping('Linear', 5)
 
     first_call_command = mock_send.call_args_list[0].args[0]
-    assert first_call_command == 'RAMPMODE={ramp_mode}\r\n'
+    assert first_call_command == 'RAMPMODE=1\r\n'
+
+
+def test_set_ramping_linear_sends_ramplength_command(mocker, connected_instance, patch_config):
+    """Symmetric to test_set_ramping_tukey_sends_ramplength_command below --
+    Linear's RAMPLENGTH command was previously never independently
+    asserted anywhere."""
+    patch_config.set('Ramp', 'Option.rect', 'Rectangular - no ramping')
+    patch_config.set('Ramp', 'Option.lin', 'Linear')
+    patch_config.set('Ramp', 'Option.tuk', 'Tukey')
+    mock_send = mocker.patch.object(connected_instance, '_send_command')
+
+    connected_instance._set_ramping('Linear', 5)
+
+    assert mock_send.call_count == 2
+    second_call_command = mock_send.call_args_list[1].args[0]
+    assert second_call_command == 'RAMPLENGTH=5000.0\r\n'
+
+
+def test_set_ramping_tukey_sends_rampmode_2(mocker, connected_instance, patch_config):
+    """Symmetric to the linear case above: Tukey must send mode 2."""
+    patch_config.set('Ramp', 'Option.rect', 'Rectangular - no ramping')
+    patch_config.set('Ramp', 'Option.lin', 'Linear')
+    patch_config.set('Ramp', 'Option.tuk', 'Tukey')
+    mock_send = mocker.patch.object(connected_instance, '_send_command')
+
+    connected_instance._set_ramping('Tukey', 5)
+
+    first_call_command = mock_send.call_args_list[0].args[0]
+    assert first_call_command == 'RAMPMODE=2\r\n'
 
 
 def test_set_ramping_tukey_sends_ramplength_command(mocker, connected_instance, patch_config):
     """Covers the previously-untested Tukey elif branch (ramp_mode = 2).
     Only asserts the RAMPLENGTH command (the second _send_command call) --
-    the RAMPMODE command itself is the same broken literal string
-    regardless of mode, already characterized above for Linear."""
+    the RAMPMODE command itself is asserted separately by
+    test_set_ramping_tukey_sends_rampmode_2."""
     patch_config.set('Ramp', 'Option.rect', 'Rectangular - no ramping')
     patch_config.set('Ramp', 'Option.lin', 'Linear')
     patch_config.set('Ramp', 'Option.tuk', 'Tukey')
@@ -203,7 +264,7 @@ def test_reset_ramping_sends_abort_then_rampmode_zero(mocker, connected_instance
     ]
 
 
-def test_check_tran_sel_confirm_does_not_exit(mocker, connected_instance):
+def test_check_tran_sel_confirm_does_not_raise(mocker, connected_instance):
     mocker.patch('fus_driving_systems.sonic_concepts.sonic_concepts_ds.tkinter.Tk')
     mock_box = mocker.patch(
         'fus_driving_systems.sonic_concepts.sonic_concepts_ds.CTkMessagebox')
@@ -212,24 +273,48 @@ def test_check_tran_sel_confirm_does_not_exit(mocker, connected_instance):
     connected_instance.check_tran_sel()  # must not raise
 
 
-def test_check_tran_sel_cancel_exits(mocker, connected_instance):
+def test_check_tran_sel_cancel_raises(mocker, connected_instance):
     mocker.patch('fus_driving_systems.sonic_concepts.sonic_concepts_ds.tkinter.Tk')
     mock_box = mocker.patch(
         'fus_driving_systems.sonic_concepts.sonic_concepts_ds.CTkMessagebox')
     mock_box.return_value.get.return_value = 'Cancel'
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FDSSafetyError):
         connected_instance.check_tran_sel()
+
+
+def test_abort_sends_abort_command_without_disconnecting(connected_instance):
+    connected_instance.abort()
+
+    sent_commands = [call.args[0] for call in connected_instance.gen.write.call_args_list]
+    assert b'ABORT\r\n' in sent_commands
+    connected_instance.gen.close.assert_not_called()
+    assert connected_instance.is_connected() is True
+
+
+def test_abort_does_nothing_when_not_connected(connected_instance):
+    connected_instance._connected = False
+
+    connected_instance.abort()  # must not raise
+
+    connected_instance.gen.write.assert_not_called()
+
+
+def test_abort_raises_fds_hardware_error_on_serial_exception(connected_instance):
+    connected_instance.gen.write.side_effect = serial.SerialException("comms failure")
+
+    with pytest.raises(FDSHardwareError):
+        connected_instance.abort()
 
 
 def test_disconnect_closes_gen_and_marks_disconnected(connected_instance):
     connected_instance.disconnect()
 
     connected_instance.gen.close.assert_called_once()
-    assert connected_instance.connected is False
+    assert connected_instance._connected is False
 
 
-def test_send_sequence_calls_setters_in_order_and_marks_sent(mocker, connected_instance):
+def test_send_protocol_calls_setters_in_order_and_marks_sent(mocker, connected_instance):
     manager = mocker.Mock()
     for name in ['_reset_parameters', '_set_operating_freq', '_set_focus',
                  '_set_global_power', '_set_burst_and_period', '_set_timer',
@@ -238,20 +323,19 @@ def test_send_sequence_calls_setters_in_order_and_marks_sent(mocker, connected_i
     manager.attach_mock(mocker.patch.object(connected_instance, '_send_command'),
                         '_send_command')
 
-    fake_sequence = mocker.Mock()
-    fake_sequence.wait_for_trigger = True
-    fake_sequence.oper_freq = 300
-    fake_sequence.focus_wrt_exit_plane = 50
-    fake_sequence.global_power = 2
-    fake_sequence.pulse_dur = 1
-    fake_sequence.pulse_rep_int = 2
-    fake_sequence.pulse_train_dur = 10
-    fake_sequence.pulse_ramp_shape = 'Linear'
-    fake_sequence.pulse_ramp_dur = 1
+    fake_protocol = mocker.Mock()
+    fake_protocol.slots = [mocker.Mock(oper_freq=300, focus_wrt_exit_plane=50, global_power=2)]
+    fake_protocol.pulse_dur = 1
+    fake_protocol.pulse_rep_int = 2
+    fake_protocol.pulse_train_dur = 10
+    fake_protocol.pulse_train_rep_int = 10
+    fake_protocol.pulse_train_rep_dur = 10
+    fake_protocol.pulse_ramp_shape = 'Linear'
+    fake_protocol.pulse_ramp_dur = 1
 
-    connected_instance.send_sequence(fake_sequence)
+    connected_instance.send_protocol(fake_protocol)
 
-    assert connected_instance.sequence_sent is True
+    assert connected_instance.protocol_sent is True
     assert manager.mock_calls == [
         mocker.call._reset_parameters(),
         mocker.call._set_operating_freq(300),
@@ -260,92 +344,332 @@ def test_send_sequence_calls_setters_in_order_and_marks_sent(mocker, connected_i
         mocker.call._set_burst_and_period(1, 2),
         mocker.call._set_timer(10),
         mocker.call._set_ramping('Linear', 1),
-        mocker.call._send_command('TRIGGERMODE=1\r\n'),
     ]
 
 
-def test_send_sequence_reconnects_when_not_connected(mocker):
+def test_send_protocol_logs_confirmation_with_timing_and_intensity(
+        mocker, connected_instance, caplog):
+    """The one point the focus/power actually sent is confirmed (GitHub #125/#122);
+    execute_protocol() only references the expected duration afterward, not repeat this."""
+    for name in ['_reset_parameters', '_set_operating_freq', '_set_focus',
+                 '_set_global_power', '_set_burst_and_period', '_set_timer', '_set_ramping']:
+        mocker.patch.object(connected_instance, name)
+    fake_slot = mocker.Mock(oper_freq=300, focus_wrt_exit_plane=50, global_power=2,
+                            transducer=mocker.Mock(serial='TRAN-A'))
+    fake_slot.intensity_summary.return_value = 'TRAN-A: fake intensity summary'
+    fake_protocol = mocker.Mock()
+    fake_protocol.slots = [fake_slot]
+    fake_protocol.pulse_dur = 1
+    fake_protocol.pulse_rep_int = 2
+    fake_protocol.pulse_train_dur = 10
+    fake_protocol.pulse_train_rep_int = 10
+    fake_protocol.pulse_train_rep_dur = 10
+    fake_protocol.pulse_ramp_shape = 'Linear'
+    fake_protocol.pulse_ramp_dur = 1
+
+    with caplog.at_level('INFO'):
+        connected_instance.send_protocol(fake_protocol)
+
+    assert 'TRAN-A' in caplog.text
+    assert 'Protocol sent successfully: 1.00 ms pulse every 2.00 ms, 10.00 ms total ' \
+        'duration.' in caplog.text
+    assert 'TRAN-A: fake intensity summary' in caplog.text
+
+
+def test_validate_protocol_flags_global_power_none(mocker, connected_instance):
+    """This driving system only ever reads protocol.slots[0].global_power (send_protocol()
+    unconditionally calls _set_global_power(slot.global_power)) -- nothing enforces that the
+    chosen power option is actually 'Global power [mW]', so a slot configured with a different
+    option (e.g. one meant for a different driving system) reaches here with global_power still
+    at its unset None default. The message must name what was actually chosen, not just that
+    something is wrong."""
+    fake_protocol = mocker.Mock()
+    fake_protocol.slots = [mocker.Mock(global_power=None, chosen_power='Amplitude [%]',
+                                       transducer=mocker.Mock(serial='TRAN-A'))]
+    fake_protocol.pulse_dur = 1
+    fake_protocol.pulse_rep_int = 2
+    fake_protocol.pulse_train_dur = 10
+    fake_protocol.pulse_train_rep_int = 10
+    fake_protocol.pulse_train_rep_dur = 10
+
+    errors = connected_instance.validate_protocol(fake_protocol)
+
+    assert len(errors) == 1
+    assert 'Amplitude [%]' in errors[0]
+    assert "'Global power [mW]'" in errors[0]
+
+
+def test_validate_protocol_flags_global_power_none_when_never_configured(
+        mocker, connected_instance):
+    """Mirrors test_validate_protocol_flags_global_power_none, for the other way
+    global_power can be None: the slot's power was never configured at all (chosen_power is
+    also still None), not configured with some other, wrong option. Gets its own distinct
+    message -- there is no "wrong option" to name here, so it must say so directly rather than
+    awkwardly working a 'chosen option is ...' phrasing around a None/placeholder value."""
+    fake_protocol = mocker.Mock()
+    fake_protocol.slots = [mocker.Mock(global_power=None, chosen_power=None,
+                                       transducer=mocker.Mock(serial='TRAN-A'))]
+    fake_protocol.pulse_dur = 1
+    fake_protocol.pulse_rep_int = 2
+    fake_protocol.pulse_train_dur = 10
+    fake_protocol.pulse_train_rep_int = 10
+    fake_protocol.pulse_train_rep_dur = 10
+
+    errors = connected_instance.validate_protocol(fake_protocol)
+
+    assert len(errors) == 1
+    assert 'No power option has been configured yet' in errors[0]
+    assert "'Global power [mW]'" in errors[0]
+
+
+def test_validate_protocol_is_safe_before_any_slot_exists(mocker, connected_instance):
+    """protocol.slots[0] (this driving system's own single-slot assumption, see
+    test_validate_protocol_flags_global_power_none's own docstring) must not be read at all
+    when there is no slot yet -- a caller (e.g. a GUI validating timing on its own) can call
+    this before any transducer slot has been added."""
+    fake_protocol = mocker.Mock()
+    fake_protocol.slots = []
+    fake_protocol.pulse_dur = 1
+    fake_protocol.pulse_rep_int = 2
+    fake_protocol.pulse_train_dur = 10
+    fake_protocol.pulse_train_rep_int = 10
+    fake_protocol.pulse_train_rep_dur = 10
+
+    errors = connected_instance.validate_protocol(fake_protocol)
+
+    assert errors == []
+
+
+def test_validate_protocol_reports_a_timing_error_before_any_slot_exists(mocker,
+                                                                         connected_instance):
+    """Confirms the empty-slots guard above doesn't accidentally swallow a real timing problem:
+    super().validate_protocol() runs before that guard, so its own errors must still surface
+    even when there's no slot yet to check at all."""
+    fake_protocol = mocker.Mock()
+    fake_protocol.slots = []
+    fake_protocol.pulse_dur = 1
+    # Exercises ControlDrivingSystem.validate_protocol()'s own "not allowed to be 0" check.
+    fake_protocol.pulse_rep_int = 0
+    fake_protocol.pulse_train_dur = 10
+    fake_protocol.pulse_train_rep_int = 10
+    fake_protocol.pulse_train_rep_dur = 10
+
+    errors = connected_instance.validate_protocol(fake_protocol)
+
+    assert any('Pulse Repetition Interval' in e for e in errors)
+
+
+def test_send_protocol_raises_before_touching_hardware_when_global_power_is_none(
+        mocker, connected_instance):
+    """Regression test: this check used to only surface deep inside _set_global_power(), after
+    _reset_parameters()/_set_operating_freq()/_set_focus() had already sent several commands to
+    the physical hardware. Now caught by validate_protocol() up front, before anything is sent."""
+    mock_reset = mocker.patch.object(connected_instance, '_reset_parameters')
+    mock_send_command = mocker.patch.object(connected_instance, '_send_command')
+
+    fake_protocol = mocker.Mock()
+    fake_protocol.slots = [mocker.Mock(global_power=None, chosen_power='Amplitude [%]',
+                                       transducer=mocker.Mock(serial='TRAN-A'))]
+    fake_protocol.pulse_dur = 1
+    fake_protocol.pulse_rep_int = 2
+    fake_protocol.pulse_train_dur = 10
+    fake_protocol.pulse_train_rep_int = 10
+    fake_protocol.pulse_train_rep_dur = 10
+
+    with pytest.raises(FDSValidationError, match='Amplitude'):
+        connected_instance.send_protocol(fake_protocol)
+
+    mock_reset.assert_not_called()
+    mock_send_command.assert_not_called()
+
+
+def test_send_protocol_raises_when_validation_produces_errors(mocker, connected_instance):
+    """Regression test: send_protocol previously never called
+    validate_protocol at all, so a malformed protocol would silently be
+    accepted instead of failing loudly like IGT already does."""
+    mocker.patch.object(connected_instance, '_reset_parameters')
+
+    fake_protocol = mocker.Mock()
+    fake_protocol.slots = [mocker.Mock(global_power=2, transducer=mocker.Mock(serial='TRAN-A'))]
+    fake_protocol.pulse_dur = 1
+    fake_protocol.pulse_rep_int = 2
+    fake_protocol.pulse_train_dur = 11  # not a whole multiple of pulse_rep_int
+    fake_protocol.pulse_train_rep_int = 10
+    fake_protocol.pulse_train_rep_dur = 10
+
+    with pytest.raises(FDSValidationError):
+        connected_instance.send_protocol(fake_protocol)
+
+
+def test_send_protocol_reconnects_when_not_connected(mocker):
     """Documents the reconnect-and-retry pattern shared with igt_ds.py:
     if not connected, connect() then retry the same call."""
     from fus_driving_systems.sonic_concepts.sonic_concepts_ds import SonicConcepts
     instance = SonicConcepts()
-    instance.connected = False
+    instance._connected = False
 
     def fake_connect(connect_info):
-        instance.connected = True
+        instance._connected = True
     mock_connect = mocker.patch.object(instance, 'connect', side_effect=fake_connect)
     for name in ['_reset_parameters', '_set_operating_freq', '_set_focus',
                  '_set_global_power', '_set_burst_and_period', '_set_timer',
                  '_set_ramping']:
         mocker.patch.object(instance, name)
 
-    fake_sequence = mocker.Mock()
-    fake_sequence.driving_sys.connect_info = 'COM7'
-    fake_sequence.wait_for_trigger = False
+    fake_protocol = mocker.Mock()
+    fake_protocol.driving_sys.connect_info = 'COM7'
+    fake_protocol.slots = [mocker.Mock()]
+    fake_protocol.pulse_dur = 1
+    fake_protocol.pulse_rep_int = 2
+    fake_protocol.pulse_train_dur = 10
+    fake_protocol.pulse_train_rep_int = 10
+    fake_protocol.pulse_train_rep_dur = 10
 
-    instance.send_sequence(fake_sequence)
+    instance.send_protocol(fake_protocol)
 
     mock_connect.assert_called_once_with('COM7')
-    assert instance.sequence_sent is True
+    assert instance.protocol_sent is True
 
 
-def test_execute_sequence_writes_start_command_when_sequence_sent(connected_instance):
-    connected_instance.sequence_sent = True
-    connected_instance.gen.readline.return_value = b'OK\n'
+def test_wait_for_trigger_sends_triggermode_when_protocol_sent(mocker, connected_instance):
+    connected_instance.protocol_sent = True
+    mock_send_command = mocker.patch.object(connected_instance, '_send_command')
 
-    connected_instance.execute_sequence(None)
+    connected_instance.wait_for_trigger(None)
 
-    connected_instance.gen.write.assert_called_once_with(b'START\r')
-
-
-def test_execute_sequence_exits_on_exception(connected_instance):
-    connected_instance.sequence_sent = True
-    connected_instance.gen.write.side_effect = OSError('boom')
-
-    with pytest.raises(SystemExit):
-        connected_instance.execute_sequence(None)
+    mock_send_command.assert_called_once_with('TRIGGERMODE=1\r\n')
 
 
-def test_execute_sequence_sends_then_executes_when_not_yet_sent(mocker, connected_instance):
-    connected_instance.sequence_sent = False
-    connected_instance.gen.readline.return_value = b'OK\n'
+def test_wait_for_trigger_logs_expected_duration(mocker, connected_instance, caplog):
+    connected_instance._sent_pulse_train_dur = 10.0
+    connected_instance.protocol_sent = True
+    mocker.patch.object(connected_instance, '_send_command')
 
-    def fake_send_sequence(seq):
-        connected_instance.sequence_sent = True
-    mock_send_sequence = mocker.patch.object(connected_instance, 'send_sequence',
-                                             side_effect=fake_send_sequence)
+    with caplog.at_level('INFO'):
+        connected_instance.wait_for_trigger(None)
 
-    connected_instance.execute_sequence(mocker.Mock())
-
-    mock_send_sequence.assert_called_once()
-    connected_instance.gen.write.assert_called_once_with(b'START\r')
+    assert 'Waiting for trigger (expected duration once fired: 10.00 ms)...' in caplog.text
 
 
-def test_execute_sequence_reconnects_when_not_connected(mocker):
-    """execute_sequence() has its own reconnect-and-retry branch, separate
-    from send_sequence()'s (test_send_sequence_reconnects_when_not_connected
-    above) -- not connected here means connect() + send_sequence() +
-    execute_sequence() all get retried."""
+def test_wait_for_trigger_raises_when_not_yet_sent(mocker, connected_instance):
+    connected_instance.protocol_sent = False
+    mock_send_command = mocker.patch.object(connected_instance, '_send_command')
+    mock_send_protocol = mocker.patch.object(connected_instance, 'send_protocol')
+
+    with pytest.raises(FDSValidationError):
+        connected_instance.wait_for_trigger(mocker.Mock())
+
+    mock_send_protocol.assert_not_called()
+    mock_send_command.assert_not_called()
+
+
+def test_wait_for_trigger_reconnects_when_not_connected(mocker):
+    """wait_for_trigger() has its own reconnect-and-retry branch, separate from
+    send_protocol()'s (test_send_protocol_reconnects_when_not_connected above) -- not connected
+    here means connect() + send_protocol() + wait_for_trigger() all get retried. Only reached
+    once a protocol is already known to have been sent -- it recovers a dropped connection
+    after a real send, it doesn't fill in for a caller who never sent anything at all (see
+    test_wait_for_trigger_raises_when_not_yet_sent above)."""
     from fus_driving_systems.sonic_concepts.sonic_concepts_ds import SonicConcepts
     instance = SonicConcepts()
-    instance.connected = False
+    instance._connected = False
+    instance.protocol_sent = True
+    mock_send_command = mocker.patch.object(instance, '_send_command')
+
+    def fake_connect(connect_info):
+        instance._connected = True
+    mock_connect = mocker.patch.object(instance, 'connect', side_effect=fake_connect)
+    mock_send_protocol = mocker.patch.object(instance, 'send_protocol')
+
+    def fake_send_protocol(protocol):
+        instance.protocol_sent = True
+    mock_send_protocol.side_effect = fake_send_protocol
+
+    fake_protocol = mocker.Mock()
+    fake_protocol.driving_sys.connect_info = 'COM7'
+
+    instance.wait_for_trigger(fake_protocol)
+
+    mock_connect.assert_called_once_with('COM7')
+    mock_send_command.assert_called_once_with('TRIGGERMODE=1\r\n')
+
+
+def test_execute_protocol_writes_start_command_when_protocol_sent(connected_instance):
+    connected_instance.protocol_sent = True
+    connected_instance.gen.readline.return_value = b'OK\n'
+
+    connected_instance.execute_protocol(None)
+
+    connected_instance.gen.write.assert_called_once_with(b'START\r')
+
+
+def test_execute_protocol_logs_expected_duration_then_confirmation(
+        mocker, connected_instance, caplog):
+    """Not "Protocol executed.": the START command below returns almost instantly, well before
+    the sonication itself actually finishes, so a past-tense claim of completion would be
+    misleading (real hardware gives no confirmation of that either way)."""
+    connected_instance._sent_pulse_train_dur = 10.0
+    connected_instance.protocol_sent = True
+    connected_instance.gen.readline.return_value = b'OK\n'
+
+    with caplog.at_level('INFO'):
+        connected_instance.execute_protocol(None)
+
+    assert 'Executing (expected duration: 10.00 ms)...' in caplog.text
+    assert 'Protocol execution started.' in caplog.text
+
+
+def test_execute_protocol_raises_on_exception(connected_instance):
+    """serial.SerialException, not a bare OSError -- that's the real exception pyserial raises
+    on an I/O failure, and the one this method's except clause now specifically catches (it used
+    to catch bare Exception)."""
+    connected_instance.protocol_sent = True
+    connected_instance.gen.write.side_effect = serial.SerialException('boom')
+
+    with pytest.raises(FDSHardwareError):
+        connected_instance.execute_protocol(None)
+
+
+def test_execute_protocol_raises_when_not_yet_sent(mocker, connected_instance):
+    connected_instance.protocol_sent = False
+    mock_send_protocol = mocker.patch.object(connected_instance, 'send_protocol')
+
+    with pytest.raises(FDSValidationError):
+        connected_instance.execute_protocol(mocker.Mock())
+
+    mock_send_protocol.assert_not_called()
+    connected_instance.gen.write.assert_not_called()
+
+
+def test_execute_protocol_reconnects_when_not_connected(mocker):
+    """execute_protocol() has its own reconnect-and-retry branch, separate
+    from send_protocol()'s (test_send_protocol_reconnects_when_not_connected
+    above) -- not connected here means connect() + send_protocol() +
+    execute_protocol() all get retried. Only reached once a protocol is already known to have
+    been sent -- it recovers a dropped connection after a real send, it doesn't fill in for a
+    caller who never sent anything at all (see test_execute_protocol_raises_when_not_yet_sent
+    above)."""
+    from fus_driving_systems.sonic_concepts.sonic_concepts_ds import SonicConcepts
+    instance = SonicConcepts()
+    instance._connected = False
+    instance.protocol_sent = True
     instance.gen = mocker.Mock()
     instance.gen.readline.return_value = b'OK\n'
 
     def fake_connect(connect_info):
-        instance.connected = True
+        instance._connected = True
     mock_connect = mocker.patch.object(instance, 'connect', side_effect=fake_connect)
-    mock_send_sequence = mocker.patch.object(instance, 'send_sequence')
+    mock_send_protocol = mocker.patch.object(instance, 'send_protocol')
 
-    def fake_send_sequence(seq):
-        instance.sequence_sent = True
-    mock_send_sequence.side_effect = fake_send_sequence
+    def fake_send_protocol(protocol):
+        instance.protocol_sent = True
+    mock_send_protocol.side_effect = fake_send_protocol
 
-    fake_sequence = mocker.Mock()
-    fake_sequence.driving_sys.connect_info = 'COM7'
+    fake_protocol = mocker.Mock()
+    fake_protocol.driving_sys.connect_info = 'COM7'
 
-    instance.execute_sequence(fake_sequence)
+    instance.execute_protocol(fake_protocol)
 
     mock_connect.assert_called_once_with('COM7')
-    mock_send_sequence.assert_called_once_with(fake_sequence)
+    mock_send_protocol.assert_called_once_with(fake_protocol)
     instance.gen.write.assert_called_once_with(b'START\r')

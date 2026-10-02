@@ -12,6 +12,7 @@ systems happen to be listed in ds_config.ini.
 import pytest
 
 from fus_driving_systems import driving_system
+from fus_driving_systems.exceptions import FDSConfigError, FDSValidationError
 
 
 def _configure_driving_system_section_only(patch_config, serial, name='Test DS',
@@ -19,11 +20,19 @@ def _configure_driving_system_section_only(patch_config, serial, name='Test DS',
                                            available_channels='2', connection_info='COM1',
                                            tran_compatibility='TRAN_A\nTRAN_B',
                                            power_options='Global power\nAmplitude',
-                                           requires_conv_eq='False', active='True'):
+                                           focus_options='Focus wrt mid bowl\n'
+                                                        'Focus wrt exit plane [mm]',
+                                           native_power_param='Amplitude',
+                                           native_focus_param='Focus wrt mid bowl',
+                                           active='True'):
     """Configures only the per-serial section, without touching the
     combined 'Equipment'/'Driving systems' list -- use this (with an
     explicit patch_config.set('Equipment', 'Driving systems', ...) of your
-    own) when a test needs more than one driving system at once."""
+    own) when a test needs more than one driving system at once.
+
+    native_power_param/native_focus_param here are the raw (usually single-valued) config
+    string -- DrivingSystem.native_power_params/native_focus_params splits them into lists,
+    supporting a driving system with more than one genuinely native parameter."""
     section = f'Equipment.Driving system.{serial}'
     patch_config.set(section, 'Name', name)
     patch_config.set(section, 'Manufacturer', manufacturer)
@@ -31,7 +40,9 @@ def _configure_driving_system_section_only(patch_config, serial, name='Test DS',
     patch_config.set(section, 'Connection info', connection_info)
     patch_config.set(section, 'Transducer compatibility', tran_compatibility)
     patch_config.set(section, 'Power options', power_options)
-    patch_config.set(section, 'Requires conversion equations?', requires_conv_eq)
+    patch_config.set(section, 'Focus options', focus_options)
+    patch_config.set(section, 'Native power parameters', native_power_param)
+    patch_config.set(section, 'Native focus parameters', native_focus_param)
     patch_config.set(section, 'Active?', active)
 
 
@@ -51,7 +62,11 @@ def test_init_sets_expected_defaults():
     assert ds.connect_info is None
     assert ds.tran_comp is None
     assert ds.power_options is None
-    assert ds.require_conv_eq is False
+    assert ds.focus_options is None
+    assert ds.native_power_params is None
+    assert ds.native_focus_params is None
+    assert ds.max_tran_slots == 1
+    assert ds.max_buffers == 1
     assert ds.is_active is True
 
 
@@ -64,7 +79,11 @@ def test_str_includes_all_fields():
     ds.connect_info = 'COM3'
     ds.tran_comp = ['TRAN_A', 'TRAN_B']
     ds.power_options = ['Global power']
-    ds.require_conv_eq = True
+    ds.focus_options = ['Focus wrt exit plane [mm]']
+    ds.native_power_params = ['Global power']
+    ds.native_focus_params = ['Focus wrt exit plane [mm]']
+    ds.max_tran_slots = 7
+    ds.max_buffers = 3
 
     text = str(ds)
     assert '12345' in text
@@ -74,7 +93,9 @@ def test_str_includes_all_fields():
     assert 'COM3' in text
     assert 'TRAN_A' in text and 'TRAN_B' in text
     assert 'Global power' in text
-    assert 'True' in text
+    assert 'Focus wrt exit plane [mm]' in text
+    assert 'Driving system max. transducer slots: 7' in text
+    assert 'Driving system max. buffers: 3' in text
 
 
 def test_clone_returns_independent_deep_copy():
@@ -105,8 +126,97 @@ def test_set_ds_info_populates_fields_from_config(patch_config):
     assert ds.connect_info == 'COM1'
     assert ds.tran_comp == ['TRAN_A', 'TRAN_B']
     assert ds.power_options == ['Global power', 'Amplitude']
-    assert ds.require_conv_eq is False
+    assert ds.focus_options == ['Focus wrt mid bowl', 'Focus wrt exit plane [mm]']
+    assert ds.native_power_params == ['Amplitude']
+    assert ds.native_focus_params == ['Focus wrt mid bowl']
+    assert ds.max_tran_slots == 1  # default, since 'Max. transducer slots' isn't configured here
+    assert ds.max_buffers == 1  # default, since 'Max. buffers' isn't configured here either
     assert ds.is_active is True
+
+
+def test_set_ds_info_reads_max_tran_slots_when_configured(patch_config):
+    _configure_driving_system(patch_config, 'UNITTEST_DS')
+    patch_config.set('Equipment.Driving system.UNITTEST_DS', 'Max. transducer slots', '2')
+    ds = driving_system.DrivingSystem()
+    ds.set_ds_info('UNITTEST_DS')
+
+    assert ds.max_tran_slots == 2
+
+
+def test_set_ds_info_reads_max_buffers_when_configured(patch_config):
+    _configure_driving_system(patch_config, 'UNITTEST_DS')
+    patch_config.set('Equipment.Driving system.UNITTEST_DS', 'Max. buffers', '2')
+    ds = driving_system.DrivingSystem()
+    ds.set_ds_info('UNITTEST_DS')
+
+    assert ds.max_buffers == 2
+
+
+def test_set_ds_info_raises_when_available_channels_config_key_missing(patch_config):
+    """raise_on_missing=True: 0 available channels is physically meaningless (every real driving
+    system has at least one), so a typo'd or deleted key must never silently produce that."""
+    from fus_driving_systems.config.config import config_info
+
+    _configure_driving_system(patch_config, 'UNITTEST_DS')
+    del config_info['Equipment.Driving system.UNITTEST_DS']['Available channels']
+
+    ds = driving_system.DrivingSystem()
+    with pytest.raises(FDSConfigError):
+        ds.set_ds_info('UNITTEST_DS')
+
+
+def test_set_ds_info_treats_missing_active_key_as_inactive(patch_config):
+    """Active? fails closed: a section missing this key entirely (not just set to 'False') is
+    treated as inactive, not active, so an incomplete/unreviewed section can't silently become
+    selectable/connectable. Real, generated ds_config.ini sections always write this key
+    explicitly (see create_config.py), so this only matters for a hand-edited config."""
+    from fus_driving_systems.config.config import config_info
+
+    _configure_driving_system(patch_config, 'UNITTEST_DS')
+    del config_info['Equipment.Driving system.UNITTEST_DS']['Active?']
+
+    ds = driving_system.DrivingSystem()
+    ds.set_ds_info('UNITTEST_DS')
+
+    assert ds.is_active is False
+
+
+def test_get_ds_serials_treats_missing_active_key_as_inactive(patch_config):
+    """Same fail-closed default as set_ds_info() above -- the only active-looking serial here
+    drops out entirely once its 'Active?' key is missing, leaving none active."""
+    from fus_driving_systems.config.config import config_info
+
+    _configure_driving_system(patch_config, 'UNITTEST_DS')
+    del config_info['Equipment.Driving system.UNITTEST_DS']['Active?']
+
+    with pytest.raises(FDSConfigError):
+        driving_system.get_ds_serials()
+
+
+def test_set_ds_info_supports_more_than_one_native_parameter(patch_config):
+    """native_power_params/native_focus_params are lists, not a single value -- a driving
+    system whose hardware genuinely accepts more than one power or focus representation
+    directly (no calibration needed for either) can declare all of them."""
+    _configure_driving_system(patch_config, 'UNITTEST_DS',
+                              native_power_param='Amplitude\nVoltage',
+                              native_focus_param='Focus wrt mid bowl\nFocus wrt exit plane [mm]')
+    ds = driving_system.DrivingSystem()
+    ds.set_ds_info('UNITTEST_DS')
+
+    assert ds.native_power_params == ['Amplitude', 'Voltage']
+    assert ds.native_focus_params == ['Focus wrt mid bowl', 'Focus wrt exit plane [mm]']
+
+
+def test_set_ds_info_raises_with_clear_message_for_unknown_serial(patch_config):
+    """GitHub issue #133: a serial with no matching config section used to fall through to
+    individual fields (e.g. 'Connection info', which has raise_on_missing=True) before exiting,
+    surfacing a confusing "Config key 'Connection info' not found" message that didn't point
+    at the actual problem. Now checked explicitly upfront with a clear message."""
+    ds = driving_system.DrivingSystem()
+
+    with pytest.raises(FDSValidationError, match='No driving system with serial number '
+                                                 'UNKNOWN_SERIAL found in configuration file.'):
+        ds.set_ds_info('UNKNOWN_SERIAL')
 
 
 def test_get_ds_serials_returns_only_active_serials(patch_config):
@@ -118,11 +228,11 @@ def test_get_ds_serials_returns_only_active_serials(patch_config):
     assert driving_system.get_ds_serials() == ['UNITTEST_ACTIVE']
 
 
-def test_get_ds_serials_exits_when_none_active(patch_config):
+def test_get_ds_serials_raises_when_none_active(patch_config):
     patch_config.set('Equipment', 'Driving systems', 'UNITTEST_INACTIVE_ONLY')
     patch_config.set('Equipment.Driving system.UNITTEST_INACTIVE_ONLY', 'Active?', 'False')
 
-    with pytest.raises(SystemExit) as exc_info:
+    with pytest.raises(FDSConfigError) as exc_info:
         driving_system.get_ds_serials()
     assert 'No active driving systems' in str(exc_info.value)
 
@@ -161,14 +271,11 @@ def test_get_ds_list_excludes_inactive_driving_systems(patch_config):
     assert isinstance(ds_list[0], driving_system.DrivingSystem)
     assert ds_list[0].name == 'Active DS'
 
-# Note: get_ds_names()'s own 'if len(names) < 1: sys.exit(...)' and
-# get_ds_list()'s 'except KeyError' are NOT separately tested here. Both are
-# unreachable via the public API: get_ds_serials() already guarantees at
-# least one serial (or sys.exits itself first, see
-# test_get_ds_serials_exits_when_none_active above) before either of these
-# functions' loops ever run, and get_config_value() never raises KeyError
-# (it checks membership defensively). Forcing those branches would mean
-# testing a state the real code can't reach, not real behavior.
+# Note: an empty result from get_ds_names()/get_ds_list() is NOT separately tested here --
+# unreachable via the public API: get_ds_serials() already guarantees at least one serial (or
+# raises FDSConfigError itself first, see test_get_ds_serials_raises_when_none_active above)
+# before either of these functions' loops ever run. Forcing that branch would mean testing a
+# state the real code can't reach, not real behavior.
 
 
 def test_get_serial_from_name_returns_matching_serial(patch_config):

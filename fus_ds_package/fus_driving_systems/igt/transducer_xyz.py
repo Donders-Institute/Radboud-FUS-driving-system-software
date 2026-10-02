@@ -1,31 +1,15 @@
 ﻿# -*- coding: utf-8 -*-
 """
-Copyright (c) 2024 Margely Cornelissen, Stein Fekkes (Radboud University) and Erik Dumont (Image
-Guided Therapy)
+Copyright (c) 2024 Radboud University and Image Guided Therapy
 
-MIT License
+SPDX-License-Identifier: MIT
+See the LICENSE file for full license text, and THIRD_PARTY_NOTICES.md for which files in this
+package originate from Image Guided Therapy. This file was originally written by Image
+Guided Therapy and has since been modified by Radboud University.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-**Attribution Notice**:
-If you use this kit in your research or project, please refer to the 'How to Cite' section in the
-README.md file of https://github.com/Donders-Institute/Radboud-FUS-driving-system-software.
+If you use this kit in your research or project, please cite it -- see CITATION.cff or the
+'How to Cite' section of README.md at
+https://github.com/Donders-Institute/Radboud-FUS-driving-system-software.
 """
 
 # -------------------------------------------------------------------------------
@@ -39,13 +23,13 @@ README.md file of https://github.com/Donders-Institute/Radboud-FUS-driving-syste
 
 # -------------------------------------------------------------------------------
 
-import sys
 import math
 
 # Access the logger
 from fus_driving_systems.config.config import config_info as config
 from fus_driving_systems.utils import get_config_value
-from fus_driving_systems.config.logging_config import logger
+from fus_driving_systems.config.logging_config import get_logger
+from fus_driving_systems.exceptions import FDSConfigError, FDSInternalError, FDSValidationError
 
 try:  # for Python 2/3 compatibility
     from StringIO import StringIO
@@ -57,10 +41,51 @@ except ImportError:
     import configparser as cfg
 
 
-SOUND_SPEED_WATER = float(get_config_value(logger, config, 'General',
+SOUND_SPEED_WATER = float(get_config_value(get_logger(), config, 'General',
                                            'Speed of sound water [m/s]',
                                            1500.0))  # sound speed in water, m.s-1
 TWO_PI = 2.0 * math.pi      # 2 pi, rad
+
+
+def apply_cyclic_dephasing(phases, dephasing_degree):
+    """
+    Applies a cyclic dephasing step to a list of phases -- shared by Transducer.compute_phases()
+    (below) and IGT._set_phases()'s .xlsx branch (igt_ds.py). More than one dephasing entry that
+    doesn't match the element count exactly (that case is handled by the caller directly, as a
+    full phase override, before ever reaching here) is rejected as invalid input, rather than
+    silently using the first value.
+
+    Parameters:
+        phases (list(float)): Phases [degrees] to dephase, one per element.
+        dephasing_degree (list(float)): Must contain exactly one entry -- the degree step used
+            to dephase n elements in one cycle.
+
+    Returns:
+        list(float): A new list with the dephasing step applied.
+    """
+
+    if len(dephasing_degree) > 1:
+        message = (f'Number of dephasing entries ({len(dephasing_degree)}) does not ' +
+                   f'correspond to number of transducer elements ({len(phases)}). Only enter ' +
+                   'one dephasing value or n-values equal to the number of transducer elements.')
+        get_logger().critical(message)
+        raise FDSValidationError(message)
+
+    dephasing_degree = dephasing_degree[0]
+    dephased = list(phases)
+
+    # determine n elements to dephase in one cycle
+    nth_elem = round(360 / dephasing_degree)
+    dephasing_elem = 0
+    for i, phase in enumerate(dephased):
+        # Add chosen degrees to dephase signal
+        dephased[i] = phase + dephasing_degree * dephasing_elem
+
+        dephasing_elem = dephasing_elem + 1
+        if dephasing_elem == nth_elem:
+            dephasing_elem = 0
+
+    return dephased
 
 
 class Transducer:
@@ -75,7 +100,10 @@ class Transducer:
 
     def __init__(self):
         # self.name = ""
-        # self.focalLength = 0
+        # Kept in mm (unlike self.elements' coordinates below, which are stored in meters) --
+        # this crosses the class's own public boundary the same way point_mm/set_focus_mm do,
+        # so callers (igt_ds.py) can use it directly alongside those, in the same unit.
+        self.focalLength = 0
         self.elements = []
 
     def load(self, filename):
@@ -101,56 +129,61 @@ class Transducer:
             return self.load_from_string(text)
         except IOError as e:
             message = f'Error: {e}'
-            logger.critical(message)
-            sys.exit(message)
-
-            return False
+            get_logger().critical(message)
+            raise FDSConfigError(message) from e
 
     def load_from_string(self, definition):
-        config = cfg.ConfigParser()
-        stringio = StringIO(definition)
-        if config.readfp(stringio) == []:
+        if not definition.strip():
             message = 'Error: empty content'
-            logger.critical(message)
-            sys.exit(message)
+            get_logger().critical(message)
+            raise FDSConfigError(message)
 
-            return False
-        return self._load_config(config)
+        # Named parser, not config -- that name is already taken at module level by the shared
+        # config_info object (see SOUND_SPEED_WATER above), which this ConfigParser instance
+        # (for the transducer's own .ini steer file, an unrelated file) has nothing to do with.
+        parser = cfg.ConfigParser()
+        stringio = StringIO(definition)
+        parser.read_file(stringio)
+        return self._load_config(parser)
 
-    def _load_config(self, config):
+    def _load_config(self, parser):
+        # Required, not merely defaulted to 0 -- a missing/invalid focalLength would silently
+        # feed a wrong value into compute_phases()'s aim_wrt_natural_focus arithmetic, producing
+        # a plausible-looking but incorrect target focus rather than a loud failure. No
+        # /1000.0 here (unlike the element coordinates below) -- focalLength stays in mm.
+        try:
+            self.focalLength = parser.getfloat("transducer", "focalLength")
+        except (cfg.Error, ValueError) as e:
+            message = "Error: missing or invalid 'transducer.focalLength' parameter"
+            get_logger().critical(message)
+            raise FDSConfigError(message) from e
+
         size = 0
         # self.name = ""
         try:
-            # self.name = config.get ("transducer", "name")
-            # self.focalLength = config.getfloat ("transducer", "focalLength") / 1000.0
-            size = config.getint("elements", "size")
-        except (cfg.Error, ValueError):
+            # self.name = parser.get ("transducer", "name")
+            size = parser.getint("elements", "size")
+        except (cfg.Error, ValueError) as e:
             message = "Error: missing 'elements.size' parameter"
-            logger.critical(message)
-            sys.exit(message)
-
-            return False
+            get_logger().critical(message)
+            raise FDSConfigError(message) from e
         if size == 0:
             message = "Error: size is 0"
-            logger.critical(message)
-            sys.exit(message)
-
-            return False
+            get_logger().critical(message)
+            raise FDSConfigError(message)
 
         self.elements = []
         for i in range(1, 1+size):
             try:
-                elem = config.get("elements", f"{i}").strip()
+                elem = parser.get("elements", f"{i}").strip()
                 coords = elem.split("|")
                 # read coordinates in mm (convert them in m)
                 item = (float(coords[0])/1000.0, float(coords[1])/1000.0, float(coords[2])/1000.0)
                 self.elements.append(item)
             except Exception as ex:
                 message = f"Error: {ex}"
-                logger.critical(message)
-                sys.exit(message)
-
-                return False
+                get_logger().critical(message)
+                raise FDSConfigError(message) from ex
 
         return True
 
@@ -176,19 +209,15 @@ class Transducer:
         if freq_count == 0 or pulse.frequency(0) == 0:
             message = ("Error: the frequencies must be defined in the pulse before calling" +
                        "compute_phases().")
-            logger.critical(message)
-            sys.exit(message)
-
-            return False
+            get_logger().critical(message)
+            raise FDSInternalError(message)
         if freq_count == 1:
             wavelen = SOUND_SPEED_WATER / pulse.frequency(0)
         elif freq_count != self.channel_count():
             message = (f"Error: bad number of frequencies ({freq_count} in pulse, " +
                        f"{self.channel_count()} elements in transducer)")
-            logger.critical(message)
-            sys.exit(message)
-
-            return False
+            get_logger().critical(message)
+            raise FDSInternalError(message)
 
         phases = [0.0] * self.channel_count()
         x = point_mm[0] / 1000.0
@@ -205,30 +234,12 @@ class Transducer:
             phases[i] = rem * 360.0
 
         if dephasing_degree is not None:
-            if len(dephasing_degree) > 1:
-                message = (f'Number of dephasing entries ({len(dephasing_degree)}) does not ' +
-                           'correspond to number of transducer elements ' +
-                           f'({self.channel_count()}). Only enter one dephasing value or ' +
-                           'n-values equal to the number of transducer elements.')
-                logger.critical(message)
-                sys.exit(message)
-
-            dephasing_degree = dephasing_degree[0]
-
-            # determine n elements to dephase in one cycle
-            nth_elem = round(360/dephasing_degree)
-            dephasing_elem = 0
-            for i, phase in enumerate(phases):
-                # Add chosen degrees to dephase signal
-                phases[i] = phase + dephasing_degree*dephasing_elem
-
-                dephasing_elem = dephasing_elem + 1
-                if dephasing_elem == nth_elem:
-                    dephasing_elem = 0
+            phases = apply_cyclic_dephasing(phases, dephasing_degree)
 
         phases_str = ', '.join([format(x, '.2f') for x in phases])
         natural_foc = set_focus_mm + point_mm[2]
-        logger.debug(f'Computed phases for focus wrt mid bowl of {set_focus_mm} and aim w.r.t. ' +
-                     f'natural focus of {natural_foc}: {phases_str}')
+        get_logger().debug(
+            f'Computed phases for focus wrt mid bowl of {set_focus_mm:.2f} and aim w.r.t. ' +
+            f'natural focus of {natural_foc:.2f}: {phases_str}')
 
         return phases

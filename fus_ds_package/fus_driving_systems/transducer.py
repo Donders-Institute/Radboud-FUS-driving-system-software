@@ -1,43 +1,23 @@
 # -*- coding: utf-8 -*-
 """
-Copyright (c) 2024 Margely Cornelissen, Stein Fekkes (Radboud University) and Erik Dumont (Image
-Guided Therapy)
+Copyright (c) 2024 Radboud University
 
-MIT License
+SPDX-License-Identifier: MIT
+See the LICENSE file for full license text.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-**Attribution Notice**:
-If you use this kit in your research or project, please refer to the 'How to Cite' section in the
-README.md file of https://github.com/Donders-Institute/Radboud-FUS-driving-system-software.
+If you use this kit in your research or project, please cite it -- see CITATION.cff or the
+'How to Cite' section of README.md at
+https://github.com/Donders-Institute/Radboud-FUS-driving-system-software.
 """
-
-# Basic packages
-import sys
 
 # Miscellaneous packages
 import copy
 
 # Own packages
 from fus_driving_systems.config.config import config_info as config
-from fus_driving_systems.config.logging_config import logger
+from fus_driving_systems.config.logging_config import get_logger
 from fus_driving_systems.utils import get_config_value
+from fus_driving_systems.exceptions import FDSConfigError
 
 
 class Transducer:
@@ -50,11 +30,21 @@ class Transducer:
         manufact (str): Name of the manufacturer.
         elements (int): Number of elements.
         fund_freq (int): Fundamental frequency of the transducer [kHz].
-        natural_foc (float): Natural focal depth of the transducer [mm].
         exit_plane_dist (float): Distance between exit plane and first element [mm].
         min_foc (float): Minimum focal depth of the transducer [mm].
         max_foc (float): Maximum focal depth of the transducer [mm].
+        min_foc_x (float): Minimum allowed lateral x offset [mm]. Only enforced for a
+                           can_3d_steer transducer, see TransducerSlot._set_focus_xyz().
+        max_foc_x (float): Maximum allowed lateral x offset [mm]. See min_foc_x.
+        min_foc_y (float): Minimum allowed lateral y offset [mm]. See min_foc_x.
+        max_foc_y (float): Maximum allowed lateral y offset [mm]. See min_foc_x.
         steer_info (str):  ONLY USED FOR IGT! Path to the steer information of the transducer.
+        can_3d_steer (Boolean): Whether this transducer's own element geometry supports lateral
+                                (x/y) steering in addition to depth (z), not just whether a
+                                driving system happens to accept a 3D focus option, see
+                                TransducerSlot._set_focus_xyz(). Only meaningful for a .ini-based
+                                steer_info (transducer_xyz.Transducer); a .xlsx-based lookup
+                                table has no x/y concept at all.
         is_active (Boolean): Indication if the transducer is used with the code.
     """
 
@@ -68,52 +58,101 @@ class Transducer:
         self.manufact = None
         self.elements = 0
         self.fund_freq = 0  # [kHz]
-        self.natural_foc = 0  # [mm]
+        # No natural_foc here -- for IGT it comes from the transducer's own .ini steer file
+        # (transducer_xyz.Transducer.focalLength), read fresh at connect-time, so it can never
+        # drift out of sync with a separately-maintained config copy. See igt_ds.py's
+        # _set_phases().
         self.exit_plane_dist = 0  # [mm]
-        self.min_foc = float(get_config_value(logger, config, 'Focus',
+        self.min_foc = float(get_config_value(get_logger(), config, 'Focus',
                                               'Default.minimum', 0))  # [mm]
-        self.max_foc = float(get_config_value(logger, config, 'Focus',
+        self.max_foc = float(get_config_value(get_logger(), config, 'Focus',
                                               'Default.maximum', 1000))  # [mm]
+        self.min_foc_x = float(get_config_value(get_logger(), config, 'Focus',
+                                                'Default.minimum.x', 0))  # [mm]
+        self.max_foc_x = float(get_config_value(get_logger(), config, 'Focus',
+                                                'Default.maximum.x', 0))  # [mm]
+        self.min_foc_y = float(get_config_value(get_logger(), config, 'Focus',
+                                                'Default.minimum.y', 0))  # [mm]
+        self.max_foc_y = float(get_config_value(get_logger(), config, 'Focus',
+                                                'Default.maximum.y', 0))  # [mm]
         self.steer_info = None
+        self.can_3d_steer = False
         self.is_active = True
 
     def set_transducer_info(self, serial):
         """
         Sets the transducer based on the provided serial number.
 
+        Called by TransducerSlot._set_transducer() and get_tran_list() -- both only ever reach
+        here with a serial already sourced from ds_config.ini itself (a driving system's own
+        tran_comp list, or the top-level 'Transducers' list), never a raw, caller-typed string
+        (that's checked earlier, against tran_comp, in _set_transducer() itself -- see its own
+        FDSValidationError). Reaching here with a serial that still isn't in the configuration
+        file is therefore always a self-inconsistent config -- e.g. a driving system's tran_comp
+        naming a transducer serial that was never itself given an 'Equipment.Transducer.<serial>'
+        section -- not a caller mistake. Checked explicitly below, rather than relying on
+        incidentally hitting one of the individual raise_on_missing=True fields further down and
+        having to track down why that one field failed.
+
         Parameters:
             serial (str): Serial number of the transducer.
         """
 
-        try:
-            self.serial = serial
-            section = 'Equipment.Transducer.' + serial
-            self.name = get_config_value(logger, config, section, 'Name',
-                                         'Unknown transducer name')
-            self.manufact = get_config_value(logger, config, section, 'Manufacturer',
-                                             'Unknown transducer manufacturer')
-            self.elements = int(get_config_value(logger, config, section, 'Elements', 0, True))
-            self.fund_freq = int(get_config_value(logger, config, section, 'Fund. freq.', 0, True))
-            self.natural_foc = float(get_config_value(logger, config, section, 'Natural focus', 0))
-            self.exit_plane_dist = float(get_config_value(logger, config, section,
-                                                          'Exit plane - first element dist.', 0))
-            default_min = float(get_config_value(logger, config, 'Focus', 'Default.minimum', 0))
-            self.min_foc = float(get_config_value(logger, config, section, 'Min. focus',
-                                                  default_min))
+        section = 'Equipment.Transducer.' + serial
+        if section not in config:
+            message = (f'No transducer with serial number {serial} found in configuration ' +
+                       'file.')
+            get_logger().critical(message)
+            raise FDSConfigError(message)
 
-            default_max = float(get_config_value(logger, config, 'Focus', 'Default.maximum', 1000))
+        self.serial = serial
+        self.name = get_config_value(get_logger(), config, section, 'Name',
+                                     'Unknown transducer name')
+        self.manufact = get_config_value(get_logger(), config, section, 'Manufacturer',
+                                         'Unknown transducer manufacturer')
+        self.elements = int(get_config_value(
+            get_logger(), config, section, 'Elements', 0, True))
+        self.fund_freq = int(get_config_value(
+            get_logger(), config, section, 'Fund. freq.', 0, True))
+        self.exit_plane_dist = float(get_config_value(get_logger(), config, section,
+                                                      'Exit plane - first element dist.', 0))
+        default_min = float(get_config_value(
+            get_logger(), config, 'Focus', 'Default.minimum', 0))
+        self.min_foc = float(get_config_value(get_logger(), config, section, 'Min. focus',
+                                              default_min))
 
-            self.max_foc = float(get_config_value(logger, config, section, 'Max. focus',
-                                                  default_max))
+        default_max = float(get_config_value(
+            get_logger(), config, 'Focus', 'Default.maximum', 1000))
 
-            self.steer_info = get_config_value(logger, config, section, 'Steer information',
-                                               None, True)
-            self.is_active = get_config_value(logger, config, section, 'Active?', 'True') == 'True'
+        self.max_foc = float(get_config_value(get_logger(), config, section, 'Max. focus',
+                                              default_max))
 
-        except KeyError:
-            message = f'No transducer with serial number {serial} found in configuration file.'
-            logger.critical(message)
-            sys.exit(message)
+        # Falls back to self.min_foc_x itself, already set from Default.minimum.x in __init__.
+        self.min_foc_x = float(get_config_value(get_logger(), config, section, 'Min. focus x',
+                                                self.min_foc_x))
+        self.max_foc_x = float(get_config_value(get_logger(), config, section, 'Max. focus x',
+                                                self.max_foc_x))
+        self.min_foc_y = float(get_config_value(get_logger(), config, section, 'Min. focus y',
+                                                self.min_foc_y))
+        self.max_foc_y = float(get_config_value(get_logger(), config, section, 'Max. focus y',
+                                                self.max_foc_y))
+
+        self.steer_info = get_config_value(get_logger(), config, section, 'Steer information',
+                                           None, True)
+        self.can_3d_steer = get_config_value(
+            get_logger(), config, section, 'Can 3D steer?', 'False') == 'True'
+        if self.can_3d_steer and not self.steer_info.endswith('.ini'):
+            message = (f'{serial} is configured with can_3d_steer=True, but its steer '
+                       f'information ({self.steer_info}) is not a .ini file -- 3D steering is ' +
+                       'only possible for the transducer_xyz.Transducer (.ini) steer path.')
+            get_logger().critical(message)
+            raise FDSConfigError(message)
+        # Fails closed: a transducer config section missing 'Active?' entirely is treated as
+        # inactive rather than active, so an incomplete/unreviewed section can't silently become
+        # selectable. Real, generated ds_config.ini sections always write this key explicitly
+        # (see create_config.py), so this only ever matters for a hand-edited config.
+        self.is_active = get_config_value(
+            get_logger(), config, section, 'Active?', 'False') == 'True'
 
     def __str__(self):
         """
@@ -129,12 +168,17 @@ class Transducer:
         info += f"Transducer manufacturer: {self.manufact} \n "
         info += f"Transducer elements: {self.elements} \n "
         info += f"Transducer fundamental frequency [kHz]: {self.fund_freq} \n "
-        info += f"Transducer natural focus [mm]: {self.natural_foc} \n "
         info += f"Transducer exit plane - first elem. distance [mm]: {self.exit_plane_dist} \n "
-        info += f"Transducer min. focus [mm]: {self.min_foc} \n "
-        info += f"Transducer max. focus [mm]: {self.max_foc} \n "
+        info += f"Transducer min. focus [mm]: {self.min_foc:.2f} \n "
+        info += f"Transducer max. focus [mm]: {self.max_foc:.2f} \n "
         info += ("Transducer steer table (Note: only used i.c.w. IGT driving sys.):" +
                  f" {self.steer_info} \n ")
+        info += f"Transducer can 3D steer: {self.can_3d_steer} \n "
+        if self.can_3d_steer:
+            info += f"Transducer min./max. lateral x [mm]: {self.min_foc_x:.2f} / " \
+                    f"{self.max_foc_x:.2f} \n "
+            info += f"Transducer min./max. lateral y [mm]: {self.min_foc_y:.2f} / " \
+                    f"{self.max_foc_y:.2f} \n "
 
         return info
 
@@ -163,20 +207,21 @@ def get_tran_serials():
         List[str]: Serial numbers for available transducers.
     """
 
-    serial_trans = get_config_value(logger, config, 'Equipment', 'Transducers', '',
+    serial_trans = get_config_value(get_logger(), config, 'Equipment', 'Transducers', '',
                                     True).split('\n')
 
     active_serials = []
     for serial in serial_trans:
-        # only extract active tranducers
+        # only extract active tranducers -- fails closed, see set_transducer_info()'s own
+        # comment on this same default.
         section = 'Equipment.Transducer.' + serial
-        if get_config_value(logger, config, section, 'Active?', 'True') == 'True':
+        if get_config_value(get_logger(), config, section, 'Active?', 'False') == 'True':
             active_serials.append(serial)
 
     if len(active_serials) < 1:
         message = 'No active tranducers found in configuration file.'
-        logger.critical(message)
-        sys.exit(message)
+        get_logger().critical(message)
+        raise FDSConfigError(message)
 
     return active_serials
 
@@ -191,22 +236,10 @@ def get_tran_names():
 
     names = []
     for serial in get_tran_serials():
-        try:
-            section = 'Equipment.Transducer.' + serial
-            tran_name = get_config_value(logger, config, section, 'Name',
-                                         'Unknown transducer name')
-        except KeyError:
-            message = (f'No transducer with serial number {serial} found in' +
-                       ' configuration file.')
-            logger.critical(message)
-            sys.exit(message)
-
+        section = 'Equipment.Transducer.' + serial
+        tran_name = get_config_value(get_logger(), config, section, 'Name',
+                                     'Unknown transducer name')
         names.append(tran_name)
-
-    if len(names) < 1:
-        message = 'No transducers found in configuration file.'
-        logger.critical(message)
-        sys.exit(message)
 
     return names
 
@@ -221,21 +254,9 @@ def get_tran_list():
 
     tran_list = []
     for serial in get_tran_serials():
-        try:
-            tran = Transducer()
-            tran.set_transducer_info(serial)
-        except KeyError:
-            message = (f'No transducer with serial number {serial} found in' +
-                       ' configuration file.')
-            logger.critical(message)
-            sys.exit(message)
-
+        tran = Transducer()
+        tran.set_transducer_info(serial)
         tran_list.append(tran)
-
-    if len(tran_list) < 1:
-        message = 'No transducers found in configuration file.'
-        logger.critical(message)
-        sys.exit(message)
 
     return tran_list
 
@@ -253,5 +274,6 @@ def get_serial_from_name(name):
 
     for tran in get_tran_list():
         if tran.name == name:
-
             return tran.serial
+
+    return None
