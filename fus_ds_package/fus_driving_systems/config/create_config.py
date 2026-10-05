@@ -1,36 +1,177 @@
 # -*- coding: utf-8 -*-
 """
-Copyright (c) 2024 Margely Cornelissen, Stein Fekkes (Radboud University) and Erik Dumont (Image
-Guided Therapy)
+Copyright (c) 2024 Radboud University
 
-MIT License
+SPDX-License-Identifier: MIT
+See the LICENSE file for full license text.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-**Attribution Notice**:
-If you use this kit in your research or project, please refer to the 'How to Cite' section in the
-README.md file of https://github.com/Donders-Institute/Radboud-FUS-driving-system-software.
+If you use this kit in your research or project, please cite it -- see CITATION.cff or the
+'How to Cite' section of README.md at
+https://github.com/Donders-Institute/Radboud-FUS-driving-system-software.
 """
 
-from fus_driving_systems import utils
 import configparser
+import importlib.resources
 import os
+import re
+
+from fus_driving_systems import utils
+
+
+def _combo_files_exist(*rel_paths):
+    """
+    True only if every given calibration file actually exists on disk. Paths are resolved
+    relative to the fus_driving_systems package, matching how calc_utils.py's
+    extract_and_define_pp() resolves the very same config values at runtime.
+
+    Parameters:
+        rel_paths (str): Config-relative paths to calibration JSON files (e.g. the value of an
+        'Equipment.Combination.*' section's 'EqualizationCurveFit json file' key).
+
+    Returns:
+        bool: True if every path exists, False if any is missing.
+    """
+
+    package_root = importlib.resources.files('fus_driving_systems')
+    return all(os.path.isfile(str(package_root.joinpath(rel_path))) for rel_path in rel_paths)
+
+
+def _add_driving_system(serial, name, manufacturer, available_channels, connection_info,
+                        transducer_compatibility, power_options, native_power_parameters,
+                        focus_options, native_focus_parameters, max_transducer_slots=1,
+                        max_buffers=1, active=True):
+    """
+    Builds one '[Equipment.Driving system.<serial>]' section from keyword arguments -- replaces
+    what used to be 10-13 individually hand-typed 'config[section][key] = value' lines per
+    driving system (the actual source of create_config.py's repetition/typo problem: sharing
+    string constants like IGT_DS[i] never eliminated the per-device block itself).
+
+    Parameters:
+        serial (str): Driving system serial -- used as-is for the section name.
+        name (str): Descriptive name.
+        manufacturer (str): Must match one of the Equipment.Manufacturer.* names.
+        available_channels (int): Number of channels this driving system provides.
+        connection_info (str): COM port, IP address, or path to a config file.
+        transducer_compatibility (list(str)): Compatible transducer serials.
+        power_options (list(str)): Power options this driving system supports at all.
+        native_power_parameters (str): Which power option(s) this hardware accepts directly.
+        focus_options (list(str)): Focus options this driving system supports at all.
+        native_focus_parameters (str): Which focus option(s) this hardware accepts directly.
+        max_transducer_slots (int): How many transducers this driving system can drive at once.
+        max_buffers (int): How many hardware buffers this driving system can hold a protocol in.
+        active (bool): Whether this driving system is active and available for use.
+    """
+
+    section = 'Equipment.Driving system.' + serial
+    config[section] = {}
+    config[section]['Name'] = name
+    config[section]['Manufacturer'] = manufacturer
+    config[section]['Available channels'] = str(available_channels)
+    config[section]['Connection info'] = connection_info
+    config[section]['Transducer compatibility'] = '\n'.join(transducer_compatibility)
+    config[section]['Power options'] = '\n'.join(power_options)
+    config[section]['Native power parameters'] = native_power_parameters
+    config[section]['Focus options'] = '\n'.join(focus_options)
+    config[section]['Native focus parameters'] = native_focus_parameters
+    config[section]['Max. transducer slots'] = str(max_transducer_slots)
+    config[section]['Max. buffers'] = str(max_buffers)
+    config[section]['Active?'] = str(active)
+
+
+def _add_transducer(serial, name, manufacturer, elements, fund_freq, min_focus, max_focus,
+                    exit_plane_dist=0, steer_information='', can_3d_steer=False,
+                    min_focus_x=0, max_focus_x=0, min_focus_y=0, max_focus_y=0, active=True):
+    """
+    Builds one '[Equipment.Transducer.<serial>]' section from keyword arguments.
+
+    No natural-focus/radius-of-curvature argument here -- for IGT that value is read directly
+    from the transducer's own .ini steer file (transducer_xyz.Transducer.focalLength) instead of
+    being duplicated in ds_config.ini, so it can never drift out of sync with that file's own
+    element coordinates. See igt_ds.py's _set_phases().
+
+    Parameters:
+        serial (str): Transducer serial -- used as-is for the section name.
+        name (str): Descriptive name.
+        manufacturer (str): Must match one of the Equipment.Manufacturer.* names.
+        elements (int): Number of elements.
+        fund_freq (float): Fundamental frequency [kHz].
+        min_focus (float): Minimum allowed focus wrt exit plane [mm].
+        max_focus (float): Maximum allowed focus wrt exit plane [mm].
+        exit_plane_dist (float): Distance between radiating surface and exit plane [mm]. The
+            geometric fallback used to convert between exit-plane and mid-bowl focus when no
+            active calibration exists (or its curve doesn't cover the requested value) --
+            native-ness checks in transducer_slot.py ensure this fallback is only ever used for
+            the side that's purely informational, never for the value actually sent to hardware.
+        steer_information (str): Path to steering information file, if applicable.
+        can_3d_steer (bool): Whether this transducer's own element geometry supports lateral
+            (x/y) steering, not just depth, see Transducer.can_3d_steer. Must be False unless
+            steer_information ends in '.ini' (checked at read time in transducer.py).
+        min_focus_x (float): Minimum allowed lateral x offset [mm], only enforced when
+            can_3d_steer is True. Defaults to 0 (not min_focus's generous default), so an
+            unconfigured 3D transducer fails closed instead of allowing any offset.
+        max_focus_x (float): Maximum allowed lateral x offset [mm]. See min_focus_x.
+        min_focus_y (float): Minimum allowed lateral y offset [mm]. See min_focus_x.
+        max_focus_y (float): Maximum allowed lateral y offset [mm]. See min_focus_x.
+        active (bool): Whether this transducer is active and available for use.
+    """
+
+    section = 'Equipment.Transducer.' + serial
+    config[section] = {}
+    config[section]['Name'] = name
+    config[section]['Manufacturer'] = manufacturer
+    config[section]['Elements'] = str(elements)
+    config[section]['Fund. freq.'] = str(fund_freq)
+    config[section]['Exit plane - first element dist.'] = str(exit_plane_dist)
+    config[section]['Min. focus'] = str(min_focus)
+    config[section]['Max. focus'] = str(max_focus)
+    config[section]['Steer information'] = steer_information
+    config[section]['Can 3D steer?'] = str(can_3d_steer)
+    config[section]['Min. focus x'] = str(min_focus_x)
+    config[section]['Max. focus x'] = str(max_focus_x)
+    config[section]['Min. focus y'] = str(min_focus_y)
+    config[section]['Max. focus y'] = str(max_focus_y)
+    config[section]['Active?'] = str(active)
+
+
+def _add_combination(ds_serial, tran_serial, eq_curve_filename, focus_curve_filename,
+                     power_curve_filename, volt_curve_filename):
+    """
+    Builds one '[Equipment.Combination.<ds_serial>~<tran_serial>]' section -- the calibration
+    curves needed to convert a non-native power/focus parameter for this specific
+    driving-system/transducer pair. 'Active?' is derived automatically from whether all four
+    referenced calibration files actually exist on disk (see _combo_files_exist()).
+
+    The same four keys are used whether tran_serial's transducer has can_3d_steer True or False,
+    since TransducerSlot._update_conv_param() reads them unconditionally; the transducer's own
+    can_3d_steer already fully determines whether they're interpreted as 1D or 3D calibration
+    data, so there's nothing left for a second, differently-named set of keys to disambiguate.
+
+    Parameters:
+        ds_serial (str): Driving system serial.
+        tran_serial (str): Transducer serial.
+        eq_curve_filename (str): Bare filename of the equalization curve-fit JSON file.
+        focus_curve_filename (str): Bare filename of the focus curve-fit JSON file.
+        power_curve_filename (str): Bare filename of the power curve-fit JSON file.
+        volt_curve_filename (str): Bare filename of the voltage curve-fit JSON file.
+    """
+
+    section = 'Equipment.Combination.' + ds_serial + COMBO_JOIN_SIGN + tran_serial
+    config[section] = {}
+    config[section]['Driving system serial'] = ds_serial
+    config[section]['Transducer serial'] = tran_serial
+    config[section]['EqualizationCurveFit json file'] = str(
+        os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, eq_curve_filename))
+    config[section]['FocusCurveFit json file'] = str(
+        os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, focus_curve_filename))
+    config[section]['PowerCurveFit json file'] = str(
+        os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, power_curve_filename))
+    config[section]['VoltageCurveFit json file'] = str(
+        os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, volt_curve_filename))
+    config[section]['Active?'] = str(_combo_files_exist(
+        config[section]['EqualizationCurveFit json file'],
+        config[section]['FocusCurveFit json file'],
+        config[section]['PowerCurveFit json file'],
+        config[section]['VoltageCurveFit json file']))
 
 
 CONFIG_FOLDER = utils.get_config_folder()  # should be in the same directory as code
@@ -41,36 +182,40 @@ config = configparser.ConfigParser(interpolation=None)
 config['General'] = {}
 
 config['General']['Configuration file folder'] = CONFIG_FOLDER
+config['General']['Delay before reconnecting [s]'] = str(2)
 config['General']['Maximum reconnection attempts'] = str(5)
 config['General']['Package name'] = 'fus_driving_systems'
 config['General']['Speed of sound water [m/s]'] = str(1500)
-# DEPRECATED
-config['General']['Trigger option.seq'] = 'TriggerSequence'
 
 # Logging
 config['Logging'] = {}
 config['Logging']['Logger name'] = 'driving_system'
 config['Logging']['Temporary logging path'] = 'C:\\Temp'
 config['Logging']['Filename faulthandler'] = 'faulthandler_output.log'
+config['Logging']['Filename session pointer'] = '.last_session_log_dir'
+config['Logging']['Filename kernel death counter'] = 'kernel_death_count.txt'
 
 config['Logging']['Timestamp format'] = '%Y-%m-%d_%H-%M-%S'
 config['Logging']['Log level console'] = 'INFO'
 config['Logging']['Log level file'] = 'DEBUG'
 config['Logging']['Initial part of log filename'] = 'log_'
+config['Logging']['Max log file size [MB]'] = str(10)
 
 # Trigger options
 TRIG_NONE = 'None'
-TRIG_SEQ = 'TriggerSequence'
-TRIG_PTR = 'TriggerOnePulseTrainRepetition'
+# One pulse train fires per external trigger received -- n_triggers says how many to expect.
+TRIG_PULSE_TRAIN = 'TriggerOnePulseTrain'
+# One trigger fires the entire, already fully-timed protocol at once (equivalent to executing it
+# directly, just gated behind that one trigger).
+TRIG_WHOLE_PROTOCOL = 'TriggerWholeProtocol'
 
 config['Trigger'] = {}
-config['Trigger']['Options'] = '\n'.join([TRIG_NONE, TRIG_SEQ, TRIG_PTR])
+config['Trigger']['Options'] = '\n'.join([TRIG_NONE, TRIG_PULSE_TRAIN, TRIG_WHOLE_PROTOCOL])
 config['Trigger']['Default option'] = TRIG_NONE
 config['Trigger']['Option.none'] = TRIG_NONE
-config['Trigger']['Option.seq'] = TRIG_SEQ
-config['Trigger']['Option.ptr'] = TRIG_PTR
+config['Trigger']['Option.pulse_train'] = TRIG_PULSE_TRAIN
+config['Trigger']['Option.whole_protocol'] = TRIG_WHOLE_PROTOCOL
 
-config['Trigger']['Default wait_for_trigger'] = 'False'
 config['Trigger']['Default n_triggers'] = str(0)
 
 # Power options
@@ -85,59 +230,77 @@ config['Power']['Option.glob_pow'] = POW_GP
 config['Power']['Option.ampl'] = POW_AMPL
 config['Power']['Option.press'] = POW_PRESS
 config['Power']['Option.volt'] = POW_VOLT
+# Which power options require TUSProtocol(engineering_mode=True) to set directly -- an
+# institutional safety policy, not a hardware property, so it's configurable rather than
+# hardcoded: a different institution using this package can list a different set here, or none.
+config['Power']['Engineering-only options'] = '\n'.join([POW_AMPL, POW_VOLT])
 
-config['Power']['Default.glob_pow'] = str(0)
-config['Power']['Default.ampl'] = str(0)
-config['Power']['Default.press'] = str(0)
-config['Power']['Default.volt'] = str(0)
-
-config['Power']['Default.eq_factor'] = str(0)
-config['Power']['Default.eq_press'] = str(0)
-config['Power']['Default.input_press'] = str(0)
-config['Power']['Default.calc_ampl'] = str(0)
+# No Default.* keys here (global_power/press/volt/ampl/eq_factor/eq_press/input_press/
+# calc_ampl) -- TransducerSlot.__init__ hardcodes those to None directly, since every one of
+# them is always overwritten before it can ever be read (see the comment there).
 
 MAX_ALLOWED_PRESSURE = 1.4  # MPa
-config['Power']['Maximum pressure allowed in free water [MPa]'] = str(MAX_ALLOWED_PRESSURE)
+MAX_PRESSURE_KEY = 'Maximum pressure allowed in free water [MPa]'
+config['Power'][MAX_PRESSURE_KEY] = str(MAX_ALLOWED_PRESSURE)
+
+# Enforced only by fus_ds_gui's own Demo mode (SlotEditor._apply()), on top of the limit
+# above, not instead of it: a stricter, GUI-only ceiling.
+DEMO_MAX_ALLOWED_PRESSURE = 0.6  # MPa
+DEMO_MAX_PRESSURE_KEY = 'Demo maximum pressure allowed in free water [MPa]'
+config['Power'][DEMO_MAX_PRESSURE_KEY] = str(DEMO_MAX_ALLOWED_PRESSURE)
 
 # Focus options
 FOC_WRT_EXIT = 'Focus wrt exit plane [mm]'
 FOC_WRT_BOWL = 'Focus wrt mid bowl [mm]'
+# 3D (lateral x/y + depth z) variants of the exit-plane/mid-bowl focus options above, only
+# settable for a transducer with can_3d_steer=True (see _add_transducer()), regardless of which
+# driving system offers them in focus_options.
+FOC_XYZ_WRT_EXIT = 'Focus xyz wrt exit plane [mm]'
+FOC_XYZ_WRT_BOWL = 'Focus xyz wrt mid bowl [mm]'
 
 config['Focus'] = {}
-config['Focus']['Options'] = '\n'.join([FOC_WRT_EXIT, FOC_WRT_BOWL])
+config['Focus']['Options'] = '\n'.join([FOC_WRT_EXIT, FOC_WRT_BOWL, FOC_XYZ_WRT_EXIT,
+                                        FOC_XYZ_WRT_BOWL])
 config['Focus']['Default option'] = FOC_WRT_EXIT
 config['Focus']['Option.exit'] = FOC_WRT_EXIT
 config['Focus']['Option.bowl'] = FOC_WRT_BOWL
+config['Focus']['Option.xyz_exit'] = FOC_XYZ_WRT_EXIT
+config['Focus']['Option.xyz_bowl'] = FOC_XYZ_WRT_BOWL
+# See the identical rationale on config['Power']['Engineering-only options'] above.
+config['Focus']['Engineering-only options'] = ''
 
-config['Focus']['Default.exit'] = str(40)  # [mm]
-config['Focus']['Default.bowl'] = str(50)  # [mm]
+# No Default.exit/Default.bowl keys here -- TransducerSlot.__init__ hardcodes
+# _focus_wrt_exit_plane/_focus_wrt_mid_bowl to None directly. Default.bowl used to be read there,
+# but the transducer setter always overwrites it right after construction, before it can ever be
+# read (see the comment there); Default.exit was never actually read by anything at all.
 config['Focus']['Default.minimum'] = str(15)  # [mm]
 config['Focus']['Default.maximum'] = str(1000)  # [mm]
+
+# Lateral (x/y) steering limits, only enforced for a can_3d_steer=True transducer (see
+# _set_focus_xyz() in transducer_slot.py). Defaulted to 0, unlike the generous depth default
+# above: every transducer is valid at x=y=0, so this fails closed until real geometry is known.
+config['Focus']['Default.minimum.x'] = str(0)  # [mm]
+config['Focus']['Default.maximum.x'] = str(0)  # [mm]
+config['Focus']['Default.minimum.y'] = str(0)  # [mm]
+config['Focus']['Default.maximum.y'] = str(0)  # [mm]
 
 # Ramp options
 RAMP_RECT = 'Rectangular - no ramping'
 RAMP_LIN = 'Linear'
 RAMP_TUK = 'Tukey'
-RAMP_SHOTA = 'Shota'
 
 config['Ramp'] = {}
 config['Ramp']['Options'] = '\n'.join([RAMP_RECT, RAMP_LIN, RAMP_TUK])
-config['Ramp']['Default option'] = RAMP_RECT
 config['Ramp']['Option.rect'] = RAMP_RECT
 config['Ramp']['Option.lin'] = RAMP_LIN
 config['Ramp']['Option.tuk'] = RAMP_TUK
-config['Ramp']['Option.shota'] = RAMP_SHOTA
 
-# Timing parameters
+# Timing parameters. pulse_dur is the only genuinely independent default here; every other
+# timing field (pulse_rep_int, pulse_train_dur, pulse_train_rep_int, pulse_train_rep_dur,
+# pulse_ramp_shape, pulse_ramp_dur) cascades from it via TUSProtocol.configure_timing()'s own
+# defaults, both at construction time and whenever a caller leaves one out.
 config['Timing'] = {}
 config['Timing']['Pulse_dur_ms'] = str(0.25)  # [ms]
-PULSE_REP_INT = 20
-config['Timing']['Pulse_rep_int_ms'] = str(PULSE_REP_INT)  # [ms]
-config['Timing']['Pulse_train_dur_ms'] = str(PULSE_REP_INT)  # [ms]
-config['Timing']['Pulse_train_rep_int_ms'] = str(PULSE_REP_INT)  # [ms]
-config['Timing']['Pulse_train_rep_dur'] = str(PULSE_REP_INT)  # [ms]
-
-config['Timing']['Pulse_ramp_dur_ms'] = str(0)  # [ms]
 
 # Equipment
 config['Equipment'] = {}
@@ -147,13 +310,9 @@ config['Equipment'] = {}
 #######################################################################################
 
 SONIC_CONCEPTS = 'Sonic Concepts'
-CONFIG_FILE_FOLDER_SC_TRAN = 'igt\\config\\sonic_concepts_transducers'
 config['Equipment.Manufacturer.SC'] = {}
 config['Equipment.Manufacturer.SC']['Name'] = SONIC_CONCEPTS
-config['Equipment.Manufacturer.SC']['Config. file folder transducers'] = CONFIG_FILE_FOLDER_SC_TRAN
 
-# TODO: deprecated - hosted under each driving system
-config['Equipment.Manufacturer.SC']['Power options'] = '\n'.join([POW_GP])
 config['Equipment.Manufacturer.SC']['Additional charac. discon. message'] = ('\n - the correct ' +
                                                                              'TRANSDUCER is ' +
                                                                              'selected on the ' +
@@ -183,11 +342,12 @@ config['Equipment.Manufacturer.IGT'] = {}
 config['Equipment.Manufacturer.IGT']['Name'] = IGT
 config['Equipment.Manufacturer.IGT']['Config. file folder driving sys.'] = (
     CONFIG_FILE_FOLDER_IGT_DS)
-config['Equipment.Manufacturer.IGT']['Power options'] = '\n'.join([POW_AMPL, POW_PRESS, POW_VOLT])
 config['Equipment.Manufacturer.IGT']['Additional charac. discon. message'] = ''
 
-config['Equipment.Manufacturer.IGT']['Default log filename prefix'] = 'standalone_igt'
-config['Equipment.Manufacturer.IGT']['Default log filename suffix'] = '_igt_ds_log'
+config['Equipment.Manufacturer.IGT']['Default log filename'] = 'standalone_igt'
+# Prepended to the FDS session filename to name the native IGT log, so it sorts and reads
+# alongside this package's own log_info_*/log_debug_*/log_measurements_* files.
+config['Equipment.Manufacturer.IGT']['Native IGT log filename prefix'] = 'log_igt_'
 
 config['Equipment.Manufacturer.IGT']['Wait time before responsive [ms]'] = str(100)
 config['Equipment.Manufacturer.IGT']['Min. pulse duration [ms]'] = str(0.001)
@@ -199,14 +359,22 @@ config['Equipment.Manufacturer.IGT']['Pulse dur. flag level MeasureChannels [ms]
 config['Equipment.Manufacturer.IGT']['Pulse dur. flag level MeasureBoards [ms]'] = str(0.035)
 config['Equipment.Manufacturer.IGT']['Pulse dur. flag level MeasureTimings [ms]'] = str(0.001)
 
+# Live, in-progress feedback (GitHub #137) on each transducer's own measured onPulseResult
+# voltage vs. its configured/expected value -- grouped into batches (not per-pulse, too noisy)
+# so a researcher watching the log sees regular progress without being flooded. A fixed volt
+# margin (not a percentage) so a transducer that's deliberately at/near 0% amplitude never
+# triggers this -- see VoltageFeedbackTracker's own docstring. Starting estimates based on the
+# one real log analysed so far -- revisit once more real data comes in.
+config['Equipment.Manufacturer.IGT']['Voltage feedback margin [V]'] = str(3.0)
+config['Equipment.Manufacturer.IGT']['Voltage feedback groups'] = str(5)
+config['Equipment.Manufacturer.IGT']['Voltage feedback consecutive groups for warning'] = str(2)
+
 config['Equipment.Manufacturer.IGT']['Min. temporal ramping resolution [ms]'] = str(0.005)
 config['Equipment.Manufacturer.IGT']['Max. amount of ramping steps'] = str(1023)
 
-IGT_DS = ['IGT-128-ch', 'IGT-128-ch_comb_2x10-ch', 'IGT-128-ch_comb_1x10-ch',
-          'IGT-128-ch_comb_1x8-ch', 'IGT-128-ch_comb_1x4-ch', 'IGT-128-ch_comb_1x2-ch',
-          'IGT-32-ch', 'IGT-32-ch_comb_2x10-ch', 'IGT-32-ch_comb_1x10-ch',
-          'IGT-8-ch_comb_2x4-ch', 'IGT-8-ch_comb_1x4-ch', 'IGT-8-ch_comb_2x2-ch',
-          'IGT-8-ch_comb_1x2-ch']
+IGT_DS = ['IGT-32-ch', 'IGT-32-ch_comb_2x10-ch', 'IGT-32-ch_comb_1x10-ch',
+          'IGT-256-ch', 'IGT-256-ch_comb_1x52-ch', 'IGT-256-ch_comb_2x52-ch',
+          'IGT-256-ch_comb_3x52-ch', 'IGT-256-ch_comb_4x52-ch']
 
 config['Equipment.Manufacturer.IGT']['Equipment - Driving systems'] = '\n'.join(IGT_DS)
 
@@ -228,6 +396,10 @@ IS_TRANS = ['IS_PCD15287_01001', 'IS_PCD15287_01002', 'IS_PCD15473_01001',
             'IS_PCD15473_01002', 'IS_PCD15473_01003', 'IS_PCD15473_01001_OPM',
             'IS_PCD15473_01003_OPM']
 
+# Clover: a 3D-steering-capable (can_3d_steer=True) Imasonic transducer line, one per physical
+# unit (see the 'Imasonic - Clover tranducers' _add_transducer() calls below).
+CLOVER_TRANS = ['Clover_1', 'Clover_2', 'Clover_3']
+
 #######################################################################################
 # CITRUS
 #######################################################################################
@@ -236,7 +408,6 @@ CITRUS = 'CITRUS'
 config['Equipment.Manufacturer.CITRUS'] = {}
 config['Equipment.Manufacturer.CITRUS']['Name'] = CITRUS
 
-config['Equipment.Manufacturer.CITRUS']['Power options'] = '\n'.join([POW_VOLT])
 config['Equipment.Manufacturer.CITRUS']['Additional charac. discon. message'] = ''
 
 CITRUS_DS = ['CITRUS_V2']
@@ -248,1089 +419,642 @@ CITRUS_TRANS = ['CITRUS_V2_465kHz_256_#5', 'CITRUS_V2_465kHz_128_#6', 'CITRUS_V2
 config['Equipment.Manufacturer.CITRUS']['Equipment - Transducers'] = '\n'.join(CITRUS_TRANS)
 
 #######################################################################################
+# Mock IGT / Mock SC: for fus_ds_gui demos/testing only, never talk to real hardware. Their own
+# ControlDrivingSystem subclasses (MockIGT/MockSonicConcepts) live in fus_ds_gui itself, not
+# here, since nothing outside the GUI ever needs to construct one; see those classes' own
+# docstrings. Two, not one generic "Mock", so a researcher/developer can rehearse either
+# manufacturer's own distinct GUI behavior (the IGT-only "connecting can take ~10s" hint and
+# blocking execute_protocol(); the Sonic-Concepts-only transducer-selection confirmation
+# dialog) without needing that manufacturer's real hardware.
+#######################################################################################
+
+MOCK_IGT = 'Mock IGT'
+MOCK_SC = 'Mock SC'
+MOCK_DS = ['Mock-IGT-1', 'Mock-SC-1']
+
+# Every non-OPM Imasonic transducer (the _OPM variants are the same 10-ch. family, just a
+# different steer-file convention, not needed for a mocked connection). Max. pressure in free
+# water [MPa] works here too: MockIGT.validate_protocol() skips the one check (Amplitude is
+# None) that would otherwise need real calibration data, see its own docstring.
+MOCK_IGT_TRANS = [serial for serial in IS_TRANS if not serial.endswith('_OPM')]
+_add_driving_system(
+    MOCK_DS[0],
+    name='Mock IGT (no real hardware)',
+    manufacturer=MOCK_IGT,
+    available_channels=10,
+    connection_info='MOCK',
+    transducer_compatibility=MOCK_IGT_TRANS,
+    power_options=[POW_PRESS],
+    native_power_parameters=POW_PRESS,
+    focus_options=[FOC_WRT_EXIT],
+    native_focus_parameters=FOC_WRT_EXIT,
+    max_transducer_slots=1,
+    max_buffers=1,
+    active=True,
+)
+
+# Compatible with every Sonic Concepts transducer (SC_TRANS, already defined above): SC's own
+# validate_protocol() only ever checks the researcher's own chosen power value, nothing derived
+# from calibration, so no equivalent "skip this one check" override is needed on the GUI side.
+_add_driving_system(
+    MOCK_DS[1],
+    name='Mock SC (no real hardware)',
+    manufacturer=MOCK_SC,
+    available_channels=4,
+    connection_info='MOCK',
+    transducer_compatibility=SC_TRANS,
+    power_options=[POW_GP],
+    native_power_parameters=POW_GP,
+    focus_options=[FOC_WRT_EXIT],
+    native_focus_parameters=FOC_WRT_EXIT,
+    max_transducer_slots=1,
+    max_buffers=1,
+    active=True,
+)
+
+#######################################################################################
 # Equipment collection
 #######################################################################################
 
-config['Equipment.Manufacturer.IS']['Equipment - Transducers'] = '\n'.join(IS_TRANS)
+config['Equipment.Manufacturer.IS']['Equipment - Transducers'] = '\n'.join(IS_TRANS + CLOVER_TRANS)
 
 # list of driving system 'serial numbers'
-config['Equipment']['Driving systems'] = str('\n'.join(SC_DS + IGT_DS + CITRUS_DS))
+config['Equipment']['Driving systems'] = str('\n'.join(SC_DS + IGT_DS + CITRUS_DS + MOCK_DS))
 config['Equipment']['Default driving system serial'] = SC_DS[0]
 
 DUMMY = 'Dummy'
 DUMMIES = [DUMMY]
 # list of transducer 'serial numbers'
-config['Equipment']['Transducers'] = str('\n'.join(SC_TRANS + IS_TRANS + CITRUS_TRANS + DUMMIES))
+config['Equipment']['Transducers'] = str(
+    '\n'.join(SC_TRANS + IS_TRANS + CITRUS_TRANS + CLOVER_TRANS + DUMMIES))
 config['Equipment']['Default transducer serial'] = SC_TRANS[0]
 
 COMBO_JOIN_SIGN = '~'
 config['Equipment']['Combination sign'] = COMBO_JOIN_SIGN
 
-DS_TRAN_COMBOS = [
-    # # IGT 128 ch. 2 x 10
-    # COMBO_JOIN_SIGN.join([IGT_DS[1], IS_TRANS[0]]),
-    # COMBO_JOIN_SIGN.join([IGT_DS[1], IS_TRANS[1]]),
-    # COMBO_JOIN_SIGN.join([IGT_DS[1], IS_TRANS[2]]),
-    # COMBO_JOIN_SIGN.join([IGT_DS[1], IS_TRANS[3]]),
-    # COMBO_JOIN_SIGN.join([IGT_DS[1], IS_TRANS[4]]),
-
-    # # IGT 128 ch. 1 x 10
-    # COMBO_JOIN_SIGN.join([IGT_DS[2], IS_TRANS[0]]),
-    # COMBO_JOIN_SIGN.join([IGT_DS[2], IS_TRANS[1]]),
-    # COMBO_JOIN_SIGN.join([IGT_DS[2], IS_TRANS[2]]),
-    # COMBO_JOIN_SIGN.join([IGT_DS[2], IS_TRANS[3]]),
-    # COMBO_JOIN_SIGN.join([IGT_DS[2], IS_TRANS[4]]),
-
-    # IGT 32 ch. 2 x 10
-    COMBO_JOIN_SIGN.join([IGT_DS[7], IS_TRANS[0]]), COMBO_JOIN_SIGN.join([IGT_DS[7], IS_TRANS[1]]),
-    COMBO_JOIN_SIGN.join([IGT_DS[7], IS_TRANS[2]]), COMBO_JOIN_SIGN.join([IGT_DS[7], IS_TRANS[3]]),
-    COMBO_JOIN_SIGN.join([IGT_DS[7], IS_TRANS[4]]), COMBO_JOIN_SIGN.join([IGT_DS[7], IS_TRANS[5]]),
-    COMBO_JOIN_SIGN.join([IGT_DS[7], IS_TRANS[6]]),
-
-    # IGT 32 ch. 1 x 10
-    COMBO_JOIN_SIGN.join([IGT_DS[8], IS_TRANS[0]]), COMBO_JOIN_SIGN.join([IGT_DS[8], IS_TRANS[1]]),
-    COMBO_JOIN_SIGN.join([IGT_DS[8], IS_TRANS[2]]), COMBO_JOIN_SIGN.join([IGT_DS[8], IS_TRANS[3]]),
-    COMBO_JOIN_SIGN.join([IGT_DS[8], IS_TRANS[4]]), COMBO_JOIN_SIGN.join([IGT_DS[8], IS_TRANS[5]]),
-    COMBO_JOIN_SIGN.join([IGT_DS[8], IS_TRANS[6]])
-                                                     ]
-
-config['Equipment']['Combinations'] = '\n'.join(DS_TRAN_COMBOS)
-config['Equipment']['inactive_combinations'] = ''
-
 #######################################################################################
 # Sonic Concepts - Driving systems
 #######################################################################################
 
-config['Equipment.Driving system.' + SC_DS[0]] = {}
-config['Equipment.Driving system.' + SC_DS[0]]['Name'] = ('NeuroFUS 1 x 4 ch. or 1 x 2 ch. TPO '
-                                                          + 'junior ' + SC_DS[0])
-config['Equipment.Driving system.' + SC_DS[0]]['Manufacturer'] = SONIC_CONCEPTS
-config['Equipment.Driving system.' + SC_DS[0]]['Available channels'] = str(4)
-config['Equipment.Driving system.' + SC_DS[0]]['Connection info'] = 'COM6'
-config['Equipment.Driving system.' + SC_DS[0]]['Power options'] = '\n'.join([POW_GP])
-config['Equipment.Driving system.' + SC_DS[0]]['Requires conversion equations?'] = str(False)
-config['Equipment.Driving system.' + SC_DS[0]]['Transducer compatibility'] = str('\n'.join(
-    SC_TRANS + DUMMIES))
-config['Equipment.Driving system.' + SC_DS[0]]['Active?'] = str(True)
+_add_driving_system(
+    SC_DS[0],
+    name='NeuroFUS 1 x 4 ch. or 1 x 2 ch. TPO junior ' + SC_DS[0],
+    manufacturer=SONIC_CONCEPTS,
+    available_channels=4,
+    connection_info='COM6',
+    # No Dummy here: unlike IGT, this driving system's transducer selection happens physically
+    # on the hardware itself (not managed by this software), so there is nothing for a
+    # software-only "Dummy load" choice to correspond to.
+    transducer_compatibility=SC_TRANS,
+    power_options=[POW_GP],
+    native_power_parameters=POW_GP,
+    focus_options=[FOC_WRT_EXIT],
+    native_focus_parameters=FOC_WRT_EXIT,
+    max_transducer_slots=1,
+    max_buffers=1,
+    active=True,
+)
 
-config['Equipment.Driving system.' + SC_DS[1]] = {}
-config['Equipment.Driving system.' + SC_DS[1]]['Name'] = ('NeuroFUS 1 x 4 ch. or 1 x 2 ch. TPO '
-                                                          + 'senior ' + SC_DS[1])
-config['Equipment.Driving system.' + SC_DS[1]]['Manufacturer'] = SONIC_CONCEPTS
-config['Equipment.Driving system.' + SC_DS[1]]['Available channels'] = str(4)
-config['Equipment.Driving system.' + SC_DS[1]]['Connection info'] = 'COM5'
-config['Equipment.Driving system.' + SC_DS[1]]['Transducer compatibility'] = str('\n'.join(
-    SC_TRANS + DUMMIES))
-config['Equipment.Driving system.' + SC_DS[1]]['Power options'] = '\n'.join([POW_GP])
-config['Equipment.Driving system.' + SC_DS[1]]['Requires conversion equations?'] = str(False)
-config['Equipment.Driving system.' + SC_DS[1]]['Active?'] = str(True)
+_add_driving_system(
+    SC_DS[1],
+    name='NeuroFUS 1 x 4 ch. or 1 x 2 ch. TPO senior ' + SC_DS[1],
+    manufacturer=SONIC_CONCEPTS,
+    available_channels=4,
+    connection_info='COM5',
+    # No Dummy here: unlike IGT, this driving system's transducer selection happens physically
+    # on the hardware itself (not managed by this software), so there is nothing for a
+    # software-only "Dummy load" choice to correspond to.
+    transducer_compatibility=SC_TRANS,
+    power_options=[POW_GP],
+    native_power_parameters=POW_GP,
+    focus_options=[FOC_WRT_EXIT],
+    native_focus_parameters=FOC_WRT_EXIT,
+    max_transducer_slots=1,
+    max_buffers=1,
+    active=True,
+)
 
 
 #######################################################################################
 # IGT - Driving systems
 #######################################################################################
 
-# # 128 ch. # #
-config['Equipment.Driving system.' + IGT_DS[0]] = {}
-config['Equipment.Driving system.' + IGT_DS[0]]['Name'] = IGT + ' 128 ch. - all channels'
-config['Equipment.Driving system.' + IGT_DS[0]]['Manufacturer'] = IGT
-config['Equipment.Driving system.' + IGT_DS[0]]['Available channels'] = str(128)
-config['Equipment.Driving system.' + IGT_DS[0]]['Connection info'] = str(os.path.join(
-    CONFIG_FILE_FOLDER_IGT_DS,
-    'gen_Nijmegen128_393F.json'))  # should be in the same directory as code
-config['Equipment.Driving system.' + IGT_DS[0]]['Transducer compatibility'] = str('\n'.join(
-    DUMMIES))
-config['Equipment.Driving system.' + IGT_DS[0]]['Power options'] = '\n'.join([POW_AMPL, POW_PRESS,
-                                                                              POW_VOLT])
-config['Equipment.Driving system.' + IGT_DS[0]]['Requires conversion equations?'] = str(True)
-config['Equipment.Driving system.' + IGT_DS[0]]['Active?'] = str(True)
-
-config['Equipment.Driving system.' + IGT_DS[1]] = {}
-config['Equipment.Driving system.' + IGT_DS[1]]['Name'] = IGT + ' 128 ch. - 2 x 10 ch.'
-config['Equipment.Driving system.' + IGT_DS[1]]['Manufacturer'] = IGT
-config['Equipment.Driving system.' + IGT_DS[1]]['Available channels'] = str(20)
-config['Equipment.Driving system.' + IGT_DS[1]]['Connection info'] = str(os.path.join(
-    CONFIG_FILE_FOLDER_IGT_DS,
-    'gen_Nijmegen128_2x10_393F.json'))  # should be in the same directory as code
-config['Equipment.Driving system.' + IGT_DS[1]]['Transducer compatibility'] = str('\n'.join(
-    IS_TRANS + DUMMIES))
-config['Equipment.Driving system.' + IGT_DS[1]]['Power options'] = '\n'.join([POW_AMPL, POW_PRESS,
-                                                                              POW_VOLT])
-config['Equipment.Driving system.' + IGT_DS[1]]['Requires conversion equations?'] = str(True)
-config['Equipment.Driving system.' + IGT_DS[1]]['Active?'] = str(True)
-
-config['Equipment.Driving system.' + IGT_DS[2]] = {}
-config['Equipment.Driving system.' + IGT_DS[2]]['Name'] = IGT + ' 128 ch. - 1 x 10 ch.'
-config['Equipment.Driving system.' + IGT_DS[2]]['Manufacturer'] = IGT
-config['Equipment.Driving system.' + IGT_DS[2]]['Available channels'] = str(10)
-config['Equipment.Driving system.' + IGT_DS[2]]['Connection info'] = str(os.path.join(
-    CONFIG_FILE_FOLDER_IGT_DS,
-    'gen_Nijmegen128_1x10_393F.json'))  # should be in the same directory as code
-config['Equipment.Driving system.' + IGT_DS[2]]['Transducer compatibility'] = str('\n'.join(
-    IS_TRANS + DUMMIES))
-config['Equipment.Driving system.' + IGT_DS[2]]['Power options'] = '\n'.join([POW_AMPL, POW_PRESS,
-                                                                              POW_VOLT])
-config['Equipment.Driving system.' + IGT_DS[2]]['Requires conversion equations?'] = str(True)
-config['Equipment.Driving system.' + IGT_DS[2]]['Active?'] = str(True)
-
-config['Equipment.Driving system.' + IGT_DS[3]] = {}
-config['Equipment.Driving system.' + IGT_DS[3]]['Name'] = IGT + ' 128 ch. - 8 ch.'
-config['Equipment.Driving system.' + IGT_DS[3]]['Manufacturer'] = IGT
-config['Equipment.Driving system.' + IGT_DS[3]]['Available channels'] = str(8)
-config['Equipment.Driving system.' + IGT_DS[3]]['Connection info'] = str(os.path.join(
-    CONFIG_FILE_FOLDER_IGT_DS,
-    'gen_Nijmegen128_8c.json'))  # should be in the same directory as code
-config['Equipment.Driving system.' + IGT_DS[3]]['Transducer compatibility'] = str('\n'.join(
-    SC_TRAN_4CH + DUMMIES))
-config['Equipment.Driving system.' + IGT_DS[3]]['Power options'] = '\n'.join([POW_AMPL, POW_PRESS,
-                                                                              POW_VOLT])
-config['Equipment.Driving system.' + IGT_DS[3]]['Requires conversion equations?'] = str(True)
-config['Equipment.Driving system.' + IGT_DS[3]]['Active?'] = str(False)
-
-config['Equipment.Driving system.' + IGT_DS[4]] = {}
-config['Equipment.Driving system.' + IGT_DS[4]]['Name'] = IGT + ' 128 ch. - 4 ch.'
-config['Equipment.Driving system.' + IGT_DS[4]]['Manufacturer'] = IGT
-config['Equipment.Driving system.' + IGT_DS[4]]['Available channels'] = str(4)
-config['Equipment.Driving system.' + IGT_DS[4]]['Connection info'] = str(os.path.join(
-    CONFIG_FILE_FOLDER_IGT_DS,
-    'gen_Nijmegen128_4ch.json'))  # should be in the same directory as code
-config['Equipment.Driving system.' + IGT_DS[4]]['Transducer compatibility'] = str('\n'.join(
-    SC_TRANS + DUMMIES))
-config['Equipment.Driving system.' + IGT_DS[4]]['Power options'] = '\n'.join([POW_AMPL, POW_PRESS,
-                                                                              POW_VOLT])
-config['Equipment.Driving system.' + IGT_DS[4]]['Requires conversion equations?'] = str(True)
-config['Equipment.Driving system.' + IGT_DS[4]]['Active?'] = str(False)
-
-config['Equipment.Driving system.' + IGT_DS[5]] = {}
-config['Equipment.Driving system.' + IGT_DS[5]]['Name'] = IGT + ' 128 ch. - 2 ch.'
-config['Equipment.Driving system.' + IGT_DS[5]]['Manufacturer'] = IGT
-config['Equipment.Driving system.' + IGT_DS[5]]['Available channels'] = str(2)
-config['Equipment.Driving system.' + IGT_DS[5]]['Connection info'] = str(os.path.join(
-    CONFIG_FILE_FOLDER_IGT_DS,
-    'gen_Nijmegen128_2ch.json'))  # should be in the same directory as code
-config['Equipment.Driving system.' + IGT_DS[5]]['Transducer compatibility'] = str('\n'.join(
-    SC_TRAN_2CH + DUMMIES))
-config['Equipment.Driving system.' + IGT_DS[5]]['Power options'] = '\n'.join([POW_AMPL, POW_PRESS,
-                                                                              POW_VOLT])
-config['Equipment.Driving system.' + IGT_DS[5]]['Requires conversion equations?'] = str(True)
-config['Equipment.Driving system.' + IGT_DS[5]]['Active?'] = str(False)
-
 # # 32 ch. # #
-config['Equipment.Driving system.' + IGT_DS[6]] = {}
-config['Equipment.Driving system.' + IGT_DS[6]]['Name'] = IGT + ' 32 ch. - all channels'
-config['Equipment.Driving system.' + IGT_DS[6]]['Manufacturer'] = IGT
-config['Equipment.Driving system.' + IGT_DS[6]]['Available channels'] = str(32)
-config['Equipment.Driving system.' + IGT_DS[6]]['Connection info'] = str(os.path.join(
-    CONFIG_FILE_FOLDER_IGT_DS,
-    'gen_Nijmegen32_71D8_10W.json'))  # should be in the same directory as code
-config['Equipment.Driving system.' + IGT_DS[6]]['Power options'] = '\n'.join([POW_AMPL, POW_PRESS,
-                                                                              POW_VOLT])
-config['Equipment.Driving system.' + IGT_DS[6]]['Transducer compatibility'] = str('\n'.join(
-    DUMMIES))
-config['Equipment.Driving system.' + IGT_DS[6]]['Requires conversion equations?'] = str(True)
-config['Equipment.Driving system.' + IGT_DS[6]]['Active?'] = str(True)
+# All channels: same reasoning as the 256 ch. family below. An undivided "all channels" variant
+# doesn't map onto any single per-slot transducer split (unlike the 1 x 10 ch./2 x 10 ch. comb
+# variants, whose own slot count directly matches their own name), so it stays inactive; only the
+# comb variants below are active.
+_add_driving_system(
+    IGT_DS[0],
+    name=IGT + ' 32 ch. - all channels',
+    manufacturer=IGT,
+    available_channels=32,
+    connection_info=str(os.path.join(CONFIG_FILE_FOLDER_IGT_DS, 'gen_Nijmegen32_71D8_10W.json')),
+    transducer_compatibility=DUMMIES,
+    power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
+    native_power_parameters=POW_AMPL,
+    focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL, FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
+    # Xyz-mid-bowl is native alongside scalar mid bowl, it's the same reference frame, just
+    # with x/y added, and needs no calibration to send as-is (see the 3D steering plan).
+    native_focus_parameters='\n'.join([FOC_WRT_BOWL, FOC_XYZ_WRT_BOWL]),
+    max_transducer_slots=2,
+    max_buffers=2,
+    active=False,
+)
 
-config['Equipment.Driving system.' + IGT_DS[7]] = {}
-config['Equipment.Driving system.' + IGT_DS[7]]['Name'] = IGT + ' 32 ch. - 2 x 10 ch.'
-config['Equipment.Driving system.' + IGT_DS[7]]['Manufacturer'] = IGT
-config['Equipment.Driving system.' + IGT_DS[7]]['Available channels'] = str(20)
-config['Equipment.Driving system.' + IGT_DS[7]]['Connection info'] = str(os.path.join(
-    CONFIG_FILE_FOLDER_IGT_DS,
-    'gen_Nijmegen32_2x10c_71D8_10W.json'))  # should be in the same directory as code
-config['Equipment.Driving system.' + IGT_DS[7]]['Transducer compatibility'] = str('\n'.join(
-    IS_TRANS + DUMMIES))
-config['Equipment.Driving system.' + IGT_DS[7]]['Power options'] = '\n'.join([POW_AMPL, POW_PRESS,
-                                                                              POW_VOLT])
-config['Equipment.Driving system.' + IGT_DS[7]]['Requires conversion equations?'] = str(True)
-config['Equipment.Driving system.' + IGT_DS[7]]['Active?'] = str(True)
+# 2 x 10 ch.: this driving system config drives two 10-element transducers at once.
+_add_driving_system(
+    IGT_DS[1],
+    name=IGT + ' 32 ch. - 2 x 10 ch.',
+    manufacturer=IGT,
+    available_channels=20,
+    connection_info=str(os.path.join(
+        CONFIG_FILE_FOLDER_IGT_DS, 'gen_Nijmegen32_2x10c_71D8_10W.json')),
+    transducer_compatibility=IS_TRANS + DUMMIES,
+    power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
+    native_power_parameters=POW_AMPL,
+    focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL, FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
+    # Xyz-mid-bowl is native alongside scalar mid bowl, it's the same reference frame, just
+    # with x/y added, and needs no calibration to send as-is (see the 3D steering plan).
+    native_focus_parameters='\n'.join([FOC_WRT_BOWL, FOC_XYZ_WRT_BOWL]),
+    max_transducer_slots=2,
+    max_buffers=2,
+    active=True,
+)
 
-config['Equipment.Driving system.' + IGT_DS[8]] = {}
-config['Equipment.Driving system.' + IGT_DS[8]]['Name'] = IGT + ' 32 ch. - 1 x 10 ch.'
-config['Equipment.Driving system.' + IGT_DS[8]]['Manufacturer'] = IGT
-config['Equipment.Driving system.' + IGT_DS[8]]['Available channels'] = str(10)
-config['Equipment.Driving system.' + IGT_DS[8]]['Connection info'] = str(os.path.join(
-    CONFIG_FILE_FOLDER_IGT_DS,
-    'gen_Nijmegen32_10c_71D8_10W.json'))  # should be in the same directory as code
-config['Equipment.Driving system.' + IGT_DS[8]]['Transducer compatibility'] = str('\n'.join(
-    IS_TRANS + DUMMIES))
-config['Equipment.Driving system.' + IGT_DS[8]]['Power options'] = '\n'.join([POW_AMPL, POW_PRESS,
-                                                                              POW_VOLT])
-config['Equipment.Driving system.' + IGT_DS[8]]['Requires conversion equations?'] = str(True)
-config['Equipment.Driving system.' + IGT_DS[8]]['Active?'] = str(True)
+_add_driving_system(
+    IGT_DS[2],
+    name=IGT + ' 32 ch. - 1 x 10 ch.',
+    manufacturer=IGT,
+    available_channels=10,
+    connection_info=str(os.path.join(
+        CONFIG_FILE_FOLDER_IGT_DS, 'gen_Nijmegen32_10c_71D8_10W.json')),
+    transducer_compatibility=IS_TRANS + DUMMIES,
+    power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
+    native_power_parameters=POW_AMPL,
+    focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL, FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
+    # Xyz-mid-bowl is native alongside scalar mid bowl, it's the same reference frame, just
+    # with x/y added, and needs no calibration to send as-is (see the 3D steering plan).
+    native_focus_parameters='\n'.join([FOC_WRT_BOWL, FOC_XYZ_WRT_BOWL]),
+    max_transducer_slots=1,
+    max_buffers=2,
+    active=True,
+)
 
+# # 256 ch. # #
+# All channels: kept Dummy-only, same reasoning as the 32 ch. "all channels" variant above:
+# there's no single real transducer meant to span the full, unsplit channel count.
+_add_driving_system(
+    IGT_DS[3],
+    name=IGT + ' 256 ch. - all channels',
+    manufacturer=IGT,
+    available_channels=256,
+    connection_info=str(os.path.join(
+        CONFIG_FILE_FOLDER_IGT_DS, 'gen_Nijmegen_393F_256_MOC12.json')),
+    transducer_compatibility=DUMMIES,
+    power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
+    native_power_parameters=POW_AMPL,
+    focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL, FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
+    # Xyz-mid-bowl is native alongside scalar mid bowl, it's the same reference frame, just
+    # with x/y added, and needs no calibration to send as-is (see the 3D steering plan).
+    native_focus_parameters='\n'.join([FOC_WRT_BOWL, FOC_XYZ_WRT_BOWL]),
+    # Same physical unit as IGT_DS[7] below (4 x 52 ch., just exposed unsplit here); 4 slots
+    # either way.
+    max_transducer_slots=4,
+    max_buffers=2,
+    active=False,
+)
 
-# # 8 ch. # #
-config['Equipment.Driving system.' + IGT_DS[9]] = {}
-config['Equipment.Driving system.' + IGT_DS[9]]['Name'] = IGT + ' 8 ch. - 2 x 4 ch.'
-config['Equipment.Driving system.' + IGT_DS[9]]['Manufacturer'] = IGT
-config['Equipment.Driving system.' + IGT_DS[9]]['Available channels'] = str(8)
-config['Equipment.Driving system.' + IGT_DS[9]]['Connection info'] = str(os.path.join(
-    CONFIG_FILE_FOLDER_IGT_DS,
-    'gen_Nijmegen_8_F720.json'))  # should be in the same directory as code
-config['Equipment.Driving system.' + IGT_DS[9]]['Transducer compatibility'] = str('\n'.join(
-    SC_TRAN_4CH + DUMMIES))
-config['Equipment.Driving system.' + IGT_DS[9]]['Power options'] = '\n'.join([POW_AMPL, POW_PRESS,
-                                                                              POW_VOLT])
-config['Equipment.Driving system.' + IGT_DS[9]]['Requires conversion equations?'] = str(True)
-config['Equipment.Driving system.' + IGT_DS[9]]['Active?'] = str(False)
+# 1/2/3 x 52 ch.: drive one, two, or three 52-element Clover transducers at once, same
+# 52-of-64-wired-per-bank layout as the 4 x 52 ch. variant below, just fewer banks exposed.
+_add_driving_system(
+    IGT_DS[4],
+    name=IGT + ' 256 ch. - 1 x 52 ch.',
+    manufacturer=IGT,
+    available_channels=52,
+    connection_info=str(os.path.join(
+        CONFIG_FILE_FOLDER_IGT_DS, 'gen_Nijmegen_393F_1x52_MOC12.json')),
+    transducer_compatibility=CLOVER_TRANS + DUMMIES,
+    power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
+    native_power_parameters=POW_AMPL,
+    focus_options=[FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
+    native_focus_parameters=FOC_XYZ_WRT_BOWL,
+    max_transducer_slots=1,
+    max_buffers=2,
+    active=True,
+)
 
-config['Equipment.Driving system.' + IGT_DS[10]] = {}
-config['Equipment.Driving system.' + IGT_DS[10]]['Name'] = IGT + ' 8 ch. - 1 x 4 ch.'
-config['Equipment.Driving system.' + IGT_DS[10]]['Manufacturer'] = IGT
-config['Equipment.Driving system.' + IGT_DS[10]]['Available channels'] = str(4)
-config['Equipment.Driving system.' + IGT_DS[10]]['Connection info'] = str(os.path.join(
-    CONFIG_FILE_FOLDER_IGT_DS,
-    'gen_Nijmegen_4_F720.json'))  # should be in the same directory as code
-config['Equipment.Driving system.' + IGT_DS[10]]['Transducer compatibility'] = str('\n'.join(
-    SC_TRAN_4CH + DUMMIES))
-config['Equipment.Driving system.' + IGT_DS[10]]['Power options'] = '\n'.join([POW_AMPL, POW_PRESS,
-                                                                              POW_VOLT])
-config['Equipment.Driving system.' + IGT_DS[10]]['Requires conversion equations?'] = str(True)
-config['Equipment.Driving system.' + IGT_DS[10]]['Active?'] = str(False)
+_add_driving_system(
+    IGT_DS[5],
+    name=IGT + ' 256 ch. - 2 x 52 ch.',
+    manufacturer=IGT,
+    available_channels=52 * 2,
+    connection_info=str(os.path.join(
+        CONFIG_FILE_FOLDER_IGT_DS, 'gen_Nijmegen_393F_2x52_MOC12.json')),
+    transducer_compatibility=CLOVER_TRANS + DUMMIES,
+    power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
+    native_power_parameters=POW_AMPL,
+    focus_options=[FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
+    native_focus_parameters=FOC_XYZ_WRT_BOWL,
+    max_transducer_slots=2,
+    max_buffers=2,
+    active=True,
+)
 
-config['Equipment.Driving system.' + IGT_DS[11]] = {}
-config['Equipment.Driving system.' + IGT_DS[11]]['Name'] = IGT + ' 8 ch. - 2 x 2 ch.'
-config['Equipment.Driving system.' + IGT_DS[11]]['Manufacturer'] = IGT
-config['Equipment.Driving system.' + IGT_DS[11]]['Available channels'] = str(4)
-config['Equipment.Driving system.' + IGT_DS[11]]['Connection info'] = str(os.path.join(
-    CONFIG_FILE_FOLDER_IGT_DS,
-    'gen_Nijmegen_8c4_F720.json'))  # should be in the same directory as code
-config['Equipment.Driving system.' + IGT_DS[11]]['Transducer compatibility'] = str('\n'.join(
-    SC_TRAN_2CH + DUMMIES))
-config['Equipment.Driving system.' + IGT_DS[11]]['Power options'] = '\n'.join([POW_AMPL, POW_PRESS,
-                                                                              POW_VOLT])
-config['Equipment.Driving system.' + IGT_DS[11]]['Requires conversion equations?'] = str(True)
-config['Equipment.Driving system.' + IGT_DS[11]]['Active?'] = str(False)
+_add_driving_system(
+    IGT_DS[6],
+    name=IGT + ' 256 ch. - 3 x 52 ch.',
+    manufacturer=IGT,
+    available_channels=52 * 3,
+    connection_info=str(os.path.join(
+        CONFIG_FILE_FOLDER_IGT_DS, 'gen_Nijmegen_393F_3x52_MOC12.json')),
+    transducer_compatibility=CLOVER_TRANS + DUMMIES,
+    power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
+    native_power_parameters=POW_AMPL,
+    focus_options=[FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
+    native_focus_parameters=FOC_XYZ_WRT_BOWL,
+    max_transducer_slots=3,
+    max_buffers=2,
+    active=True,
+)
 
-config['Equipment.Driving system.' + IGT_DS[12]] = {}
-config['Equipment.Driving system.' + IGT_DS[12]]['Name'] = IGT + ' 8 ch. - 1 x 2 ch.'
-config['Equipment.Driving system.' + IGT_DS[12]]['Manufacturer'] = IGT
-config['Equipment.Driving system.' + IGT_DS[12]]['Available channels'] = str(2)
-config['Equipment.Driving system.' + IGT_DS[12]]['Connection info'] = str(os.path.join(
-    CONFIG_FILE_FOLDER_IGT_DS,
-    'gen_Nijmegen_4c2_F720.json'))  # should be in the same directory as code
-config['Equipment.Driving system.' + IGT_DS[12]]['Transducer compatibility'] = str('\n'.join(
-    SC_TRAN_2CH + DUMMIES))
-config['Equipment.Driving system.' + IGT_DS[12]]['Power options'] = '\n'.join([POW_AMPL, POW_PRESS,
-                                                                              POW_VOLT])
-config['Equipment.Driving system.' + IGT_DS[12]]['Requires conversion equations?'] = str(True)
-config['Equipment.Driving system.' + IGT_DS[12]]['Active?'] = str(False)
+# 4 x 52 ch.: drives four 52-element Clover transducers at once. Each of the 4 underlying banks
+# is actually 64 channels wide; only 52 are wired per Clover (see gen_Nijmegen_393F_4x52_MOC12.
+# json's own channel list: channels 52-63 of each bank are skipped).
+_add_driving_system(
+    IGT_DS[7],
+    name=IGT + ' 256 ch. - 4 x 52 ch.',
+    manufacturer=IGT,
+    available_channels=52 * 4,
+    connection_info=str(os.path.join(
+        CONFIG_FILE_FOLDER_IGT_DS, 'gen_Nijmegen_393F_4x52_MOC12.json')),
+    transducer_compatibility=CLOVER_TRANS + DUMMIES,
+    power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
+    native_power_parameters=POW_AMPL,
+    focus_options=[FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
+    native_focus_parameters=FOC_XYZ_WRT_BOWL,
+    max_transducer_slots=4,
+    max_buffers=2,
+    active=False,
+)
 
 #######################################################################################
 # CITRUS - Driving systems
 #######################################################################################
 
-config['Equipment.Driving system.' + CITRUS_DS[0]] = {}
-config['Equipment.Driving system.' + CITRUS_DS[0]]['Name'] = CITRUS + ' 256 ch.'
-config['Equipment.Driving system.' + CITRUS_DS[0]]['Manufacturer'] = CITRUS
-config['Equipment.Driving system.' + CITRUS_DS[0]]['Available channels'] = str(256)
-config['Equipment.Driving system.' + CITRUS_DS[0]]['Connection info'] = 'COM1'
-config['Equipment.Driving system.' + CITRUS_DS[0]]['Transducer compatibility'] = str('\n'.join(
-    CITRUS_TRANS + DUMMIES))
-config['Equipment.Driving system.' + CITRUS_DS[0]]['Power options'] = '\n'.join([POW_VOLT])
-config['Equipment.Driving system.' + CITRUS_DS[0]]['Requires conversion equations?'] = str(False)
-config['Equipment.Driving system.' + CITRUS_DS[0]]['Active?'] = str(True)
+_add_driving_system(
+    CITRUS_DS[0],
+    name=CITRUS + ' 256 ch.',
+    manufacturer=CITRUS,
+    available_channels=256,
+    connection_info='COM1',
+    # No Dummy here either -- same reason as Sonic Concepts: transducer selection isn't
+    # software-managed for this driving system.
+    transducer_compatibility=CITRUS_TRANS,
+    power_options=[POW_VOLT],
+    native_power_parameters=POW_VOLT,
+    focus_options=[FOC_WRT_EXIT],
+    native_focus_parameters=FOC_WRT_EXIT,
+    max_transducer_slots=2,
+    max_buffers=1,
+    active=True,
+)
 
 #######################################################################################
 # Sonic Concepts - Tranducers
 #######################################################################################
 
-config['Equipment.Transducer.' + SC_TRANS[0]] = {}
-config['Equipment.Transducer.' + SC_TRANS[0]]['Name'] = 'NeuroFUS 2 ch. CTX-250-009'
-config['Equipment.Transducer.' + SC_TRANS[0]]['Manufacturer'] = SONIC_CONCEPTS
-config['Equipment.Transducer.' + SC_TRANS[0]]['Elements'] = str(2)
-config['Equipment.Transducer.' + SC_TRANS[0]]['Fund. freq.'] = str(250)  # [kHz]
+_add_transducer(
+    SC_TRANS[0], name='NeuroFUS 2 ch. CTX-250-009', manufacturer=SONIC_CONCEPTS,
+    elements=2, fund_freq=250, min_focus=15.9, max_focus=46.0, exit_plane_dist=6.0,
+    active=True,
+)
 
-# [mm] only required for Imasonic
-config['Equipment.Transducer.' + SC_TRANS[0]]['Natural focus'] = str(0)
-config['Equipment.Transducer.' + SC_TRANS[0]]['Exit plane - first element dist.'] = str(0)
+_add_transducer(
+    SC_TRANS[1], name='NeuroFUS 2 ch. CTX-250-014', manufacturer=SONIC_CONCEPTS,
+    elements=2, fund_freq=250, min_focus=12.6, max_focus=44.1, exit_plane_dist=6.0,
+    active=True,
+)
 
-config['Equipment.Transducer.' + SC_TRANS[0]]['Min. focus'] = str(15.9)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + SC_TRANS[0]]['Max. focus'] = str(46.0)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + SC_TRANS[0]]['Steer information'] = str(os.path.join(
-    CONFIG_FILE_FOLDER_SC_TRAN,
-    'CTX-250-009 - TPO-105-010 - Steer Table.xlsx'))  # should be in the same directory as code
-config['Equipment.Transducer.' + SC_TRANS[0]]['Active?'] = str(True)
+_add_transducer(
+    SC_TRANS[2], name='NeuroFUS 2 ch. CTX-500-006', manufacturer=SONIC_CONCEPTS,
+    elements=2, fund_freq=500, min_focus=33.2, max_focus=79.4, exit_plane_dist=6.0,
+    active=True,
+)
 
-config['Equipment.Transducer.' + SC_TRANS[1]] = {}
-config['Equipment.Transducer.' + SC_TRANS[1]]['Name'] = 'NeuroFUS 2 ch. CTX-250-014'
-config['Equipment.Transducer.' + SC_TRANS[1]]['Manufacturer'] = SONIC_CONCEPTS
-config['Equipment.Transducer.' + SC_TRANS[1]]['Elements'] = str(2)
-config['Equipment.Transducer.' + SC_TRANS[1]]['Fund. freq.'] = str(250)  # [kHz]
+_add_transducer(
+    SC_TRANS[3], name='NeuroFUS 4 ch. CTX-250-001', manufacturer=SONIC_CONCEPTS,
+    elements=4, fund_freq=250, min_focus=13.7, max_focus=61.5, exit_plane_dist=10.56,
+    active=True,
+)
 
-# [mm] only required for Imasonic
-config['Equipment.Transducer.' + SC_TRANS[1]]['Natural focus'] = str(0)
-config['Equipment.Transducer.' + SC_TRANS[1]]['Exit plane - first element dist.'] = str(0)
+_add_transducer(
+    SC_TRANS[4], name='NeuroFUS 4 ch. CTX-250-026', manufacturer=SONIC_CONCEPTS,
+    elements=4, fund_freq=250, min_focus=21.9, max_focus=61.5, exit_plane_dist=10.56,
+    active=True,
+)
 
-config['Equipment.Transducer.' + SC_TRANS[1]]['Min. focus'] = str(12.6)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + SC_TRANS[1]]['Max. focus'] = str(44.1)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + SC_TRANS[1]]['Steer information'] = str(os.path.join(
-    CONFIG_FILE_FOLDER_SC_TRAN,
-    'CTX-250-014 - TPO-105-010 - Steer Table.xlsx'))  # should be in the same directory as code
-config['Equipment.Transducer.' + SC_TRANS[1]]['Active?'] = str(True)
+_add_transducer(
+    SC_TRANS[5], name='NeuroFUS 4 ch. CTX-500-024', manufacturer=SONIC_CONCEPTS,
+    elements=4, fund_freq=500, min_focus=31.7, max_focus=77.0, exit_plane_dist=10.56,
+    active=False,
+)
 
+_add_transducer(
+    SC_TRANS[6], name='NeuroFUS 4 ch. CTX-500-026', manufacturer=SONIC_CONCEPTS,
+    elements=4, fund_freq=500, min_focus=39.6, max_focus=79.6, exit_plane_dist=10.56,
+    active=True,
+)
 
-config['Equipment.Transducer.' + SC_TRANS[2]] = {}
-config['Equipment.Transducer.' + SC_TRANS[2]]['Name'] = 'NeuroFUS 2 ch. CTX-500-006'
-config['Equipment.Transducer.' + SC_TRANS[2]]['Manufacturer'] = SONIC_CONCEPTS
-config['Equipment.Transducer.' + SC_TRANS[2]]['Elements'] = str(2)
-config['Equipment.Transducer.' + SC_TRANS[2]]['Fund. freq.'] = str(500)  # [kHz]
-
-# [mm] only required for Imasonic
-config['Equipment.Transducer.' + SC_TRANS[2]]['Natural focus'] = str(0)
-config['Equipment.Transducer.' + SC_TRANS[2]]['Exit plane - first element dist.'] = str(0)
-
-config['Equipment.Transducer.' + SC_TRANS[2]]['Min. focus'] = str(33.2)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + SC_TRANS[2]]['Max. focus'] = str(79.4)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + SC_TRANS[2]]['Steer information'] = str(os.path.join(
-    CONFIG_FILE_FOLDER_SC_TRAN,
-    'CTX-500-006 - TPO-105-010 - Steer Table.xlsx'))  # should be in the same directory as code
-config['Equipment.Transducer.' + SC_TRANS[2]]['Active?'] = str(True)
-
-config['Equipment.Transducer.' + SC_TRANS[3]] = {}
-config['Equipment.Transducer.' + SC_TRANS[3]]['Name'] = 'NeuroFUS 4 ch. CTX-250-001'
-config['Equipment.Transducer.' + SC_TRANS[3]]['Manufacturer'] = SONIC_CONCEPTS
-config['Equipment.Transducer.' + SC_TRANS[3]]['Elements'] = str(4)
-config['Equipment.Transducer.' + SC_TRANS[3]]['Fund. freq.'] = str(250)  # [kHz]
-
-# [mm] only required for Imasonic
-config['Equipment.Transducer.' + SC_TRANS[3]]['Natural focus'] = str(0)
-config['Equipment.Transducer.' + SC_TRANS[3]]['Exit plane - first element dist.'] = str(0)
-
-config['Equipment.Transducer.' + SC_TRANS[3]]['Min. focus'] = str(13.7)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + SC_TRANS[3]]['Max. focus'] = str(61.5)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + SC_TRANS[3]]['Steer information'] = str(os.path.join(
-    CONFIG_FILE_FOLDER_SC_TRAN,
-    'CTX-250-001 - TPO-105-010 - Steer Table.xlsx'))  # should be in the same directory as code
-config['Equipment.Transducer.' + SC_TRANS[3]]['Active?'] = str(True)
-
-config['Equipment.Transducer.' + SC_TRANS[4]] = {}
-config['Equipment.Transducer.' + SC_TRANS[4]]['Name'] = 'NeuroFUS 4 ch. CTX-250-026'
-config['Equipment.Transducer.' + SC_TRANS[4]]['Manufacturer'] = SONIC_CONCEPTS
-config['Equipment.Transducer.' + SC_TRANS[4]]['Elements'] = str(4)
-config['Equipment.Transducer.' + SC_TRANS[4]]['Fund. freq.'] = str(250)  # [kHz]
-
-# [mm] only required for Imasonic
-config['Equipment.Transducer.' + SC_TRANS[4]]['Natural focus'] = str(0)
-config['Equipment.Transducer.' + SC_TRANS[4]]['Exit plane - first element dist.'] = str(0)
-
-config['Equipment.Transducer.' + SC_TRANS[4]]['Min. focus'] = str(22.2)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + SC_TRANS[4]]['Max. focus'] = str(61.5)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + SC_TRANS[4]]['Steer information'] = str(os.path.join(
-    CONFIG_FILE_FOLDER_SC_TRAN,
-    'CTX-250-026 - TPO-105-010 - Steer Table.xlsx'))  # should be in the same directory as code
-config['Equipment.Transducer.' + SC_TRANS[4]]['Active?'] = str(True)
-
-config['Equipment.Transducer.' + SC_TRANS[5]] = {}
-config['Equipment.Transducer.' + SC_TRANS[5]]['Name'] = 'NeuroFUS 4 ch. CTX-500-024'
-config['Equipment.Transducer.' + SC_TRANS[5]]['Manufacturer'] = SONIC_CONCEPTS
-config['Equipment.Transducer.' + SC_TRANS[5]]['Elements'] = str(4)
-config['Equipment.Transducer.' + SC_TRANS[5]]['Fund. freq.'] = str(500)  # [kHz]
-
-# [mm] only required for Imasonic
-config['Equipment.Transducer.' + SC_TRANS[5]]['Natural focus'] = str(0)
-config['Equipment.Transducer.' + SC_TRANS[5]]['Exit plane - first element dist.'] = str(0)
-
-config['Equipment.Transducer.' + SC_TRANS[5]]['Min. focus'] = str(31.7)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + SC_TRANS[5]]['Max. focus'] = str(77.0)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + SC_TRANS[5]]['Steer information'] = str(os.path.join(
-    CONFIG_FILE_FOLDER_SC_TRAN,
-    'CTX-500-024 - TPO-105-010 - Steer Table.xlsx'))  # should be in the same directory as code
-config['Equipment.Transducer.' + SC_TRANS[5]]['Active?'] = str(False)
-
-config['Equipment.Transducer.' + SC_TRANS[6]] = {}
-config['Equipment.Transducer.' + SC_TRANS[6]]['Name'] = 'NeuroFUS 4 ch. CTX-500-026'
-config['Equipment.Transducer.' + SC_TRANS[6]]['Manufacturer'] = SONIC_CONCEPTS
-config['Equipment.Transducer.' + SC_TRANS[6]]['Elements'] = str(4)
-config['Equipment.Transducer.' + SC_TRANS[6]]['Fund. freq.'] = str(500)  # [kHz]
-
-# [mm] only required for Imasonic
-config['Equipment.Transducer.' + SC_TRANS[6]]['Natural focus'] = str(0)
-config['Equipment.Transducer.' + SC_TRANS[6]]['Exit plane - first element dist.'] = str(0)
-
-config['Equipment.Transducer.' + SC_TRANS[6]]['Min. focus'] = str(39.6)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + SC_TRANS[6]]['Max. focus'] = str(79.6)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + SC_TRANS[6]]['Steer information'] = str(os.path.join(
-    CONFIG_FILE_FOLDER_SC_TRAN,
-    'CTX-500-026 - TPO-105-010 - Steer Table.xlsx'))  # should be in the same directory as code
-config['Equipment.Transducer.' + SC_TRANS[6]]['Active?'] = str(True)
-
-config['Equipment.Transducer.' + SC_TRANS[7]] = {}
-config['Equipment.Transducer.' + SC_TRANS[7]]['Name'] = 'NeuroFUS 4 ch. DPX-500-022'
-config['Equipment.Transducer.' + SC_TRANS[7]]['Manufacturer'] = SONIC_CONCEPTS
-config['Equipment.Transducer.' + SC_TRANS[7]]['Elements'] = str(4)
-config['Equipment.Transducer.' + SC_TRANS[7]]['Fund. freq.'] = str(500)  # [kHz]
-
-# [mm] only required for Imasonic
-config['Equipment.Transducer.' + SC_TRANS[7]]['Natural focus'] = str(0)
-config['Equipment.Transducer.' + SC_TRANS[7]]['Exit plane - first element dist.'] = str(0)
-
-config['Equipment.Transducer.' + SC_TRANS[7]]['Min. focus'] = str(54)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + SC_TRANS[7]]['Max. focus'] = str(122)  # [mm], wrt exit plane
-
-# should be in the same directory as code
-config['Equipment.Transducer.' + SC_TRANS[7]]['Steer information'] = ''
-config['Equipment.Transducer.' + SC_TRANS[7]]['Active?'] = str(True)
+_add_transducer(
+    SC_TRANS[7], name='NeuroFUS 4 ch. DPX-500-022', manufacturer=SONIC_CONCEPTS,
+    elements=4, fund_freq=500, min_focus=54, max_focus=122, exit_plane_dist=5.1,
+    active=False,
+)
 
 #######################################################################################
 # Imasonic - Tranducers
 #######################################################################################
-config['Equipment.Transducer.' + IS_TRANS[0]] = {}
-config['Equipment.Transducer.' + IS_TRANS[0]]['Name'] = (
-    IMASONIC + ' 10 ch. PCD15287_01001 ROC 75 mm')
-config['Equipment.Transducer.' + IS_TRANS[0]]['Manufacturer'] = IMASONIC
-config['Equipment.Transducer.' + IS_TRANS[0]]['Elements'] = str(10)
-config['Equipment.Transducer.' + IS_TRANS[0]]['Fund. freq.'] = str(300)  # [kHz]
-config['Equipment.Transducer.' + IS_TRANS[0]]['Natural focus'] = str(75)  # [mm]
-# [mm]
-config['Equipment.Transducer.' + IS_TRANS[0]]['Exit plane - first element dist.'] = str(9.7)
-config['Equipment.Transducer.' + IS_TRANS[0]]['Min. focus'] = str(5.0)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + IS_TRANS[0]]['Max. focus'] = str(91.7)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + IS_TRANS[0]]['Steer information'] = str(os.path.join(
-    CONFIG_FILE_FOLDER_IS_TRAN,
-    'transducer_15287_10_300kHz.ini'))  # should be in the same directory as code
-config['Equipment.Transducer.' + IS_TRANS[0]]['Active?'] = str(True)
 
-config['Equipment.Transducer.' + IS_TRANS[1]] = {}
-config['Equipment.Transducer.' + IS_TRANS[1]]['Name'] = (
-    IMASONIC + ' 10 ch. PCD15287_01002 ROC 75 mm')
-config['Equipment.Transducer.' + IS_TRANS[1]]['Manufacturer'] = IMASONIC
-config['Equipment.Transducer.' + IS_TRANS[1]]['Elements'] = str(10)
-config['Equipment.Transducer.' + IS_TRANS[1]]['Fund. freq.'] = str(300)  # [kHz]
-config['Equipment.Transducer.' + IS_TRANS[1]]['Natural focus'] = str(75)  # [mm]
-# [mm]
-config['Equipment.Transducer.' + IS_TRANS[1]]['Exit plane - first element dist.'] = str(9.7)
-config['Equipment.Transducer.' + IS_TRANS[1]]['Min. focus'] = str(6.1)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + IS_TRANS[1]]['Max. focus'] = str(93.2)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + IS_TRANS[1]]['Steer information'] = str(os.path.join(
-    CONFIG_FILE_FOLDER_IS_TRAN,
-    'transducer_15287_10_300kHz.ini'))  # should be in the same directory as code
-config['Equipment.Transducer.' + IS_TRANS[1]]['Active?'] = str(True)
+_add_transducer(
+    IS_TRANS[0], name=IMASONIC + ' 10 ch. PCD15287_01001 ROC 75 mm', manufacturer=IMASONIC,
+    elements=10, fund_freq=300, exit_plane_dist=9.7,
+    min_focus=5.0, max_focus=91.7,
+    steer_information=str(os.path.join(
+        CONFIG_FILE_FOLDER_IS_TRAN, 'transducer_15287_10_300kHz.ini')),
+    active=True,
+)
 
-config['Equipment.Transducer.' + IS_TRANS[2]] = {}
-config['Equipment.Transducer.' + IS_TRANS[2]]['Name'] = (
-    IMASONIC + ' 10 ch. PCD15473_01001 ROC 100 mm')
-config['Equipment.Transducer.' + IS_TRANS[2]]['Manufacturer'] = IMASONIC
-config['Equipment.Transducer.' + IS_TRANS[2]]['Elements'] = str(10)
-config['Equipment.Transducer.' + IS_TRANS[2]]['Fund. freq.'] = str(300)  # [kHz]
-config['Equipment.Transducer.' + IS_TRANS[2]]['Natural focus'] = str(100)  # [mm]
-# [mm]
-config['Equipment.Transducer.' + IS_TRANS[2]]['Exit plane - first element dist.'] = str(7.3)
-config['Equipment.Transducer.' + IS_TRANS[2]]['Min. focus'] = str(6.7)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + IS_TRANS[2]]['Max. focus'] = str(92.6)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + IS_TRANS[2]]['Steer information'] = str(os.path.join(
-    CONFIG_FILE_FOLDER_IS_TRAN,
-    'transducer_15473_10_300kHz.ini'))  # should be in the same directory as code
-config['Equipment.Transducer.' + IS_TRANS[2]]['Active?'] = str(True)
+_add_transducer(
+    IS_TRANS[1], name=IMASONIC + ' 10 ch. PCD15287_01002 ROC 75 mm', manufacturer=IMASONIC,
+    elements=10, fund_freq=300, exit_plane_dist=9.7,
+    min_focus=6.1, max_focus=93.2,
+    steer_information=str(os.path.join(
+        CONFIG_FILE_FOLDER_IS_TRAN, 'transducer_15287_10_300kHz.ini')),
+    active=True,
+)
 
-config['Equipment.Transducer.' + IS_TRANS[3]] = {}
-config['Equipment.Transducer.' + IS_TRANS[3]]['Name'] = (
-    IMASONIC + ' 10 ch. PCD15473_01002 ROC 100 mm BROKEN')
-config['Equipment.Transducer.' + IS_TRANS[3]]['Manufacturer'] = IMASONIC
-config['Equipment.Transducer.' + IS_TRANS[3]]['Elements'] = str(10)
-config['Equipment.Transducer.' + IS_TRANS[3]]['Fund. freq.'] = str(300)  # [kHz]
-config['Equipment.Transducer.' + IS_TRANS[3]]['Natural focus'] = str(100)  # [mm]
-# [mm]
-config['Equipment.Transducer.' + IS_TRANS[3]]['Exit plane - first element dist.'] = str(7.3)
-config['Equipment.Transducer.' + IS_TRANS[3]]['Min. focus'] = str(5.32)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + IS_TRANS[3]]['Max. focus'] = str(92.17)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + IS_TRANS[3]]['Steer information'] = str(os.path.join(
-    CONFIG_FILE_FOLDER_IS_TRAN,
-    'transducer_15473_10_300kHz.ini'))  # should be in the same directory as code
-config['Equipment.Transducer.' + IS_TRANS[3]]['Active?'] = str(False)
+_add_transducer(
+    IS_TRANS[2], name=IMASONIC + ' 10 ch. PCD15473_01001 ROC 100 mm', manufacturer=IMASONIC,
+    elements=10, fund_freq=300, exit_plane_dist=7.3,
+    min_focus=6.7, max_focus=92.6,
+    steer_information=str(os.path.join(
+        CONFIG_FILE_FOLDER_IS_TRAN, 'transducer_15473_10_300kHz.ini')),
+    active=True,
+)
 
-config['Equipment.Transducer.' + IS_TRANS[4]] = {}
-config['Equipment.Transducer.' + IS_TRANS[4]]['Name'] = (
-    IMASONIC + ' 10 ch. PCD15473_01003 ROC 100 mm')
-config['Equipment.Transducer.' + IS_TRANS[4]]['Manufacturer'] = IMASONIC
-config['Equipment.Transducer.' + IS_TRANS[4]]['Elements'] = str(10)
-config['Equipment.Transducer.' + IS_TRANS[4]]['Fund. freq.'] = str(300)  # [kHz]
-config['Equipment.Transducer.' + IS_TRANS[4]]['Natural focus'] = str(100)  # [mm]
-# [mm]
-config['Equipment.Transducer.' + IS_TRANS[4]]['Exit plane - first element dist.'] = str(7.3)
-config['Equipment.Transducer.' + IS_TRANS[4]]['Min. focus'] = str(7.2)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + IS_TRANS[4]]['Max. focus'] = str(93.6)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + IS_TRANS[4]]['Steer information'] = str(os.path.join(
-    CONFIG_FILE_FOLDER_IS_TRAN,
-    'transducer_15473_10_300kHz.ini'))  # should be in the same directory as code
-config['Equipment.Transducer.' + IS_TRANS[4]]['Active?'] = str(True)
+_add_transducer(
+    IS_TRANS[3], name=IMASONIC + ' 10 ch. PCD15473_01002 ROC 100 mm BROKEN',
+    manufacturer=IMASONIC,
+    elements=10, fund_freq=300, exit_plane_dist=7.3,
+    min_focus=5.32, max_focus=92.17,
+    steer_information=str(os.path.join(
+        CONFIG_FILE_FOLDER_IS_TRAN, 'transducer_15473_10_300kHz.ini')),
+    active=False,
+)
+
+_add_transducer(
+    IS_TRANS[4], name=IMASONIC + ' 10 ch. PCD15473_01003 ROC 100 mm', manufacturer=IMASONIC,
+    elements=10, fund_freq=300, exit_plane_dist=7.3,
+    min_focus=7.2, max_focus=93.6,
+    steer_information=str(os.path.join(
+        CONFIG_FILE_FOLDER_IS_TRAN, 'transducer_15473_10_300kHz.ini')),
+    active=True,
+)
 
 #######################################################################################
 # OPM setup R100 Imasonic tranducers
 #######################################################################################
-config['Equipment.Transducer.' + IS_TRANS[5]] = {}
-config['Equipment.Transducer.' + IS_TRANS[5]]['Name'] = (
-    IMASONIC + ' 10 ch. PCD15473_01001 ROC 100 mm - OPM setup')
-config['Equipment.Transducer.' + IS_TRANS[5]]['Manufacturer'] = IMASONIC
-config['Equipment.Transducer.' + IS_TRANS[5]]['Elements'] = str(10)
-config['Equipment.Transducer.' + IS_TRANS[5]]['Fund. freq.'] = str(300)  # [kHz]
-config['Equipment.Transducer.' + IS_TRANS[5]]['Natural focus'] = str(100)  # [mm]
-# [mm]
-config['Equipment.Transducer.' + IS_TRANS[5]]['Exit plane - first element dist.'] = str(7.3)
-config['Equipment.Transducer.' + IS_TRANS[5]]['Min. focus'] = str(7.8)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + IS_TRANS[5]]['Max. focus'] = str(92.0)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + IS_TRANS[5]]['Steer information'] = str(os.path.join(
-    CONFIG_FILE_FOLDER_IS_TRAN,
-    'transducer_15473_10_300kHz_inverted_OPM.ini'))  # should be in the same directory as code
-config['Equipment.Transducer.' + IS_TRANS[5]]['Active?'] = str(True)
 
-config['Equipment.Transducer.' + IS_TRANS[6]] = {}
-config['Equipment.Transducer.' + IS_TRANS[6]]['Name'] = (
-    IMASONIC + ' 10 ch. PCD15473_01003 ROC 100 mm - OPM setup')
-config['Equipment.Transducer.' + IS_TRANS[6]]['Manufacturer'] = IMASONIC
-config['Equipment.Transducer.' + IS_TRANS[6]]['Elements'] = str(10)
-config['Equipment.Transducer.' + IS_TRANS[6]]['Fund. freq.'] = str(300)  # [kHz]
-config['Equipment.Transducer.' + IS_TRANS[6]]['Natural focus'] = str(100)  # [mm]
-# [mm]
-config['Equipment.Transducer.' + IS_TRANS[6]]['Exit plane - first element dist.'] = str(7.3)
-config['Equipment.Transducer.' + IS_TRANS[6]]['Min. focus'] = str(6.7)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + IS_TRANS[6]]['Max. focus'] = str(93.2)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + IS_TRANS[6]]['Steer information'] = str(os.path.join(
-    CONFIG_FILE_FOLDER_IS_TRAN,
-    'transducer_15473_10_300kHz_inverted_OPM.ini'))  # should be in the same directory as code
-config['Equipment.Transducer.' + IS_TRANS[6]]['Active?'] = str(True)
+_add_transducer(
+    IS_TRANS[5], name=IMASONIC + ' 10 ch. PCD15473_01001 ROC 100 mm - OPM setup',
+    manufacturer=IMASONIC,
+    elements=10, fund_freq=300, exit_plane_dist=7.3,
+    min_focus=7.8, max_focus=92.0,
+    steer_information=str(os.path.join(
+        CONFIG_FILE_FOLDER_IS_TRAN, 'transducer_15473_10_300kHz_inverted_OPM.ini')),
+    active=True,
+)
+
+_add_transducer(
+    IS_TRANS[6], name=IMASONIC + ' 10 ch. PCD15473_01003 ROC 100 mm - OPM setup',
+    manufacturer=IMASONIC,
+    elements=10, fund_freq=300, exit_plane_dist=7.3,
+    min_focus=6.7, max_focus=93.2,
+    steer_information=str(os.path.join(
+        CONFIG_FILE_FOLDER_IS_TRAN, 'transducer_15473_10_300kHz_inverted_OPM.ini')),
+    active=True,
+)
+
+#######################################################################################
+# Imasonic - Clover tranducers
+#######################################################################################
+
+# One physical unit each, driven together via a 1/2/3/4 x 52 ch. IGT variant. can_3d_steer=True
+# is what actually unlocks the Focus xyz wrt exit/mid bowl options in the GUI for these (see
+# fus_ds_gui's ProtocolBuilder.focus_options()), not anything driving-system-specific.
+#
+# TODO: exit_plane_dist/min_focus/max_focus and each Clover's own steer_information .ini file
+# are all placeholders; real Clover geometry and 3D steer calibration data aren't available
+# yet. min_focus_x/max_focus_x/min_focus_y/max_focus_y are left at their safe (0, no lateral
+# offset) default for the same reason; fill them in once Clover's real steering range is known.
+_add_transducer(
+    CLOVER_TRANS[0], name='Clover 52 ch. #1', manufacturer=IMASONIC,
+    elements=52, fund_freq=350, exit_plane_dist=0,
+    min_focus=0, max_focus=1000,
+    can_3d_steer=True,
+    steer_information=str(os.path.join(
+        CONFIG_FILE_FOLDER_IS_TRAN, 'clover_1_PLACEHOLDER.ini')),
+    active=True,
+)
+
+_add_transducer(
+    CLOVER_TRANS[1], name='Clover 52 ch. #2', manufacturer=IMASONIC,
+    elements=52, fund_freq=350, exit_plane_dist=0,
+    min_focus=0, max_focus=1000,
+    can_3d_steer=True,
+    steer_information=str(os.path.join(
+        CONFIG_FILE_FOLDER_IS_TRAN, 'clover_2_PLACEHOLDER.ini')),
+    active=True,
+)
+
+_add_transducer(
+    CLOVER_TRANS[2], name='Clover 52 ch. #3', manufacturer=IMASONIC,
+    elements=52, fund_freq=350, exit_plane_dist=0,
+    min_focus=0, max_focus=1000,
+    can_3d_steer=True,
+    steer_information=str(os.path.join(
+        CONFIG_FILE_FOLDER_IS_TRAN, 'clover_3_PLACEHOLDER.ini')),
+    active=True,
+)
 
 #######################################################################################
 # Dummy tranducer
 #######################################################################################
 
-config['Equipment.Transducer.' + DUMMY] = {}
-config['Equipment.Transducer.' + DUMMY]['Name'] = 'Dummy load'
-config['Equipment.Transducer.' + DUMMY]['Manufacturer'] = ''
-config['Equipment.Transducer.' + DUMMY]['Elements'] = str(0)
-config['Equipment.Transducer.' + DUMMY]['Fund. freq.'] = str(0)  # [kHz]
-
-# [mm] only required for Imasonic
-config['Equipment.Transducer.' + DUMMY]['Natural focus'] = str(0)  # [mm]
-config['Equipment.Transducer.' + DUMMY]['Exit plane - first element dist.'] = str(0)
-
-config['Equipment.Transducer.' + DUMMY]['Min. focus'] = str(0)  # [mm]
-config['Equipment.Transducer.' + DUMMY]['Max. focus'] = str(1000)  # [mm]
-config['Equipment.Transducer.' + DUMMY]['Steer information'] = ''
-config['Equipment.Transducer.' + DUMMY]['Active?'] = str(False)
+# For characterizing a driving system's own electrical output (e.g. into resistors) with no
+# real transducer connected. Only usable with a driving system's native power/focus parameters
+# -- there is no Equipment.Combination.* calibration for Dummy with any driving system, and none
+# is meaningful: a dummy load has no real acoustic behavior to calibrate against, so setting a
+# non-native option (e.g. a target pressure) would exit with a "no active calibration" error.
+_add_transducer(
+    DUMMY, name='Dummy load', manufacturer='', elements=0, fund_freq=0,
+    min_focus=0, max_focus=1000, active=True,
+)
 
 #######################################################################################
 # CITRUS - Tranducers
 #######################################################################################
 
-config['Equipment.Transducer.' + CITRUS_TRANS[0]] = {}
-config['Equipment.Transducer.' + CITRUS_TRANS[0]]['Name'] = 'CITRUS_V2_465kHz_256_#5'
-config['Equipment.Transducer.' + CITRUS_TRANS[0]]['Manufacturer'] = CITRUS
-config['Equipment.Transducer.' + CITRUS_TRANS[0]]['Elements'] = str(256)
-config['Equipment.Transducer.' + CITRUS_TRANS[0]]['Fund. freq.'] = str(465)  # [kHz]
+_add_transducer(
+    CITRUS_TRANS[0], name='CITRUS_V2_465kHz_256_#5', manufacturer=CITRUS,
+    elements=256, fund_freq=465, min_focus=0, max_focus=200, active=True,
+)
 
-# [mm] only required for Imasonic
-config['Equipment.Transducer.' + CITRUS_TRANS[0]]['Natural focus'] = str(0)
-config['Equipment.Transducer.' + CITRUS_TRANS[0]]['Exit plane - first element dist.'] = str(0)
+_add_transducer(
+    CITRUS_TRANS[1], name='CITRUS_V2_465kHz_128_#6', manufacturer=CITRUS,
+    elements=128, fund_freq=465, min_focus=0, max_focus=200, active=True,
+)
 
-config['Equipment.Transducer.' + CITRUS_TRANS[0]]['Min. focus'] = str(0)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + CITRUS_TRANS[0]]['Max. focus'] = str(200)  # [mm], wrt exit plane
-
-# should be in the same directory as code
-config['Equipment.Transducer.' + CITRUS_TRANS[0]]['Steer information'] = ''
-config['Equipment.Transducer.' + CITRUS_TRANS[0]]['Active?'] = str(True)
-
-config['Equipment.Transducer.' + CITRUS_TRANS[1]] = {}
-config['Equipment.Transducer.' + CITRUS_TRANS[1]]['Name'] = 'CITRUS_V2_465kHz_128_#6'
-config['Equipment.Transducer.' + CITRUS_TRANS[1]]['Manufacturer'] = CITRUS
-config['Equipment.Transducer.' + CITRUS_TRANS[1]]['Elements'] = str(128)
-config['Equipment.Transducer.' + CITRUS_TRANS[1]]['Fund. freq.'] = str(465)  # [kHz]
-# [mm] only required for Imasonic
-config['Equipment.Transducer.' + CITRUS_TRANS[1]]['Natural focus'] = str(0)
-config['Equipment.Transducer.' + CITRUS_TRANS[1]]['Exit plane - first element dist.'] = str(0)
-
-config['Equipment.Transducer.' + CITRUS_TRANS[1]]['Min. focus'] = str(0)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + CITRUS_TRANS[1]]['Max. focus'] = str(200)  # [mm], wrt exit plane
-# should be in the same directory as code
-config['Equipment.Transducer.' + CITRUS_TRANS[1]]['Steer information'] = ''
-config['Equipment.Transducer.' + CITRUS_TRANS[1]]['Active?'] = str(True)
-
-config['Equipment.Transducer.' + CITRUS_TRANS[2]] = {}
-config['Equipment.Transducer.' + CITRUS_TRANS[2]]['Name'] = 'CITRUS_V2_465kHz_128_#7'
-config['Equipment.Transducer.' + CITRUS_TRANS[2]]['Manufacturer'] = CITRUS
-config['Equipment.Transducer.' + CITRUS_TRANS[2]]['Elements'] = str(128)
-config['Equipment.Transducer.' + CITRUS_TRANS[2]]['Fund. freq.'] = str(465)  # [kHz]
-# [mm] only for Imasonic
-config['Equipment.Transducer.' + CITRUS_TRANS[2]]['Natural focus'] = str(0)
-config['Equipment.Transducer.' + CITRUS_TRANS[2]]['Exit plane - first element dist.'] = str(0)
-
-config['Equipment.Transducer.' + CITRUS_TRANS[2]]['Min. focus'] = str(0)  # [mm], wrt exit plane
-config['Equipment.Transducer.' + CITRUS_TRANS[2]]['Max. focus'] = str(200)  # [mm], wrt exit plane
-# should be in the same directory as code
-config['Equipment.Transducer.' + CITRUS_TRANS[2]]['Steer information'] = ''
-config['Equipment.Transducer.' + CITRUS_TRANS[2]]['Active?'] = str(True)
+_add_transducer(
+    CITRUS_TRANS[2], name='CITRUS_V2_465kHz_128_#7', manufacturer=CITRUS,
+    elements=128, fund_freq=465, min_focus=0, max_focus=200, active=True,
+)
 
 #######################################################################################
 # Driving system - transducer combinations
 #######################################################################################
 
-# # IGT-128-ch_comb_2x10-ch~IS_PCD15287_01001
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[0]] = {}
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['Driving system serial'] = (
-#     DS_TRAN_COMBOS[0].split(COMBO_JOIN_SIGN)[0])
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['Transducer serial'] = (
-#     DS_TRAN_COMBOS[0].split(COMBO_JOIN_SIGN)[1])
+# IGT-32-ch_comb_2x10-ch combinations
+_add_combination(
+    IGT_DS[1], IS_TRANS[0],
+    'IS_PCD15287_01001_equalizationCurveFitExport.json',
+    'IS_PCD15287_01001_focusCurveFitExport.json',
+    'IS_PCD15287_01001_powerCurveFitExport.json',
+    'voltageCurveFit_IGT_32_ch.json')
+_add_combination(
+    IGT_DS[1], IS_TRANS[1],
+    'IS_PCD15287_01002_equalizationCurveFitExport.json',
+    'IS_PCD15287_01002_focusCurveFitExport.json',
+    'IS_PCD15287_01002_powerCurveFitExport.json',
+    'voltageCurveFit_IGT_32_ch.json')
+_add_combination(
+    IGT_DS[1], IS_TRANS[2],
+    'IS_PCD15473_01001_equalizationCurveFitExport.json',
+    'IS_PCD15473_01001_focusCurveFitExport.json',
+    'IS_PCD15473_01001_powerCurveFitExport.json',
+    'voltageCurveFit_IGT_32_ch.json')
+_add_combination(
+    IGT_DS[1], IS_TRANS[3],
+    'IS_PCD15473_01002_equalizationCurveFitExport.json',
+    'IS_PCD15473_01002_focusCurveFitExport.json',
+    'IS_PCD15473_01002_powerCurveFitExport.json',
+    'voltageCurveFit_IGT_32_ch.json')
+_add_combination(
+    IGT_DS[1], IS_TRANS[4],
+    'IS_PCD15473_01003_equalizationCurveFitExport.json',
+    'IS_PCD15473_01003_focusCurveFitExport.json',
+    'IS_PCD15473_01003_powerCurveFitExport.json',
+    'voltageCurveFit_IGT_32_ch.json')
+_add_combination(
+    IGT_DS[1], IS_TRANS[5],
+    'IS_PCD15473_01001_OPM_equalizationCurveFitExport.json',
+    'IS_PCD15473_01001_OPM_focusCurveFitExport.json',
+    'IS_PCD15473_01001_OPM_powerCurveFitExport.json',
+    'voltageCurveFit_IGT_32_ch.json')
+_add_combination(
+    IGT_DS[1], IS_TRANS[6],
+    'IS_PCD15473_01003_OPM_equalizationCurveFitExport.json',
+    'IS_PCD15473_01003_OPM_focusCurveFitExport.json',
+    'IS_PCD15473_01003_OPM_powerCurveFitExport.json',
+    'voltageCurveFit_IGT_32_ch.json')
 
-# # should be in the same directory as code
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['EqualizationCurveFit json file'] = str(
-#     os.path.join(
-#         CONFIG_FILE_FOLDER_CONVERSION_DATA,
-#         'IS_PCD15287_01001_equalizationCurveFitExport.json'))
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['FocusCurveFit json file'] = str(
-#     os.path.join(
-#         CONFIG_FILE_FOLDER_CONVERSION_DATA,
-#         'IS_PCD15287_01001_focusCurveFitExport.json'))
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['PowerCurveFit json file'] = str(
-#     os.path.join(
-#         CONFIG_FILE_FOLDER_CONVERSION_DATA,
-#         'IS_PCD15287_01001_powerCurveFitExport.json'))
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['VoltageCurveFit json file'] = str(
-#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_128_ch.json'))
-
-
-# # IGT-128-ch_comb_2x10-ch~IS_PCD15287_01002
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[1]] = {}
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['Driving system serial'] = (
-#     DS_TRAN_COMBOS[1].split(COMBO_JOIN_SIGN)[0])
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['Transducer serial'] = (
-#     DS_TRAN_COMBOS[1].split(COMBO_JOIN_SIGN)[1])
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['EqualizationCurveFit json file'] = str(
-#     os.path.join(
-#         CONFIG_FILE_FOLDER_CONVERSION_DATA,
-#         'IS_PCD15287_01002_equalizationCurveFitExport.json'))
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['FocusCurveFit json file'] = str(
-#     os.path.join(
-#         CONFIG_FILE_FOLDER_CONVERSION_DATA,
-#         'IS_PCD15287_01002_focusCurveFitExport.json'))
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['PowerCurveFit json file'] = str(
-#     os.path.join(
-#         CONFIG_FILE_FOLDER_CONVERSION_DATA,
-#         'IS_PCD15287_01002_powerCurveFitExport.json'))
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['VoltageCurveFit json file'] = str(
-#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_128_ch.json'))
-
-# # IGT-128-ch_comb_2x10-ch~IS_PCD15473_01001
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[2]] = {}
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['Driving system serial'] = (
-#     DS_TRAN_COMBOS[2].split(COMBO_JOIN_SIGN)[0])
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['Transducer serial'] = (
-#     DS_TRAN_COMBOS[2].split(COMBO_JOIN_SIGN)[1])
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['EqualizationCurveFit json file'] = str(
-#     os.path.join(
-#         CONFIG_FILE_FOLDER_CONVERSION_DATA,
-#         'IS_PCD15473_01001_equalizationCurveFitExport.json'))
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['FocusCurveFit json file'] = str(
-#     os.path.join(
-#         CONFIG_FILE_FOLDER_CONVERSION_DATA,
-#         'IS_PCD15473_01001_focusCurveFitExport.json'))
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['PowerCurveFit json file'] = str(
-#     os.path.join(
-#         CONFIG_FILE_FOLDER_CONVERSION_DATA,
-#         'IS_PCD15473_01001_powerCurveFitExport.json'))
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['VoltageCurveFit json file'] = str(
-#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_128_ch.json'))
-
-# # IGT-128-ch_comb_2x10-ch~IS_PCD15473_01002
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[3]] = {}
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['Driving system serial'] = (
-#     DS_TRAN_COMBOS[3].split(COMBO_JOIN_SIGN)[0])
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['Transducer serial'] = (
-#     DS_TRAN_COMBOS[3].split(COMBO_JOIN_SIGN)[1])
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['EqualizationCurveFit json file'] = str(
-#     os.path.join(
-#         CONFIG_FILE_FOLDER_CONVERSION_DATA,
-#         'IS_PCD15473_01002_equalizationCurveFitExport.json'))
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['FocusCurveFit json file'] = str(
-#     os.path.join(
-#         CONFIG_FILE_FOLDER_CONVERSION_DATA,
-#         'IS_PCD15473_01002_focusCurveFitExport.json'))
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['PowerCurveFit json file'] = str(
-#     os.path.join(
-#         CONFIG_FILE_FOLDER_CONVERSION_DATA,
-#         'IS_PCD15473_01002_powerCurveFitExport.json'))
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['VoltageCurveFit json file'] = str(
-#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_128_ch.json'))
-
-# # IGT-128-ch_comb_2x10-ch~IS_PCD15473_01003
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[4]] = {}
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['Driving system serial'] = (
-#     DS_TRAN_COMBOS[4].split(COMBO_JOIN_SIGN)[0])
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['Transducer serial'] = (
-#     DS_TRAN_COMBOS[4].split(COMBO_JOIN_SIGN)[1])
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['EqualizationCurveFit json file'] = str(
-#     os.path.join(
-#         CONFIG_FILE_FOLDER_CONVERSION_DATA,
-#         'IS_PCD15473_01003_equalizationCurveFitExport.json'))
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['FocusCurveFit json file'] = str(
-#     os.path.join(
-#         CONFIG_FILE_FOLDER_CONVERSION_DATA,
-#         'IS_PCD15473_01003_focusCurveFitExport.json'))
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['PowerCurveFit json file'] = str(
-#     os.path.join(
-#         CONFIG_FILE_FOLDER_CONVERSION_DATA,
-#         'IS_PCD15473_01003_powerCurveFitExport.json'))
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['VoltageCurveFit json file'] = str(
-#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_128_ch.json'))
-
-# # IGT-128-ch_comb_1x10-ch~IS_PCD15287_01001
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[5]] = {}
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['Driving system serial'] = (
-#     DS_TRAN_COMBOS[5].split(COMBO_JOIN_SIGN)[0])
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['Transducer serial'] = (
-#     DS_TRAN_COMBOS[5].split(COMBO_JOIN_SIGN)[1])
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['EqualizationCurveFit json file'] = str(
-#     os.path.join(
-#         CONFIG_FILE_FOLDER_CONVERSION_DATA,
-#         'IS_PCD15287_01001_equalizationCurveFitExport.json'))
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['FocusCurveFit json file'] = str(
-#     os.path.join(
-#         CONFIG_FILE_FOLDER_CONVERSION_DATA,
-#         'IS_PCD15287_01001_focusCurveFitExport.json'))
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['PowerCurveFit json file'] = str(
-#     os.path.join(
-#         CONFIG_FILE_FOLDER_CONVERSION_DATA,
-#         'IS_PCD15287_01001_powerCurveFitExport.json'))
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['VoltageCurveFit json file'] = str(
-#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_128_ch.json'))
-
-# # IGT-128-ch_comb_1x10-ch~IS_PCD15287_01002
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[6]] = {}
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['Driving system serial'] = (
-#     DS_TRAN_COMBOS[6].split(COMBO_JOIN_SIGN)[0])
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['Transducer serial'] = (
-#     DS_TRAN_COMBOS[6].split(COMBO_JOIN_SIGN)[1])
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['EqualizationCurveFit json file'] = str(
-#     os.path.join(
-#         CONFIG_FILE_FOLDER_CONVERSION_DATA,
-#         'IS_PCD15287_01002_equalizationCurveFitExport.json'))
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['FocusCurveFit json file'] = str(
-#     os.path.join(
-#         CONFIG_FILE_FOLDER_CONVERSION_DATA,
-#         'IS_PCD15287_01002_focusCurveFitExport.json'))
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['PowerCurveFit json file'] = str(
-#     os.path.join(
-#         CONFIG_FILE_FOLDER_CONVERSION_DATA,
-#         'IS_PCD15287_01002_powerCurveFitExport.json'))
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['VoltageCurveFit json file'] = str(
-#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_128_ch.json'))
-
-# # IGT-128-ch_comb_1x10-ch~IS_PCD15473_01001
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[7]] = {}
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['Driving system serial'] = (
-#     DS_TRAN_COMBOS[7].split(COMBO_JOIN_SIGN)[0])
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['Transducer serial'] = (
-#     DS_TRAN_COMBOS[7].split(COMBO_JOIN_SIGN)[1])
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['EqualizationCurveFit json file'] = str(
-#     os.path.join(
-#         CONFIG_FILE_FOLDER_CONVERSION_DATA,
-#         'IS_PCD15473_01001_equalizationCurveFitExport.json'))
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['FocusCurveFit json file'] = str(
-#     os.path.join(
-#         CONFIG_FILE_FOLDER_CONVERSION_DATA,
-#         'IS_PCD15473_01001_focusCurveFitExport.json'))
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['PowerCurveFit json file'] = str(
-#     os.path.join(
-#         CONFIG_FILE_FOLDER_CONVERSION_DATA,
-#         'IS_PCD15473_01001_powerCurveFitExport.json'))
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['VoltageCurveFit json file'] = str(
-#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_128_ch.json'))
-
-# # IGT-128-ch_comb_1x10-ch~IS_PCD15473_01002
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[8]] = {}
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['Driving system serial'] = (
-#     DS_TRAN_COMBOS[8].split(COMBO_JOIN_SIGN)[0])
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['Transducer serial'] = (
-#     DS_TRAN_COMBOS[8].split(COMBO_JOIN_SIGN)[1])
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['EqualizationCurveFit json file'] = str(
-#     os.path.join(
-#         CONFIG_FILE_FOLDER_CONVERSION_DATA,
-#         'IS_PCD15473_01002_equalizationCurveFitExport.json'))
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['FocusCurveFit json file'] = str(
-#     os.path.join(
-#         CONFIG_FILE_FOLDER_CONVERSION_DATA,
-#         'IS_PCD15473_01002_focusCurveFitExport.json'))
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['PowerCurveFit json file'] = str(
-#     os.path.join(
-#         CONFIG_FILE_FOLDER_CONVERSION_DATA,
-#         'IS_PCD15473_01002_powerCurveFitExport.json'))
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['VoltageCurveFit json file'] = str(
-#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_128_ch.json'))
-
-# # IGT-128-ch_comb_1x10-ch~IS_PCD15473_01003
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[9]] = {}
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['Driving system serial'] = (
-#     DS_TRAN_COMBOS[9].split(COMBO_JOIN_SIGN)[0])
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['Transducer serial'] = (
-#     DS_TRAN_COMBOS[9].split(COMBO_JOIN_SIGN)[1])
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['EqualizationCurveFit json file'] = str(
-#     os.path.join(
-#         CONFIG_FILE_FOLDER_CONVERSION_DATA,
-#         'IS_PCD15473_01003_equalizationCurveFitExport.json'))
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['FocusCurveFit json file'] = str(
-#     os.path.join(
-#         CONFIG_FILE_FOLDER_CONVERSION_DATA,
-#         'IS_PCD15473_01003_focusCurveFitExport.json'))
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['PowerCurveFit json file'] = str(
-#     os.path.join(
-#         CONFIG_FILE_FOLDER_CONVERSION_DATA,
-#         'IS_PCD15473_01003_powerCurveFitExport.json'))
-# config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['VoltageCurveFit json file'] = str(
-#     os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_128_ch.json'))
-
-# IGT-32-ch_comb_2x10-ch~IS_PCD15287_01001
-config['Equipment.Combination.' + DS_TRAN_COMBOS[0]] = {}
-config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['Driving system serial'] = (
-    DS_TRAN_COMBOS[0].split(COMBO_JOIN_SIGN)[0])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['Transducer serial'] = (
-    DS_TRAN_COMBOS[0].split(COMBO_JOIN_SIGN)[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['EqualizationCurveFit json file'] = str(
-    os.path.join(
-        CONFIG_FILE_FOLDER_CONVERSION_DATA,
-        'IS_PCD15287_01001_equalizationCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['FocusCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01001_focusCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['PowerCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01001_powerCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[0]]['VoltageCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
-
-# IGT-32-ch_comb_2x10-ch~IS_PCD15287_01002
-config['Equipment.Combination.' + DS_TRAN_COMBOS[1]] = {}
-config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['Driving system serial'] = (
-    DS_TRAN_COMBOS[1].split(COMBO_JOIN_SIGN)[0])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['Transducer serial'] = (
-    DS_TRAN_COMBOS[1].split(COMBO_JOIN_SIGN)[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['EqualizationCurveFit json file'] = str(
-    os.path.join(
-        CONFIG_FILE_FOLDER_CONVERSION_DATA,
-        'IS_PCD15287_01002_equalizationCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['FocusCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01002_focusCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['PowerCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01002_powerCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[1]]['VoltageCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
-
-# IGT-32-ch_comb_2x10-ch~IS_PCD15473_01001
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]] = {}
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['Driving system serial'] = (
-    DS_TRAN_COMBOS[2].split(COMBO_JOIN_SIGN)[0])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['Transducer serial'] = (
-    DS_TRAN_COMBOS[2].split(COMBO_JOIN_SIGN)[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['EqualizationCurveFit json file'] = str(
-    os.path.join(
-        CONFIG_FILE_FOLDER_CONVERSION_DATA,
-        'IS_PCD15473_01001_equalizationCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['FocusCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01001_focusCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['PowerCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01001_powerCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[2]]['VoltageCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
-
-# IGT-32-ch_comb_2x10-ch~IS_PCD15473_01002
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]] = {}
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['Driving system serial'] = (
-    DS_TRAN_COMBOS[3].split(COMBO_JOIN_SIGN)[0])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['Transducer serial'] = (
-    DS_TRAN_COMBOS[3].split(COMBO_JOIN_SIGN)[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['EqualizationCurveFit json file'] = str(
-    os.path.join(
-        CONFIG_FILE_FOLDER_CONVERSION_DATA,
-        'IS_PCD15473_01002_equalizationCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['FocusCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01002_focusCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['PowerCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01002_powerCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[3]]['VoltageCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
-
-# IGT-32-ch_comb_2x10-ch~IS_PCD15473_01003
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]] = {}
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['Driving system serial'] = (
-    DS_TRAN_COMBOS[4].split(COMBO_JOIN_SIGN)[0])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['Transducer serial'] = (
-    DS_TRAN_COMBOS[4].split(COMBO_JOIN_SIGN)[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['EqualizationCurveFit json file'] = str(
-    os.path.join(
-        CONFIG_FILE_FOLDER_CONVERSION_DATA,
-        'IS_PCD15473_01003_equalizationCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['FocusCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01003_focusCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['PowerCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01003_powerCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[4]]['VoltageCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
-
-# IGT-32-ch_comb_2x10-ch~IS_PCD15473_01001_OPM
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]] = {}
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['Driving system serial'] = (
-    DS_TRAN_COMBOS[5].split(COMBO_JOIN_SIGN)[0])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['Transducer serial'] = (
-    DS_TRAN_COMBOS[5].split(COMBO_JOIN_SIGN)[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['EqualizationCurveFit json file'] = str(
-    os.path.join(
-        CONFIG_FILE_FOLDER_CONVERSION_DATA,
-        'IS_PCD15473_01001_OPM_equalizationCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['FocusCurveFit json file'] = str(
-    os.path.join(
-        CONFIG_FILE_FOLDER_CONVERSION_DATA,
-        'IS_PCD15473_01001_OPM_focusCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['PowerCurveFit json file'] = str(
-    os.path.join(
-        CONFIG_FILE_FOLDER_CONVERSION_DATA,
-        'IS_PCD15473_01001_OPM_powerCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[5]]['VoltageCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
-
-# IGT-32-ch_comb_2x10-ch~IS_PCD15473_01003_OPM
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]] = {}
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['Driving system serial'] = (
-    DS_TRAN_COMBOS[6].split(COMBO_JOIN_SIGN)[0])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['Transducer serial'] = (
-    DS_TRAN_COMBOS[6].split(COMBO_JOIN_SIGN)[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['EqualizationCurveFit json file'] = str(
-    os.path.join(
-        CONFIG_FILE_FOLDER_CONVERSION_DATA,
-        'IS_PCD15473_01003_OPM_equalizationCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['FocusCurveFit json file'] = str(
-    os.path.join(
-        CONFIG_FILE_FOLDER_CONVERSION_DATA,
-        'IS_PCD15473_01003_OPM_focusCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['PowerCurveFit json file'] = str(
-    os.path.join(
-        CONFIG_FILE_FOLDER_CONVERSION_DATA,
-        'IS_PCD15473_01003_OPM_powerCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[6]]['VoltageCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
-
-# IGT-32-ch_comb_1x10-ch~IS_PCD15287_01001
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]] = {}
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['Driving system serial'] = (
-    DS_TRAN_COMBOS[7].split(COMBO_JOIN_SIGN)[0])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['Transducer serial'] = (
-    DS_TRAN_COMBOS[7].split(COMBO_JOIN_SIGN)[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['EqualizationCurveFit json file'] = str(
-    os.path.join(
-        CONFIG_FILE_FOLDER_CONVERSION_DATA,
-        'IS_PCD15287_01001_equalizationCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['FocusCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01001_focusCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['PowerCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01001_powerCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[7]]['VoltageCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
-
-# IGT-32-ch_comb_1x10-ch~IS_PCD15287_01002
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]] = {}
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['Driving system serial'] = (
-    DS_TRAN_COMBOS[8].split(COMBO_JOIN_SIGN)[0])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['Transducer serial'] = (
-    DS_TRAN_COMBOS[8].split(COMBO_JOIN_SIGN)[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['EqualizationCurveFit json file'] = str(
-    os.path.join(
-        CONFIG_FILE_FOLDER_CONVERSION_DATA,
-        'IS_PCD15287_01002_equalizationCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['FocusCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01002_focusCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['PowerCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15287_01002_powerCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[8]]['VoltageCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
-
-# IGT-32-ch_comb_1x10-ch~IS_PCD15473_01001
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]] = {}
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['Driving system serial'] = (
-    DS_TRAN_COMBOS[9].split(COMBO_JOIN_SIGN)[0])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['Transducer serial'] = (
-    DS_TRAN_COMBOS[9].split(COMBO_JOIN_SIGN)[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['EqualizationCurveFit json file'] = str(
-    os.path.join(
-        CONFIG_FILE_FOLDER_CONVERSION_DATA,
-        'IS_PCD15473_01001_equalizationCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['FocusCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01001_focusCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['PowerCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01001_powerCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[9]]['VoltageCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
-
-# IGT-32-ch_comb_1x10-ch~IS_PCD15473_01002
-config['Equipment.Combination.' + DS_TRAN_COMBOS[10]] = {}
-config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['Driving system serial'] = (
-    DS_TRAN_COMBOS[10].split(COMBO_JOIN_SIGN)[0])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['Transducer serial'] = (
-    DS_TRAN_COMBOS[10].split(COMBO_JOIN_SIGN)[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['EqualizationCurveFit json file'] = str(
-    os.path.join(
-        CONFIG_FILE_FOLDER_CONVERSION_DATA,
-        'IS_PCD15473_01002_equalizationCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['FocusCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01002_focusCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['PowerCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01002_powerCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[10]]['VoltageCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
-
-# IGT-32-ch_comb_1x10-ch~IS_PCD15473_01003
-config['Equipment.Combination.' + DS_TRAN_COMBOS[11]] = {}
-config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['Driving system serial'] = (
-    DS_TRAN_COMBOS[11].split(COMBO_JOIN_SIGN)[0])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['Transducer serial'] = (
-    DS_TRAN_COMBOS[11].split(COMBO_JOIN_SIGN)[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['EqualizationCurveFit json file'] = str(
-    os.path.join(
-        CONFIG_FILE_FOLDER_CONVERSION_DATA,
-        'IS_PCD15473_01003_equalizationCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['FocusCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01003_focusCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['PowerCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'IS_PCD15473_01003_powerCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[11]]['VoltageCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
-
-# IGT-32-ch_comb_1x10-ch~IS_PCD15473_01001_OPM
-config['Equipment.Combination.' + DS_TRAN_COMBOS[12]] = {}
-config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['Driving system serial'] = (
-    DS_TRAN_COMBOS[12].split(COMBO_JOIN_SIGN)[0])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['Transducer serial'] = (
-    DS_TRAN_COMBOS[12].split(COMBO_JOIN_SIGN)[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['EqualizationCurveFit json file'] = str(
-    os.path.join(
-        CONFIG_FILE_FOLDER_CONVERSION_DATA,
-        'IS_PCD15473_01001_OPM_equalizationCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['FocusCurveFit json file'] = str(
-    os.path.join(
-        CONFIG_FILE_FOLDER_CONVERSION_DATA,
-        'IS_PCD15473_01001_OPM_focusCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['PowerCurveFit json file'] = str(
-    os.path.join(
-        CONFIG_FILE_FOLDER_CONVERSION_DATA,
-        'IS_PCD15473_01001_OPM_powerCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[12]]['VoltageCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
-
-# IGT-32-ch_comb_1x10-ch~IS_PCD15473_01003_OPM
-config['Equipment.Combination.' + DS_TRAN_COMBOS[13]] = {}
-config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['Driving system serial'] = (
-    DS_TRAN_COMBOS[13].split(COMBO_JOIN_SIGN)[0])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['Transducer serial'] = (
-    DS_TRAN_COMBOS[13].split(COMBO_JOIN_SIGN)[1])
-config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['EqualizationCurveFit json file'] = str(
-    os.path.join(
-        CONFIG_FILE_FOLDER_CONVERSION_DATA,
-        'IS_PCD15473_01003_OPM_equalizationCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['FocusCurveFit json file'] = str(
-    os.path.join(
-        CONFIG_FILE_FOLDER_CONVERSION_DATA,
-        'IS_PCD15473_01003_OPM_focusCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['PowerCurveFit json file'] = str(
-    os.path.join(
-        CONFIG_FILE_FOLDER_CONVERSION_DATA,
-        'IS_PCD15473_01003_OPM_powerCurveFitExport.json'))
-config['Equipment.Combination.' + DS_TRAN_COMBOS[13]]['VoltageCurveFit json file'] = str(
-    os.path.join(CONFIG_FILE_FOLDER_CONVERSION_DATA, 'voltageCurveFit_IGT_32_ch.json'))
-
+# IGT-32-ch_comb_1x10-ch combinations
+_add_combination(
+    IGT_DS[2], IS_TRANS[0],
+    'IS_PCD15287_01001_equalizationCurveFitExport.json',
+    'IS_PCD15287_01001_focusCurveFitExport.json',
+    'IS_PCD15287_01001_powerCurveFitExport.json',
+    'voltageCurveFit_IGT_32_ch.json')
+_add_combination(
+    IGT_DS[2], IS_TRANS[1],
+    'IS_PCD15287_01002_equalizationCurveFitExport.json',
+    'IS_PCD15287_01002_focusCurveFitExport.json',
+    'IS_PCD15287_01002_powerCurveFitExport.json',
+    'voltageCurveFit_IGT_32_ch.json')
+_add_combination(
+    IGT_DS[2], IS_TRANS[2],
+    'IS_PCD15473_01001_equalizationCurveFitExport.json',
+    'IS_PCD15473_01001_focusCurveFitExport.json',
+    'IS_PCD15473_01001_powerCurveFitExport.json',
+    'voltageCurveFit_IGT_32_ch.json')
+_add_combination(
+    IGT_DS[2], IS_TRANS[3],
+    'IS_PCD15473_01002_equalizationCurveFitExport.json',
+    'IS_PCD15473_01002_focusCurveFitExport.json',
+    'IS_PCD15473_01002_powerCurveFitExport.json',
+    'voltageCurveFit_IGT_32_ch.json')
+_add_combination(
+    IGT_DS[2], IS_TRANS[4],
+    'IS_PCD15473_01003_equalizationCurveFitExport.json',
+    'IS_PCD15473_01003_focusCurveFitExport.json',
+    'IS_PCD15473_01003_powerCurveFitExport.json',
+    'voltageCurveFit_IGT_32_ch.json')
+_add_combination(
+    IGT_DS[2], IS_TRANS[5],
+    'IS_PCD15473_01001_OPM_equalizationCurveFitExport.json',
+    'IS_PCD15473_01001_OPM_focusCurveFitExport.json',
+    'IS_PCD15473_01001_OPM_powerCurveFitExport.json',
+    'voltageCurveFit_IGT_32_ch.json')
+_add_combination(
+    IGT_DS[2], IS_TRANS[6],
+    'IS_PCD15473_01003_OPM_equalizationCurveFitExport.json',
+    'IS_PCD15473_01003_OPM_focusCurveFitExport.json',
+    'IS_PCD15473_01003_OPM_powerCurveFitExport.json',
+    'voltageCurveFit_IGT_32_ch.json')
 
 with open(CONFIG_FILE, 'w') as configfile:
     config.write(configfile)
+
+# Insert a comment directly above the max-pressure key in the generated file itself: hand-editing
+# this file is fine, but a plain '= value' line gives no hint that the edit is silently lost the
+# next time this script regenerates the file, or a new package release ships a fresh one.
+with open(CONFIG_FILE, encoding='utf-8') as configfile:
+    generated_contents = configfile.read()
+
+MAX_PRESSURE_LINE = f'{MAX_PRESSURE_KEY.lower()} = {MAX_ALLOWED_PRESSURE}'
+MAX_PRESSURE_WARNING = (
+    '; SAFETY LIMIT: only raise this after confirming your hardware and setup can safely\n'
+    "; exceed it. Hand-editing this value is fine, but it will be silently overwritten if\n"
+    '; this file is ever regenerated via create_config.py, or replaced by installing a new\n'
+    '; package release -- keep a copy of your override if you rely on it long-term.\n'
+)
+generated_contents = generated_contents.replace(
+    MAX_PRESSURE_LINE, MAX_PRESSURE_WARNING + MAX_PRESSURE_LINE)
+
+DEMO_MAX_PRESSURE_LINE = f'{DEMO_MAX_PRESSURE_KEY.lower()} = {DEMO_MAX_ALLOWED_PRESSURE}'
+DEMO_MAX_PRESSURE_WARNING = (
+    '; Enforced only by fus_ds_gui\'s own Demo mode, on top of the limit above, not instead\n'
+    '; of it. Hand-editing this value is fine, but it will be silently overwritten if this\n'
+    '; file is regenerated via create_config.py, or replaced by installing a new package\n'
+    '; release.\n'
+)
+generated_contents = generated_contents.replace(
+    DEMO_MAX_PRESSURE_LINE, DEMO_MAX_PRESSURE_WARNING + DEMO_MAX_PRESSURE_LINE)
+
+# Same idea for min. focus/max. focus, but these two keys appear once per transducer (each with
+# its own value) rather than once globally, so a plain string .replace() can't target every
+# occurrence -- use a regex instead. One comment above min. focus already covers max. focus too,
+# since the two are always written directly adjacent to each other.
+MIN_FOCUS_NOTE = (
+    '; Only used as-is when no calibration is active for this transducer/driving-system pair --\n'
+    "; once one is, both are silently overwritten (not merely defaulted) by the equalization\n"
+    '; curve\'s own breaks (see TransducerSlot._update_conv_param() / README.md).\n'
+)
+generated_contents = re.sub(
+    r'^min\. focus = .*$',
+    lambda match: MIN_FOCUS_NOTE + match.group(0),
+    generated_contents, flags=re.MULTILINE)
+
+with open(CONFIG_FILE, 'w', encoding='utf-8') as configfile:
+    configfile.write(generated_contents)

@@ -1,0 +1,4 @@
+# Only needed to build the standalone .exe (see fus_ds_gui.spec); not a runtime dependency of
+# the GUI itself.
+#   pip install -r fus_ds_gui/requirements-build.txt
+pyinstaller==6.22.3

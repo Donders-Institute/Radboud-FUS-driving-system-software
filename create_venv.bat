@@ -5,27 +5,11 @@
 :: Set the Python executable path (ensure Python 3.10 is correctly installed and specify the correct path)
 set "DEFAULT_PYTHON_PATH=C:\Program Files\Python310\python.exe"
 
-:: Check if mode is provided as the fourth parameter; otherwise, set to "default"
-if "%~4"=="" (
-    set "MODE=default"
-) else (
-    set "MODE=%~4"
-)
+:: Set a default virtual environment name
+set "DEFAULT_VENV_NAME=FUS_DS_PACKAGE"
 
-:: If mode is DCCN, use DCCN-specific default values.
-if "%MODE%" == "DCCN" (
-    :: Set a default virtual environment name
-    set "DEFAULT_VENV_NAME=venv310"
-
-    :: Set a default virtual environment directory
-    set "DEFAULT_VENV_DIR=D:\Users\%USERNAME%"
-) else (
-    :: Set a default virtual environment name
-    set "DEFAULT_VENV_NAME=FUS_DS_PACKAGE"
-
-    :: Set a default virtual environment directory
-    set "DEFAULT_VENV_DIR=%USERPROFILE%\Envs"
-)
+:: Set a default virtual environment directory
+set "DEFAULT_VENV_DIR=%USERPROFILE%\Envs"
 
 :: Collect input parameters with fallbacks to defaults
 set "PYTHON_PATH=%~1"
