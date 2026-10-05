@@ -68,6 +68,26 @@ reinstalling after every change? Install it in editable mode instead:
 pip install -e [PATH_TO_CLONED_REPO]\fus_ds_package
 ```
 
+**Running the tests.** `requirements-ci.txt` lists what the CI workflow installs to run the tests;
+you don't need it for normal use. It installs `fus_ds_package` in editable mode on purpose: pytest
+and coverage must see your checked-out source, not a copy in `site-packages`. From the repository
+root:
+```
+pip install -r requirements-ci.txt
+cd fus_ds_package
+pytest -m "not hardware"
+```
+`-m "not hardware"` skips the tests that need a real driving system.
+
+For the GUI tests, `requirements-gui.txt` installs both packages normally, which replaces the
+editable install, so switch both back to editable before running them:
+```
+pip install -r fus_ds_gui/requirements-gui.txt
+pip install -e fus_ds_package -e fus_ds_gui --no-deps
+cd fus_ds_gui
+pytest
+```
+
 #### Setting Up a New Virtual Environment
 
 Ensure you have the Python version from the table in Step 1 installed and accessible from your command line; download it via the link in that table if you don't have it yet. It is not necessary to add Python to your system's PATH during installation, as virtual environments allow you to manage and switch between Python versions without affecting other projects or code outside the environment.

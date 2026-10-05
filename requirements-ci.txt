@@ -1,3 +1,6 @@
+# Dependencies for running the tests, used by the CI workflow (.github/workflows/tests.yml).
+# fus_ds_package is deliberately installed editable (-e): pytest and coverage must see the
+# checked-out source, not a copy in site-packages.
 CTkMessagebox==2.7
 numpy==2.1.0
 pandas==2.2.2

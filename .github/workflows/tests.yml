@@ -81,6 +81,13 @@ jobs:
       - name: Install test dependencies (fus_ds_gui)
         run: pip install -r fus_ds_gui/requirements-gui.txt
 
+      - name: Reinstall both packages in editable mode
+        # requirements-gui.txt installs both packages normally, which replaces the editable
+        # install from requirements-ci.txt. pytest and coverage must see the checked-out source,
+        # not a copy in site-packages (coverage would otherwise report ~67%), so switch both
+        # back to editable.
+        run: pip install -e ./fus_ds_package -e ./fus_ds_gui --no-deps
+
       - name: Install pylint
         # Pinned: an unpinned install picked up pylint 4.0.8 on this runner (nothing here
         # constrains its version the way spyder's own <4 dependency does in a full dev
