@@ -64,6 +64,16 @@ call "%VENV_PATH%\Scripts\activate"
 echo Installing requirements from requirements.txt...
 pip install -r requirements.txt
 
+:: Optionally install the GUI: opt-in, since PySide6 is a large download most script users don't need.
+:: The 4th parameter (y/n) answers the question up front; without it, ask. A non-interactive run
+:: without the parameter skips the GUI.
+set "INSTALL_GUI=%~4"
+if "%INSTALL_GUI%"=="" set /p "INSTALL_GUI=Also install the GUI (fus_ds_gui)? [y/n]:"
+if /i "%INSTALL_GUI%"=="y" (
+    echo Installing the GUI...
+    pip install ./fus_ds_gui
+)
+
 :: Upgrade pip in virtual environment
 python.exe -m pip install --upgrade pip
 

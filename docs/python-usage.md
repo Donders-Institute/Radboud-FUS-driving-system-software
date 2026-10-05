@@ -82,19 +82,25 @@ Open your command prompt and run the following batch file to set up the virtual 
 
 ```
 cd your_directory_with_cloned_repository
-create_venv.bat "[PYTHON_INTERPRETER_PATH]" [VENV_NAME] "[VENV_DIR]"
+create_venv.bat "[PYTHON_INTERPRETER_PATH]" [VENV_NAME] "[VENV_DIR]" [INSTALL_GUI]
 ```
 
 - PYTHON_INTERPRETER_PATH: Specify the path to the Python interpreter required for your release (see the table in Step 1 above) if it's not in the default location. For example, C:\Path\To\Python310\python.exe.
 - VENV_NAME: Specify the name for the virtual environment (e.g., MyEnv). If not provided, it defaults to FUS_DS_PACKAGE.
 - VENV_DIR: Specify the directory for the virtual environment (e.g., C:/Users/Me/Envs). If not provided, it defaults to C:/Users/{USERPROFILE}/Envs.
+- INSTALL_GUI: `y` or `n` to install the GUI (`fus_ds_gui`) without being asked. If not provided, the batch file asks. The GUI is optional because it needs PySide6, a large download that scripts don't use.
 
 Example:
 ```
-create_venv.bat "C:\Path\To\Python310\python.exe" FUS_DS_PACKAGE "C:/Users/Me/Envs"
+create_venv.bat "C:\Path\To\Python310\python.exe" FUS_DS_PACKAGE "C:/Users/Me/Envs" y
 ```
 The batch file will create a virtual environment and install the required Python packages; no
 IDE is included, see "Step 2: Install an IDE" under Usage below.
+
+If you installed the GUI this way, start it from your activated virtual environment with:
+```
+python -m fus_ds_gui.app
+```
 
 **Troubleshooting**: If you encounter issues with the batch file not being recognized or errors
 occur during execution, ensure that the batch file has the correct permissions to be executed,

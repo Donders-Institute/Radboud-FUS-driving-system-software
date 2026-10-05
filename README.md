@@ -119,6 +119,10 @@ pyinstaller fus_ds_gui.spec --noconfirm
 ```
 The build appears in `fus_ds_gui/dist/FDS_GUI/` (run `FDS_GUI.exe` inside it).
 
+Developing or testing an unreleased version, but don't need an `.exe`? Set up a virtual
+environment with `create_venv.bat` and answer `y` when it asks about the GUI (see the
+[Python usage guide](docs/python-usage.md)), then start it with `python -m fus_ds_gui.app`.
+
 </details>
 
 ### Configuring the GUI or installing a new release

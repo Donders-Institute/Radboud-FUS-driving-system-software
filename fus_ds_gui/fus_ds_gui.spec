@@ -25,10 +25,10 @@ _DS_PACKAGE = os.path.join(_DS_PACKAGE_ROOT, 'fus_driving_systems')
 
 def _non_python_files(src_dir, dest_dir):
     """(source, dest) pairs for every non-.py file under src_dir, recursively, keeping its
-    subdirectory structure under dest_dir. fus_driving_systems and fus_ds_gui are both editable
-    installs (pip install -e): PyInstaller's static analysis follows their real .py modules fine
-    once fus_ds_package is on pathex (see Analysis() below), but data files (.ini/.json/images)
-    aren't reachable through import analysis at all, so they're collected here by hand instead."""
+    subdirectory structure under dest_dir. PyInstaller's static analysis follows the .py modules
+    of fus_driving_systems and fus_ds_gui (fus_ds_package is on pathex, see Analysis() below),
+    but data files (.ini/.json/images) aren't reachable through import analysis at all, so
+    they're collected here by hand instead."""
 
     pairs = []
     for path in glob.glob(os.path.join(src_dir, '**', '*'), recursive=True):
@@ -60,9 +60,8 @@ binaries = [
 
 a = Analysis(
     [os.path.join(_SPEC_DIR, 'fus_ds_gui', 'app.py')],
-    # fus_driving_systems is an editable install (PEP 660): site-packages only has a redirect
-    # finder, not a real package directory, so plain Analysis() treats it as missing entirely.
-    # Pointing pathex at its actual source directory makes it discoverable like a normal package.
+    # Pointing pathex at fus_driving_systems' source directory makes the build use this
+    # repository's own code, however (or whether) the package is installed in the build venv.
     pathex=[_SPEC_DIR, _DS_PACKAGE_ROOT],
     binaries=binaries,
     datas=datas,
