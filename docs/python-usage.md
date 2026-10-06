@@ -79,6 +79,23 @@ pytest -m "not hardware"
 ```
 `-m "not hardware"` skips the tests that need a real driving system.
 
+Those hardware tests live in `fus_driving_systems/tests/hardware/`, for IGT and Sonic Concepts.
+Both are meant for a driving system with a dummy load attached, never a real transducer. A dummy
+load cannot be selected as a transducer on a TPO, so for Sonic Concepts leave whichever
+transducer is selected and tell the tests which one it is: the TPO rejects focus values outside
+that transducer's range. They only run when you opt in with two separate things: select them with `pytest -m hardware --no-cov`, and set the
+environment variable `FDS_HARDWARE_TESTS=1`. With your virtual environment activated, run this
+from the `fus_ds_package` folder of the repository (not the virtual environment), in the Command
+Prompt:
+```
+set FDS_HARDWARE_TESTS=1&& python -m pytest -m hardware --no-cov fus_driving_systems/tests/hardware
+```
+Or in PowerShell:
+```
+$env:FDS_HARDWARE_TESTS = "1"; python -m pytest -m hardware --no-cov fus_driving_systems/tests/hardware
+```
+The other settings are described at the top of `tests/hardware/conftest.py`.
+
 For the GUI tests, `requirements-gui.txt` installs both packages normally, which replaces the
 editable install, so switch both back to editable before running them:
 ```
