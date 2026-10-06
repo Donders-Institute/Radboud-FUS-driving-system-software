@@ -60,9 +60,9 @@ name = Your System Name
 manufacturer = Your Manufacturer Name
 available channels = 4  # Number of channels
 connection info = COM7  # Or other connection info
-power options = Global power [mW]
+power options = Global power [W]
 focus options = Focus wrt exit plane [mm]
-native power parameters = Global power [mW]
+native power parameters = Global power [W]
 native focus parameters = Focus wrt exit plane [mm]
 transducer compatibility = YOUR-TRANSDUCER-ID
 max. transducer slots = 1
@@ -284,7 +284,7 @@ Add a new block of `config['Equipment.Manufacturer.YM'][...] = ...` assignments 
 [Equipment.Manufacturer.YM]  # Use your manufacturer's abbreviation
 name = Your Manufacturer Name
 config. file folder transducers = path\to\config\folder
-power options = Global power [mW]  # Choose appropriate options
+power options = Global power [W]  # Choose appropriate options
 # Add manufacturer-specific settings
 equipment - driving systems = YOUR-SYSTEM-ID
 # and/or

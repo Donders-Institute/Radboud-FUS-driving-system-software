@@ -6,6 +6,8 @@ SPDX-License-Identifier: MIT
 See the LICENSE file for full license text.
 """
 
+import re
+
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (QComboBox, QDoubleSpinBox, QFormLayout, QHBoxLayout, QLabel,
                                QLineEdit, QSpinBox, QVBoxLayout, QWidget)
@@ -32,6 +34,14 @@ def _mm_spinbox():
     spin.setRange(-1000.0, 1000.0)
     spin.setSuffix(' mm')
     return spin
+
+
+def _unit_suffix(option_text):
+    """' W' for 'Global power [W]', ' %' for 'Amplitude [%]': the unit from the option's own
+    label, so the value field always states the unit its number is in. Empty if there is none."""
+
+    match = re.search(r'\[(.+?)\]', option_text)
+    return f' {match.group(1)}' if match else ''
 
 
 def _widen_range_to_fit(spinbox, value):
@@ -178,6 +188,8 @@ class SlotEditor(ApplyPanel):
         # _set_ampl in transducer_slot.py) validates its value with check_pos=True, so a negative
         # value is never valid for any power option, on either driving system.
         self.power_value_spin.setRange(0.0, 100000.0)
+        self.power_option_combo.currentTextChanged.connect(
+            lambda option: self.power_value_spin.setSuffix(_unit_suffix(option)))
 
         self.oper_freq_spin = QSpinBox()
         self.oper_freq_spin.setSuffix(' kHz')

@@ -66,9 +66,9 @@ def _configure_sc(patch_config):
     patch_config.set(section, 'Available channels', '4')
     patch_config.set(section, 'Connection info', 'MOCK')
     patch_config.set(section, 'Transducer compatibility', 'UNITTEST_TRAN')
-    patch_config.set(section, 'Power options', 'Global power [mW]')
+    patch_config.set(section, 'Power options', 'Global power [W]')
     patch_config.set(section, 'Focus options', 'Focus wrt exit plane [mm]')
-    patch_config.set(section, 'Native power parameters', 'Global power [mW]')
+    patch_config.set(section, 'Native power parameters', 'Global power [W]')
     patch_config.set(section, 'Native focus parameters', 'Focus wrt exit plane [mm]')
     patch_config.set(section, 'Max. transducer slots', '1')
     patch_config.set(section, 'Active?', 'True')
@@ -90,7 +90,7 @@ def _build_sc_protocol():
     SonicConcepts does."""
 
     protocol = TUSProtocol('UNITTEST_SC')
-    protocol.add_slot('UNITTEST_TRAN', 'Focus wrt exit plane [mm]', 40, 'Global power [mW]', 500)
+    protocol.add_slot('UNITTEST_TRAN', 'Focus wrt exit plane [mm]', 40, 'Global power [W]', 500)
     protocol.configure_timing(pulse_dur=1, pulse_train_dur=1)
     return protocol
 

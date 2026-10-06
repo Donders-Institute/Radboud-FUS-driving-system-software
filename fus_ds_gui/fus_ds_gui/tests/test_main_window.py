@@ -27,9 +27,9 @@ def _configure_driving_system(patch_config, serial='UNITTEST_IGT', max_tran_slot
     patch_config.set(section, 'Available channels', '4')
     patch_config.set(section, 'Connection info', 'COM1')
     patch_config.set(section, 'Transducer compatibility', 'UNITTEST_TRAN')
-    patch_config.set(section, 'Power options', 'Global power [mW]')
+    patch_config.set(section, 'Power options', 'Global power [W]')
     patch_config.set(section, 'Focus options', 'Focus wrt exit plane [mm]')
-    patch_config.set(section, 'Native power parameters', 'Global power [mW]')
+    patch_config.set(section, 'Native power parameters', 'Global power [W]')
     patch_config.set(section, 'Native focus parameters', 'Focus wrt exit plane [mm]')
     patch_config.set(section, 'Max. transducer slots', str(max_tran_slots))
     patch_config.set(section, 'Active?', 'True')
@@ -57,7 +57,7 @@ def _build_protocol_file(tmp_path, patch_config):
     _configure_driving_system(patch_config)
     protocol = TUSProtocol('UNITTEST_IGT')
     protocol.add_slot('UNITTEST_TRAN', 'Focus wrt exit plane [mm]', 40,
-                      'Global power [mW]', 0.5)
+                      'Global power [W]', 0.5)
     path = str(tmp_path / 'protocol.yaml')
     protocol_io.save(protocol, path)
     return path

@@ -12,7 +12,7 @@ from fus_ds_gui.planning.planning_tab import PlanningTab
 
 
 def _configure_driving_system(patch_config, serial, max_tran_slots=1, manufacturer='Sonic '
-                              'Concepts', power_option='Global power [mW]'):
+                              'Concepts', power_option='Global power [W]'):
     # Sonic Concepts by default, not IGT: IGT.validate_protocol() also requires slot.ampl to be
     # set, which is only ever derived from a *real*, active calibration combo (a genuine
     # hardware fact: IGT's native power parameter is always amplitude, whatever power option
@@ -539,7 +539,7 @@ def test_load_protocol_stays_unlocked_when_a_sibling_slot_failed_to_load(
         'transducer_serial': 'UNITTEST_TRAN',
         'focus_option': 'Focus wrt exit plane [mm]',
         'focus_value': 60,
-        'power_option': 'Global power [mW]',
+        'power_option': 'Global power [W]',
         'power_value': 999,
     }
     load_result = LoadResult(protocol, [(failed_slot_def, FDSSafetyError('too high'))])
@@ -639,7 +639,7 @@ def _build_protocol(driving_sys_serial, slot_defs, pulse_dur=5, **timing_kwargs)
     protocol = TUSProtocol(driving_sys_serial)
     for serial, focus_value, power_value in slot_defs:
         protocol.add_slot(serial, 'Focus wrt exit plane [mm]', focus_value,
-                          'Global power [mW]', power_value)
+                          'Global power [W]', power_value)
     protocol.configure_timing(pulse_dur, **timing_kwargs)
     return protocol
 
@@ -784,7 +784,7 @@ def test_load_protocol_builds_an_extra_editor_per_failed_slot(qtbot, single_slot
         'transducer_serial': 'UNITTEST_TRAN',
         'focus_option': 'Focus wrt exit plane [mm]',
         'focus_value': 60,
-        'power_option': 'Global power [mW]',
+        'power_option': 'Global power [W]',
         'power_value': 999,
     }
     load_result = LoadResult(protocol, [(failed_slot_def, FDSSafetyError('too high'))])

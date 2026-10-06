@@ -76,7 +76,7 @@ try:
     # to check available options for this driving system (no need to add a slot first):
     # print(protocol.get_focus_options()) / print(protocol.get_power_options())
     FOCUS_OPTION = 'Focus wrt exit plane [mm]'
-    POWER_OPTION = 'Max. pressure in free water [MPa]'  # or 'Global power [mW]'
+    POWER_OPTION = 'Max. pressure in free water [MPa]'
 
     # Each add_slot() call fully configures one transducer: serial, focus, and power all at once.
     # As many slots as this driving system's config allows (see ds_info.max_tran_slots): 2 here.

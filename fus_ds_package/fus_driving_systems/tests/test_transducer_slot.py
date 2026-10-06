@@ -326,11 +326,11 @@ def test_non_engineering_options_excludes_engineering_only_power_options(patch_c
     patch_config.set('Power', 'Engineering-only options', 'Voltage [V]\nAmplitude [%]')
     slot = _bare_slot()
     slot.driving_sys = SimpleNamespace(power_options=[
-        'Global power [mW]', 'Max. pressure in free water [MPa]', 'Voltage [V]',
+        'Global power [W]', 'Max. pressure in free water [MPa]', 'Voltage [V]',
         'Amplitude [%]'])
 
     assert slot._non_engineering_options('Power') == [
-        'Global power [mW]', 'Max. pressure in free water [MPa]']
+        'Global power [W]', 'Max. pressure in free water [MPa]']
 
 
 def test_non_engineering_options_excludes_engineering_only_focus_options(patch_config):
@@ -350,13 +350,13 @@ def test_volt_setter_names_available_alternatives_when_engineering_mode_disabled
     slot = _bare_slot()
     slot._engineering_mode = False
     slot.driving_sys = SimpleNamespace(power_options=[
-        'Global power [mW]', 'Max. pressure in free water [MPa]', 'Voltage [V]',
+        'Global power [W]', 'Max. pressure in free water [MPa]', 'Voltage [V]',
         'Amplitude [%]'])
 
     with pytest.raises(FDSValidationError) as exc_info:
         slot._set_volt(50)
     message = str(exc_info.value)
-    assert 'Global power [mW]' in message
+    assert 'Global power [W]' in message
     assert 'Max. pressure in free water [MPa]' in message
     assert 'Voltage [V]' not in message.split(':', 1)[1]  # not offered as its own alternative
 
@@ -372,11 +372,11 @@ def test_volt_setter_names_available_alternatives_when_engineering_mode_disabled
 def test_global_power_setter_raises_when_configured_as_engineering_only(patch_config):
     """Which power options are engineering-only is a config-driven institutional policy --
     global power is available to everyone by default, but an institution can gate it too."""
-    patch_config.set('Power', 'Option.glob_pow', 'Global power [mW]')
-    patch_config.set('Power', 'Engineering-only options', 'Global power [mW]')
+    patch_config.set('Power', 'Option.glob_pow', 'Global power [W]')
+    patch_config.set('Power', 'Engineering-only options', 'Global power [W]')
     slot = _bare_slot()
     slot._engineering_mode = False
-    slot.driving_sys = SimpleNamespace(power_options=['Global power [mW]'])
+    slot.driving_sys = SimpleNamespace(power_options=['Global power [W]'])
 
     with pytest.raises(FDSValidationError):
         slot._set_global_power(5)
@@ -386,11 +386,11 @@ def test_global_power_setter_succeeds_without_engineering_mode_when_not_configur
         patch_config):
     """Global power is available by default, and stays available when explicitly cleared
     from Engineering-only options."""
-    patch_config.set('Power', 'Option.glob_pow', 'Global power [mW]')
+    patch_config.set('Power', 'Option.glob_pow', 'Global power [W]')
     patch_config.set('Power', 'Engineering-only options', '')
     slot = _bare_slot()
     slot._engineering_mode = False
-    slot.driving_sys = SimpleNamespace(power_options=['Global power [mW]'])
+    slot.driving_sys = SimpleNamespace(power_options=['Global power [W]'])
 
     slot._set_global_power(5)  # must not raise
 
@@ -398,14 +398,14 @@ def test_global_power_setter_succeeds_without_engineering_mode_when_not_configur
 
 
 def test_global_power_setter_sets_value_when_option_available(patch_config):
-    patch_config.set('Power', 'Option.glob_pow', 'Global power [mW]')
+    patch_config.set('Power', 'Option.glob_pow', 'Global power [W]')
     slot = _bare_slot()
-    slot.driving_sys = SimpleNamespace(power_options=['Global power [mW]'])
+    slot.driving_sys = SimpleNamespace(power_options=['Global power [W]'])
 
     slot._set_global_power(5)
 
     assert slot._global_power == 5
-    assert slot._chosen_power == 'Global power [mW]'
+    assert slot._chosen_power == 'Global power [W]'
     # reset to None at the top of the setter, and never re-set here -- 0 would look like a
     # genuine, computed value for a power option that isn't active right now.
     assert slot._ampl is None
@@ -422,10 +422,10 @@ def test_global_power_setter_clears_stale_press_diagnostics_from_a_previous_powe
     other power field."""
     patch_config.set('Power', 'Maximum pressure allowed in free water [MPa]', '10')
     patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
-    patch_config.set('Power', 'Option.glob_pow', 'Global power [mW]')
+    patch_config.set('Power', 'Option.glob_pow', 'Global power [W]')
     slot = _bare_slot()
     slot.driving_sys = SimpleNamespace(
-        power_options=['Max. pressure in free water [MPa]', 'Global power [mW]'],
+        power_options=['Max. pressure in free water [MPa]', 'Global power [W]'],
         native_power_params=['Amplitude [%]'])
     slot._ds_tran_combo = 'combo1'
     slot._conv_param = {
@@ -445,7 +445,7 @@ def test_global_power_setter_clears_stale_press_diagnostics_from_a_previous_powe
 
 
 def test_global_power_setter_exits_when_option_unavailable(patch_config):
-    patch_config.set('Power', 'Option.glob_pow', 'Global power [mW]')
+    patch_config.set('Power', 'Option.glob_pow', 'Global power [W]')
     slot = _bare_slot()
     slot.driving_sys = SimpleNamespace(power_options=['Some other option'])
 
@@ -1895,7 +1895,7 @@ def test_set_focus_exits_for_unknown_option(patch_config):
 
 
 def test_set_power_forwards_to_matching_property(patch_config):
-    patch_config.set('Power', 'Option.glob_pow', 'Global power [mW]')
+    patch_config.set('Power', 'Option.glob_pow', 'Global power [W]')
     patch_config.set('Power', 'Option.press', 'Max. pressure in free water [MPa]')
     patch_config.set('Power', 'Option.volt', 'Voltage [V]')
     patch_config.set('Power', 'Option.ampl', 'Amplitude [%]')
@@ -1912,7 +1912,7 @@ def test_set_power_forwards_to_matching_property(patch_config):
 
 
 def test_set_power_exits_for_unknown_option(patch_config):
-    patch_config.set('Power', 'Option.glob_pow', 'Global power [mW]')
+    patch_config.set('Power', 'Option.glob_pow', 'Global power [W]')
     patch_config.set('Power', 'Option.press', 'Max. pressure in free water [MPa]')
     patch_config.set('Power', 'Option.volt', 'Voltage [V]')
     patch_config.set('Power', 'Option.ampl', 'Amplitude [%]')
@@ -2091,11 +2091,11 @@ def test_update_conv_param_does_not_warn_when_focus_curve_domain_matches_eq_curv
 
 def _str_ready_slot():
     """A slot with just enough set for __str__ to run without crashing: chosen_power ==
-    'Global power [mW]' needs the fewest additional fields (no input_press_mpa/eq_press_mpa/
+    'Global power [W]' needs the fewest additional fields (no input_press_mpa/eq_press_mpa/
     calculated_ampl to fill in, unlike the press branch)."""
     slot = _bare_slot()
     slot._transducer = SimpleNamespace()
-    slot._chosen_power = 'Global power [mW]'
+    slot._chosen_power = 'Global power [W]'
     slot._global_power = 2.5
     slot._ds_tran_combo = 'combo1'  # no matching config section -> combo not active
     slot._oper_freq = 500
@@ -2111,11 +2111,11 @@ def test_str_reports_native_power_needs_no_correction_when_combo_inactive():
     available" elif applied) -- now always says something, since a native power parameter never
     needing pressure correction in the first place is worth stating explicitly, not omitting."""
     slot = _str_ready_slot()
-    slot.driving_sys = SimpleNamespace(native_power_params=['Global power [mW]'], serial='DS-1')
+    slot.driving_sys = SimpleNamespace(native_power_params=['Global power [W]'], serial='DS-1')
 
     info = str(slot)
 
-    assert "Global power [mW] is already DS-1's native power parameter" in info
+    assert "Global power [W] is already DS-1's native power parameter" in info
     assert "not available in the configuration file" not in info
 
 
@@ -2184,7 +2184,7 @@ def test_str_reports_not_implemented_for_an_unrecognized_chosen_power(patch_conf
     option strings (e.g. a config-driven power option added/renamed without updating __str__)
     must be reported distinctly from "not yet configured" -- something genuinely was chosen."""
     slot = _str_ready_slot()
-    slot.driving_sys = SimpleNamespace(native_power_params=['Global power [mW]'], serial='DS-1')
+    slot.driving_sys = SimpleNamespace(native_power_params=['Global power [W]'], serial='DS-1')
     slot._chosen_power = 'Some future power option [X]'
 
     info = str(slot)
@@ -2200,7 +2200,7 @@ def test_str_reports_no_pressure_correction_info_when_no_power_chosen_yet(patch_
     that means anything until a power option has actually been chosen."""
     patch_config.set('Equipment.Combination.combo1', 'Active?', 'True')
     slot = _str_ready_slot()
-    slot.driving_sys = SimpleNamespace(native_power_params=['Global power [mW]'], serial='DS-1')
+    slot.driving_sys = SimpleNamespace(native_power_params=['Global power [W]'], serial='DS-1')
     slot._chosen_power = None
 
     info = str(slot)
@@ -2218,7 +2218,7 @@ def test_str_reports_chosen_focus_option():
     whichever focus setter actually ran (_set_focus_wrt_exit_plane/_set_focus_wrt_mid_bowl)
     already logged that exact pair, at configure() time, as its own debug line."""
     slot = _str_ready_slot()
-    slot.driving_sys = SimpleNamespace(native_power_params=['Global power [mW]'], serial='DS-1')
+    slot.driving_sys = SimpleNamespace(native_power_params=['Global power [W]'], serial='DS-1')
 
     info = str(slot)
 
@@ -2229,7 +2229,7 @@ def test_str_reports_chosen_focus_option():
 
 def test_str_reports_not_yet_configured_when_no_focus_chosen():
     slot = _str_ready_slot()
-    slot.driving_sys = SimpleNamespace(native_power_params=['Global power [mW]'], serial='DS-1')
+    slot.driving_sys = SimpleNamespace(native_power_params=['Global power [W]'], serial='DS-1')
     slot._chosen_focus = None
 
     info = str(slot)

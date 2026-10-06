@@ -34,13 +34,9 @@ protocols:
   - slots:
       - transducer_serial: IS_PCD15287_01001  # print(transducer.get_tran_serials()) for options
 
-        # 'Focus wrt mid bowl [mm]' is also a valid option for IGT, but is engineering-only by
-        # default (see load_protocol()'s engineering_mode parameter).
         focus_option: Focus wrt exit plane [mm]
         focus_value: 80  # [mm], focal depth w.r.t. the exit plane and FWHM middle
 
-        # 'Global power [mW]' is also valid for IGT. 'Voltage [V]'/'Amplitude [%]' too, but both
-        # are engineering-only by default.
         power_option: Max. pressure in free water [MPa]
         power_value: 0.3  # [MPa], maximum pressure in free water
 
@@ -132,7 +128,7 @@ An existing sidecar's hash is always verified, regardless of `require_hash`; tha
 decides what happens when no sidecar exists at all. If you want a specific script to refuse to run
 against an unapproved protocol in that case too (rather than silently loading it unchecked), pass
 `require_hash=True` to `load_protocol()`. This is a Python-level parameter, set directly in your
-own script, next to `engineering_mode`.
+own script.
 
 ```python
 protocols, total_alternating_duration_ms, trigger_option, n_triggers, buffer_num = load_protocol(
@@ -152,14 +148,14 @@ own protocol.
 ```python
 protocol = TUSProtocol('YOUR-SYSTEM-ID')
 slot = protocol.add_slot('YOUR-TRANSDUCER-ID', 'Focus wrt exit plane [mm]', 40,
-                          'Global power [mW]', 2.5)
+                          'Global power [W]', 2.5)
 
 # Later, e.g. mid-experiment: adjust the same slot without rebuilding the protocol
-slot.configure('Focus wrt exit plane [mm]', 45, 'Global power [mW]', 3.0)
+slot.configure('Focus wrt exit plane [mm]', 45, 'Global power [W]', 3.0)
 
 # Or swap to a different transducer entirely
 slot.update_transducer('OTHER-TRANSDUCER-ID', 'Focus wrt exit plane [mm]', 40,
-                        'Global power [mW]', 2.5)
+                        'Global power [W]', 2.5)
 ```
 
 - `TUSProtocol(driving_sys_serial, engineering_mode=False)`: the driving system serial is required. Some options are gated behind `engineering_mode` as an institutional safety policy choice; see `engineering-only options` in [Configuration](configuration.md#safety-setting) for which ones and why. `protocol.get_power_options()`/`get_focus_options()` are available right away, before any slot exists.

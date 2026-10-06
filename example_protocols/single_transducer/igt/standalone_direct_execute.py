@@ -46,11 +46,6 @@ try:
     from fus_driving_systems.igt import igt_ds
     from fus_driving_systems.protocol_loader import load_protocol
 
-    # engineering_mode=True here would allow direct_execute.yaml to use engineering-only options
-    # (e.g. 'Voltage [V]', 'Amplitude [%]', 'Focus wrt mid bowl [mm]'): left False (the default)
-    # since this example doesn't need them. engineering_mode is only ever set here, in Python,
-    # never in the YAML file itself.
-    #
     # load_protocol() returns a 5-tuple: (protocols, total_alternating_duration_ms, trigger_option,
     # n_triggers, buffer_num). total_alternating_duration_ms is only relevant when interleaving more
     # than one protocol, trigger_option/n_triggers only when waiting for an external trigger, and

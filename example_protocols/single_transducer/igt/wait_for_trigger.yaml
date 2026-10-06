@@ -19,13 +19,9 @@ protocols:
   - slots:
       - transducer_serial: IS_PCD15287_01001  # print(transducer.get_tran_serials()) for options
 
-        # 'Focus wrt mid bowl [mm]' is also a valid option for IGT, but is engineering-only by
-        # default (see load_protocol()'s engineering_mode parameter in the .py script).
         focus_option: Focus wrt exit plane [mm]
         focus_value: 80  # [mm], focal depth w.r.t. the exit plane and FWHM middle
 
-        # 'Global power [mW]' is also valid for IGT. 'Voltage [V]'/'Amplitude [%]' too, but both
-        # are engineering-only by default.
         power_option: Max. pressure in free water [MPa]
         power_value: 0.3  # [MPa], maximum pressure in free water
 

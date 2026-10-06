@@ -219,7 +219,7 @@ config['Trigger']['Option.whole_protocol'] = TRIG_WHOLE_PROTOCOL
 config['Trigger']['Default n_triggers'] = str(0)
 
 # Power options
-POW_GP = 'Global power [mW]'
+POW_GP = 'Global power [W]'
 POW_AMPL = 'Amplitude [%]'
 POW_PRESS = 'Max. pressure in free water [MPa]'
 POW_VOLT = 'Voltage [V]'

@@ -112,10 +112,8 @@ try:
     # range).
     # to check available options for this driving system (no need to add a slot first):
     # print(protocol.get_focus_options()) / print(protocol.get_power_options())
-    # 'Focus wrt mid bowl [mm]'/'Voltage [V]'/'Amplitude [%]' are also valid options for IGT, but
-    # are configured as engineering-only by default.
     FOCUS_OPTION = 'Focus wrt exit plane [mm]'
-    POWER_OPTION = 'Max. pressure in free water [MPa]'  # or 'Global power [mW]'
+    POWER_OPTION = 'Max. pressure in free water [MPa]'
 
     # to check available transducers: print(transducer.get_tran_serials())
     # choose one transducer from that list as input

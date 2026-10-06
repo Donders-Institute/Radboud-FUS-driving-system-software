@@ -217,7 +217,7 @@ class TransducerSlot:
 
         info += "Chosen power option: "
         opt_glob_pow = get_config_value(get_logger(), config, 'Power', 'Option.glob_pow',
-                                        'Global power [mW]')
+                                        'Global power [W]')
         opt_ampl = get_config_value(get_logger(), config, 'Power', 'Option.ampl', 'Amplitude [%]')
         opt_press = get_config_value(get_logger(), config, 'Power', 'Option.press',
                                      'Max. pressure in free water [MPa]')
@@ -578,7 +578,7 @@ class TransducerSlot:
         """
 
         opt_glob_pow = get_config_value(get_logger(), config, 'Power', 'Option.glob_pow',
-                                        'Global power [mW]')
+                                        'Global power [W]')
         if self.chosen_power == opt_glob_pow:
             return self._global_power
 
@@ -643,7 +643,7 @@ class TransducerSlot:
         self._reset_power_fields()
 
         power_option = get_config_value(get_logger(), config, 'Power', 'Option.glob_pow',
-                                        'Global power [mW]')
+                                        'Global power [W]')
 
         if self._requires_engineering_mode('Power', power_option) and not self._engineering_mode:
             message = (f'{power_option} mode is disabled. Enable engineering_mode, or use ' +
@@ -980,7 +980,7 @@ class TransducerSlot:
                                 -- 'Focus wrt exit plane [mm]' or 'Focus wrt mid bowl [mm]'.
             focus_value (float): The focus value [mm] for focus_option.
             power_option (str): Which power parameter to set, e.g. one of self.get_power_options()
-                                -- 'Global power [mW]', 'Max. pressure in free water [MPa]',
+                                -- 'Global power [W]', 'Max. pressure in free water [MPa]',
                                 'Voltage [V]' or 'Amplitude [%]'.
             power_value (float or list(float)): The power value for power_option.
         """
@@ -1027,7 +1027,7 @@ class TransducerSlot:
         properties power_option actually names.
 
         Parameters:
-            power_option (str): 'Global power [mW]', 'Max. pressure in free water [MPa]',
+            power_option (str): 'Global power [W]', 'Max. pressure in free water [MPa]',
                                 'Voltage [V]' or 'Amplitude [%]' (whichever config value
                                 'Option.glob_pow'/'Option.press'/'Option.volt'/'Option.ampl'
                                 resolve to).
@@ -1035,7 +1035,7 @@ class TransducerSlot:
         """
 
         glob_pow_opt = get_config_value(get_logger(), config, 'Power', 'Option.glob_pow',
-                                        'Global power [mW]')
+                                        'Global power [W]')
         press_opt = get_config_value(get_logger(), config, 'Power', 'Option.press',
                                      'Max. pressure in free water [MPa]')
         volt_opt = get_config_value(get_logger(), config, 'Power', 'Option.volt', 'Voltage [V]')

@@ -101,16 +101,16 @@ class SonicConcepts(ds.ControlDrivingSystem):
                         f"{slot.transducer.serial})")
             if slot.chosen_power is None:
                 # Never configured at all -- distinct from having chosen a different,
-                # non-'Global power [mW]' option (below): there is no "wrong option" to name
+                # non-'Global power [W]' option (below): there is no "wrong option" to name
                 # here, so say so directly instead of awkwardly working 'power not yet
                 # configured' into the "chosen option is ..." phrasing meant for the other case.
                 error_messages.append(
                     f"No power option has been configured yet for {slot_ref} -- this driving " +
-                    "system requires 'Global power [mW]'.")
+                    "system requires 'Global power [W]'.")
             else:
                 error_messages.append(
                     f"Chosen power option for {slot_ref} is {slot.chosen_power}, but this " +
-                    "driving system only supports 'Global power [mW]'.")
+                    "driving system only supports 'Global power [W]'.")
 
         return error_messages
 

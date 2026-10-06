@@ -293,15 +293,15 @@ def test_validate_is_clean_for_a_well_formed_protocol(patch_config):
     protocol validates clean" behavior without needing real calibration curve files."""
     _configure_driving_system(patch_config, 'UNITTEST_SC', manufacturer='Sonic Concepts')
     section = 'Equipment.Driving system.UNITTEST_SC'
-    patch_config.set(section, 'Power options', 'Global power [mW]')
-    patch_config.set(section, 'Native power parameters', 'Global power [mW]')
+    patch_config.set(section, 'Power options', 'Global power [W]')
+    patch_config.set(section, 'Native power parameters', 'Global power [W]')
     _configure_transducer(patch_config, 'UNITTEST_TRAN')
     from fus_driving_systems import driving_system
     ds = driving_system.DrivingSystem()
     ds.set_ds_info('UNITTEST_SC')
 
     builder = ProtocolBuilder(ds)
-    builder.add_slot('UNITTEST_TRAN', 'Focus wrt exit plane [mm]', 20, 'Global power [mW]', 5.0)
+    builder.add_slot('UNITTEST_TRAN', 'Focus wrt exit plane [mm]', 20, 'Global power [W]', 5.0)
     builder.configure_timing(pulse_dur=1, pulse_rep_int=2, pulse_train_dur=10)
 
     assert builder.validate() == []
@@ -329,8 +329,8 @@ def test_uses_pulse_train_repetition_true_for_igt(igt_with_transducer):
 def test_uses_pulse_train_repetition_false_for_sonic_concepts(patch_config):
     _configure_driving_system(patch_config, 'UNITTEST_SC', manufacturer='Sonic Concepts')
     section = 'Equipment.Driving system.UNITTEST_SC'
-    patch_config.set(section, 'Power options', 'Global power [mW]')
-    patch_config.set(section, 'Native power parameters', 'Global power [mW]')
+    patch_config.set(section, 'Power options', 'Global power [W]')
+    patch_config.set(section, 'Native power parameters', 'Global power [W]')
     _configure_transducer(patch_config, 'UNITTEST_TRAN')
     from fus_driving_systems import driving_system
     ds = driving_system.DrivingSystem()
@@ -356,8 +356,8 @@ def test_uses_pulse_train_repetition_true_for_mock_igt(patch_config):
 def test_uses_pulse_train_repetition_false_for_mock_sc(patch_config):
     _configure_driving_system(patch_config, 'UNITTEST_MOCK_SC', manufacturer='Mock SC')
     section = 'Equipment.Driving system.UNITTEST_MOCK_SC'
-    patch_config.set(section, 'Power options', 'Global power [mW]')
-    patch_config.set(section, 'Native power parameters', 'Global power [mW]')
+    patch_config.set(section, 'Power options', 'Global power [W]')
+    patch_config.set(section, 'Native power parameters', 'Global power [W]')
     _configure_transducer(patch_config, 'UNITTEST_TRAN')
     from fus_driving_systems import driving_system
     ds = driving_system.DrivingSystem()

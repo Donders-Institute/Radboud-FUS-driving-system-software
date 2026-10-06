@@ -289,9 +289,9 @@ def test_driving_sys_has_no_setter():
 
 def test_get_power_options_forwards_to_driving_sys():
     protocol = _bare_protocol()
-    protocol._driving_sys = SimpleNamespace(power_options=['Global power [mW]'])
+    protocol._driving_sys = SimpleNamespace(power_options=['Global power [W]'])
 
-    assert protocol.get_power_options() == ['Global power [mW]']
+    assert protocol.get_power_options() == ['Global power [W]']
 
 
 def test_get_focus_options_forwards_to_driving_sys():

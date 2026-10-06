@@ -179,7 +179,7 @@ class TUSProtocol():
         DrivingSystem.
 
         Returns:
-            List[str]: Available power options, e.g. 'Global power [mW]', 'Max. pressure in free
+            List[str]: Available power options, e.g. 'Global power [W]', 'Max. pressure in free
             water [MPa]', 'Voltage [V]' or 'Amplitude [%]'.
         """
 
@@ -230,7 +230,7 @@ class TUSProtocol():
             focus_value (float): The focus value [mm] for focus_option.
             power_option (str): Which power parameter to set, e.g. one of self.get_power_options()
                                 (as offered by this protocol's driving system, see
-                                DrivingSystem.power_options) -- 'Global power [mW]', 'Max.
+                                DrivingSystem.power_options) -- 'Global power [W]', 'Max.
                                 pressure in free water [MPa]', 'Voltage [V]' or 'Amplitude [%]'.
             power_value (float or list(float)): The power value for power_option.
             oper_freq (int): Operating frequency [kHz]. Defaults to the transducer's own

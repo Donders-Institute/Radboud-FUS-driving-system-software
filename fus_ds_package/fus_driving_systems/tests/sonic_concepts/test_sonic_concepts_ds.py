@@ -95,6 +95,14 @@ def test_set_global_power_converts_w_to_mw(mocker, connected_instance):
     mock_send.assert_called_once_with('GLOBALPOWER=2000.0\r\n', 0.1)
 
 
+def test_global_power_option_label_names_the_unit_the_setter_expects():
+    """The option's label is the only unit shown next to the value (in the GUI and in scripts),
+    so it must name the unit _set_global_power() actually converts from: W, not mW."""
+    from fus_driving_systems.config.config import config_info
+
+    assert config_info['Power']['Option.glob_pow'].endswith('[W]')
+
+
 def test_set_global_power_raises_when_none(connected_instance):
     """Regression test: this is a should-never-happen internal guard now -- validate_protocol()'s
     own slot.global_power is None check (run via _validate_or_raise() in send_protocol(), before
@@ -379,7 +387,7 @@ def test_send_protocol_logs_confirmation_with_timing_and_intensity(
 def test_validate_protocol_flags_global_power_none(mocker, connected_instance):
     """This driving system only ever reads protocol.slots[0].global_power (send_protocol()
     unconditionally calls _set_global_power(slot.global_power)) -- nothing enforces that the
-    chosen power option is actually 'Global power [mW]', so a slot configured with a different
+    chosen power option is actually 'Global power [W]', so a slot configured with a different
     option (e.g. one meant for a different driving system) reaches here with global_power still
     at its unset None default. The message must name what was actually chosen, not just that
     something is wrong."""
@@ -396,7 +404,7 @@ def test_validate_protocol_flags_global_power_none(mocker, connected_instance):
 
     assert len(errors) == 1
     assert 'Amplitude [%]' in errors[0]
-    assert "'Global power [mW]'" in errors[0]
+    assert "'Global power [W]'" in errors[0]
 
 
 def test_validate_protocol_flags_global_power_none_when_never_configured(
@@ -419,7 +427,7 @@ def test_validate_protocol_flags_global_power_none_when_never_configured(
 
     assert len(errors) == 1
     assert 'No power option has been configured yet' in errors[0]
-    assert "'Global power [mW]'" in errors[0]
+    assert "'Global power [W]'" in errors[0]
 
 
 def test_validate_protocol_is_safe_before_any_slot_exists(mocker, connected_instance):

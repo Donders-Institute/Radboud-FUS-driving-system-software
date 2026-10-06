@@ -108,7 +108,7 @@ try:
     slot = protocol.add_slot(
         'CTX-500-026',
         'Focus wrt exit plane [mm]', 40,  # [mm], focal depth
-        'Global power [mW]', 2.5,  # [W], global power
+        'Global power [W]', 2.5,  # [W], global power
         oper_freq=500,  # [kHz], operating frequency
     )
 

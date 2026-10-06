@@ -153,6 +153,7 @@ def test_demo_mode_still_shows_the_option_pickers_once_a_transducer_is_chosen(qt
     assert editor.power_option_combo.isVisible() is True
     assert editor.power_option_combo.isEnabled() is True
     assert editor.power_option_combo.currentText() == 'Max. pressure in free water [MPa]'
+    assert editor.power_value_spin.suffix() == ' MPa'
     assert editor.power_value_spin.isVisible() is True
     assert editor.oper_freq_spin.isVisible() is False
     assert editor.dephasing_mode_combo.isVisible() is False
@@ -163,9 +164,9 @@ def test_demo_mode_shows_a_non_pressure_power_option_too(qtbot, patch_config):
     show that correctly too, not just IGT's own pressure option."""
     _configure_driving_system(patch_config, 'UNITTEST_SC')
     patch_config.set('Equipment.Driving system.UNITTEST_SC', 'Manufacturer', 'Sonic Concepts')
-    patch_config.set('Equipment.Driving system.UNITTEST_SC', 'Power options', 'Global power [mW]')
+    patch_config.set('Equipment.Driving system.UNITTEST_SC', 'Power options', 'Global power [W]')
     patch_config.set('Equipment.Driving system.UNITTEST_SC', 'Native power parameters',
-                     'Global power [mW]')
+                     'Global power [W]')
     patch_config.set('Equipment', 'Transducers', 'UNITTEST_TRAN_A')
     _configure_transducer(patch_config, 'UNITTEST_TRAN_A')
     from fus_driving_systems import driving_system
@@ -177,8 +178,9 @@ def test_demo_mode_shows_a_non_pressure_power_option_too(qtbot, patch_config):
 
     editor.transducer_combo.setCurrentIndex(1)
 
-    assert editor.power_option_combo.currentText() == 'Global power [mW]'
+    assert editor.power_option_combo.currentText() == 'Global power [W]'
     assert editor.power_option_combo.isEnabled() is True
+    assert editor.power_value_spin.suffix() == ' W'
 
 
 def test_other_fields_hide_again_when_switching_back_to_the_placeholder(qtbot, builder):
@@ -1289,9 +1291,9 @@ def test_dephasing_section_hidden_for_a_sonic_concepts_backed_builder(qtbot, pat
     _configure_driving_system(patch_config, 'UNITTEST_SC')
     patch_config.set('Equipment.Driving system.UNITTEST_SC', 'Manufacturer', 'Sonic Concepts')
     patch_config.set('Equipment.Driving system.UNITTEST_SC', 'Power options',
-                     'Global power [mW]')
+                     'Global power [W]')
     patch_config.set('Equipment.Driving system.UNITTEST_SC', 'Native power parameters',
-                     'Global power [mW]')
+                     'Global power [W]')
     patch_config.set('Equipment', 'Transducers', 'UNITTEST_TRAN_A\nUNITTEST_TRAN_B')
     _configure_transducer(patch_config, 'UNITTEST_TRAN_A')
     _configure_transducer(patch_config, 'UNITTEST_TRAN_B')

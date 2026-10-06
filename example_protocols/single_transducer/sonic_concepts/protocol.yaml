@@ -18,8 +18,8 @@ protocols:
         focus_value: 40  # [mm], focal depth
 
         # SC's only power option -- unlike IGT, no 'Max. pressure in free water [MPa]' choice.
-        power_option: Global power [mW]
-        power_value: 2.5  # [W] -- power_option's own unit is mW, check your units!
+        power_option: Global power [W]
+        power_value: 2.5  # [W], global power
 
         oper_freq: 500  # [kHz], operating frequency
 
