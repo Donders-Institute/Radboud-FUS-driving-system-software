@@ -1,7 +1,8 @@
 # Install from the repo root (pip resolves the two paths below relative to the current working
 # directory, not to this file's own location):
 #   pip install -r fus_ds_gui/requirements-gui.txt
+# To develop or run the tests, use requirements-dev.txt in the repository root instead: it
+# installs both packages editable.
 PySide6==6.11.2
-pytest-qt==4.5.0
 ./fus_ds_package
 ./fus_ds_gui

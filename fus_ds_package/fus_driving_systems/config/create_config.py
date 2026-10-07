@@ -374,7 +374,8 @@ config['Equipment.Manufacturer.IGT']['Max. amount of ramping steps'] = str(1023)
 
 IGT_DS = ['IGT-32-ch', 'IGT-32-ch_comb_2x10-ch', 'IGT-32-ch_comb_1x10-ch',
           'IGT-256-ch', 'IGT-256-ch_comb_1x52-ch', 'IGT-256-ch_comb_2x52-ch',
-          'IGT-256-ch_comb_3x52-ch', 'IGT-256-ch_comb_4x52-ch']
+          'IGT-256-ch_comb_3x52-ch', 'IGT-256-ch_comb_4x52-ch',
+          'IGT-256-ch_comb_1x10-ch']
 
 config['Equipment.Manufacturer.IGT']['Equipment - Driving systems'] = '\n'.join(IGT_DS)
 
@@ -482,11 +483,9 @@ config['Equipment.Manufacturer.IS']['Equipment - Transducers'] = '\n'.join(IS_TR
 config['Equipment']['Driving systems'] = str('\n'.join(SC_DS + IGT_DS + CITRUS_DS + MOCK_DS))
 config['Equipment']['Default driving system serial'] = SC_DS[0]
 
-DUMMY = 'Dummy'
-DUMMIES = [DUMMY]
 # list of transducer 'serial numbers'
 config['Equipment']['Transducers'] = str(
-    '\n'.join(SC_TRANS + IS_TRANS + CITRUS_TRANS + CLOVER_TRANS + DUMMIES))
+    '\n'.join(SC_TRANS + IS_TRANS + CITRUS_TRANS + CLOVER_TRANS))
 config['Equipment']['Default transducer serial'] = SC_TRANS[0]
 
 COMBO_JOIN_SIGN = '~'
@@ -502,9 +501,8 @@ _add_driving_system(
     manufacturer=SONIC_CONCEPTS,
     available_channels=4,
     connection_info='COM6',
-    # No Dummy here: unlike IGT, this driving system's transducer selection happens physically
-    # on the hardware itself (not managed by this software), so there is nothing for a
-    # software-only "Dummy load" choice to correspond to.
+    # This driving system's transducer selection happens physically on the hardware itself (not
+    # managed by this software).
     transducer_compatibility=SC_TRANS,
     power_options=[POW_GP],
     native_power_parameters=POW_GP,
@@ -521,9 +519,8 @@ _add_driving_system(
     manufacturer=SONIC_CONCEPTS,
     available_channels=4,
     connection_info='COM5',
-    # No Dummy here: unlike IGT, this driving system's transducer selection happens physically
-    # on the hardware itself (not managed by this software), so there is nothing for a
-    # software-only "Dummy load" choice to correspond to.
+    # This driving system's transducer selection happens physically on the hardware itself (not
+    # managed by this software).
     transducer_compatibility=SC_TRANS,
     power_options=[POW_GP],
     native_power_parameters=POW_GP,
@@ -550,7 +547,7 @@ _add_driving_system(
     manufacturer=IGT,
     available_channels=32,
     connection_info=str(os.path.join(CONFIG_FILE_FOLDER_IGT_DS, 'gen_Nijmegen32_71D8_10W.json')),
-    transducer_compatibility=DUMMIES,
+    transducer_compatibility=[],
     power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
     native_power_parameters=POW_AMPL,
     focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL, FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
@@ -570,7 +567,7 @@ _add_driving_system(
     available_channels=20,
     connection_info=str(os.path.join(
         CONFIG_FILE_FOLDER_IGT_DS, 'gen_Nijmegen32_2x10c_71D8_10W.json')),
-    transducer_compatibility=IS_TRANS + DUMMIES,
+    transducer_compatibility=IS_TRANS,
     power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
     native_power_parameters=POW_AMPL,
     focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL, FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
@@ -589,7 +586,7 @@ _add_driving_system(
     available_channels=10,
     connection_info=str(os.path.join(
         CONFIG_FILE_FOLDER_IGT_DS, 'gen_Nijmegen32_10c_71D8_10W.json')),
-    transducer_compatibility=IS_TRANS + DUMMIES,
+    transducer_compatibility=IS_TRANS,
     power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
     native_power_parameters=POW_AMPL,
     focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL, FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
@@ -602,8 +599,8 @@ _add_driving_system(
 )
 
 # # 256 ch. # #
-# All channels: kept Dummy-only, same reasoning as the 32 ch. "all channels" variant above:
-# there's no single real transducer meant to span the full, unsplit channel count.
+# All channels: no compatible transducer, same reasoning as the 32 ch. "all channels" variant
+# above: there's no single real transducer meant to span the full, unsplit channel count.
 _add_driving_system(
     IGT_DS[3],
     name=IGT + ' 256 ch. - all channels',
@@ -611,7 +608,7 @@ _add_driving_system(
     available_channels=256,
     connection_info=str(os.path.join(
         CONFIG_FILE_FOLDER_IGT_DS, 'gen_Nijmegen_393F_256_MOC12.json')),
-    transducer_compatibility=DUMMIES,
+    transducer_compatibility=[],
     power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
     native_power_parameters=POW_AMPL,
     focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL, FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
@@ -625,6 +622,28 @@ _add_driving_system(
     active=False,
 )
 
+# Test setup, inactive by default: the first 10 channels of the 256 ch. unit, for a dummy load
+# wired to those channels. The software imitates a 10-element Imasonic transducer; no real
+# transducer is meant to be connected. Native options only: no Equipment.Combination.* exists
+# for this pairing. To use it, set 'active?' to True for this driving system in ds_config.ini;
+# the hardware tests default to it.
+_add_driving_system(
+    IGT_DS[8],
+    name=IGT + ' 256 ch. - 1 x 10 ch. (TEST)',
+    manufacturer=IGT,
+    available_channels=10,
+    connection_info=str(os.path.join(
+        CONFIG_FILE_FOLDER_IGT_DS, 'gen_Nijmegen_393F_1x10_MOC12.json')),
+    transducer_compatibility=IS_TRANS[:2],
+    power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
+    native_power_parameters=POW_AMPL,
+    focus_options=[FOC_WRT_EXIT, FOC_WRT_BOWL],
+    native_focus_parameters=FOC_WRT_BOWL,
+    max_transducer_slots=1,
+    max_buffers=2,
+    active=False,
+)
+
 # 1/2/3 x 52 ch.: drive one, two, or three 52-element Clover transducers at once, same
 # 52-of-64-wired-per-bank layout as the 4 x 52 ch. variant below, just fewer banks exposed.
 _add_driving_system(
@@ -634,7 +653,7 @@ _add_driving_system(
     available_channels=52,
     connection_info=str(os.path.join(
         CONFIG_FILE_FOLDER_IGT_DS, 'gen_Nijmegen_393F_1x52_MOC12.json')),
-    transducer_compatibility=CLOVER_TRANS + DUMMIES,
+    transducer_compatibility=CLOVER_TRANS,
     power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
     native_power_parameters=POW_AMPL,
     focus_options=[FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
@@ -651,7 +670,7 @@ _add_driving_system(
     available_channels=52 * 2,
     connection_info=str(os.path.join(
         CONFIG_FILE_FOLDER_IGT_DS, 'gen_Nijmegen_393F_2x52_MOC12.json')),
-    transducer_compatibility=CLOVER_TRANS + DUMMIES,
+    transducer_compatibility=CLOVER_TRANS,
     power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
     native_power_parameters=POW_AMPL,
     focus_options=[FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
@@ -668,7 +687,7 @@ _add_driving_system(
     available_channels=52 * 3,
     connection_info=str(os.path.join(
         CONFIG_FILE_FOLDER_IGT_DS, 'gen_Nijmegen_393F_3x52_MOC12.json')),
-    transducer_compatibility=CLOVER_TRANS + DUMMIES,
+    transducer_compatibility=CLOVER_TRANS,
     power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
     native_power_parameters=POW_AMPL,
     focus_options=[FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
@@ -688,7 +707,7 @@ _add_driving_system(
     available_channels=52 * 4,
     connection_info=str(os.path.join(
         CONFIG_FILE_FOLDER_IGT_DS, 'gen_Nijmegen_393F_4x52_MOC12.json')),
-    transducer_compatibility=CLOVER_TRANS + DUMMIES,
+    transducer_compatibility=CLOVER_TRANS,
     power_options=[POW_AMPL, POW_PRESS, POW_VOLT],
     native_power_parameters=POW_AMPL,
     focus_options=[FOC_XYZ_WRT_EXIT, FOC_XYZ_WRT_BOWL],
@@ -708,8 +727,8 @@ _add_driving_system(
     manufacturer=CITRUS,
     available_channels=256,
     connection_info='COM1',
-    # No Dummy here either -- same reason as Sonic Concepts: transducer selection isn't
-    # software-managed for this driving system.
+    # Same as Sonic Concepts: transducer selection isn't software-managed for this driving
+    # system.
     transducer_compatibility=CITRUS_TRANS,
     power_options=[POW_VOLT],
     native_power_parameters=POW_VOLT,
@@ -830,7 +849,7 @@ _add_transducer(
     IS_TRANS[5], name=IMASONIC + ' 10 ch. PCD15473_01001 ROC 100 mm - OPM setup',
     manufacturer=IMASONIC,
     elements=10, fund_freq=300, exit_plane_dist=7.3,
-    min_focus=7.8, max_focus=92.0,
+    min_focus=6.8, max_focus=90.0,
     steer_information=str(os.path.join(
         CONFIG_FILE_FOLDER_IS_TRAN, 'transducer_15473_10_300kHz_inverted_OPM.ini')),
     active=True,
@@ -886,20 +905,6 @@ _add_transducer(
     steer_information=str(os.path.join(
         CONFIG_FILE_FOLDER_IS_TRAN, 'clover_3_PLACEHOLDER.ini')),
     active=True,
-)
-
-#######################################################################################
-# Dummy tranducer
-#######################################################################################
-
-# For characterizing a driving system's own electrical output (e.g. into resistors) with no
-# real transducer connected. Only usable with a driving system's native power/focus parameters
-# -- there is no Equipment.Combination.* calibration for Dummy with any driving system, and none
-# is meaningful: a dummy load has no real acoustic behavior to calibrate against, so setting a
-# non-native option (e.g. a target pressure) would exit with a "no active calibration" error.
-_add_transducer(
-    DUMMY, name='Dummy load', manufacturer='', elements=0, fund_freq=0,
-    min_focus=0, max_focus=1000, active=True,
 )
 
 #######################################################################################

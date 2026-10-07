@@ -73,20 +73,14 @@ jobs:
         with:
           python-version: '3.10'
           cache: 'pip'
-          cache-dependency-path: requirements-ci.txt
+          cache-dependency-path: |
+            requirements-ci.txt
+            requirements-dev.txt
 
-      - name: Install test dependencies (fus_ds_package)
-        run: pip install -r requirements-ci.txt
-
-      - name: Install test dependencies (fus_ds_gui)
-        run: pip install -r fus_ds_gui/requirements-gui.txt
-
-      - name: Reinstall both packages in editable mode
-        # requirements-gui.txt installs both packages normally, which replaces the editable
-        # install from requirements-ci.txt. pytest and coverage must see the checked-out source,
-        # not a copy in site-packages (coverage would otherwise report ~67%), so switch both
-        # back to editable.
-        run: pip install -e ./fus_ds_package -e ./fus_ds_gui --no-deps
+      - name: Install test dependencies and both packages (editable)
+        # Editable on purpose: pytest and coverage must see the checked-out source, not a copy
+        # in site-packages (coverage would otherwise report ~67%).
+        run: pip install -r requirements-dev.txt
 
       - name: Install pylint
         # Pinned: an unpinned install picked up pylint 4.0.8 on this runner (nothing here

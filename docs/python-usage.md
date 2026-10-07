@@ -53,57 +53,31 @@ own project folder. Nothing later depends on its location relative to your own w
 You don't need a new environment made by this repo's own tooling, as long as it's already on the
 Python version from the table in Step 1: `unifus.pyd` is a compiled native extension tied to one
 specific Python version, so installing into a mismatched environment fails, or worse, imports but
-then fails confusingly later. Activate your existing one and install the package directly from
-your clone of this repository:
-```
-call [YOUR_EXISTING_VENV_PATH]\Scripts\activate
-pip install [PATH_TO_CLONED_REPO]\fus_ds_package
-```
-Once installed, `import fus_driving_systems` works from your existing script regardless of where
-either one lives. Skip ahead to [Usage](#usage) from here.
+then fails confusingly later. Activate your existing one and install from the root folder of
+your clone of this repository. Choose what you need:
 
-Developing `fus_driving_systems` itself, and want your local edits picked up without
-reinstalling after every change? Install it in editable mode instead:
-```
-pip install -e [PATH_TO_CLONED_REPO]\fus_ds_package
-```
+- **Option 1: only the package** (scripts and protocol files, no GUI):
+  ```
+  call [YOUR_EXISTING_VENV_PATH]\Scripts\activate
+  cd [PATH_TO_CLONED_REPO]
+  pip install -r requirements.txt
+  ```
+  This installs `fus_ds_package` and its dependencies, each at the exact version this release
+  was tested with. Afterwards, `import fus_driving_systems` works from your existing script
+  regardless of where either one lives.
 
-**Running the tests.** `requirements-ci.txt` lists what the CI workflow installs to run the tests;
-you don't need it for normal use. It installs `fus_ds_package` in editable mode on purpose: pytest
-and coverage must see your checked-out source, not a copy in `site-packages`. From the repository
-root:
-```
-pip install -r requirements-ci.txt
-cd fus_ds_package
-pytest -m "not hardware"
-```
-`-m "not hardware"` skips the tests that need a real driving system.
+- **Option 2: the package and the GUI**:
+  ```
+  call [YOUR_EXISTING_VENV_PATH]\Scripts\activate
+  cd [PATH_TO_CLONED_REPO]
+  pip install -r fus_ds_gui\requirements-gui.txt
+  ```
+  The GUI is a separate package that needs PySide6, a large download that scripts don't use,
+  so it is optional. This installs it together with `fus_ds_package`. Start it from that
+  environment with `python -m fus_ds_gui.app`.
 
-Those hardware tests live in `fus_driving_systems/tests/hardware/`, for IGT and Sonic Concepts.
-Both are meant for a driving system with a dummy load attached, never a real transducer. A dummy
-load cannot be selected as a transducer on a TPO, so for Sonic Concepts leave whichever
-transducer is selected and tell the tests which one it is: the TPO rejects focus values outside
-that transducer's range. They only run when you opt in with two separate things: select them with `pytest -m hardware --no-cov`, and set the
-environment variable `FDS_HARDWARE_TESTS=1`. With your virtual environment activated, run this
-from the `fus_ds_package` folder of the repository (not the virtual environment), in the Command
-Prompt:
-```
-set FDS_HARDWARE_TESTS=1&& python -m pytest -m hardware --no-cov fus_driving_systems/tests/hardware
-```
-Or in PowerShell:
-```
-$env:FDS_HARDWARE_TESTS = "1"; python -m pytest -m hardware --no-cov fus_driving_systems/tests/hardware
-```
-The other settings are described at the top of `tests/hardware/conftest.py`.
-
-For the GUI tests, `requirements-gui.txt` installs both packages normally, which replaces the
-editable install, so switch both back to editable before running them:
-```
-pip install -r fus_ds_gui/requirements-gui.txt
-pip install -e fus_ds_package -e fus_ds_gui --no-deps
-cd fus_ds_gui
-pytest
-```
+Run either command from the root folder: the paths inside the requirements files are relative.
+Then skip ahead to [Usage](#usage).
 
 #### Setting Up a New Virtual Environment
 
@@ -252,3 +226,84 @@ reapply that customization too: installing a new release always ships its own fr
 copy, silently overwriting any override from before.
 
 [← Back to README](../README.md)
+
+## 🛠️ For Developers <a name="developers"></a>
+
+For anyone working on the package or the GUI itself; regular script and GUI usage don't need any of this.
+
+### Development environment
+
+`requirements-dev.txt` installs everything to work on both packages: the test tools, the pinned
+dependencies, and `fus_ds_package` and `fus_ds_gui` themselves in editable mode, so your local
+edits are picked up without reinstalling after every change. It is also what the CI workflow
+installs: pytest and coverage must see your checked-out source, not a copy in `site-packages`.
+From the repository root, with your virtual environment activated:
+```
+pip install -r requirements-dev.txt
+```
+Only working on the package, without the GUI? `requirements-ci.txt` is the same without it
+(and without PySide6).
+
+### Running the tests
+
+Package tests, from the repository root:
+```
+cd fus_ds_package
+pytest -m "not hardware"
+```
+`-m "not hardware"` skips the tests that need a real driving system.
+
+GUI tests, with the same environment:
+```
+cd fus_ds_gui
+pytest
+```
+
+### Hardware tests
+
+The tests that need a real driving system live in `fus_driving_systems/tests/hardware/`, for IGT
+and Sonic Concepts.
+Both are meant for a driving system with a dummy load attached, never a real transducer. A dummy
+load cannot be selected as a transducer on a TPO, so for Sonic Concepts leave whichever
+transducer is selected and tell the tests which one it is: the TPO rejects focus values outside
+that transducer's range. They only run when you opt in with two separate things: select them with `pytest -m hardware --no-cov`, and set the
+environment variable `FDS_HARDWARE_TESTS=1`. With your virtual environment activated, run this
+from the `fus_ds_package` folder of the repository (not the virtual environment), in the Command
+Prompt:
+```
+set FDS_HARDWARE_TESTS=1&& python -m pytest -m hardware --no-cov fus_driving_systems/tests/hardware
+```
+Or in PowerShell:
+```
+$env:FDS_HARDWARE_TESTS = "1"; python -m pytest -m hardware --no-cov fus_driving_systems/tests/hardware
+```
+Which driving system and transducer the tests use is set with environment variables, so there
+is nothing to edit in the test files. For IGT you need none if the `IGT 256 ch. - 1 x 10 ch.
+(TEST)` setup is active in `ds_config.ini`. For Sonic Concepts you need two: the driving system,
+and the transducer that is currently selected on the TPO. A variable stays set for as long as
+that terminal window is open, so you can enter them one line at a time and run the tests
+again afterwards with just the last line. In the Command Prompt:
+```
+set FDS_HARDWARE_TESTS=1
+set FDS_HW_SC_DRIVING_SYSTEM=105-010
+set FDS_HW_SC_TRANSDUCER=[TRANSDUCER_SERIAL]
+python -m pytest -m hardware --no-cov fus_driving_systems/tests/hardware
+```
+Or in PowerShell:
+```
+$env:FDS_HARDWARE_TESTS = "1"
+$env:FDS_HW_SC_DRIVING_SYSTEM = "105-010"
+$env:FDS_HW_SC_TRANSDUCER = "[TRANSDUCER_SERIAL]"
+python -m pytest -m hardware --no-cov fus_driving_systems/tests/hardware
+```
+You can set more of them the same way:
+- IGT: `FDS_HW_DRIVING_SYSTEM`, `FDS_HW_TRANSDUCER` (the "pretend" transducer), `FDS_HW_FOCUS_MM`,
+  `FDS_HW_AMPLITUDE_PERCENT` and `FDS_HW_VOLTAGE_TOLERANCE_PERCENT`.
+- Sonic Concepts: `FDS_HW_SC_PORT` and `FDS_HW_SC_POWER_W`.
+
+Their defaults and the safety limits are described at the top of `tests/hardware/conftest.py`.
+
+Prefer not to type them? Fill in the settings at the top of `fus_ds_package\run_hardware_tests.bat`,
+choose `igt` or `sc` for the equipment that is connected, and double-click it, or run it from a
+Command Prompt. Extra arguments go to pytest, for example `run_hardware_tests.bat -k abort` to run only
+the abort tests.

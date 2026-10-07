@@ -12,7 +12,8 @@ Configuration (environment variables, all optional except the first):
     FDS_HARDWARE_TESTS=1            Required, otherwise every hardware test is skipped.
 
 IGT:
-    FDS_HW_DRIVING_SYSTEM           Default: IGT-256-ch_comb_1x10-ch (a local-only test setup).
+    FDS_HW_DRIVING_SYSTEM           Default: IGT-256-ch_comb_1x10-ch, a test setup that is inactive
+                                    in ds_config.ini until you set its 'active?' to True.
     FDS_HW_TRANSDUCER               The "pretend" transducer selected in software. Default:
                                     IS_PCD15287_01001 (10 elements, matches the 10 channels).
     FDS_HW_FOCUS_MM                 Focus wrt mid bowl [mm] to ask for. Default: 60.
@@ -67,8 +68,9 @@ def hw_config():
 
     ds_serial = os.environ.get('FDS_HW_DRIVING_SYSTEM', 'IGT-256-ch_comb_1x10-ch')
     if ds_serial not in get_ds_serials():
-        pytest.skip(f'Driving system {ds_serial} is not in ds_config.ini. The default is a '
-                    'local-only test setup; set FDS_HW_DRIVING_SYSTEM to one that exists.')
+        pytest.skip(f'Driving system {ds_serial} is not active in ds_config.ini. The default is '
+                    "a test setup that is inactive until you set its 'active?' to True; or set "
+                    'FDS_HW_DRIVING_SYSTEM to an active one.')
 
     amplitude = float(os.environ.get('FDS_HW_AMPLITUDE_PERCENT', '5'))
     return SimpleNamespace(

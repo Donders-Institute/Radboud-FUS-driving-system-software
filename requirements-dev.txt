@@ -1,0 +1,11 @@
+# Everything to develop and test both packages: the test dependencies from requirements-ci.txt,
+# plus the GUI's, with fus_ds_package and fus_ds_gui both installed editable (-e). Install from
+# the repository root:
+#   pip install -r requirements-dev.txt
+# The PySide6 pin is the one in fus_ds_gui/requirements-gui.txt; keep it in sync by hand (that
+# file installs the packages normally, so it can't be included here). pytest-qt is only needed
+# for the GUI tests, so it lives here and not in requirements-gui.txt.
+-r requirements-ci.txt
+PySide6==6.11.2
+pytest-qt==4.5.0
+-e ./fus_ds_gui

@@ -37,6 +37,7 @@ This project is facilitated by the Radboud FUS Centre. For more information, ple
     - [🔧 Installation](docs/python-usage.md#install)
     - [📋 Usage](docs/python-usage.md#usage)
     - [🌟 Installation of New Release](docs/python-usage.md#install-new-release)
+    - [🛠️ For Developers](docs/python-usage.md#developers)
   - [🔊 Building and Loading Protocols](docs/building-protocols.md)
     - [🔗 Integrating into an Existing Experimental Script](docs/building-protocols.md#integrating)
 - [🧰 Configuration](docs/configuration.md#config)
