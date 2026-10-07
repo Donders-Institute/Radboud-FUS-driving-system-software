@@ -26,7 +26,7 @@ from fus_driving_systems.config.config import config_info as config
 from fus_driving_systems.config.logging_config import get_logger
 from fus_driving_systems.utils import get_config_value
 from fus_driving_systems.exceptions import (FDSHardwareError, FDSInternalError, FDSSafetyError,
-                                            FDSValidationError)
+                                            FDSValidationError, raise_logged)
 
 
 class SonicConcepts(ds.ControlDrivingSystem):
@@ -66,8 +66,7 @@ class SonicConcepts(ds.ControlDrivingSystem):
         if startup_message == 'E2':
             self._connected = False
             message = "Error E2; connection cannot be made with driving system"
-            get_logger().critical(message)
-            raise FDSHardwareError(message)
+            raise_logged(FDSHardwareError, message)
 
         self._connected = True
         get_logger().debug("Connection with driving system %s is established", startup_message)
@@ -105,7 +104,7 @@ class SonicConcepts(ds.ControlDrivingSystem):
                 # here, so say so directly instead of awkwardly working 'power not yet
                 # configured' into the "chosen option is ..." phrasing meant for the other case.
                 error_messages.append(
-                    f"No power option has been configured yet for {slot_ref} -- this driving " +
+                    f"No power option has been configured yet for {slot_ref}. This driving " +
                     "system requires 'Global power [W]'.")
             else:
                 error_messages.append(
@@ -156,6 +155,7 @@ class SonicConcepts(ds.ControlDrivingSystem):
                 'Protocol sent successfully: %.2f ms pulse every %.2f ms, %.2f ms total '
                 'duration.\n  %s', protocol.pulse_dur, protocol.pulse_rep_int,
                 protocol.pulse_train_dur, slot.intensity_summary())
+            self._log_non_default_settings(protocol)
 
         else:
             get_logger().error("No connection with driving system.")
@@ -183,10 +183,9 @@ class SonicConcepts(ds.ControlDrivingSystem):
         # sent is a caller mistake either way (never connected at all, or connected but
         # forgot to call send_protocol()) -- not something to silently paper over here.
         if not self.is_protocol_sent():
-            message = ('No protocol has been sent yet -- call send_protocol() before ' +
+            message = ('No protocol has been sent yet. Call send_protocol() before ' +
                        'wait_for_trigger().')
-            get_logger().critical(message)
-            raise FDSValidationError(message)
+            raise_logged(FDSValidationError, message)
 
         # self._sent_pulse_train_dur, not protocol.pulse_train_dur: the protocol argument here
         # is otherwise only used for the reconnect-fallback below, never on this, the normal
@@ -223,10 +222,9 @@ class SonicConcepts(ds.ControlDrivingSystem):
         # sent is a caller mistake either way (never connected at all, or connected but
         # forgot to call send_protocol()) -- not something to silently paper over here.
         if not self.is_protocol_sent():
-            message = ('No protocol has been sent yet -- call send_protocol() before ' +
+            message = ('No protocol has been sent yet. Call send_protocol() before ' +
                        'execute_protocol().')
-            get_logger().critical(message)
-            raise FDSValidationError(message)
+            raise_logged(FDSValidationError, message)
 
         # Not "Executing protocol...": the START command below returns almost instantly, so
         # there's nothing left "in progress" to report. self._sent_pulse_train_dur, not
@@ -248,8 +246,7 @@ class SonicConcepts(ds.ControlDrivingSystem):
 
             except serial.SerialException as why:
                 message = f"Exception: {why}"
-                get_logger().critical(message)
-                raise FDSHardwareError(message) from why
+                raise_logged(FDSHardwareError, message, cause=why)
 
             get_logger().info('Protocol execution started.')
 
@@ -282,8 +279,7 @@ class SonicConcepts(ds.ControlDrivingSystem):
             self._send_command('ABORT\r\n', 0.5)
         except serial.SerialException as why:
             message = f"Exception: {why}"
-            get_logger().critical(message)
-            raise FDSHardwareError(message) from why
+            raise_logged(FDSHardwareError, message, cause=why)
 
     def disconnect(self):
         """
@@ -335,14 +331,12 @@ class SonicConcepts(ds.ControlDrivingSystem):
         if response in self._ERROR_RESPONSES:
             message = (f"Error {response} ({self._ERROR_RESPONSES[response]}) for command: " +
                        f"{command.strip()}")
-            get_logger().critical(message)
-            raise FDSHardwareError(message)
+            raise_logged(FDSHardwareError, message)
 
         if not response:
             message = (f"No response received for command: {command.strip()} (connection may " +
                        "be lost or unresponsive).")
-            get_logger().critical(message)
-            raise FDSHardwareError(message)
+            raise_logged(FDSHardwareError, message)
 
         return response
 
@@ -415,8 +409,7 @@ class SonicConcepts(ds.ControlDrivingSystem):
             # ever called) already rejects this. A guard against a bug in this package itself,
             # not a caller mistake.
             message = "Power parameter may be set incorrectly. Global power is None."
-            get_logger().critical(message)
-            raise FDSInternalError(message)
+            raise_logged(FDSInternalError, message)
 
     def _set_burst_length(self, burst):
         """
@@ -515,8 +508,7 @@ class SonicConcepts(ds.ControlDrivingSystem):
                 ramp_mode = 2
             else:
                 message = f"Unknown modulation value: {ramp_mode}"
-                get_logger().critical(message)
-                raise FDSValidationError(message)
+                raise_logged(FDSValidationError, message)
 
             command = f'RAMPMODE={ramp_mode}\r\n'
             self._send_command(command)
@@ -549,7 +541,6 @@ class SonicConcepts(ds.ControlDrivingSystem):
             # Not a data-validation issue: proceeding without confirmation risks physically
             # firing a protocol built for one transducer through a different one actually
             # selected on the driving system -- a genuine safety concern, not a caller mistake.
-            message = ("Transducer selection was not confirmed -- refusing to proceed until " +
+            message = ("Transducer selection was not confirmed. Refusing to proceed until " +
                        "the correct transducer is selected on the driving system.")
-            get_logger().critical(message)
-            raise FDSSafetyError(message)
+            raise_logged(FDSSafetyError, message)

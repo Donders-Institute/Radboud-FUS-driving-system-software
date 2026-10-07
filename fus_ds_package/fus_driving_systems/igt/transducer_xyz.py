@@ -29,7 +29,8 @@ import math
 from fus_driving_systems.config.config import config_info as config
 from fus_driving_systems.utils import get_config_value
 from fus_driving_systems.config.logging_config import get_logger
-from fus_driving_systems.exceptions import FDSConfigError, FDSInternalError, FDSValidationError
+from fus_driving_systems.exceptions import (FDSConfigError, FDSInternalError, FDSValidationError,
+                                            raise_logged)
 
 try:  # for Python 2/3 compatibility
     from StringIO import StringIO
@@ -68,8 +69,7 @@ def apply_cyclic_dephasing(phases, dephasing_degree):
         message = (f'Number of dephasing entries ({len(dephasing_degree)}) does not ' +
                    f'correspond to number of transducer elements ({len(phases)}). Only enter ' +
                    'one dephasing value or n-values equal to the number of transducer elements.')
-        get_logger().critical(message)
-        raise FDSValidationError(message)
+        raise_logged(FDSValidationError, message)
 
     dephasing_degree = dephasing_degree[0]
     dephased = list(phases)
@@ -129,14 +129,12 @@ class Transducer:
             return self.load_from_string(text)
         except IOError as e:
             message = f'Error: {e}'
-            get_logger().critical(message)
-            raise FDSConfigError(message) from e
+            raise_logged(FDSConfigError, message, cause=e)
 
     def load_from_string(self, definition):
         if not definition.strip():
             message = 'Error: empty content'
-            get_logger().critical(message)
-            raise FDSConfigError(message)
+            raise_logged(FDSConfigError, message)
 
         # Named parser, not config -- that name is already taken at module level by the shared
         # config_info object (see SOUND_SPEED_WATER above), which this ConfigParser instance
@@ -155,8 +153,7 @@ class Transducer:
             self.focalLength = parser.getfloat("transducer", "focalLength")
         except (cfg.Error, ValueError) as e:
             message = "Error: missing or invalid 'transducer.focalLength' parameter"
-            get_logger().critical(message)
-            raise FDSConfigError(message) from e
+            raise_logged(FDSConfigError, message, cause=e)
 
         size = 0
         # self.name = ""
@@ -165,12 +162,10 @@ class Transducer:
             size = parser.getint("elements", "size")
         except (cfg.Error, ValueError) as e:
             message = "Error: missing 'elements.size' parameter"
-            get_logger().critical(message)
-            raise FDSConfigError(message) from e
+            raise_logged(FDSConfigError, message, cause=e)
         if size == 0:
             message = "Error: size is 0"
-            get_logger().critical(message)
-            raise FDSConfigError(message)
+            raise_logged(FDSConfigError, message)
 
         self.elements = []
         for i in range(1, 1+size):
@@ -182,8 +177,7 @@ class Transducer:
                 self.elements.append(item)
             except Exception as ex:
                 message = f"Error: {ex}"
-                get_logger().critical(message)
-                raise FDSConfigError(message) from ex
+                raise_logged(FDSConfigError, message, cause=ex)
 
         return True
 
@@ -209,15 +203,13 @@ class Transducer:
         if freq_count == 0 or pulse.frequency(0) == 0:
             message = ("Error: the frequencies must be defined in the pulse before calling" +
                        "compute_phases().")
-            get_logger().critical(message)
-            raise FDSInternalError(message)
+            raise_logged(FDSInternalError, message)
         if freq_count == 1:
             wavelen = SOUND_SPEED_WATER / pulse.frequency(0)
         elif freq_count != self.channel_count():
             message = (f"Error: bad number of frequencies ({freq_count} in pulse, " +
                        f"{self.channel_count()} elements in transducer)")
-            get_logger().critical(message)
-            raise FDSInternalError(message)
+            raise_logged(FDSInternalError, message)
 
         phases = [0.0] * self.channel_count()
         x = point_mm[0] / 1000.0
@@ -230,7 +222,8 @@ class Transducer:
                 wavelen = SOUND_SPEED_WATER / pulse.frequency(i)
             dist = math.sqrt(math.pow(elem[0]-x, 2) + math.pow(elem[1]-y, 2) +
                              math.pow(elem[2]-z, 2))
-            rem = math.modf(dist / wavelen)[0]  # take fractional part
+            # wavelen is always set here: the other branch above ends in raise_logged()
+            rem = math.modf(dist / wavelen)[0]  # pylint: disable=possibly-used-before-assignment
             phases[i] = rem * 360.0
 
         if dephasing_degree is not None:

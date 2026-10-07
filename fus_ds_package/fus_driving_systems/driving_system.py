@@ -17,7 +17,7 @@ import copy
 from fus_driving_systems.config.config import config_info as config
 from fus_driving_systems.config.logging_config import get_logger
 from fus_driving_systems.utils import get_config_value
-from fus_driving_systems.exceptions import FDSConfigError, FDSValidationError
+from fus_driving_systems.exceptions import FDSConfigError, FDSValidationError, raise_logged
 
 
 class DrivingSystem:
@@ -93,8 +93,7 @@ class DrivingSystem:
         if section not in config:
             message = (f'No driving system with serial number {serial} found in ' +
                        'configuration file.')
-            get_logger().critical(message)
-            raise FDSValidationError(message)
+            raise_logged(FDSValidationError, message)
 
         self.serial = serial
         self.name = get_config_value(get_logger(), config, section, 'Name',
@@ -198,8 +197,7 @@ def get_ds_serials():
 
     if len(active_serials) < 1:
         message = 'No active driving systems found in configuration file.'
-        get_logger().critical(message)
-        raise FDSConfigError(message)
+        raise_logged(FDSConfigError, message)
 
     return active_serials
 

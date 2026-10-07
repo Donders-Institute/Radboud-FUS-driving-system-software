@@ -176,7 +176,7 @@ def test_send_protocol_logs_confirmation_with_timing_and_intensity(patch_config,
         mock_ds.send_protocol(protocol)
 
     assert 'sent successfully' in caplog.text.lower()
-    assert 'repetition' in caplog.text.lower()
+    assert 'pulse train(s)' in caplog.text.lower()
     assert 'total duration' in caplog.text.lower()
     assert 'UNITTEST_TRAN' in caplog.text
 
@@ -386,3 +386,18 @@ def test_mock_sc_abort_logs_and_does_not_raise(caplog):
         mock_ds.abort()  # must not raise
 
     assert 'aborted' in caplog.text.lower()
+
+
+def test_mock_igt_logs_non_default_settings_like_the_real_driving_system(
+        patch_config, caplog, mocker):
+    from fus_driving_systems.tus_protocol import TUSProtocol
+
+    _configure_igt(patch_config)
+    protocol = _build_igt_protocol()
+    mocker.patch.object(TUSProtocol, 'non_default_settings',
+                        return_value=['slot 0: dephasing [90.0] deg'])
+
+    with caplog.at_level('INFO'):
+        MockIGT().send_protocol(protocol)
+
+    assert 'Non-default settings in this protocol: slot 0: dephasing [90.0] deg.' in caplog.text

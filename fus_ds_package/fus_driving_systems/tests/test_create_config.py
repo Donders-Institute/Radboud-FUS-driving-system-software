@@ -26,6 +26,6 @@ def test_ds_config_ini_matches_freshly_generated_output(tmp_path, monkeypatch):
     shipped_contents = _SHIPPED_INI_PATH.read_text(encoding='utf-8')
 
     assert generated_contents == shipped_contents, (
-        'ds_config.ini no longer matches create_config.py\'s own output -- regenerate it by '
+        'ds_config.ini no longer matches create_config.py\'s own output. Regenerate it by '
         'running create_config.py from inside fus_driving_systems/config/ and committing the '
         'result.')

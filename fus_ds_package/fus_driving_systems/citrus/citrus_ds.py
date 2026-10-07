@@ -79,6 +79,7 @@ class CITRUS(ds.ControlDrivingSystem):
         self._validate_or_raise(protocol)
 
         get_logger().info('Sending protocol...')
+        self._log_non_default_settings(protocol)
 
     def execute_protocol(self, protocol):
         """

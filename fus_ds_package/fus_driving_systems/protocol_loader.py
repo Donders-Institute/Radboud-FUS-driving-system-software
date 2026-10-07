@@ -18,7 +18,7 @@ import yaml
 # Own packages
 from fus_driving_systems.tus_protocol import TUSProtocol
 from fus_driving_systems.config.logging_config import get_logger
-from fus_driving_systems.exceptions import FDSSafetyError, FDSValidationError
+from fus_driving_systems.exceptions import FDSSafetyError, FDSValidationError, raise_logged
 
 
 _REQUIRED_TOP_LEVEL_KEYS = ('driving_sys_serial', 'protocols')
@@ -47,8 +47,7 @@ def _require_mapping(value, context):
 
     if not isinstance(value, dict):
         message = f'{context} must be a mapping (key: value pairs), got {type(value).__name__}.'
-        get_logger().critical(message)
-        raise FDSValidationError(message)
+        raise_logged(FDSValidationError, message)
 
     return value
 
@@ -58,8 +57,7 @@ def _require_list(value, context):
 
     if not isinstance(value, list) or not value:
         message = f'{context} must be a non-empty list.'
-        get_logger().critical(message)
-        raise FDSValidationError(message)
+        raise_logged(FDSValidationError, message)
 
     return value
 
@@ -70,8 +68,7 @@ def _require_key(mapping, key, context):
 
     if key not in mapping:
         message = f"Missing required key '{key}' in {context}."
-        get_logger().critical(message)
-        raise FDSValidationError(message)
+        raise_logged(FDSValidationError, message)
 
     return mapping[key]
 
@@ -86,17 +83,15 @@ def _reject_unknown_keys(mapping, known_keys, context):
     "unknown key" message that doesn't explain why."""
 
     if 'engineering_mode' in mapping:
-        message = ("'engineering_mode' is not a protocol-file field -- set it as a Python-level "
+        message = ("'engineering_mode' is not a protocol-file field. Set it as a Python-level "
                    "parameter instead: load_protocol(yaml_path, engineering_mode=True).")
-        get_logger().critical(message)
-        raise FDSValidationError(message)
+        raise_logged(FDSValidationError, message)
 
     unknown = set(mapping) - set(known_keys)
     if unknown:
-        message = (f'Unknown key(s) {sorted(unknown)} in {context} -- check for typos. ' +
+        message = (f'Unknown key(s) {sorted(unknown)} in {context}. Check for typos. ' +
                    f'Expected one of: {sorted(known_keys)}.')
-        get_logger().critical(message)
-        raise FDSValidationError(message)
+        raise_logged(FDSValidationError, message)
 
 
 def _validate_slot_def(slot_def, slot_index, protocol_index):
@@ -210,18 +205,16 @@ def _verify_hash(yaml_path, raw_bytes, require_hash):
             message = (f'{yaml_path} has not been approved yet ({sidecar_path} is missing), but '
                        f'this script requires an approved protocol (require_hash=True). Run: '
                        f'python -m fus_driving_systems.approve_protocol {yaml_path}')
-            get_logger().critical(message)
-            raise FDSSafetyError(message)
+            raise_logged(FDSSafetyError, message)
         return
 
     actual_hash = _compute_file_hash(raw_bytes)
     if actual_hash != expected_hash:
-        message = (f'{yaml_path} does not match its approved hash ({sidecar_path}) -- it has '
+        message = (f'{yaml_path} does not match its approved hash ({sidecar_path}): it has '
                    f'been edited since it was last approved. If this edit is intentional, '
                    f'review it, then run: python -m fus_driving_systems.approve_protocol '
                    f'{yaml_path}')
-        get_logger().critical(message)
-        raise FDSSafetyError(message)
+        raise_logged(FDSSafetyError, message)
 
 
 def approve_protocol(yaml_path):
@@ -246,8 +239,7 @@ def approve_protocol(yaml_path):
             raw_bytes = f.read()
     except OSError as e:
         message = f'Could not read protocol file {yaml_path}: {e}'
-        get_logger().critical(message)
-        raise FDSValidationError(message) from e
+        raise_logged(FDSValidationError, message, cause=e)
 
     sidecar_path = _hash_sidecar_path(yaml_path)
     try:
@@ -255,10 +247,9 @@ def approve_protocol(yaml_path):
             f.write(f'{_compute_file_hash(raw_bytes)}  {yaml_path}\n')
     except OSError as e:
         message = f'Could not write hash sidecar {sidecar_path}: {e}'
-        get_logger().critical(message)
-        raise FDSValidationError(message) from e
+        raise_logged(FDSValidationError, message, cause=e)
 
-    get_logger().info(f'Approved {yaml_path} -- wrote {sidecar_path}.')
+    get_logger().info(f'Approved {yaml_path}. Wrote {sidecar_path}.')
 
 
 def _dump_slot(slot):
@@ -331,8 +322,7 @@ def save_protocol(protocol, yaml_path, trigger_option=None, n_triggers=None, buf
 
     if not protocol.slots:
         message = 'Cannot save a protocol with no transducer slots configured.'
-        get_logger().critical(message)
-        raise FDSValidationError(message)
+        raise_logged(FDSValidationError, message)
 
     data = {
         'driving_sys_serial': protocol.driving_sys.serial,
@@ -353,8 +343,7 @@ def save_protocol(protocol, yaml_path, trigger_option=None, n_triggers=None, buf
             yaml.safe_dump(data, f, sort_keys=False)
     except OSError as e:
         message = f'Could not write protocol file {yaml_path}: {e}'
-        get_logger().critical(message)
-        raise FDSValidationError(message) from e
+        raise_logged(FDSValidationError, message, cause=e)
 
     get_logger().info(f'Saved protocol to {yaml_path}.')
 
@@ -402,8 +391,7 @@ def parse_protocol_file(yaml_path, require_hash=False):
             raw_bytes = f.read()
     except OSError as e:
         message = f'Could not read protocol file {yaml_path}: {e}'
-        get_logger().critical(message)
-        raise FDSValidationError(message) from e
+        raise_logged(FDSValidationError, message, cause=e)
 
     _verify_hash(yaml_path, raw_bytes, require_hash)
 
@@ -411,8 +399,7 @@ def parse_protocol_file(yaml_path, require_hash=False):
         data = yaml.safe_load(raw_bytes)
     except yaml.YAMLError as e:
         message = f'Could not read protocol file {yaml_path}: {e}'
-        get_logger().critical(message)
-        raise FDSValidationError(message) from e
+        raise_logged(FDSValidationError, message, cause=e)
 
     data = _require_mapping(data, 'the top-level protocol file')
     _reject_unknown_keys(data, _REQUIRED_TOP_LEVEL_KEYS + _OPTIONAL_TOP_LEVEL_KEYS,

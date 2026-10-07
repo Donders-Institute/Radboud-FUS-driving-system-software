@@ -18,8 +18,8 @@ from fus_driving_systems.calc_utils import (validate_value, extract_and_define_p
                                             format_or_unavailable)
 from fus_driving_systems.config.config import config_info as config
 from fus_driving_systems.config.logging_config import get_logger
-from fus_driving_systems.exceptions import FDSError, FDSInternalError, FDSSafetyError, \
-    FDSValidationError
+from fus_driving_systems.exceptions import (FDSError, FDSInternalError, FDSSafetyError,
+                                            FDSValidationError, log_critical, raise_logged)
 from fus_driving_systems.utils import get_config_value
 
 
@@ -82,8 +82,7 @@ def _enforce_max_pressure(press_mpa):
         message = (f'The set maximum pressure in free water of {press_mpa:.2f} [MPa] is ' +
                    f'crossing the allowed limit of {max_press:.2f} [MPa]. Please change your ' +
                    'value.')
-        get_logger().critical(message)
-        raise FDSSafetyError(message)
+        raise_logged(FDSSafetyError, message)
 
 
 class TransducerSlot:
@@ -353,8 +352,7 @@ class TransducerSlot:
         if serial not in self.driving_sys.tran_comp:
             message = (f'{serial} is not compatible with {self.driving_sys.serial}. Use one ' +
                        f'of the following instead: {self.driving_sys.tran_comp}.')
-            get_logger().critical(message)
-            raise FDSValidationError(message)
+            raise_logged(FDSValidationError, message)
 
         # Checked directly against config here, before set_transducer_info() below mutates
         # self._transducer in place: fails closed the same way get_tran_serials() does, so an
@@ -362,8 +360,7 @@ class TransducerSlot:
         section = 'Equipment.Transducer.' + serial
         if get_config_value(get_logger(), config, section, 'Active?', 'False') != 'True':
             message = f'{serial} is not active in the configuration file, so it cannot be used.'
-            get_logger().critical(message)
-            raise FDSValidationError(message)
+            raise_logged(FDSValidationError, message)
 
         self._transducer.set_transducer_info(serial)
 
@@ -431,8 +428,7 @@ class TransducerSlot:
                        f'more than the {max_elements_per_slot:.0f} channels available per ' +
                        f'slot on {self.driving_sys.serial} ({self.driving_sys.available_ch} ' +
                        f'available channels / {self.driving_sys.max_tran_slots} slots).')
-            get_logger().critical(message)
-            raise FDSValidationError(message)
+            raise_logged(FDSValidationError, message)
 
     def update_transducer(self, transducer_serial, focus_option, focus_value, power_option,
                           power_value, oper_freq=None, dephasing_degree=None):
@@ -649,8 +645,7 @@ class TransducerSlot:
             message = (f'{power_option} mode is disabled. Enable engineering_mode, or use ' +
                        'one of the following options instead: ' +
                        f'{self._non_engineering_options("Power")}.')
-            get_logger().critical(message)
-            raise FDSValidationError(message)
+            raise_logged(FDSValidationError, message)
 
         if power_option in self.driving_sys.power_options:
             validate_value(global_power, 'Global power [W] (global_power)',
@@ -661,8 +656,7 @@ class TransducerSlot:
             message = ('Global power parameter is not available for ' +
                        'chosen driving system. Use one of the following options instead: ' +
                        f'{self.driving_sys.power_options}.')
-            get_logger().critical(message)
-            raise FDSValidationError(message)
+            raise_logged(FDSValidationError, message)
 
     @property
     def press(self):
@@ -695,8 +689,7 @@ class TransducerSlot:
             message = (f'{power_option} mode is disabled. Enable engineering_mode, or use ' +
                        'one of the following options instead: ' +
                        f'{self._non_engineering_options("Power")}.')
-            get_logger().critical(message)
-            raise FDSValidationError(message)
+            raise_logged(FDSValidationError, message)
 
         if power_option in self.driving_sys.power_options:
             # Fail fast: check whether this driving system can accept press at all before
@@ -709,8 +702,7 @@ class TransducerSlot:
                 message = ('No active calibration available to convert maximum pressure in ' +
                            f'free water to {self.driving_sys.native_power_params} for ' +
                            f'{self._ds_tran_combo}.')
-                get_logger().critical(message)
-                raise FDSValidationError(message)
+                raise_logged(FDSValidationError, message)
 
             validate_value(press, 'Maximum pressure in free water [MPa] (press)',
                            True, True, False, False)
@@ -742,8 +734,7 @@ class TransducerSlot:
             message = ('Pressure parameter is not available for ' +
                        'chosen driving system. Use one of the following options instead: ' +
                        f'{self.driving_sys.power_options}.')
-            get_logger().critical(message)
-            raise FDSValidationError(message)
+            raise_logged(FDSValidationError, message)
 
     @property
     def volt(self):
@@ -776,8 +767,7 @@ class TransducerSlot:
             message = (f'{power_option} mode is disabled. Enable engineering_mode, or use ' +
                        'one of the following options instead: ' +
                        f'{self._non_engineering_options("Power")}.')
-            get_logger().critical(message)
-            raise FDSValidationError(message)
+            raise_logged(FDSValidationError, message)
 
         if power_option in self.driving_sys.power_options:
             # Fail fast: check whether this driving system can accept volt at all before
@@ -790,8 +780,7 @@ class TransducerSlot:
                 message = ('No active calibration available to convert voltage to ' +
                            f'{self.driving_sys.native_power_params} for ' +
                            f'{self._ds_tran_combo}.')
-                get_logger().critical(message)
-                raise FDSValidationError(message)
+                raise_logged(FDSValidationError, message)
 
             if not isinstance(volt, list):
                 volt = [volt]
@@ -803,8 +792,7 @@ class TransducerSlot:
                            f'number of transducer elements ({self.driving_sys.available_ch}). ' +
                            'Only enter one voltage value or n-values equal to the number of ' +
                            'transducer elements.')
-                get_logger().critical(message)
-                raise FDSValidationError(message)
+                raise_logged(FDSValidationError, message)
 
             validate_value(volt, 'Voltage [V] (volt)', True, True, False, False, True)
 
@@ -852,8 +840,7 @@ class TransducerSlot:
             message = ('Voltage parameter is not available for ' +
                        'chosen driving system. Use one of the following options instead: ' +
                        f'{self.driving_sys.power_options}.')
-            get_logger().critical(message)
-            raise FDSValidationError(message)
+            raise_logged(FDSValidationError, message)
 
     @property
     def ampl(self):
@@ -888,8 +875,7 @@ class TransducerSlot:
             message = (f'{power_option} mode is disabled. Enable engineering_mode, or use ' +
                        'one of the following options instead: ' +
                        f'{self._non_engineering_options("Power")}.')
-            get_logger().critical(message)
-            raise FDSValidationError(message)
+            raise_logged(FDSValidationError, message)
 
         if power_option in self.driving_sys.power_options:
             # Fail fast: check whether this driving system can accept ampl at all before
@@ -902,8 +888,7 @@ class TransducerSlot:
                 message = ('No active calibration available to convert amplitude to ' +
                            f'{self.driving_sys.native_power_params} for ' +
                            f'{self._ds_tran_combo}.')
-                get_logger().critical(message)
-                raise FDSValidationError(message)
+                raise_logged(FDSValidationError, message)
 
             if not isinstance(ampl, list):
                 ampl = [ampl]
@@ -915,8 +900,7 @@ class TransducerSlot:
                            f'number of transducer elements ({self.driving_sys.available_ch}). ' +
                            'Only enter one amplitude value or n-values equal to the number of ' +
                            'transducer elements.')
-                get_logger().critical(message)
-                raise FDSValidationError(message)
+                raise_logged(FDSValidationError, message)
 
             validate_value(ampl, 'Amplitude [%] (ampl)', True, True, False, False, True)
 
@@ -963,8 +947,7 @@ class TransducerSlot:
             message = ('Amplitude parameter is not available for ' +
                        'chosen driving system. Use one of the following options instead: ' +
                        f'{self.driving_sys.power_options}.')
-            get_logger().critical(message)
-            raise FDSValidationError(message)
+            raise_logged(FDSValidationError, message)
 
     def configure(self, focus_option, focus_value, power_option, power_value):
         """
@@ -1018,8 +1001,7 @@ class TransducerSlot:
         else:
             message = (f'{focus_option} is not a valid focus option. Use one of: ' +
                        f'{exit_opt}, {bowl_opt}, {xyz_exit_opt}, {xyz_bowl_opt}.')
-            get_logger().critical(message)
-            raise FDSValidationError(message)
+            raise_logged(FDSValidationError, message)
 
     def _set_power(self, power_option, power_value):
         """
@@ -1052,8 +1034,7 @@ class TransducerSlot:
         else:
             message = (f'{power_option} is not a valid power option. Use one of: ' +
                        f'{glob_pow_opt}, {press_opt}, {volt_opt}, {ampl_opt}.')
-            get_logger().critical(message)
-            raise FDSValidationError(message)
+            raise_logged(FDSValidationError, message)
 
     def get_focus_options(self):
         """
@@ -1165,15 +1146,13 @@ class TransducerSlot:
             message = (f'{focus_option} mode is disabled. Enable engineering_mode, or use ' +
                        'one of the following options instead: ' +
                        f'{self._non_engineering_options("Focus")}.')
-            get_logger().critical(message)
-            raise FDSValidationError(message)
+            raise_logged(FDSValidationError, message)
 
         if focus_option not in self.driving_sys.focus_options:
             message = ('Focus wrt exit plane parameter is not available for ' +
                        'chosen driving system. Use one of the following options instead: ' +
                        f'{self.driving_sys.focus_options}.')
-            get_logger().critical(message)
-            raise FDSValidationError(message)
+            raise_logged(FDSValidationError, message)
 
         # Fail fast: check whether this driving system can accept focus_wrt_exit_plane
         # right now, before validating anything about the specific value -- mid bowl is not
@@ -1185,8 +1164,7 @@ class TransducerSlot:
             message = ('No active calibration available to convert focus wrt exit plane ' +
                        f'to {self.driving_sys.native_focus_params} for ' +
                        f'{self._ds_tran_combo}.')
-            get_logger().critical(message)
-            raise FDSValidationError(message)
+            raise_logged(FDSValidationError, message)
 
         validate_value(focus, 'Focus wrt exit plane [mm] (focus_wrt_exit_plane)',
                        True, True, False, False)
@@ -1213,8 +1191,7 @@ class TransducerSlot:
                         f'{focus_option} of {focus:.2f} [mm] is outside of the ' +
                         f"active calibration curve's limits ({x_min:.2f} - {x_max:.2f} " +
                         '[mm]).')
-                    get_logger().critical(message)
-                    raise FDSValidationError(message)
+                    raise_logged(FDSValidationError, message)
 
                 get_logger().warning(
                     f'Focus wrt exit plane of {focus:.2f} [mm] is outside of the active ' +
@@ -1232,8 +1209,7 @@ class TransducerSlot:
                            f'set focus range of {self._transducer.min_foc:.2f} and ' +
                            f'{self._transducer.max_foc:.2f} [mm] of transducer ' +
                            f'{self._transducer.name}.')
-                get_logger().critical(message)
-                raise FDSValidationError(message)
+                raise_logged(FDSValidationError, message)
 
             # Native and no curve available -- fall back to the simple, always-valid
             # geometric offset (only reached when native, since non-native + inactive
@@ -1291,15 +1267,13 @@ class TransducerSlot:
             message = (f'{focus_option} mode is disabled. Enable engineering_mode, or use ' +
                        'one of the following options instead: ' +
                        f'{self._non_engineering_options("Focus")}.')
-            get_logger().critical(message)
-            raise FDSValidationError(message)
+            raise_logged(FDSValidationError, message)
 
         if focus_option not in self.driving_sys.focus_options:
             message = ('Focus wrt mid bowl parameter is not available for ' +
                        'chosen driving system. Use one of the following options instead: ' +
                        f'{self.driving_sys.focus_options}.')
-            get_logger().critical(message)
-            raise FDSValidationError(message)
+            raise_logged(FDSValidationError, message)
 
         # Fail fast: check whether this driving system can accept focus_wrt_mid_bowl right
         # now, before validating anything about the specific value -- exit plane is not mid
@@ -1311,8 +1285,7 @@ class TransducerSlot:
             message = ('No active calibration available to convert focus wrt mid bowl ' +
                        f'to {self.driving_sys.native_focus_params} for ' +
                        f'{self._ds_tran_combo}.')
-            get_logger().critical(message)
-            raise FDSValidationError(message)
+            raise_logged(FDSValidationError, message)
 
         validate_value(focus, 'Focus wrt mid bowl [mm] (focus_wrt_mid_bowl)',
                        True, True, False, False)
@@ -1333,8 +1306,7 @@ class TransducerSlot:
                     message = (
                         f'{focus_option} of {target_y_value:.2f} [mm] has no corresponding ' +
                         f'{exit_opt} value in the active calibration curve.')
-                    get_logger().critical(message)
-                    raise FDSValidationError(message)
+                    raise_logged(FDSValidationError, message)
 
                 get_logger().warning(
                     f'{focus_option} of {target_y_value:.2f} [mm] has no corresponding ' +
@@ -1358,8 +1330,7 @@ class TransducerSlot:
                 f'focus range of {self._transducer.min_foc:.2f} and ' +
                 f'{self._transducer.max_foc:.2f} [mm] of transducer ' +
                 f'{self._transducer.name}.')
-            get_logger().critical(message)
-            raise FDSValidationError(message)
+            raise_logged(FDSValidationError, message)
 
         self._chosen_focus = focus_option
 
@@ -1431,31 +1402,27 @@ class TransducerSlot:
         if len(focus_xyz_value) != 3:
             message = ('Focus xyz value must be a 3-tuple (x, y, z) [mm], got ' +
                        f'{focus_xyz_value}.')
-            get_logger().critical(message)
-            raise FDSValidationError(message)
+            raise_logged(FDSValidationError, message)
         x, y, z = focus_xyz_value
         is_mid_bowl = focus_option == xyz_bowl_opt
 
         if not self._transducer.can_3d_steer:
             message = (f'{focus_option} is not available for transducer ' +
-                       f'{self._transducer.serial} -- it is not configured as 3D-steering-' +
+                       f'{self._transducer.serial}: it is not configured as 3D-steering-' +
                        f'capable (can_3d_steer). Use {exit_opt}/{bowl_opt} instead.')
-            get_logger().critical(message)
-            raise FDSValidationError(message)
+            raise_logged(FDSValidationError, message)
 
         if self._requires_engineering_mode('Focus', focus_option) and not self._engineering_mode:
             message = (f'{focus_option} mode is disabled. Enable engineering_mode, or use ' +
                        'one of the following options instead: ' +
                        f'{self._non_engineering_options("Focus")}.')
-            get_logger().critical(message)
-            raise FDSValidationError(message)
+            raise_logged(FDSValidationError, message)
 
         if focus_option not in self.driving_sys.focus_options:
             message = (f'{focus_option} is not available for ' +
                        'chosen driving system. Use one of the following options instead: ' +
                        f'{self.driving_sys.focus_options}.')
-            get_logger().critical(message)
-            raise FDSValidationError(message)
+            raise_logged(FDSValidationError, message)
 
         validate_value(x, 'Focus x offset [mm] (x)', True, False, False, False)
         validate_value(y, 'Focus y offset [mm] (y)', True, False, False, False)
@@ -1468,15 +1435,13 @@ class TransducerSlot:
                 f'Focus x offset of {x:.2f} [mm] is not within the set lateral x range of ' +
                 f'{self._transducer.min_foc_x:.2f} and {self._transducer.max_foc_x:.2f} [mm] ' +
                 f'of transducer {self._transducer.name}.')
-            get_logger().critical(message)
-            raise FDSValidationError(message)
+            raise_logged(FDSValidationError, message)
         if not self._transducer.min_foc_y <= y <= self._transducer.max_foc_y:
             message = (
                 f'Focus y offset of {y:.2f} [mm] is not within the set lateral y range of ' +
                 f'{self._transducer.min_foc_y:.2f} and {self._transducer.max_foc_y:.2f} [mm] ' +
                 f'of transducer {self._transducer.name}.')
-            get_logger().critical(message)
-            raise FDSValidationError(message)
+            raise_logged(FDSValidationError, message)
 
         # Set before anything below reads them, closing the same "read stale sibling state"
         # ordering hazard already fixed repeatedly elsewhere in this class.
@@ -1508,8 +1473,7 @@ class TransducerSlot:
                     f'from {focus_option} = {z:.2f}) is not within the set focus range of ' +
                     f'{self._transducer.min_foc:.2f} and {self._transducer.max_foc:.2f} [mm] ' +
                     f'of transducer {self._transducer.name}.')
-                get_logger().critical(message)
-                raise FDSValidationError(message)
+                raise_logged(FDSValidationError, message)
         else:
             # The other frame genuinely needs an (x, y, z) -> native-frame conversion via a 3D
             # curve, only possible with an active combo.
@@ -1517,8 +1481,7 @@ class TransducerSlot:
                 message = (f'{focus_option} requires 3D calibration data, which is not yet ' +
                            f'available for {self._ds_tran_combo}. Use one of the following ' +
                            f'options instead: {self.driving_sys.native_focus_params}.')
-                get_logger().critical(message)
-                raise FDSValidationError(message)
+                raise_logged(FDSValidationError, message)
             if is_mid_bowl:
                 self._focus_wrt_exit_plane = self._convert_xyz_to_exit_plane(x, y, z)
             else:
@@ -1738,7 +1701,7 @@ class TransducerSlot:
                 f"focus_curve_pp's domain ({focus_min:.2f} - {focus_max:.2f} [mm]) for " +
                 f"{self._ds_tran_combo} extends beyond the equalization curve's own domain " +
                 f"({self.transducer.min_foc:.2f} - {self.transducer.max_foc:.2f} [mm]) that " +
-                "min_foc/max_foc are derived from -- some focus_wrt_exit_plane values may be " +
+                "min_foc/max_foc are derived from, so some focus_wrt_exit_plane values may be " +
                 "accepted by one curve and rejected by the other. Check this combo's " +
                 "calibration data.")
 
@@ -1767,8 +1730,7 @@ class TransducerSlot:
             # private method skipping that validation, not a reachable production path.
             message = (f'{e} \n Focus wrt exit plane of {focus_wrt_exit_plane} is not a valid ' +
                        'numeric value.')
-            get_logger().critical(message)
-            raise FDSInternalError(message) from e
+            raise_logged(FDSInternalError, message, cause=e)
 
         if range_status != 'in_range':
             x_min = self._conv_param['eq_curve_pp'].x[0]
@@ -1776,8 +1738,7 @@ class TransducerSlot:
             message = (
                 f'Focus wrt exit plane of {focus_wrt_exit_plane:.2f} [mm] is outside of the ' +
                 f"active calibration curve's limits ({x_min:.2f} - {x_max:.2f} [mm]).")
-            get_logger().critical(message)
-            raise FDSValidationError(message)
+            raise_logged(FDSValidationError, message)
 
         return eq_factor
 
@@ -1845,10 +1806,9 @@ class TransducerSlot:
             message = (
                 f'Maximum pressure in free water of {input_press_mpa:.2f} [MPa] is outside of ' +
                 'the calibration curve\'s range at the current focal depth (equalization ' +
-                f'factor {eq_factor:.4f}) -- must be between {press_min:.2f} and ' +
+                f'factor {eq_factor:.4f}). It must be between {press_min:.2f} and ' +
                 f'{press_max:.2f} [MPa] for this chosen focal depth. Change input value.')
-            get_logger().critical(message)
-            raise FDSValidationError(message)
+            raise_logged(FDSValidationError, message)
 
         if calc_ampl > 100:
             clamped_ampl = [100]
@@ -1862,7 +1822,7 @@ class TransducerSlot:
                        f'of {format_or_unavailable(press_for_msg)} [MPa] and/or a voltage ' +
                        f'of {format_or_unavailable(volt_for_msg[0])} [V] will result in an ' +
                        'amplitude of 100% at the current focal depth. Change input value.')
-            get_logger().critical(message)
+            log_critical(FDSValidationError, message)
             # FDSValidationError, not FDSSafetyError: 100% is the hardware's own ceiling (like
             # the domain checks above), not a configurable safety margin below some higher
             # achievable value -- unlike _enforce_max_pressure, there's no "this is achievable
@@ -1922,8 +1882,7 @@ class TransducerSlot:
                 x_max = self._conv_param['volt_curve_pp'].x[-1]
                 message = (f'Voltage of {v} [V] is outside of pp limits ({x_min:.2f} - ' +
                            f'{x_max:.2f} [V]). Change input value.')
-                get_logger().critical(message)
-                raise FDSValidationError(message)
+                raise_logged(FDSValidationError, message)
 
             if calc_ampl > 100:
                 # Provisional values, computed purely to describe the rejected request in the
@@ -1936,7 +1895,7 @@ class TransducerSlot:
                            f'{format_or_unavailable(volt_for_msg[0])} [V] will result in an ' +
                            'amplitude of 100% at the current focal depth. Change input value.')
 
-                get_logger().critical(message)
+                log_critical(FDSValidationError, message)
                 # FDSValidationError, not FDSSafetyError -- see the matching comment in
                 # _convert_press_to_ampl().
                 raise FDSValidationError(message)
@@ -1969,10 +1928,9 @@ class TransducerSlot:
 
         if len(ampl) != 1:
             message = ('_convert_ampl_to_press() only produces a meaningful result for a single ' +
-                       f'amplitude value -- got {len(ampl)} entries, which has no one ' +
+                       f'amplitude value, got {len(ampl)} entries, which has no one ' +
                        'pressure that represents the whole array.')
-            get_logger().critical(message)
-            raise FDSInternalError(message)
+            raise_logged(FDSInternalError, message)
 
         target_y_value = ampl[0]
         press_pa_with_eq_fact, status = find_x_for_y_in_pp(self._conv_param['power_curve_pp'],

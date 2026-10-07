@@ -92,13 +92,17 @@ class MockIGT(IGT):
         n_pulse_train_rep = math.floor(
             protocol0.pulse_train_rep_dur / protocol0.pulse_train_rep_int)
         pulse_train_delay = protocol0.pulse_train_rep_int - protocol0.pulse_train_dur
+        n_pulses_per_train = math.floor(protocol0.pulse_train_dur / protocol0.pulse_rep_int)
         lines = [f'  Slot {i}: {slot.intensity_summary()}'
                  for protocol in protocols for i, slot in enumerate(protocol.slots)]
         get_logger().info(
             'Mock IGT: protocol sent successfully (buffer %s): %.2f ms pulse every %.2f ms, '
-            '%s repetition(s) with %.2f ms delay between, %.2f ms total duration.\n%s',
-            buffer_num, protocol0.pulse_dur, protocol0.pulse_rep_int, n_pulse_train_rep,
-            pulse_train_delay, duration_ms, '\n'.join(lines))
+            '%s pulse(s) per pulse train, %s pulse train(s) with %.2f ms delay between, '
+            '%.2f ms total duration.\n%s',
+            buffer_num, protocol0.pulse_dur, protocol0.pulse_rep_int, n_pulses_per_train,
+            n_pulse_train_rep, pulse_train_delay, duration_ms, '\n'.join(lines))
+        for protocol in protocols:
+            self._log_non_default_settings(protocol)
 
     def execute_protocol(self, protocols, total_alternating_duration_ms=None, buffer_num=0):
         if isinstance(protocols, TUSProtocol):
@@ -201,6 +205,7 @@ class MockSonicConcepts(SonicConcepts):
             "Mock SC: protocol sent successfully: %.2f ms pulse every %.2f ms, %.2f ms "
             "total duration.\n  %s", protocol.pulse_dur, protocol.pulse_rep_int,
             protocol.pulse_train_dur, slot.intensity_summary())
+        self._log_non_default_settings(protocol)
 
     def execute_protocol(self, protocol):
         get_logger().info("Mock SC: executing (expected duration: %.2f ms)...",

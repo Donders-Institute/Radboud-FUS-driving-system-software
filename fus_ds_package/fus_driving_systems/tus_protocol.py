@@ -18,7 +18,7 @@ from fus_driving_systems.calc_utils import validate_value
 from fus_driving_systems.config.config import config_info as config
 from fus_driving_systems.config.logging_config import get_logger
 from fus_driving_systems.utils import get_config_value
-from fus_driving_systems.exceptions import FDSValidationError
+from fus_driving_systems.exceptions import FDSValidationError, raise_logged
 
 
 # Which driving system serials have already had their (static, never changing within a process)
@@ -245,8 +245,7 @@ class TUSProtocol():
         if len(self._slots) >= self._driving_sys.max_tran_slots:
             message = (f'{self._driving_sys.serial} supports at most ' +
                        f'{self._driving_sys.max_tran_slots} simultaneous transducer slot(s).')
-            get_logger().critical(message)
-            raise FDSValidationError(message)
+            raise_logged(FDSValidationError, message)
 
         slot = TransducerSlot(self._driving_sys, self._engineering_mode)
         slot.update_transducer(transducer_serial, focus_option, focus_value, power_option,
@@ -272,8 +271,7 @@ class TUSProtocol():
             message = (f'Number of available channels ({self._driving_sys.available_ch}) is ' +
                        f'exceeded by the combined elements of the {len(self._slots)} ' +
                        f'transducer slot(s) ({total_elements}).')
-            get_logger().critical(message)
-            raise FDSValidationError(message)
+            raise_logged(FDSValidationError, message)
 
     @property
     def pulse_dur(self):
@@ -297,6 +295,32 @@ class TUSProtocol():
         """
 
         return self._timing_param['pulse_rep_int']
+
+    def non_default_settings(self):
+        """
+        Describes what this protocol sets beyond the plain defaults: an operating frequency other
+        than the transducer's own, dephasing, and pulse ramping. They change what is emitted but
+        are not part of the focus and power lines logged after sending, so they are logged
+        separately.
+
+        Returns:
+            List[str]: One description per non-default setting, empty if there is none.
+        """
+
+        notes = []
+        for index, slot in enumerate(self._slots):
+            default_freq = int(slot.transducer.fund_freq)
+            if slot.oper_freq != default_freq:
+                notes.append(f'slot {index}: operating frequency {slot.oper_freq} kHz instead '
+                             f'of the transducer default {default_freq} kHz')
+            if slot.dephasing_degree is not None:
+                notes.append(f'slot {index}: dephasing {slot.dephasing_degree} deg')
+
+        rect_ramp = get_config_value(get_logger(), config, 'Ramp', 'option.rect',
+                                     'Rectangular - no ramping')
+        if self.pulse_ramp_shape != rect_ramp or self.pulse_ramp_dur:
+            notes.append(f'pulse ramping: {self.pulse_ramp_shape}, {self.pulse_ramp_dur} ms')
+        return notes
 
     def get_ramp_shapes(self):
         """
@@ -437,8 +461,7 @@ class TUSProtocol():
             pulse_ramp_shape = rect_ramp
         if pulse_ramp_shape not in self.get_ramp_shapes():
             message = f'{pulse_ramp_shape} is not an available ramping option.'
-            get_logger().critical(message)
-            raise FDSValidationError(message)
+            raise_logged(FDSValidationError, message)
         self._timing_param['pulse_ramp_shape'] = pulse_ramp_shape
 
         if pulse_ramp_dur is None:

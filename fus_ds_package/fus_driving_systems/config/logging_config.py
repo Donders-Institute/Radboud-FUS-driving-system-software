@@ -265,7 +265,7 @@ def _check_previous_session_crash(log_dir, pointer_path, filename):
 
     get_logger().warning(
         'Previous session appears to have crashed unexpectedly (possible kernel death, ' +
-        'see GitHub issue #126) -- its faulthandler output was archived to ' +
+        'see GitHub issue #126). Its faulthandler output was archived to ' +
         f'{archived_path}. This is occurrence number {count}.')
 
 

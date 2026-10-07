@@ -15,7 +15,8 @@ from abc import ABC, abstractmethod
 
 # Own packages
 from fus_driving_systems.config.logging_config import get_logger
-from fus_driving_systems.exceptions import FDSValidationError
+from fus_driving_systems.exceptions import FDSValidationError, log_critical
+from fus_driving_systems.tus_protocol import TUSProtocol
 
 
 class ControlDrivingSystem(ABC):
@@ -214,5 +215,18 @@ class ControlDrivingSystem(ABC):
         error_messages = self.validate_protocol(protocol)
         if error_messages:
             for error in error_messages:
-                get_logger().critical(error)
+                log_critical(FDSValidationError, error)
             raise FDSValidationError(' '.join(error_messages))
+
+    def _log_non_default_settings(self, protocol):
+        """
+        Logs, at INFO, what protocol sets beyond the plain defaults (see
+        TUSProtocol.non_default_settings()): another operating frequency, dephasing or ramping
+        change what is emitted but are not part of the focus and power lines in the "protocol
+        sent" confirmation. Called by each driving system right after that confirmation, so the
+        two read together.
+        """
+
+        non_default = protocol.non_default_settings() if isinstance(protocol, TUSProtocol) else []
+        if non_default:
+            get_logger().info('Non-default settings in this protocol: %s.', '; '.join(non_default))

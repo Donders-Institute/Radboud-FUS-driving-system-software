@@ -420,3 +420,39 @@ def test_validate_channel_count_allows_building_up_to_the_exact_total():
     protocol._slots = [_fake_slot(elements=2)]
 
     protocol._validate_channel_count()  # must not raise -- 2 < 4, still room for another slot
+
+
+def _protocol_for_non_default_settings(patch_config, oper_freq=300, dephasing_degree=None,
+                                       ramp_shape='Rectangular - no ramping', ramp_dur=0):
+    patch_config.set('Ramp', 'option.rect', 'Rectangular - no ramping')
+    protocol = _bare_protocol()
+    protocol._slots = [SimpleNamespace(
+        transducer=SimpleNamespace(fund_freq=300.0), oper_freq=oper_freq,
+        dephasing_degree=dephasing_degree)]
+    protocol._timing_param = {'pulse_ramp_shape': ramp_shape, 'pulse_ramp_dur': ramp_dur}
+    return protocol
+
+
+def test_non_default_settings_is_empty_for_a_plain_protocol(patch_config):
+    assert _protocol_for_non_default_settings(patch_config).non_default_settings() == []
+
+
+def test_non_default_settings_names_another_operating_frequency(patch_config):
+    notes = _protocol_for_non_default_settings(patch_config, oper_freq=500).non_default_settings()
+
+    assert len(notes) == 1
+    assert 'slot 0' in notes[0] and '500 kHz' in notes[0] and '300 kHz' in notes[0]
+
+
+def test_non_default_settings_names_dephasing(patch_config):
+    notes = _protocol_for_non_default_settings(
+        patch_config, dephasing_degree=[90.0]).non_default_settings()
+
+    assert len(notes) == 1 and 'dephasing' in notes[0] and '90.0' in notes[0]
+
+
+def test_non_default_settings_names_ramping(patch_config):
+    notes = _protocol_for_non_default_settings(
+        patch_config, ramp_shape='Linear', ramp_dur=3).non_default_settings()
+
+    assert len(notes) == 1 and 'ramping' in notes[0] and 'Linear' in notes[0]

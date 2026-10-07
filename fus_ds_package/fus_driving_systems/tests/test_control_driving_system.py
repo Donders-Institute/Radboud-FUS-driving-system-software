@@ -134,3 +134,45 @@ def test_abort_default_falls_back_to_disconnect(mocker, driving_system):
     driving_system.abort()
 
     driving_system.disconnect.assert_called_once()
+
+
+def test_non_default_settings_of_a_real_protocol_are_logged(
+        driving_system, mocker, caplog):
+    """Dephasing, another operating frequency and ramping change what is emitted without showing
+    in focus and power, so a driving system says so when it has sent such a protocol."""
+    from fus_driving_systems.tus_protocol import TUSProtocol
+
+    protocol = TUSProtocol.__new__(TUSProtocol)
+    mocker.patch.object(TUSProtocol, 'non_default_settings',
+                        return_value=['slot 0: dephasing [90.0] deg'])
+
+    with caplog.at_level('INFO'):
+        driving_system._log_non_default_settings(protocol)
+
+    assert 'Non-default settings in this protocol: slot 0: dephasing [90.0] deg.' in caplog.text
+
+
+def test_nothing_extra_is_logged_for_a_plain_protocol(
+        driving_system, mocker, caplog):
+    from fus_driving_systems.tus_protocol import TUSProtocol
+
+    protocol = TUSProtocol.__new__(TUSProtocol)
+    mocker.patch.object(TUSProtocol, 'non_default_settings', return_value=[])
+
+    with caplog.at_level('INFO'):
+        driving_system._log_non_default_settings(protocol)
+
+    assert 'Non-default settings' not in caplog.text
+
+
+def test_logged_critical_message_names_the_exception_class(caplog):
+    """Every message logged just before raising starts with the class that is raised, so the log
+    alone says what kind of failure it was (validation, safety, hardware, ...)."""
+    from fus_driving_systems.calc_utils import validate_value
+    from fus_driving_systems.exceptions import FDSValidationError
+
+    with caplog.at_level('CRITICAL'):
+        with pytest.raises(FDSValidationError):
+            validate_value(-1, 'Some value', True, True, True, False)
+
+    assert 'FDSValidationError: ' in caplog.text

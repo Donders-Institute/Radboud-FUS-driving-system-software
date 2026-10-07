@@ -11,9 +11,12 @@ https://github.com/Donders-Institute/Radboud-FUS-driving-system-software.
 
 Every exception this package raises intentionally (as opposed to a bug surfacing as an unrelated
 builtin exception), replacing this package's former sys.exit() calls. Every message this package
-raises with is also logged via get_logger().critical() at the same call site, so a failure always
-ends up in the session's debug log file regardless of what the caller does with the exception.
+raises with is also logged at CRITICAL, prefixed with the exception's class name, via
+raise_logged() at the same call site, so a failure always ends up in the session's debug log
+file regardless of what the caller does with the exception.
 """
+
+from typing import NoReturn
 
 
 class FDSError(Exception):
@@ -45,3 +48,28 @@ class FDSConfigError(FDSError):
 class FDSInternalError(FDSError):
     """An internal invariant was violated. Indicates a bug in this package itself, not something
     caused by caller input, hardware, or configuration."""
+
+
+def log_critical(exc_class, message):
+    """Logs message at CRITICAL, prefixed with the name of exc_class, the exception about to be
+    raised with it. For the rare site that logs several messages before raising one exception."""
+
+    # Imported here: logging_config imports utils, which imports this module.
+    from fus_driving_systems.config.logging_config import get_logger  # pylint: disable=C0415
+
+    get_logger().critical(f'{exc_class.__name__}: {message}', stacklevel=2)
+
+
+def raise_logged(exc_class, message, cause=None) -> NoReturn:
+    """Logs message at CRITICAL, prefixed with the name of exc_class (so the log names the kind
+    of failure without that name being repeated by hand at every call site), then raises
+    exc_class(message), chained to cause if one is given. The log record shows the caller's own
+    module, function and line."""
+
+    from fus_driving_systems.config.logging_config import get_logger  # pylint: disable=C0415
+
+    exc = exc_class(message)
+    get_logger().critical(f'{exc_class.__name__}: {message}', stacklevel=2)
+    if cause is not None:
+        raise exc from cause
+    raise exc

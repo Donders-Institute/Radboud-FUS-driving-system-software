@@ -27,7 +27,8 @@ from scipy.interpolate import PPoly
 from scipy import optimize
 
 from fus_driving_systems.config.logging_config import get_logger
-from fus_driving_systems.exceptions import FDSConfigError, FDSValidationError
+from fus_driving_systems.exceptions import (FDSConfigError, FDSValidationError, log_critical,
+                                            raise_logged)
 
 
 def validate_value(value, input_param, check_num, check_pos, check_nonzero, check_bool,
@@ -69,7 +70,7 @@ def validate_value(value, input_param, check_num, check_pos, check_nonzero, chec
 
     if val_messages:
         for message in val_messages:
-            get_logger().critical(message)
+            log_critical(FDSValidationError, message)
         raise FDSValidationError(' '.join(val_messages))
 
     return True
@@ -140,8 +141,7 @@ def extract_and_define_pp(json_dir, return_breaks=False):
         x_transform = np.array(data['xTransform'])
         if x_transform.item() != 'none':
             message = 'A transform of the x value is expected, but not implemented.'
-            get_logger().critical(message)
-            raise FDSConfigError(message)
+            raise_logged(FDSConfigError, message)
     except KeyError:
         pass  # xTransform simply not being part of the file structure is the expected case.
     except TypeError:

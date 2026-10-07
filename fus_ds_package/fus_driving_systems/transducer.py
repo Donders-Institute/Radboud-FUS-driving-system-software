@@ -17,7 +17,7 @@ import copy
 from fus_driving_systems.config.config import config_info as config
 from fus_driving_systems.config.logging_config import get_logger
 from fus_driving_systems.utils import get_config_value
-from fus_driving_systems.exceptions import FDSConfigError
+from fus_driving_systems.exceptions import FDSConfigError, raise_logged
 
 
 class Transducer:
@@ -102,8 +102,7 @@ class Transducer:
         if section not in config:
             message = (f'No transducer with serial number {serial} found in configuration ' +
                        'file.')
-            get_logger().critical(message)
-            raise FDSConfigError(message)
+            raise_logged(FDSConfigError, message)
 
         self.serial = serial
         self.name = get_config_value(get_logger(), config, section, 'Name',
@@ -143,10 +142,9 @@ class Transducer:
             get_logger(), config, section, 'Can 3D steer?', 'False') == 'True'
         if self.can_3d_steer and not self.steer_info.endswith('.ini'):
             message = (f'{serial} is configured with can_3d_steer=True, but its steer '
-                       f'information ({self.steer_info}) is not a .ini file -- 3D steering is ' +
+                       f'information ({self.steer_info}) is not a .ini file, and 3D steering is ' +
                        'only possible for the transducer_xyz.Transducer (.ini) steer path.')
-            get_logger().critical(message)
-            raise FDSConfigError(message)
+            raise_logged(FDSConfigError, message)
         # Fails closed: a transducer config section missing 'Active?' entirely is treated as
         # inactive rather than active, so an incomplete/unreviewed section can't silently become
         # selectable. Real, generated ds_config.ini sections always write this key explicitly
@@ -220,8 +218,7 @@ def get_tran_serials():
 
     if len(active_serials) < 1:
         message = 'No active tranducers found in configuration file.'
-        get_logger().critical(message)
-        raise FDSConfigError(message)
+        raise_logged(FDSConfigError, message)
 
     return active_serials
 

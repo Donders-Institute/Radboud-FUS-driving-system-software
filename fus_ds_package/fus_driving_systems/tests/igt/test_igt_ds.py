@@ -917,7 +917,7 @@ class TestSetPhasesExcelBranch:
                                            steer_info='missing.xlsx', dephasing_degree=None)
 
     def test_raises_when_steer_info_is_neither_ini_nor_xlsx(self, mocker, connected_instance):
-        """DUMMY/CITRUS transducers configure an empty 'Steer information'
+        """CITRUS transducers configure an empty 'Steer information'
         string (they're never used with an IGT driving system either), so
         an unrecognized extension should be rejected rather than silently
         misbehaving."""
@@ -1037,7 +1037,8 @@ class TestSendProtocol:
             connected_instance.send_protocol([fake_protocol])
 
         assert 'Protocol sent successfully (buffer 0): 1.00 ms pulse every 2.00 ms, ' \
-            '2 repetition(s)' in caplog.text
+            in caplog.text
+        assert 'pulse(s) per pulse train, 2 pulse train(s) with' in caplog.text
         assert 'TRAN-A: fake intensity summary' in caplog.text
 
     def test_wraps_send_sequence_failure_as_hardware_error(
@@ -1072,6 +1073,7 @@ class TestSendProtocol:
         from fus_driving_systems.tus_protocol import TUSProtocol
 
         patch_config.set('Ramp', 'Option.rect', 'Rectangular - no ramping')
+        mocker.patch.object(TUSProtocol, 'non_default_settings', return_value=[])
         mocker.patch.object(connected_instance, 'validate_protocol', return_value=[])
         fake_pulse = mocker.Mock()
         mocker.patch.object(connected_instance, '_define_pulse_group',
