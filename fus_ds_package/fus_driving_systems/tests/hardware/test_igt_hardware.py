@@ -2,8 +2,8 @@
 """
 Hardware tests for the IGT driving system, with a dummy load attached (see conftest.py for how
 to run them and for the safety limits). They automate the parts of the hardware test plan that
-need no human in the loop. Not covered here, because they need hands: replugging the connection,
-and the external trigger modes.
+need no human in the loop. Not covered here, because they are manual: replugging the
+connection and the external trigger modes.
 """
 import logging
 import re
@@ -12,7 +12,9 @@ import time
 
 import pytest
 
+from fus_driving_systems.config.config import config_info as config
 from fus_driving_systems.exceptions import FDSHardwareError
+from fus_driving_systems.utils import get_config_value
 
 # A pulse train every 400 ms for 2 s: 5 trains of 4 pulses each.
 TIMING = dict(pulse_rep_int=50, pulse_train_dur=200, pulse_train_rep_int=400,
@@ -35,6 +37,15 @@ def _messages(records):
 
 def _errors(records):
     return [record.getMessage() for record in records if record.levelno >= logging.ERROR]
+
+
+def _emission_ms(igt, buffer_num):
+    """How long the pulses take: the stored total also holds the package's own 'Wait time before
+    responsive', which is extra waiting time, not emission. Not the nominal duration either:
+    that includes the delay after the last repetition, which the hardware does not wait for."""
+    wait_ms = float(get_config_value(None, config, 'Equipment.Manufacturer.IGT',
+                                     'Wait time before responsive [ms]', 100))
+    return igt.sent_protocols[buffer_num]['total_protocol_duration_ms'] - wait_ms
 
 
 def _timed(function):
@@ -113,8 +124,7 @@ def test_two_buffers_hold_independent_protocols(igt, make_protocol, fds_log):
     igt.send_protocol([short], buffer_num=0)
     igt.send_protocol([long], buffer_num=1)
     assert igt.is_protocol_sent(0) and igt.is_protocol_sent(1)
-    expected = {buffer: igt.sent_protocols[buffer]['total_protocol_duration_ms']
-                for buffer in (0, 1)}
+    expected = {buffer: _emission_ms(igt, buffer) for buffer in (0, 1)}
     assert expected[1] > expected[0]
 
     elapsed_long = _timed(lambda: igt.execute_protocol([long], buffer_num=1))

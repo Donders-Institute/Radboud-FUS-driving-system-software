@@ -303,7 +303,13 @@ You can set more of them the same way:
 
 Their defaults and the safety limits are described at the top of `tests/hardware/conftest.py`.
 
+The logs of a run, including the native IGT log with the error codes of the driving system, are
+written to a new timestamped folder in `C:\Temp\fds_hardware_tests` (set `FDS_HW_LOG_DIR` to use
+another one). The path is printed at the end of the run, below the summary of what the tests
+showed.
+
 Prefer not to type them? Fill in the settings at the top of `fus_ds_package\run_hardware_tests.bat`,
 choose `igt` or `sc` for the equipment that is connected, and double-click it, or run it from a
 Command Prompt. Extra arguments go to pytest, for example `run_hardware_tests.bat -k abort` to run only
-the abort tests.
+the abort tests. After a double-click run the window stays open as a Command Prompt, so you can
+scroll through and copy the output; type `exit` to close it.

@@ -10,6 +10,11 @@ MAX_POWER_W, whatever the environment asks for.
 
 Configuration (environment variables, all optional except the first):
     FDS_HARDWARE_TESTS=1            Required, otherwise every hardware test is skipped.
+    FDS_HW_LOG_DIR                  Where the logs of a run go, one timestamped folder per run
+                                    (the FDS logs and the native IGT log). Default: a folder
+                                    fds_hardware_tests in the 'Temporary logging path' of
+                                    ds_config.ini (normally C:/Temp). The path is printed at
+                                    the end of the run.
 
 IGT:
     FDS_HW_DRIVING_SYSTEM           Default: IGT-256-ch_comb_1x10-ch, a test setup that is inactive
@@ -39,17 +44,104 @@ import pytest
 import serial
 
 from fus_driving_systems.config import logging_config
+from fus_driving_systems.config.config import config_info as config
+from fus_driving_systems.config.logging_config import get_session_log_dir, initialize_logger
 from fus_driving_systems.driving_system import get_ds_serials
 from fus_driving_systems.exceptions import FDSError
 from fus_driving_systems.igt.igt_ds import IGT
 from fus_driving_systems.sonic_concepts.sonic_concepts_ds import SonicConcepts
 from fus_driving_systems.transducer import Transducer
 from fus_driving_systems.tus_protocol import TUSProtocol
+from fus_driving_systems.utils import get_config_value
 
 HARDWARE_DIR = Path(__file__).parent
 
 MAX_AMPLITUDE_PERCENT = 10
 MAX_POWER_W = 5
+
+
+# What each hardware test shows, in plain words, for the summary printed after a run.
+WHAT_THE_TESTS_SHOW = {
+    'test_send_and_execute_with_native_options':
+        'IGT: a protocol with native amplitude and focus is sent and executed, with no errors.',
+    'test_voltage_feedback_reports_real_voltage':
+        'IGT: the driving system reports a measured voltage above 0 V during a run.',
+    'test_measured_voltage_follows_the_calibration':
+        'IGT: the measured voltage matches the calibration and rises with the amplitude.',
+    'test_two_buffers_hold_independent_protocols':
+        'IGT: each buffer runs the protocol that was sent to it, not the other one.',
+    'test_interleaved_protocols_run_for_the_alternating_duration':
+        'IGT: interleaved protocols run for the requested alternating duration.',
+    'test_abort_from_another_thread_while_executing':
+        'IGT: abort() from another thread stops a running protocol early, execute_protocol() '
+        'returns, and the connection still works afterwards.',
+    'test_send_and_execute':
+        'Sonic Concepts: the TPO accepts the protocol and the start command, with no errors.',
+    'test_several_power_values_are_accepted':
+        'Sonic Concepts: the TPO accepts several global power values.',
+    'test_abort_leaves_the_connection_usable':
+        'Sonic Concepts: abort() is accepted during a run, and the same connection then takes '
+        'and starts another protocol.',
+}
+
+NOT_SHOWN = (
+    'Not shown by these tests: that the acoustic output is what was asked for (needs a '
+    'hydrophone), the external trigger modes and reconnecting after unplugging (manual tests), '
+    'and, for abort, that the output itself stopped (the run returning early only shows that '
+    'the stop was accepted, a scope shows the output).')
+
+
+def pytest_terminal_summary(terminalreporter):
+    """Prints, after a run that included hardware tests, what each one did and did not show."""
+    rows = []
+    for outcome, label in (('passed', 'PASSED'), ('failed', 'FAILED'), ('error', 'FAILED'),
+                           ('skipped', 'SKIPPED')):
+        for report in terminalreporter.stats.get(outcome, []):
+            name = report.nodeid.split('::')[-1].split('[')[0]
+            if 'hardware' not in report.keywords or (outcome == 'passed'
+                                                     and report.when != 'call'):
+                continue
+            description = WHAT_THE_TESTS_SHOW.get(
+                name, f'{name} (no description yet: add it to WHAT_THE_TESTS_SHOW)')
+            line = f'  {label:8} {description}'
+            if outcome == 'skipped':
+                line += f' ({report.longrepr[2]})'
+            order = list(WHAT_THE_TESTS_SHOW)
+            rows.append((order.index(name) if name in order else len(order), line))
+    if not rows:
+        return
+    terminalreporter.section('What the hardware tests show')
+    for _, line in sorted(rows):
+        terminalreporter.write_line(line)
+    terminalreporter.write_line('')
+    terminalreporter.write_line(NOT_SHOWN)
+    log_dir = get_session_log_dir()
+    if log_dir:
+        terminalreporter.write_line('')
+        terminalreporter.write_line(f'Logs of this run (FDS and native IGT log): {log_dir}')
+
+
+def _env(name, default=''):
+    """An environment variable without surrounding whitespace or quotes: in the Command Prompt,
+    `set NAME="value"` keeps the quotes as part of the value."""
+    return os.environ.get(name, default).strip().strip('"\'').strip()
+
+
+@pytest.fixture(scope='session', autouse=True)
+def _session_logging(request):
+    """The logs of a hardware run go to one timestamped folder that stays after the run, with
+    the FDS logs and the native IGT log together (IGT.connect() uses the session folder), so
+    they can be found after a failure. Nothing is created for a run that skips the hardware
+    tests."""
+    if _env('FDS_HARDWARE_TESTS') != '1':
+        return
+    temp_path = get_config_value(None, config, 'Logging', 'Temporary logging path', 'C:/Temp')
+    log_root = _env('FDS_HW_LOG_DIR') or os.path.join(temp_path, 'fds_hardware_tests')
+    initialize_logger(log_root, 'hardware_tests')
+    # Also shown right away, so the path is there even if the end of a long run is scrolled away.
+    reporter = request.config.pluginmanager.get_plugin('terminalreporter')
+    if reporter is not None:
+        reporter.write_line(f'Logs of this run: {get_session_log_dir()}')
 
 
 def pytest_collection_modifyitems(items):
@@ -63,23 +155,23 @@ def pytest_collection_modifyitems(items):
 @pytest.fixture(scope='session')
 def hw_config():
     """The setup under test, read from the environment (see the module docstring)."""
-    if os.environ.get('FDS_HARDWARE_TESTS', '').strip() != '1':
+    if _env('FDS_HARDWARE_TESTS') != '1':
         pytest.skip('Set FDS_HARDWARE_TESTS=1 to run the hardware tests.')
 
-    ds_serial = os.environ.get('FDS_HW_DRIVING_SYSTEM', 'IGT-256-ch_comb_1x10-ch')
+    ds_serial = _env('FDS_HW_DRIVING_SYSTEM', 'IGT-256-ch_comb_1x10-ch')
     if ds_serial not in get_ds_serials():
         pytest.skip(f'Driving system {ds_serial} is not active in ds_config.ini. The default is '
                     "a test setup that is inactive until you set its 'active?' to True; or set "
                     'FDS_HW_DRIVING_SYSTEM to an active one.')
 
-    amplitude = float(os.environ.get('FDS_HW_AMPLITUDE_PERCENT', '5'))
+    amplitude = float(_env('FDS_HW_AMPLITUDE_PERCENT', '5'))
     return SimpleNamespace(
         ds_serial=ds_serial,
-        transducer=os.environ.get('FDS_HW_TRANSDUCER', 'IS_PCD15287_01001'),
-        focus_mm=float(os.environ.get('FDS_HW_FOCUS_MM', '60')),
+        transducer=_env('FDS_HW_TRANSDUCER', 'IS_PCD15287_01001'),
+        focus_mm=float(_env('FDS_HW_FOCUS_MM', '60')),
         amplitude=min(amplitude, MAX_AMPLITUDE_PERCENT),
         max_amplitude=MAX_AMPLITUDE_PERCENT,
-        voltage_tolerance_percent=float(os.environ.get('FDS_HW_VOLTAGE_TOLERANCE_PERCENT', '25')),
+        voltage_tolerance_percent=float(_env('FDS_HW_VOLTAGE_TOLERANCE_PERCENT', '25')),
     )
 
 
@@ -103,11 +195,11 @@ def igt(hw_config, tmp_path_factory):
 def sc_config():
     """The Sonic Concepts setup under test. Nothing here has a default on purpose (see the
     module docstring)."""
-    if os.environ.get('FDS_HARDWARE_TESTS', '').strip() != '1':
+    if _env('FDS_HARDWARE_TESTS') != '1':
         pytest.skip('Set FDS_HARDWARE_TESTS=1 to run the hardware tests.')
 
-    ds_serial = os.environ.get('FDS_HW_SC_DRIVING_SYSTEM', '').strip()
-    transducer = os.environ.get('FDS_HW_SC_TRANSDUCER', '').strip()
+    ds_serial = _env('FDS_HW_SC_DRIVING_SYSTEM')
+    transducer = _env('FDS_HW_SC_TRANSDUCER')
     if not ds_serial or not transducer:
         pytest.skip('Set FDS_HW_SC_DRIVING_SYSTEM and FDS_HW_SC_TRANSDUCER (the transducer '
                     'actually selected on the TPO) to run the Sonic Concepts hardware tests.')
@@ -120,9 +212,9 @@ def sc_config():
     return SimpleNamespace(
         ds_serial=ds_serial,
         transducer=transducer,
-        port=os.environ.get('FDS_HW_SC_PORT', '').strip() or protocol.driving_sys.connect_info,
+        port=_env('FDS_HW_SC_PORT') or protocol.driving_sys.connect_info,
         focus_mm=round((tran.min_foc + tran.max_foc) / 2, 1),
-        power_w=min(float(os.environ.get('FDS_HW_SC_POWER_W', '2.5')), MAX_POWER_W),
+        power_w=min(float(_env('FDS_HW_SC_POWER_W', '2.5')), MAX_POWER_W),
         max_power_w=MAX_POWER_W,
     )
 
