@@ -29,11 +29,13 @@ class _QtLogHandler(QObject, logging.Handler):
         self.message_logged.emit(self.format(record))
 
 
-def _is_below_error(record):
+def _is_below_critical(record):
     # Every FDSError in this GUI already gets its own explicit display (a panel's inline
     # error_label on the Planning side, a QMessageBox via show_fds_error() on the Executing
-    # side); showing its ERROR-level log record here too would just duplicate it.
-    return record.levelno < logging.ERROR
+    # side), and is logged as CRITICAL; showing that record here too would just duplicate it.
+    # ERROR records stay: they report things nothing else shows, such as why a connection
+    # attempt failed.
+    return record.levelno < logging.CRITICAL
 
 
 class ConsolePanel(QWidget):
@@ -68,7 +70,7 @@ class ConsolePanel(QWidget):
 
         self._handler = _QtLogHandler()
         self._handler.setLevel(logging.INFO)
-        self._handler.addFilter(_is_below_error)
+        self._handler.addFilter(_is_below_critical)
         self._handler.setFormatter(logging.Formatter(
             '%(asctime)s %(levelname)s %(message)s', datefmt='%H:%M:%S'))
         self._handler.message_logged.connect(self.text_edit.appendPlainText)
@@ -77,6 +79,14 @@ class ConsolePanel(QWidget):
 
         layout = QVBoxLayout(self)
         layout.addWidget(self.text_edit)
+
+    def replay(self, records):
+        """Shows records logged before this panel existed, with the same filtering and format as
+        the ones it receives live."""
+
+        for record in records:
+            if record.levelno >= self._handler.level and self._handler.filter(record):
+                self.text_edit.appendPlainText(self._handler.format(record))
 
     def detach_handler(self):
         """Stops feeding this panel from the shared logger; see this class's own docstring."""

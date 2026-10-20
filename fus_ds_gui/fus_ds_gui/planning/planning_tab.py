@@ -6,8 +6,9 @@ SPDX-License-Identifier: MIT
 See the LICENSE file for full license text.
 """
 
-from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtCore import QSize, Signal
+from PySide6.QtWidgets import (QCheckBox, QFrame, QHBoxLayout, QLabel, QPushButton, QScrollArea,
+                               QVBoxLayout, QWidget)
 
 from fus_driving_systems.config.logging_config import get_logger
 from fus_driving_systems.exceptions import FDSConfigError
@@ -83,19 +84,42 @@ class PlanningTab(QWidget):
         self.validation_label = QLabel()
         self.validation_label.setWordWrap(True)
 
+        # Only the forms scroll: with several slots in Advanced mode they outgrow the screen,
+        # and Apply, the file buttons and the validation result must stay in view.
+        self._content = QWidget()
+        content_layout = QVBoxLayout(self._content)
+        content_layout.addWidget(self.equipment_panel)
+        content_layout.addWidget(self.advanced_mode_checkbox)
+        content_layout.addLayout(self.slots_layout)
+        content_layout.addWidget(self.add_slot_button)
+        content_layout.addLayout(self.timing_layout)
+        content_layout.addStretch()
+
+        self._scroll_area = QScrollArea()
+        self._scroll_area.setWidgetResizable(True)
+        self._scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        self._scroll_area.setWidget(self._content)
+
         layout = QVBoxLayout(self)
-        layout.addWidget(self.equipment_panel)
-        layout.addWidget(self.advanced_mode_checkbox)
-        layout.addLayout(self.slots_layout)
-        layout.addWidget(self.add_slot_button)
-        layout.addLayout(self.timing_layout)
+        layout.addWidget(self._scroll_area)
         layout.addWidget(self.apply_button)
         layout.addLayout(file_buttons_layout)
         layout.addWidget(self.validation_title)
         layout.addWidget(self.validation_label)
-        layout.addStretch()
 
         self._on_driving_system_changed(self.equipment_panel.selected_driving_system())
+
+    def sizeHint(self):
+        """The size that shows every form without scrolling. A scroll area's own hint is capped
+        well below its content, so without this MainWindow could not size itself to the content
+        (see MainWindow._fit_to_content())."""
+
+        hint = super().sizeHint()
+        scroll_hint = self._scroll_area.sizeHint()
+        content_hint = self._content.sizeHint()
+        scrollbar_width = self._scroll_area.verticalScrollBar().sizeHint().width()
+        return QSize(hint.width() - scroll_hint.width() + content_hint.width() + scrollbar_width,
+                     hint.height() - scroll_hint.height() + content_hint.height())
 
     def current_protocol(self):
         """
@@ -173,8 +197,11 @@ class PlanningTab(QWidget):
         self.builder = ProtocolBuilder(driving_system)
         self.apply_button.setEnabled(True)
 
-        self.timing_panel = TimingPanel(self.builder)
-        self.timing_panel.set_advanced_mode(self.advanced_mode_checkbox.isChecked())
+        # No demo example (5 Hz) when Advanced mode is already on: it would only fill in part of
+        # the collapsed levels, leaving them showing values that don't inherit from each other.
+        advanced = self.advanced_mode_checkbox.isChecked()
+        self.timing_panel = TimingPanel(self.builder, seed_demo_defaults=not advanced)
+        self.timing_panel.set_advanced_mode(advanced)
         self.timing_panel.applied.connect(self._refresh_validation)
         self.timing_panel.changed.connect(self._mark_dirty)
         self.timing_layout.addWidget(self.timing_panel)
@@ -227,6 +254,32 @@ class PlanningTab(QWidget):
         self._update_add_button_enabled()
         self._refresh_transducer_exclusions()
 
+    def _needs_advanced_mode(self, protocol, failed_slots=()):
+        """True if protocol sets anything Demo mode has no field for: a non-default operating
+        frequency, dephasing, a pulse ramp, a duty cycle that is not a whole percent, or an
+        explicit pulse train (IGT). A slot that failed
+        to load counts too when its raw values give an operating frequency or dephasing; without
+        its transducer there is no default to compare to, so any operating frequency counts."""
+
+        for slot_def, _exc in failed_slots:
+            if (slot_def.get('oper_freq') is not None
+                    or slot_def.get('dephasing_degree') is not None):
+                return True
+        for slot in protocol.slots:
+            if (slot.oper_freq != int(slot.transducer.fund_freq)
+                    or slot.dephasing_degree is not None):
+                return True
+        if (protocol.pulse_ramp_shape != self.builder.rectangular_ramp_shape()
+                or protocol.pulse_ramp_dur != 0):
+            return True
+        duty_cycle = (protocol.pulse_dur / protocol.pulse_rep_int * 100.0
+                      if protocol.pulse_rep_int > 0 else 0.0)
+        if abs(duty_cycle - round(duty_cycle)) > 1e-6 or not 1 <= round(duty_cycle) <= 100:
+            return True
+        return (self.builder.uses_pulse_train_repetition()
+                and not (protocol.pulse_train_dur == protocol.pulse_rep_int
+                         and protocol.pulse_train_rep_int == protocol.pulse_train_dur))
+
     def load_protocol(self, load_result):
         """
         Replaces the protocol currently under construction with load_result's own, e.g. one
@@ -264,10 +317,17 @@ class PlanningTab(QWidget):
         self._clear_slot_editors()
         self._clear_timing_panel()
 
+        # After the clears, so the toggle has no stale panels left to switch live. Demo mode
+        # hides these fields but Apply still sends them.
+        if self._needs_advanced_mode(protocol, load_result.failed_slots):
+            self.advanced_mode_checkbox.setChecked(True)
+
         # seed_demo_defaults=False: this protocol's own pulse_dur/pulse_rep_int are real,
         # already-chosen values, not an untouched cascade to replace with a demo example.
         self.timing_panel = TimingPanel(self.builder, seed_demo_defaults=False)
         self.timing_panel.set_advanced_mode(self.advanced_mode_checkbox.isChecked())
+        if not self.advanced_mode_checkbox.isChecked():
+            self.timing_panel.show_loaded_timing_in_demo()
         self.timing_panel.applied.connect(self._refresh_validation)
         self.timing_panel.changed.connect(self._mark_dirty)
         self.timing_layout.addWidget(self.timing_panel)
@@ -316,9 +376,9 @@ class PlanningTab(QWidget):
         checkbox's own current state directly instead of waiting for this signal."""
 
         if self.timing_panel is not None:
-            self.timing_panel.set_advanced_mode(advanced)
+            self.timing_panel.set_advanced_mode(advanced, live_switch=True)
         for editor in self._slot_editors:
-            editor.set_advanced_mode(advanced)
+            editor.set_advanced_mode(advanced, live_switch=True)
 
     def _on_apply_clicked(self):
         """Applies every panel that currently exists via its own try_apply(), continuing past

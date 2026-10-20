@@ -454,6 +454,134 @@ def test_demo_mode_keeps_an_explicitly_set_total_duration(qtbot, builder):
     assert panel.pulse_train_rep_dur_spin.value() == pytest.approx(10.0)
 
 
+def test_switching_to_advanced_expands_the_levels_demo_mode_set(qtbot, builder):
+    """Demo mode's 1000 Hz and 1 s total duration must show up in Pulse Train and Pulse Train
+    Repetition, otherwise Apply in Advanced mode would silently inherit them away."""
+    panel = TimingPanel(builder)
+    qtbot.addWidget(panel)
+    panel._apply_frequency_preset(1000)
+    panel.pulse_train_rep_dur_spin.setValue(1.0)
+
+    panel.set_advanced_mode(True, live_switch=True)
+
+    assert panel.pulse_train_level.is_expanded() is True
+    assert panel.pulse_train_rep_level.is_expanded() is True
+    assert panel.pulse_rep_int_spin.value() == pytest.approx(1.0)
+    assert panel.pulse_train_rep_dur_spin.value() == pytest.approx(1.0)
+
+    panel.try_apply()
+
+    assert builder.protocol.pulse_rep_int == pytest.approx(1.0)
+    assert builder.protocol.pulse_train_rep_dur == pytest.approx(1000.0)
+
+
+def test_switching_to_advanced_keeps_untouched_levels_collapsed(qtbot, builder):
+    panel = TimingPanel(builder, seed_demo_defaults=False)
+    qtbot.addWidget(panel)
+
+    panel.set_advanced_mode(True, live_switch=True)
+
+    assert panel.pulse_train_level.is_expanded() is False
+
+
+def test_switching_to_advanced_carries_total_duration_into_pulse_train_for_sonic_concepts(
+        qtbot, sonic_concepts_builder):
+    """Sonic Concepts has no train repetition: Total duration is pulse_train_dur itself."""
+    panel = TimingPanel(sonic_concepts_builder)
+    qtbot.addWidget(panel)
+    panel.pulse_train_rep_dur_spin.setValue(2.0)
+
+    panel.set_advanced_mode(True, live_switch=True)
+
+    assert panel.pulse_train_level.is_expanded() is True
+    assert panel.pulse_train_dur_spin.value() == pytest.approx(2000.0)
+
+
+def test_demo_to_advanced_and_back_without_changes_keeps_demo_timing(qtbot, builder):
+    panel = TimingPanel(builder)
+    qtbot.addWidget(panel)
+    panel._apply_frequency_preset(1000)
+    panel.pulse_train_rep_dur_spin.setValue(1.0)
+
+    panel.set_advanced_mode(True, live_switch=True)
+    panel.set_advanced_mode(False, live_switch=True)
+
+    assert panel.pulse_rep_int_spin.value() == pytest.approx(1.0)
+    assert panel.pulse_dur_spin.value() == pytest.approx(0.1)
+    assert panel.pulse_train_rep_dur_spin.value() == pytest.approx(1.0)
+    panel.try_apply()
+    assert builder.protocol.pulse_rep_int == pytest.approx(1.0)
+    assert builder.protocol.pulse_train_rep_dur == pytest.approx(1000.0)
+
+
+def test_back_to_demo_after_editing_in_advanced_returns_to_the_simple_timing(qtbot, builder):
+    """What Advanced mode set (ramp, pulse train) is hidden in Demo mode but would still be sent
+    by Apply."""
+    panel = TimingPanel(builder)
+    qtbot.addWidget(panel)
+    panel.set_advanced_mode(True, live_switch=True)
+    panel.ramp_shape_combo.setCurrentIndex(1)
+    panel.ramp_dur_spin.setValue(0.05)
+    panel.pulse_dur_spin.setValue(3.0)
+    panel.pulse_rep_int_spin.setValue(7.0)
+    panel.pulse_train_dur_spin.setValue(70.0)
+
+    panel.set_advanced_mode(False, live_switch=True)
+    panel.try_apply()
+
+    assert builder.protocol.pulse_ramp_shape == builder.rectangular_ramp_shape()
+    assert builder.protocol.pulse_ramp_dur == 0
+    assert builder.protocol.pulse_rep_int == pytest.approx(200.0)  # first preset, 5 Hz
+    assert builder.protocol.pulse_dur == pytest.approx(20.0)  # default 10% duty cycle
+    assert builder.protocol.pulse_train_dur == pytest.approx(200.0)
+
+
+def test_back_to_demo_after_only_lengthening_the_pulse_updates_the_duty_cycle(qtbot, builder):
+    """Demo mode can express this (a different percentage of the same interval), so the change
+    is kept rather than reset to the default timing."""
+    panel = TimingPanel(builder)
+    qtbot.addWidget(panel)
+    panel._apply_frequency_preset(5)  # 200 ms interval, 20 ms pulse (10%)
+    panel.set_advanced_mode(True, live_switch=True)
+    panel.pulse_dur_spin.setValue(40.0)
+
+    panel.set_advanced_mode(False, live_switch=True)
+
+    assert panel.duty_cycle_spin.value() == 20
+    assert panel.pulse_rep_int_spin.value() == pytest.approx(200.0)
+    assert panel.pulse_dur_spin.value() == pytest.approx(40.0)
+    assert panel._freq_buttons[5].isChecked() is True
+
+
+def test_back_to_demo_with_an_interval_matching_no_preset_unchecks_the_presets(qtbot, builder):
+    panel = TimingPanel(builder)
+    qtbot.addWidget(panel)
+    panel._apply_frequency_preset(5)
+    panel.set_advanced_mode(True, live_switch=True)
+    panel.pulse_rep_int_spin.setValue(100.0)
+    panel.pulse_dur_spin.setValue(10.0)
+    panel.pulse_train_dur_spin.setValue(100.0)
+    panel.pulse_train_rep_int_spin.setValue(100.0)
+
+    panel.set_advanced_mode(False, live_switch=True)
+
+    assert panel.duty_cycle_spin.value() == 10
+    assert not any(button.isChecked() for button in panel._freq_buttons.values())
+
+
+def test_back_to_demo_with_a_fractional_duty_cycle_resets_to_the_default(qtbot, builder):
+    """33.3% cannot be shown in Demo mode's whole-percent duty cycle."""
+    panel = TimingPanel(builder)
+    qtbot.addWidget(panel)
+    panel.set_advanced_mode(True, live_switch=True)
+    panel.pulse_dur_spin.setValue(66.7)
+
+    panel.set_advanced_mode(False, live_switch=True)
+
+    assert panel.pulse_rep_int_spin.value() == pytest.approx(200.0)
+    assert panel.pulse_dur_spin.value() == pytest.approx(20.0)
+
+
 def test_preset_buttons_visible_only_in_demo_mode(qtbot, builder):
     panel = TimingPanel(builder)
     qtbot.addWidget(panel)

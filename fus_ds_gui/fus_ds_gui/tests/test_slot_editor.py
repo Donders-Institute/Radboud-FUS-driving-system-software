@@ -470,6 +470,36 @@ def test_apply_adds_a_new_slot_with_oper_freq_and_cyclic_dephasing(qtbot, builde
     assert editor.slot.dephasing_degree == [45.0]
 
 
+def test_switching_back_to_demo_resets_oper_freq_and_dephasing(qtbot, builder):
+    """Demo mode hides both fields but Apply still reads them, so a value from Advanced mode
+    must not survive the switch."""
+    editor = SlotEditor(builder)
+    qtbot.addWidget(editor)
+    editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN_A
+    editor.set_advanced_mode(True, live_switch=True)
+    editor.oper_freq_spin.setValue(500)
+    editor.dephasing_mode_combo.setCurrentIndex(1)  # Cyclic
+    editor.dephasing_degree_spin.setValue(45.0)
+
+    editor.set_advanced_mode(False, live_switch=True)
+    editor.try_apply()
+
+    assert editor.slot.oper_freq == editor.transducer_combo.currentData().fund_freq
+    assert editor.slot.dephasing_degree is None
+
+
+def test_building_an_editor_in_demo_mode_does_not_reset_anything(qtbot, builder):
+    editor = SlotEditor(builder)
+    qtbot.addWidget(editor)
+    editor.transducer_combo.setCurrentIndex(1)  # UNITTEST_TRAN_A
+    editor.set_advanced_mode(True)
+    editor.oper_freq_spin.setValue(500)
+
+    editor.set_advanced_mode(False)
+
+    assert editor.oper_freq_spin.value() == 500
+
+
 def test_apply_adds_a_new_slot_with_a_per_element_dephasing_override(qtbot, builder):
     """UNITTEST_TRAN_A has 2 elements (see _configure_transducer's own default)."""
     editor = SlotEditor(builder)
@@ -695,6 +725,30 @@ def test_existing_slot_with_a_list_power_value_flags_it_immediately(qtbot, build
 
     assert not editor.error_label.isHidden()
     assert 'per element' in editor.error_label.text()
+
+
+@pytest.mark.parametrize('shared_list', [[70.0], [70.0, 70.0]])
+def test_existing_slot_with_one_shared_amplitude_is_not_flagged_and_can_be_reapplied(
+        qtbot, builder, shared_list):
+    """Amplitude and voltage are always stored as a list; one entry, or equal entries, is just
+    the shared value. Applying again with nothing changed (e.g. after editing only the timing)
+    must not be refused as a per-element power value."""
+    editor = SlotEditor(builder)
+    qtbot.addWidget(editor)
+    tran_a = editor.transducer_combo.itemData(1)  # UNITTEST_TRAN_A
+    configured = []
+    stand_in_slot = SimpleNamespace(
+        transducer=tran_a, chosen_focus='Focus wrt exit plane [mm]', chosen_focus_value=20,
+        chosen_power='Amplitude [%]', chosen_power_value=shared_list, oper_freq=300,
+        dephasing_degree=None, configure=lambda *args: configured.append(args))
+
+    editor._load_existing_slot(stand_in_slot)
+    editor.slot = stand_in_slot
+
+    assert editor.error_label.isHidden()
+    editor.try_apply()
+    assert 'per element' not in editor.error_label.text()
+    assert configured, 'Apply did not reach slot.configure()'
 
 
 def test_reapplying_an_existing_slot_with_a_list_power_value_is_refused(qtbot, builder):
@@ -958,6 +1012,35 @@ def test_failed_slot_with_unknown_transducer_leaves_the_placeholder_selected(qtb
     assert editor.power_value_spin.isVisible() is True
 
 
+def test_failed_slot_with_unknown_transducer_says_focus_and_power_will_reset(qtbot, builder):
+    slot_def = {
+        'transducer_serial': 'NOT_A_REAL_TRANSDUCER',
+        'focus_option': 'Focus wrt exit plane [mm]',
+        'focus_value': 20,
+        'power_option': 'Max. pressure in free water [MPa]',
+        'power_value': 0.5,
+    }
+
+    editor = SlotEditor(builder, failed_slot=(slot_def, FDSValidationError('Unknown serial.')))
+    qtbot.addWidget(editor)
+
+    text = editor.error_label.text()
+    assert 'focus and power are then reset to its defaults' in text
+    assert 'Focus wrt exit plane [mm] = 20' in text
+    assert 'Max. pressure in free water [MPa] = 0.5' in text
+
+
+def test_failed_slot_with_a_known_transducer_has_no_reset_note(qtbot, builder):
+    slot_def = {'transducer_serial': 'UNITTEST_TRAN_A',
+                'focus_option': 'Focus wrt exit plane [mm]', 'focus_value': 20,
+                'power_option': 'Max. pressure in free water [MPa]', 'power_value': 2.0}
+
+    editor = SlotEditor(builder, failed_slot=(slot_def, FDSSafetyError('Too high.')))
+    qtbot.addWidget(editor)
+
+    assert 'reset' not in editor.error_label.text()
+
+
 def test_failed_slot_can_still_be_applied_as_a_new_slot(qtbot, builder):
     """Never edited in place (unlike existing_slot): this slot was never actually added, so a
     successful Apply after fixing the value goes through the normal "add a new slot" path."""
@@ -994,7 +1077,7 @@ def test_failed_slot_with_an_untouched_list_power_value_cannot_silently_apply_a_
         'focus_option': 'Focus wrt exit plane [mm]',
         'focus_value': 20,
         'power_option': 'Amplitude [%]',
-        'power_value': [999.0, 999.0],
+        'power_value': [999.0, 998.0],
     }
     editor = SlotEditor(builder, failed_slot=(slot_def, FDSValidationError('boom')))
     qtbot.addWidget(editor)
@@ -1016,7 +1099,7 @@ def test_failed_slot_with_a_list_power_value_allows_a_genuinely_different_value(
         'focus_option': 'Focus wrt exit plane [mm]',
         'focus_value': 20,
         'power_option': 'Amplitude [%]',
-        'power_value': [999.0, 999.0],
+        'power_value': [999.0, 998.0],
     }
     editor = SlotEditor(builder, failed_slot=(slot_def, FDSValidationError('boom')))
     qtbot.addWidget(editor)
@@ -1037,7 +1120,7 @@ def test_failed_slot_with_a_list_power_value_allows_switching_to_another_power_o
         'focus_option': 'Focus wrt exit plane [mm]',
         'focus_value': 20,
         'power_option': 'Amplitude [%]',
-        'power_value': [999.0, 999.0],
+        'power_value': [999.0, 998.0],
     }
     editor = SlotEditor(builder, failed_slot=(slot_def, FDSValidationError('boom')))
     qtbot.addWidget(editor)

@@ -55,7 +55,8 @@ class _TimingLevel(QWidget):
 
         self._locked = locked
 
-        self.content = QWidget()
+        # Parented from the start: setVisible(True) on a parentless widget shows it as a window.
+        self.content = QWidget(self)
         self.content_form = QFormLayout(self.content)
         self.content.setVisible(not collapsed)
 
@@ -207,6 +208,7 @@ class TimingPanel(ApplyPanel):
         # Always starts in Demo mode; PlanningTab's own toggle calls set_advanced_mode() right
         # after construction if Advanced mode is already active.
         self._advanced_mode = False
+        self._values_on_entering_advanced = None
         self.set_advanced_mode(False)
 
     def _connect_cascade_refresh_signals(self):
@@ -333,12 +335,112 @@ class TimingPanel(ApplyPanel):
         self.pulse_info_label.setText(
             f"{self.pulse_dur_spin.value():.3f} ms / {self.pulse_rep_int_spin.value():.3f} ms")
 
-    def set_advanced_mode(self, advanced):
+    def _carry_demo_values_into_advanced(self):
+        """Demo mode sets the pulse repetition interval and the total duration, and leaves the
+        levels collapsed. Advanced mode treats a collapsed level as "inherit", so Apply would
+        send nothing for these two values and the defaults would apply instead. This fills in
+        the fields they belong to and expands the levels that no longer just inherit. Must run
+        before _advanced_mode becomes True, so the cascade sync (see
+        _refresh_cascaded_values()) stays out of the way."""
+
+        total_ms = self.pulse_train_rep_dur_spin.value() * 1e3
+        if self.builder.uses_pulse_train_repetition():
+            self.pulse_train_dur_spin.setValue(self.pulse_rep_int_spin.value())
+            self.pulse_train_rep_int_spin.setValue(self.pulse_train_dur_spin.value())
+        else:
+            self.pulse_train_dur_spin.setValue(total_ms)
+
+        if not _is_inherited(self.pulse_rep_int_spin.value(), self.pulse_dur_spin.value(),
+                             self.pulse_train_dur_spin.value(), self.pulse_rep_int_spin.value()):
+            self.pulse_train_level.toggle_button.setChecked(True)
+        if self.builder.uses_pulse_train_repetition() and not _is_inherited(
+                self.pulse_train_rep_int_spin.value(), self.pulse_train_dur_spin.value(),
+                total_ms, self.pulse_train_rep_int_spin.value()):
+            self.pulse_train_rep_level.toggle_button.setChecked(True)
+        self._values_on_entering_advanced = self._timing_values()
+
+    def _timing_values(self):
+        return (self.pulse_dur_spin.value(), self.ramp_shape_combo.currentText(),
+                self.ramp_dur_spin.value(), self.pulse_rep_int_spin.value(),
+                self.pulse_train_dur_spin.value(), self.pulse_train_rep_int_spin.value(),
+                self.pulse_train_rep_dur_spin.value())
+
+    def _demo_can_show_current_timing(self):
+        """True, and adopts it, if Demo mode's own fields can express the current timing: a
+        pulse that is a whole percent of the repetition interval, no ramp, and no pulse train
+        beyond what Demo mode sends itself. Then only the duty cycle (and which frequency
+        preset is highlighted) needs to follow, instead of throwing a change away."""
+
+        pulse_dur, rep_int = self.pulse_dur_spin.value(), self.pulse_rep_int_spin.value()
+        duty_cycle = pulse_dur / rep_int * 100.0 if rep_int > 0 else 0.0
+        if self.builder.uses_pulse_train_repetition():
+            single_pulse_train = (self.pulse_train_dur_spin.value() == rep_int
+                                  and self.pulse_train_rep_int_spin.value() == rep_int)
+        else:
+            single_pulse_train = True
+        if (not single_pulse_train
+                or self.ramp_shape_combo.currentText() != self.builder.rectangular_ramp_shape()
+                or self.ramp_dur_spin.value() != 0
+                or abs(duty_cycle - round(duty_cycle)) > 1e-6
+                or not 1 <= round(duty_cycle) <= 100):
+            return False
+
+        self.duty_cycle_spin.setValue(round(duty_cycle))
+        if not self.builder.uses_pulse_train_repetition():
+            self.pulse_train_rep_dur_spin.setValue(self.pulse_train_dur_spin.value() / 1e3)
+        self._freq_button_group.setExclusive(False)
+        for freq_hz, button in self._freq_buttons.items():
+            button.setChecked(abs(1000.0 / freq_hz - rep_int) < 1e-6)
+        self._freq_button_group.setExclusive(True)
+        return True
+
+    def show_loaded_timing_in_demo(self):
+        """For a panel built from a loaded protocol and shown in Demo mode: makes the duty cycle
+        (and the highlighted frequency preset) follow the loaded pulse timing instead of the
+        default. Returns False if Demo mode cannot express that timing."""
+
+        return self._demo_can_show_current_timing()
+
+    def _return_to_demo_values(self):
+        """Back to Demo mode's simple timing, unless nothing was changed in Advanced mode:
+        Demo mode's _apply() still reads the hidden fields (ramp, pulse train), so what was
+        entered there would otherwise keep being sent without being visible. Must run with
+        _advanced_mode already False, for the same reason as
+        _carry_demo_values_into_advanced()."""
+
+        if self._timing_values() == self._values_on_entering_advanced:
+            return
+        # A panel built in Advanced mode with nothing set yet has no Demo timing to return to:
+        # the untouched default (a 100% duty cycle at 4 kHz) is no demo example, so it gets one.
+        untouched = self._values_on_entering_advanced is None and _is_inherited(
+            self.pulse_rep_int_spin.value(), self.pulse_dur_spin.value(),
+            self.pulse_train_dur_spin.value(), self.pulse_rep_int_spin.value())
+        if not untouched and self._demo_can_show_current_timing():
+            return
+
+        self.ramp_shape_combo.setCurrentText(self.builder.rectangular_ramp_shape())
+        self.duty_cycle_spin.setValue(_DEMO_DEFAULT_DUTY_CYCLE_PERCENT)
+        self._apply_frequency_preset(_DEMO_PRESET_FREQUENCIES_HZ[0])
+        self.pulse_train_dur_spin.setValue(self.pulse_rep_int_spin.value())
+        self.pulse_train_rep_int_spin.setValue(self.pulse_train_dur_spin.value())
+        self.pulse_train_rep_dur_spin.setValue(_DEMO_DEFAULT_TOTAL_DURATION)
+
+    def set_advanced_mode(self, advanced, live_switch=False):
         """Advanced mode shows the normal collapsible Pulse/Pulse Train/Pulse Train Repetition
         levels, each field editable directly. Demo mode hides all three headers and flattens
         them into the frequency presets/duty cycle, a read-only Pulse duration/Pulse
         repetition interval display (see _build_pulse_info_label()), and an editable total
-        duration (see _apply())."""
+        duration (see _apply()).
+
+        live_switch is for the researcher toggling the mode (see _carry_demo_values_into_
+        advanced() and _return_to_demo_values()), not for a freshly built panel: a loaded
+        protocol's own values and collapse state are already right."""
+
+        if live_switch and advanced and not self._advanced_mode:
+            self._carry_demo_values_into_advanced()
+        if live_switch and not advanced and self._advanced_mode:
+            self._advanced_mode = False
+            self._return_to_demo_values()
 
         self._advanced_mode = advanced
         for level in (self.pulse_level, self.pulse_train_level, self.pulse_train_rep_level):

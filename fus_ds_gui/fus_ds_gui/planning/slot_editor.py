@@ -28,6 +28,14 @@ _PER_ELEMENT_POWER_MESSAGE = (
     "option.")
 
 
+def _is_per_element(power_value):
+    """True for a power list whose entries differ: one value per element. Amplitude and voltage
+    are always stored as a list (one entry per channel, or one shared entry), so a list with one
+    entry, or all entries equal, is just the single shared value."""
+
+    return isinstance(power_value, list) and len(set(power_value)) > 1
+
+
 def _mm_spinbox():
     spin = QDoubleSpinBox()
     spin.setDecimals(2)
@@ -159,6 +167,10 @@ class SlotEditor(ApplyPanel):
         # via error_label instead, since the whole point of showing it was for the researcher to
         # see and fix it, not have it vanish the moment they start doing exactly that.
         self._raw_focus_value = None
+        # True once a failed slot_def's raw values are on show (see _show_every_field_for_
+        # review()): they stay visible even without a matching transducer, whichever later
+        # call re-evaluates the visibility (e.g. set_advanced_mode()).
+        self._reviewing_failed_slot = False
         # Applied *before* the combo is first populated below, not after, so a freshly added
         # editor's own dropdown never even lists an already-chosen transducer as an option, not
         # even fleetingly (see PlanningTab._add_slot_editor()). A fresh editor itself always
@@ -220,6 +232,13 @@ class SlotEditor(ApplyPanel):
             self._form.addRow(label, widget)
         align_form_labels(self._form)
 
+        # Installed before anything below calls setRowVisible(): on a form without a parent
+        # widget yet, showing a row would show its parentless widgets as stray windows.
+        layout = QVBoxLayout(self)
+        layout.addWidget(self._title_label)
+        layout.addLayout(self._form)
+        layout.addWidget(self.error_label)
+
         # Only safe from here on: _update_focus_options()/_update_focus_value_fields() both
         # need self._form (setRowVisible()) to already exist. _update_focus_options() must run
         # before _update_focus_range(), not after: the range's own offset depends on which
@@ -232,11 +251,6 @@ class SlotEditor(ApplyPanel):
         self._update_transducer_dependent_visibility()
         self._load_initial_state(existing_slot, failed_slot)
         self._connect_changed_signals()
-
-        layout = QVBoxLayout(self)
-        layout.addWidget(self._title_label)
-        layout.addLayout(self._form)
-        layout.addWidget(self.error_label)
 
     def _connect_changed_signals(self):
         """Emits `changed` whenever any of this editor's own value-bearing widgets changes.
@@ -343,8 +357,9 @@ class SlotEditor(ApplyPanel):
         # _load_failed_slot()), rather than waiting for the researcher to click Apply and
         # discover only then that _apply() refuses to overwrite it with that single shared
         # value.
-        if isinstance(power_value, list):
+        if _is_per_element(power_value):
             self._show_error(_PER_ELEMENT_POWER_MESSAGE)
+        if isinstance(power_value, list):
             power_value = power_value[0]
         self.power_value_spin.setValue(power_value)
 
@@ -415,9 +430,10 @@ class SlotEditor(ApplyPanel):
         power_value = slot_def.get('power_value')
         # See _load_existing_slot()'s own comment on the same list case.
         if isinstance(power_value, list) and power_value:
-            self._per_element_power_option = power_option
+            if _is_per_element(power_value):
+                self._per_element_power_option = power_option
+                self._per_element_power_first_value = power_value[0]
             power_value = power_value[0]
-            self._per_element_power_first_value = power_value
         if isinstance(power_value, (int, float)):
             _widen_range_to_fit(self.power_value_spin, power_value)
             self.power_value_spin.setValue(power_value)
@@ -428,7 +444,24 @@ class SlotEditor(ApplyPanel):
         self._load_existing_dephasing(slot_def.get('dephasing_degree'))
         self._show_every_field_for_review()
 
-        self._show_error(str(exc))
+        message = str(exc)
+        if index is None:
+            message += self._transducer_reset_note(slot_def)
+        self._show_error(message)
+
+    @staticmethod
+    def _transducer_reset_note(slot_def):
+        """Choosing a transducer resets focus and power to its defaults; this keeps the file's
+        values readable in the error so they can be typed again."""
+
+        note = " Choose a transducer: focus and power are then reset to its defaults."
+        values = [f"{slot_def[option]} = {slot_def[value]}"
+                  for option, value in (('focus_option', 'focus_value'),
+                                        ('power_option', 'power_value'))
+                  if slot_def.get(option) is not None and slot_def.get(value) is not None]
+        if values:
+            note += f" The file had {'; '.join(values)}."
+        return note
 
     def _show_every_field_for_review(self):
         """Forces every field visible regardless of _update_transducer_dependent_visibility()'s
@@ -436,6 +469,7 @@ class SlotEditor(ApplyPanel):
         slot_def already has real (if possibly wrong) values to show, transducer match or
         not (see _load_failed_slot()'s own docstring)."""
 
+        self._reviewing_failed_slot = True
         for row_widget in (self._focus_row_widget, self._power_row_widget, self.oper_freq_spin):
             self._form.setRowVisible(row_widget, True)
         self._update_focus_value_fields(self.focus_option_combo.currentText())
@@ -482,7 +516,8 @@ class SlotEditor(ApplyPanel):
         """Extracted out of __init__ purely to keep its own statement count under pylint's
         limit."""
 
-        self._title_label = QLabel()
+        # Parented: set_title() below shows it, and a parentless widget shown is a stray window.
+        self._title_label = QLabel(self)
         self._title_label.setStyleSheet("font-weight: bold;")
         self.set_title(title)
 
@@ -593,9 +628,20 @@ class SlotEditor(ApplyPanel):
         self.focus_value_y_spin.setValue(0.0)
         self.focus_value_z_spin.setValue(default_focus)
         self.power_value_spin.setValue(0.0)
-        # Mirrors TransducerSlot.update_transducer()'s own documented reset behavior:
-        # dephasing_degree always resets to "no dephasing" rather than carrying over, since a
-        # per-element list is sized to a specific transducer's own element count.
+        self._reset_oper_freq_and_dephasing()
+        self.dephasing_values_edit.setToolTip(
+            f"Comma-separated phase values [deg], exactly {tran.elements} for {tran.name}."
+            if tran is not None else "")
+        self._update_transducer_dependent_visibility()
+        self.transducer_selection_changed.emit()
+
+    def _reset_oper_freq_and_dephasing(self):
+        """Operating frequency back to the transducer's fundamental, dephasing to none.
+        Mirrors TransducerSlot.update_transducer()'s own documented reset behavior:
+        dephasing_degree always resets to "no dephasing" rather than carrying over, since a
+        per-element list is sized to a specific transducer's own element count."""
+
+        tran = self.transducer_combo.currentData()
         if tran is not None:
             # 1, not 0: the backend's own oper_freq setter validates check_nonzero=True
             # (transducer_slot.py), so 0 is never actually valid once a real transducer is
@@ -608,19 +654,22 @@ class SlotEditor(ApplyPanel):
             self.oper_freq_spin.setRange(0, 100000)
             self.oper_freq_spin.setValue(0)
         self.dephasing_mode_combo.setCurrentIndex(0)  # _DEPHASING_NONE
-        self.dephasing_values_edit.setToolTip(
-            f"Comma-separated phase values [deg], exactly {tran.elements} for {tran.name}."
-            if tran is not None else "")
-        self._update_transducer_dependent_visibility()
-        self.transducer_selection_changed.emit()
+        self.dephasing_degree_spin.setValue(90.0)
+        self.dephasing_values_edit.clear()
 
-    def set_advanced_mode(self, advanced):
+    def set_advanced_mode(self, advanced, live_switch=False):
         """Hides/shows the fields Demo mode simplifies away (see this method's own callers in
         PlanningTab): operating frequency and dephasing. The focus/power option pickers and
         value fields all stay visible and editable regardless of mode; every option offered is
         already non-engineering-only (see ProtocolBuilder.focus_options()/power_options()), so
-        there's nothing unsafe left to restrict further here."""
+        there's nothing unsafe left to restrict further here.
 
+        live_switch is for the researcher toggling back to Demo mode: Apply still reads the
+        hidden fields, so whatever was entered in Advanced mode would otherwise keep being sent
+        without being visible. Not for a freshly built editor, whose loaded values are real."""
+
+        if live_switch and not advanced and self._advanced_mode:
+            self._reset_oper_freq_and_dephasing()
         self._advanced_mode = advanced
         self._update_transducer_dependent_visibility()
 
@@ -639,7 +688,8 @@ class SlotEditor(ApplyPanel):
         has_transducer, self._advanced_mode only hides oper_freq/dephasing, never the option/
         value fields."""
 
-        has_transducer = self.transducer_combo.currentData() is not None
+        has_transducer = (self.transducer_combo.currentData() is not None
+                          or self._reviewing_failed_slot)
         self._form.setRowVisible(self._focus_row_widget, has_transducer)
         self._form.setRowVisible(self._power_row_widget, has_transducer)
         self._form.setRowVisible(self.oper_freq_spin, has_transducer and self._advanced_mode)
@@ -879,7 +929,7 @@ class SlotEditor(ApplyPanel):
             # guaranteed to stay true for every institution's own config (see this class's own
             # _per_element_power_option comment). Block on either, not just an exact match. Same
             # "still the untouched first entry" carve-out as the self.slot is None branch above.
-            if (isinstance(self.slot.chosen_power_value, list)
+            if (_is_per_element(self.slot.chosen_power_value)
                     and power_option in ('', self.slot.chosen_power)
                     and power_value == self.slot.chosen_power_value[0]):
                 raise FDSValidationError(_PER_ELEMENT_POWER_MESSAGE)

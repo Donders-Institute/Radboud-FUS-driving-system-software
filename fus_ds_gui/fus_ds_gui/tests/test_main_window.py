@@ -116,6 +116,41 @@ def test_window_shrinks_back_after_switching_to_fewer_transducer_slots(qtbot, pa
     qtbot.waitUntil(lambda: window.height() < grown_height, timeout=1000)
 
 
+def test_maximized_window_is_not_resized_when_the_content_changes(qtbot, patch_config):
+    """A researcher who chose a full screen window keeps it: the forms scroll instead."""
+    _configure_driving_system(patch_config)
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.showMaximized()
+    qtbot.wait(100)
+    height = window.height()
+
+    _select_first_driving_system(window)
+    window.planning_tab.advanced_mode_checkbox.setChecked(True)
+    qtbot.wait(200)
+
+    assert window.isMaximized() is True
+    assert window.height() == height
+
+
+def test_window_height_never_exceeds_the_screen(qtbot, patch_config):
+    """Content taller than the screen scrolls, so Apply stays reachable instead of falling off
+    the bottom."""
+    _configure_driving_system(patch_config, max_tran_slots=4)
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.show()
+    _select_first_driving_system(window)
+    window.planning_tab.advanced_mode_checkbox.setChecked(True)
+    for _ in range(3):
+        window.planning_tab.add_slot_button.click()
+    qtbot.wait(200)
+
+    available = window.screen().availableGeometry().height()
+    assert window.frameGeometry().height() <= available
+    assert window.planning_tab.apply_button.isVisible() is True
+
+
 def test_approve_action_disabled_until_a_file_is_known(qtbot, patch_config):
     window = MainWindow()
     qtbot.addWidget(window)
@@ -434,6 +469,46 @@ def test_on_save_protocol_warns_when_called_despite_being_unlocked(
     window._on_save_protocol()
 
     assert len(warnings) == 1
+
+
+def test_approve_is_disabled_once_the_form_differs_from_the_loaded_file(
+        qtbot, tmp_path, patch_config, monkeypatch):
+    """Approve hashes the file on disk, so after an edit it would approve the old content."""
+    path = _build_protocol_file(tmp_path, patch_config)
+    monkeypatch.setattr(QFileDialog, 'getOpenFileName',
+                        staticmethod(lambda *args, **kwargs: (path, '')))
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.planning_tab.load_button.click()
+    assert window.planning_tab.approve_button.isEnabled() is True
+
+    window.planning_tab.timing_panel.pulse_dur_spin.setValue(
+        window.planning_tab.timing_panel.pulse_dur_spin.value() + 1)
+
+    assert window.planning_tab.approve_button.isEnabled() is False
+
+
+def test_approve_stays_disabled_after_apply_until_the_file_is_saved_again(
+        qtbot, tmp_path, patch_config, monkeypatch):
+    path = _build_protocol_file(tmp_path, patch_config)
+    monkeypatch.setattr(QFileDialog, 'getOpenFileName',
+                        staticmethod(lambda *args, **kwargs: (path, '')))
+    monkeypatch.setattr(QFileDialog, 'getSaveFileName',
+                        staticmethod(lambda *args, **kwargs: (path, '')))
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.planning_tab.load_button.click()
+    window.planning_tab.timing_panel.pulse_train_rep_dur_spin.setValue(
+        window.planning_tab.timing_panel.pulse_train_rep_dur_spin.value() + 1)
+
+    window.planning_tab.apply_button.click()
+
+    assert window.planning_tab.is_locked() is True
+    assert window.planning_tab.approve_button.isEnabled() is False
+
+    window.planning_tab.save_button.click()
+
+    assert window.planning_tab.approve_button.isEnabled() is True
 
 
 def test_approve_action_writes_a_hash_sidecar(qtbot, tmp_path, patch_config, monkeypatch):

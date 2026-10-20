@@ -38,7 +38,7 @@ _YAML_FILE_FILTER = "Protocol files (*.yaml *.yml)"
 
 # Long enough for Qt's own deferred layout pass (triggered by the many setVisible()/
 # setRowVisible() calls Demo mode's smaller form makes) to fully settle before
-# _shrink_to_fit_content() reads sizeHint(): read too early and it still reflects the
+# _fit_to_content() reads sizeHint(): read too early and it still reflects the
 # larger Advanced-mode layout, undoing the whole point of shrinking back down.
 _SHRINK_DELAY_MS = 50
 
@@ -101,7 +101,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.splitter)
 
         # setMenuWidget(), not a layout wrapping the splitter: that would break
-        # _shrink_to_fit_content()'s sizeHint()-based resize.
+        # _fit_to_content()'s sizeHint()-based resize.
         logo_label = QLabel()
         logo_pixmap = QPixmap(str(_RESOURCES.joinpath(_logo_filename())))
         logo_label.setPixmap(logo_pixmap.scaledToHeight(
@@ -111,6 +111,8 @@ class MainWindow(QMainWindow):
         self.setMenuWidget(logo_label)
 
         self._current_file_path = None
+        self._file_matches_form = False
+        self.planning_tab.lock_changed.connect(self._on_planning_lock_changed)
         self.planning_tab.load_button.clicked.connect(self._on_load_protocol)
         self.planning_tab.save_button.clicked.connect(self._on_save_protocol)
         self.planning_tab.approve_button.clicked.connect(self._on_approve_current_file)
@@ -119,32 +121,32 @@ class MainWindow(QMainWindow):
         self.planning_tab.lock_changed.connect(self._update_save_button_enabled)
         self._update_save_button_enabled()
 
-        self.planning_tab.advanced_mode_checkbox.toggled.connect(
-            self._on_advanced_mode_toggled)
-        self.planning_tab.equipment_panel.driving_system_changed.connect(
-            self._schedule_shrink_to_fit)
+        for signal in (self.planning_tab.advanced_mode_checkbox.toggled,
+                       self.planning_tab.add_slot_button.clicked,
+                       self.planning_tab.equipment_panel.driving_system_changed):
+            signal.connect(self._schedule_fit_to_content)
+        self._schedule_fit_to_content()
 
-    def _on_advanced_mode_toggled(self, advanced):
-        """Demo mode's own form needs less height than Advanced mode's; see
-        _schedule_shrink_to_fit()'s own docstring for why this is needed at all. Only leaving
-        Advanced mode can ever need a shrink here, so growing (entering Advanced mode) skips
-        it."""
+    def _schedule_fit_to_content(self, *_args):
+        """The Planning tab scrolls (see PlanningTab), so the window no longer follows its
+        content on its own, and a QMainWindow on screen never shrinks by itself either. Every
+        change that alters the height of the forms (Advanced mode, another slot, another
+        driving system) therefore re-fits the window. Deferred via _SHRINK_DELAY_MS; see its
+        own comment."""
 
-        if not advanced:
-            self._schedule_shrink_to_fit()
+        QTimer.singleShot(_SHRINK_DELAY_MS, self._fit_to_content)
 
-    def _schedule_shrink_to_fit(self, *_args):
-        """A QMainWindow already on screen doesn't shrink itself back down once its content
-        does (unlike growing, which it already handles on its own), a known Qt limitation, not
-        something specific to this window. Switching to a driving system needing fewer slots
-        (e.g. a "1x10 ch." variant after a "2x10 ch." one) can shrink the Planning tab's own
-        content the same way leaving Advanced mode does, so both are wired here. Deferred via
-        _SHRINK_DELAY_MS; see its own comment."""
+    def _fit_to_content(self):
+        """Sizes the window height to the content, up to the screen. Leaves a maximized or
+        full screen window alone: the researcher chose that size, and the forms scroll."""
 
-        QTimer.singleShot(_SHRINK_DELAY_MS, self._shrink_to_fit_content)
+        if self.isMaximized() or self.isFullScreen():
+            return
 
-    def _shrink_to_fit_content(self):
-        self.resize(self.width(), self.centralWidget().sizeHint().height())
+        wanted = self.centralWidget().sizeHint().height() + self.menuWidget().sizeHint().height()
+        available = self.screen().availableGeometry().height()
+        frame_overhead = self.frameGeometry().height() - self.geometry().height()
+        self.resize(self.width(), min(wanted, available - frame_overhead))
 
     def _update_save_button_enabled(self):
         """Disables Save until is_locked(): current_protocol() only reflects the last Applied
@@ -154,6 +156,18 @@ class MainWindow(QMainWindow):
         ExecutingPanel._refresh_send_enabled()."""
 
         self.planning_tab.save_button.setEnabled(self.planning_tab.is_locked())
+
+    def _set_file_matches_form(self, matches):
+        """Approve only while the file on disk is what the form shows: any edit unlocks the
+        Planning tab (see PlanningTab.is_locked()), and Apply alone does not write the file
+        again, so approving then would approve the old content under the new-looking form."""
+
+        self._file_matches_form = matches
+        self.planning_tab.approve_button.setEnabled(matches)
+
+    def _on_planning_lock_changed(self, locked):
+        if not locked:
+            self._set_file_matches_form(False)
 
     def _on_load_protocol(self):
         # Defaults to example_protocols/ (the shipped examples are the most useful place to
@@ -175,12 +189,13 @@ class MainWindow(QMainWindow):
         except FDSError as e:
             show_fds_error(self, e)
             return
+        self._schedule_fit_to_content()
 
         self._current_file_path = path
         # Approving hashes exactly the file on disk at self._current_file_path (see
         # protocol_io.approve()): if any slot in it failed to construct, that file is known to
         # be broken, so it must not be approvable until it's fixed and saved again.
-        self.planning_tab.approve_button.setEnabled(not load_result.failed_slots)
+        self._set_file_matches_form(not load_result.failed_slots)
 
     def _on_save_protocol(self):
         # save_button is disabled whenever is_locked() is False (see
@@ -213,7 +228,7 @@ class MainWindow(QMainWindow):
             return
 
         self._current_file_path = path
-        self.planning_tab.approve_button.setEnabled(True)
+        self._set_file_matches_form(True)
 
     def _on_approve_current_file(self):
         try:

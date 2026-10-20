@@ -5,8 +5,10 @@ and the validation label. Not re-testing what each widget's own test module alre
 isolation.
 """
 import pytest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import QEvent, QObject
+from PySide6.QtWidgets import QApplication, QWidget
 
+from fus_ds_gui.models.protocol_builder import ProtocolBuilder
 from fus_ds_gui.models.protocol_io import LoadResult
 from fus_ds_gui.planning.planning_tab import PlanningTab
 
@@ -660,9 +662,9 @@ def test_load_protocol_does_not_leave_the_previous_slot_editor_as_a_stray_window
 
     tab.load_protocol(LoadResult(protocol, []))
 
-    assert original_editor.parent() is tab
+    assert original_editor.parent() is tab._content
     assert original_editor not in QApplication.topLevelWidgets()
-    assert original_timing_panel.parent() is tab
+    assert original_timing_panel.parent() is tab._content
     assert original_timing_panel not in QApplication.topLevelWidgets()
 
 
@@ -741,6 +743,174 @@ def test_load_protocol_keeps_advanced_mode_for_the_new_panels(qtbot, single_slot
     assert tab.timing_panel.pulse_train_level.toggle_button.isVisible() is True
 
 
+class _WindowShowRecorder(QObject):
+    """Records every top-level widget that gets shown, however briefly."""
+
+    def __init__(self):
+        super().__init__()
+        self.shown = []
+
+    def eventFilter(self, watched, event):  # pylint: disable=invalid-name
+        if event.type() == QEvent.Type.Show and getattr(watched, 'isWindow', lambda: False)():
+            label = ':' + watched.text() if hasattr(watched, 'text') else ''
+            self.shown.append(type(watched).__name__ + label)
+        return False
+
+
+@pytest.fixture
+def window_show_recorder():
+    recorder = _WindowShowRecorder()
+    QApplication.instance().installEventFilter(recorder)
+    yield recorder
+    QApplication.instance().removeEventFilter(recorder)
+
+
+def test_window_show_recorder_sees_a_stray_window(qtbot, window_show_recorder):
+    """Guards the two tests below against passing only because the recorder sees nothing."""
+    stray = QWidget()
+    qtbot.addWidget(stray)
+    stray.show()
+
+    assert window_show_recorder.shown == ['QWidget']
+
+
+def test_load_protocol_does_not_flash_stray_windows(
+        qtbot, single_slot_setup, window_show_recorder):
+    """Showing a row or level before its widgets have a parent shows them as small top-level
+    windows that disappear again once they are added to a layout."""
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+    protocol = _build_protocol('UNITTEST_IGT', [('UNITTEST_TRAN', 40, 0.5)], pulse_dur=1,
+                               pulse_rep_int=5, pulse_train_dur=20,
+                               pulse_train_rep_int=40, pulse_train_rep_dur=2)
+    window_show_recorder.shown.clear()
+
+    tab.load_protocol(LoadResult(protocol, []))
+
+    assert window_show_recorder.shown == []
+
+
+def test_choosing_a_driving_system_does_not_flash_stray_windows(
+        qtbot, single_slot_setup, window_show_recorder):
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+    window_show_recorder.shown.clear()
+
+    _select_first_driving_system(tab)
+
+    assert window_show_recorder.shown == []
+
+
+def test_new_driving_system_in_advanced_mode_has_consistent_collapsed_timing_levels(
+        qtbot, single_slot_setup):
+    """A level that is collapsed means "inherit", so what it shows must follow from the level
+    below. A Demo example (5 Hz) seeded before the panel went to Advanced mode left the pulse
+    train duration at its own default while the interval was 200 ms."""
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+    tab.advanced_mode_checkbox.setChecked(True)
+
+    _select_first_driving_system(tab)
+
+    panel = tab.timing_panel
+    assert panel.pulse_train_level.is_expanded() is False
+    assert panel.pulse_rep_int_spin.value() == pytest.approx(panel.pulse_dur_spin.value())
+    assert panel.pulse_train_dur_spin.value() == pytest.approx(panel.pulse_rep_int_spin.value())
+    assert panel.pulse_train_rep_int_spin.value() == pytest.approx(
+        panel.pulse_train_dur_spin.value())
+
+
+def test_demo_example_is_still_seeded_when_advanced_mode_is_off(qtbot, single_slot_setup):
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+
+    _select_first_driving_system(tab)
+
+    assert tab.timing_panel.pulse_rep_int_spin.value() == pytest.approx(200.0)
+
+
+def test_switching_a_fresh_advanced_panel_to_demo_gives_the_demo_example(
+        qtbot, single_slot_setup):
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+    tab.advanced_mode_checkbox.setChecked(True)
+    _select_first_driving_system(tab)
+
+    tab.advanced_mode_checkbox.setChecked(False)
+
+    assert tab.timing_panel.pulse_rep_int_spin.value() == pytest.approx(200.0)
+    assert tab.timing_panel.pulse_train_rep_dur_spin.value() == pytest.approx(60.0)
+
+
+def test_load_protocol_with_defaults_stays_in_demo_mode(qtbot, single_slot_setup):
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+    protocol = _build_protocol('UNITTEST_IGT', [('UNITTEST_TRAN', 40, 0.5)])
+
+    tab.load_protocol(LoadResult(protocol, []))
+
+    assert tab.advanced_mode_checkbox.isChecked() is False
+
+
+def test_load_protocol_in_demo_mode_shows_the_loaded_duty_cycle(qtbot, single_slot_setup):
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+    protocol = _build_protocol('UNITTEST_IGT', [('UNITTEST_TRAN', 40, 0.5)], pulse_dur=10,
+                               pulse_rep_int=50, pulse_train_dur=50, pulse_train_rep_int=50)
+
+    tab.load_protocol(LoadResult(protocol, []))
+
+    assert tab.advanced_mode_checkbox.isChecked() is False
+    assert tab.timing_panel.duty_cycle_spin.value() == 20
+    assert tab.timing_panel.pulse_dur_spin.value() == pytest.approx(10.0)
+
+
+def test_load_protocol_with_a_fractional_duty_cycle_switches_to_advanced_mode(
+        qtbot, single_slot_setup):
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+    protocol = _build_protocol('UNITTEST_IGT', [('UNITTEST_TRAN', 40, 0.5)], pulse_dur=10.4,
+                               pulse_rep_int=50, pulse_train_dur=50, pulse_train_rep_int=50)
+
+    tab.load_protocol(LoadResult(protocol, []))
+
+    assert tab.advanced_mode_checkbox.isChecked() is True
+
+
+@pytest.mark.parametrize('change', ['oper_freq', 'dephasing', 'ramp', 'pulse_train'])
+def test_load_protocol_switches_to_advanced_mode_for_what_demo_mode_hides(
+        qtbot, single_slot_setup, monkeypatch, change):
+    """Demo mode hides these fields but Apply still sends them, so loading one must not leave
+    the researcher in a mode that doesn't show it. The synthetic driving system isn't an IGT, so
+    the pulse train case needs that answer patched in."""
+    monkeypatch.setattr(ProtocolBuilder, 'uses_pulse_train_repetition', lambda self: True)
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+    timing = {}
+    if change == 'ramp':
+        timing = dict(pulse_ramp_shape=tab_ramp_shape(), pulse_ramp_dur=0.05)
+    if change == 'pulse_train':
+        timing = dict(pulse_rep_int=5, pulse_train_dur=20)
+    protocol = _build_protocol('UNITTEST_IGT', [('UNITTEST_TRAN', 40, 0.5)], pulse_dur=1,
+                               **timing)
+    if change == 'oper_freq':
+        protocol.slots[0].oper_freq = protocol.slots[0].oper_freq + 100
+    if change == 'dephasing':
+        protocol.slots[0].dephasing_degree = [45.0]
+
+    tab.load_protocol(LoadResult(protocol, []))
+
+    assert tab.advanced_mode_checkbox.isChecked() is True
+
+
+def tab_ramp_shape():
+    """A ramp shape other than the rectangular one."""
+    from fus_driving_systems.tus_protocol import TUSProtocol
+
+    shapes = TUSProtocol('UNITTEST_IGT').get_ramp_shapes()
+    return [shape for shape in shapes if shape != 'Rectangular'][0]
+
+
 def test_load_protocol_refreshes_validation(qtbot, single_slot_setup):
     tab = PlanningTab()
     qtbot.addWidget(tab)
@@ -769,6 +939,54 @@ def test_load_protocol_raises_when_driving_system_not_offered(qtbot, patch_confi
 
     with pytest.raises(FDSConfigError, match='UNITTEST_NOT_OFFERED'):
         tab.load_protocol(LoadResult(protocol, []))
+
+
+def _failed_slot_with_unknown_transducer():
+    from fus_driving_systems.exceptions import FDSValidationError
+
+    slot_def = {
+        'transducer_serial': 'NOT_A_TRANSDUCER',
+        'focus_option': 'Focus wrt exit plane [mm]',
+        'focus_value': 60,
+        'power_option': 'Global power [W]',
+        'power_value': 0.4,
+        'oper_freq': None,
+        'dephasing_degree': None,
+    }
+    return slot_def, FDSValidationError('NOT_A_TRANSDUCER is not compatible.')
+
+
+@pytest.mark.parametrize('advanced', [False, True])
+def test_failed_slot_with_unknown_transducer_keeps_its_values_visible(
+        qtbot, single_slot_setup, advanced):
+    """The placeholder stays selected, but the file's focus and power must stay on show, also
+    once PlanningTab applies the current mode to the new editor."""
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+    tab.show()
+    tab.advanced_mode_checkbox.setChecked(advanced)
+    protocol = _build_protocol('UNITTEST_IGT', [('UNITTEST_TRAN', 40, 0.5)])
+
+    tab.load_protocol(LoadResult(protocol, [_failed_slot_with_unknown_transducer()]))
+
+    editor = tab._slot_editors[1]
+    assert editor.transducer_combo.currentData() is None
+    assert editor.focus_value_spin.isVisibleTo(editor) is True
+    assert editor.power_value_spin.isVisibleTo(editor) is True
+    assert editor.focus_value_spin.value() == pytest.approx(60)
+    assert editor.power_value_spin.value() == pytest.approx(0.4)
+
+
+def test_failed_slot_with_dephasing_switches_to_advanced_mode(qtbot, single_slot_setup):
+    tab = PlanningTab()
+    qtbot.addWidget(tab)
+    protocol = _build_protocol('UNITTEST_IGT', [('UNITTEST_TRAN', 40, 0.5)])
+    slot_def, exc = _failed_slot_with_unknown_transducer()
+    slot_def['dephasing_degree'] = [90.0]
+
+    tab.load_protocol(LoadResult(protocol, [(slot_def, exc)]))
+
+    assert tab.advanced_mode_checkbox.isChecked() is True
 
 
 def test_load_protocol_builds_an_extra_editor_per_failed_slot(qtbot, single_slot_setup):
