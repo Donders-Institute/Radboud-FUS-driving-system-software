@@ -61,7 +61,8 @@ class MockIGT(IGT):
         self._armed_n_triggers = 1
         self._armed_fire_duration_ms = 0
 
-    def connect(self, connect_info, log_dir=None, log_name=None):
+    def connect(self, connect_info, log_dir=None, log_name=None, max_attempts=None,
+                reconnect_delay_s=None):
         time.sleep(_CONNECT_DELAY_S)
         self._connected = True
         get_logger().info("Mock IGT: connected (%s).", connect_info)

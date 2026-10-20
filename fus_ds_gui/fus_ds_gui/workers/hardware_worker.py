@@ -8,6 +8,7 @@ See the LICENSE file for full license text.
 
 from PySide6.QtCore import QObject, Signal, Slot
 
+from fus_driving_systems.config.logging_config import get_logger
 from fus_driving_systems.exceptions import FDSError
 from fus_driving_systems.igt.igt_ds import IGT
 
@@ -41,6 +42,8 @@ class DrivingSystemWorker(QObject):
             ProtocolBuilder.uses_pulse_train_repetition()'s own docstring on that asymmetry).
             Also emitted after a triggered IGT execution is confirmed done (do_wait_for_trigger).
         armed(): Emitted once a protocol is armed to fire on an external trigger.
+        connection_attempt(int, int): Emitted before each (re)connection attempt of an IGT, with
+            the attempt number and the maximum.
         aborted(): Emitted after a successful abort().
         error(object): Emitted instead of any of the above whenever the wrapped call raises
             FDSError; carries the caught exception itself, not a string, so
@@ -52,6 +55,7 @@ class DrivingSystemWorker(QObject):
     sent = Signal()
     executed = Signal()
     armed = Signal()
+    connection_attempt = Signal(int, int)
     aborted = Signal()
     error = Signal(object)
 
@@ -72,13 +76,19 @@ class DrivingSystemWorker(QObject):
 
     @Slot()
     def do_disconnect(self):
-        """Disconnects from the driving system; see this class's own docstring."""
+        """Disconnects from the driving system; see this class's own docstring. Any other
+        exception (the IGT SDK raises its own once the cable is gone) is logged and counts as
+        disconnected: an unhandled one would end this slot without emitting a signal, leaving
+        the GUI on Connected."""
 
         try:
             self.ds_instance.disconnect()
         except FDSError as e:
             self.error.emit(e)
             return
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            get_logger().warning("Disconnect failed, treating the driving system as "
+                                 "disconnected: %s", e)
         self.disconnected.emit()
 
     @Slot(object)

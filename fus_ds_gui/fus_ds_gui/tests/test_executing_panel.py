@@ -18,6 +18,7 @@ from fus_driving_systems.sonic_concepts.sonic_concepts_ds import SonicConcepts
 from fus_ds_gui.executing.executing_panel import ExecutingPanel
 from fus_ds_gui.executing.trigger_panel import WHOLE_PROTOCOL
 from fus_ds_gui.planning.planning_tab import PlanningTab
+from fus_ds_gui.workers.hardware_worker import DrivingSystemWorker
 
 
 def _configure_igt(patch_config, serial='UNITTEST_IGT'):
@@ -140,6 +141,42 @@ def test_send_disabled_until_both_connected_and_locked(qtbot, planning_tab_sc):
     panel._on_connected(True)
 
     assert panel.execution_panel.send_button.isEnabled() is True
+
+
+def test_send_shows_that_it_is_sending_until_the_driving_system_confirms(
+        qtbot, planning_tab_sc):
+    _select_first_driving_system(planning_tab_sc)
+    _apply_a_valid_slot(planning_tab_sc)
+    panel = ExecutingPanel(planning_tab_sc)
+    qtbot.addWidget(panel)
+    panel._worker = MagicMock()
+    panel._on_connected(True)
+
+    panel._on_send_clicked()
+
+    assert panel.execution_panel.sent_protocol_label.text() == "Sending protocol..."
+    assert panel.execution_panel.send_button.isEnabled() is False
+
+    panel._on_sent()
+
+    assert "Protocol sent" in panel.execution_panel.sent_protocol_label.text()
+
+
+def test_a_send_that_fails_does_not_stay_on_sending(qtbot, planning_tab_sc, monkeypatch):
+    _select_first_driving_system(planning_tab_sc)
+    _apply_a_valid_slot(planning_tab_sc)
+    panel = ExecutingPanel(planning_tab_sc)
+    qtbot.addWidget(panel)
+    panel._worker = MagicMock()
+    panel._thread = MagicMock()
+    panel._on_connected(True)
+    monkeypatch.setattr('fus_ds_gui.executing.executing_panel.show_fds_error',
+                        lambda parent, exc: None)
+
+    panel._on_send_clicked()
+    panel._on_worker_error(FDSHardwareError("Error E2"))
+
+    assert panel.execution_panel.sent_protocol_label.text() == "Nothing sent yet."
 
 
 def test_a_later_edit_disables_send_again(qtbot, planning_tab_sc):
@@ -355,6 +392,44 @@ def test_worker_error_shows_a_dialog_and_resets_connection_state(
     assert shown == [exc]
     assert panel._worker is None
     assert panel.connection_panel.status_label.text() == "Not connected"
+
+
+def test_worker_error_closes_the_connection_so_the_next_connect_can_open_it(
+        qtbot, planning_tab_igt, monkeypatch):
+    """Without this the COM port (or the IGT connection) stays open in this process after the
+    error, and Connect fails until the cable is replugged or the GUI restarted."""
+    _select_first_driving_system(planning_tab_igt)
+    panel = ExecutingPanel(planning_tab_igt)
+    qtbot.addWidget(panel)
+    mock_ds = MagicMock()
+    panel._worker = MagicMock(ds_instance=mock_ds)
+    panel._thread = MagicMock()
+    monkeypatch.setattr('fus_ds_gui.executing.executing_panel.show_fds_error',
+                        lambda parent, exc: None)
+
+    panel._on_worker_error(FDSHardwareError("Error E2 (parameter out of range)"))
+
+    mock_ds.disconnect.assert_called_once_with()
+
+
+def test_a_failing_disconnect_after_an_error_does_not_hide_the_error(
+        qtbot, planning_tab_igt, monkeypatch):
+    _select_first_driving_system(planning_tab_igt)
+    panel = ExecutingPanel(planning_tab_igt)
+    qtbot.addWidget(panel)
+    mock_ds = MagicMock()
+    mock_ds.disconnect.side_effect = RuntimeError("cannot close")
+    panel._worker = MagicMock(ds_instance=mock_ds)
+    panel._thread = MagicMock()
+    shown = []
+    monkeypatch.setattr('fus_ds_gui.executing.executing_panel.show_fds_error',
+                        lambda parent, exc: shown.append(exc))
+
+    exc = FDSHardwareError("original problem")
+    panel._on_worker_error(exc)
+
+    assert shown == [exc]
+    assert panel._worker is None
 
 
 def test_worker_error_is_suppressed_when_it_follows_a_successful_abort(
@@ -584,6 +659,32 @@ def test_armed_updates_the_waiting_label(qtbot, planning_tab_igt):
     assert "Waiting for external trigger" in panel.trigger_panel.waiting_label.text()
 
 
+def test_a_triggered_run_hides_the_result_of_an_earlier_plain_execute(qtbot, planning_tab_igt):
+    """"Execution complete." from a plain run must not stay on screen while a triggered run is
+    armed, and the other way around."""
+    _select_first_driving_system(planning_tab_igt)
+    panel = ExecutingPanel(planning_tab_igt)
+    qtbot.addWidget(panel)
+    panel.show()
+    panel._sent_protocol = planning_tab_igt.current_protocol()
+    panel._on_execute_clicked()
+    panel._on_executed()
+    assert panel.execution_panel.countdown_label.isVisible() is True
+
+    panel.trigger_panel.use_trigger_checkbox.setChecked(True)
+    panel._on_execute_clicked()
+
+    assert panel.execution_panel.countdown_label.isVisible() is False
+    assert panel.trigger_panel.waiting_label.isVisible() is True
+
+    panel._on_executed()
+    panel.trigger_panel.use_trigger_checkbox.setChecked(False)
+    panel._on_execute_clicked()
+
+    assert panel.trigger_panel.waiting_label.isVisible() is False
+    assert panel.execution_panel.countdown_label.isVisible() is True
+
+
 def test_executed_after_triggered_igt_run_finishes_via_waiting_label(qtbot, planning_tab_igt):
     _select_first_driving_system(planning_tab_igt)
     panel = ExecutingPanel(planning_tab_igt)
@@ -670,3 +771,172 @@ def test_connect_creates_a_second_abort_worker_and_thread(qtbot, planning_tab_ig
 
     panel.connection_panel.disconnect_button.click()
     qtbot.waitUntil(lambda: panel._abort_worker is None, timeout=2000)
+
+
+def test_connection_attempts_show_progress_after_a_plain_connect(qtbot, planning_tab_igt):
+    """The first attempt keeps "Connecting..."; later ones say which attempt this is."""
+    panel = ExecutingPanel(planning_tab_igt)
+    qtbot.addWidget(panel)
+    panel.connection_panel.status_label.setText("Connecting...")
+
+    panel._on_connection_attempt(1, 5)
+    assert panel.connection_panel.status_label.text() == "Connecting..."
+
+    panel._on_connection_attempt(2, 5)
+    assert panel.connection_panel.status_label.text() == "Connecting (2/5)..."
+
+
+def test_a_lost_connection_is_remembered_until_a_connection_succeeds(
+        qtbot, planning_tab_igt, monkeypatch):
+    """The panel remembers a lost connection and forgets it once a connection succeeds."""
+    panel = ExecutingPanel(planning_tab_igt)
+    qtbot.addWidget(panel)
+    panel._worker = MagicMock(ds_instance=MagicMock(after_connection_loss=True))
+    panel._thread = MagicMock()
+    monkeypatch.setattr('fus_ds_gui.executing.executing_panel.show_fds_error',
+                        lambda parent, exc: None)
+
+    panel._on_worker_error(FDSHardwareError("Lost the connection"))
+
+    assert panel._connect_after_loss is True
+
+    panel._worker = MagicMock()  # the next connection
+    panel._on_connected(True)
+
+    assert panel._connect_after_loss is False
+
+
+def test_the_next_connect_after_a_lost_connection_is_patient(qtbot, planning_tab_igt, monkeypatch):
+    """After a lost connection the driving system needs a minute or more before it accepts one
+    again, so the new IGT connection waits longer between attempts. Without starting threads."""
+    _select_first_driving_system(planning_tab_igt)
+    panel = ExecutingPanel(planning_tab_igt)
+    qtbot.addWidget(panel)
+    ds_instance = MagicMock(spec=IGT)
+    monkeypatch.setattr(planning_tab_igt.builder, 'create_control_instance', lambda: ds_instance)
+    monkeypatch.setattr('fus_ds_gui.executing.executing_panel.QThread', MagicMock())
+    monkeypatch.setattr('fus_ds_gui.executing.executing_panel.DrivingSystemWorker', MagicMock())
+    monkeypatch.setattr(panel, '_connect_worker_signals', lambda: None)
+    panel._connect_after_loss = True
+
+    panel._on_connect_clicked()
+
+    assert ds_instance.after_connection_loss is True
+
+
+def test_other_errors_are_not_remembered_as_a_lost_connection(qtbot, planning_tab_igt,
+                                                              monkeypatch):
+    panel = ExecutingPanel(planning_tab_igt)
+    qtbot.addWidget(panel)
+    panel._worker = MagicMock(ds_instance=MagicMock(after_connection_loss=False))
+    panel._thread = MagicMock()
+    monkeypatch.setattr('fus_ds_gui.executing.executing_panel.show_fds_error',
+                        lambda parent, exc: None)
+
+    panel._on_worker_error(FDSHardwareError("Error E2"))
+
+    assert panel._connect_after_loss is False
+
+
+def test_connecting_an_igt_hooks_the_connection_attempts_up_to_the_status(
+        qtbot, planning_tab_igt):
+    """The IGT calls its hook before every attempt; the panel turns that into the status text.
+    Wired up directly, without starting the worker threads."""
+    _select_first_driving_system(planning_tab_igt)
+    panel = ExecutingPanel(planning_tab_igt)
+    qtbot.addWidget(panel)
+    ds_instance = planning_tab_igt.builder.create_control_instance()
+    panel._worker = DrivingSystemWorker(ds_instance)
+    panel._abort_worker = DrivingSystemWorker(ds_instance)
+
+    panel._connect_worker_signals()
+    panel.connection_panel.status_label.setText("Connecting...")
+    ds_instance.on_connect_attempt(2, 5)
+
+    qtbot.waitUntil(lambda: panel.connection_panel.status_label.text() == "Connecting (2/5)...",
+                    timeout=1000)
+
+
+def test_a_serial_driving_system_offers_its_configured_com_port_and_the_detected_ones(
+        qtbot, planning_tab_sc, monkeypatch):
+    monkeypatch.setattr(
+        'fus_ds_gui.executing.connection_panel.list_ports.comports',
+        lambda: [MagicMock(device='COM7'), MagicMock(device='COM1')])
+    _select_first_driving_system(planning_tab_sc)
+    panel = ExecutingPanel(planning_tab_sc)
+    qtbot.addWidget(panel)
+
+    combo = panel.connection_panel.com_port_combo
+    assert panel.connection_panel.com_port_combo.isVisibleTo(panel.connection_panel)
+    assert [combo.itemText(i) for i in range(combo.count())] == ['COM1', 'COM7']
+    assert panel.connection_panel.com_port() == 'COM1'  # the configured one comes first
+
+
+def test_a_driving_system_without_a_serial_port_has_no_com_port_field(qtbot, patch_config):
+    _configure_igt(patch_config)
+    patch_config.set('Equipment.Driving system.UNITTEST_IGT', 'Connection info',
+                     'igt/config/gen_test.json')
+    planning_tab = PlanningTab()
+    qtbot.addWidget(planning_tab)
+    _select_first_driving_system(planning_tab)
+    panel = ExecutingPanel(planning_tab)
+    qtbot.addWidget(panel)
+
+    assert not panel.connection_panel.com_port_combo.isVisibleTo(panel.connection_panel)
+
+
+def test_connect_uses_the_com_port_that_was_typed_in(qtbot, planning_tab_sc, monkeypatch):
+    """The TPO can be on another COM port than the configured one; the field decides."""
+    _select_first_driving_system(planning_tab_sc)
+    panel = ExecutingPanel(planning_tab_sc)
+    qtbot.addWidget(panel)
+    mock_ds = MagicMock(spec=SonicConcepts)
+    mock_ds.is_connected.return_value = True
+    monkeypatch.setattr(planning_tab_sc.builder, 'create_control_instance', lambda: mock_ds)
+    monkeypatch.setattr(QMessageBox, 'question',
+                        lambda *a, **kw: QMessageBox.StandardButton.Ok)
+    panel.connection_panel.com_port_combo.setEditText(' COM9 ')
+
+    panel.connection_panel.connect_button.click()
+    qtbot.waitUntil(
+        lambda: panel.connection_panel.status_label.text() == "Connected", timeout=2000)
+
+    mock_ds.connect.assert_called_once_with('COM9')
+    assert panel.connection_panel.com_port_combo.isEnabled() is False  # locked while connected
+
+    panel.connection_panel.disconnect_button.click()
+    qtbot.waitUntil(lambda: panel._worker is None, timeout=2000)
+    assert panel.connection_panel.com_port_combo.isEnabled() is True
+
+
+@pytest.mark.parametrize('typed, expected', [('9', 'COM9'), (' com7 ', 'COM7'), ('COM3', 'COM3')])
+def test_the_com_port_is_completed_when_only_a_number_or_lower_case_is_typed(
+        qtbot, planning_tab_sc, typed, expected):
+    _select_first_driving_system(planning_tab_sc)
+    panel = ExecutingPanel(planning_tab_sc)
+    qtbot.addWidget(panel)
+
+    panel.connection_panel.com_port_combo.setEditText(typed)
+
+    assert panel.connection_panel.com_port() == expected
+
+
+def test_an_empty_com_port_field_falls_back_to_the_configured_port(
+        qtbot, planning_tab_sc, monkeypatch):
+    _select_first_driving_system(planning_tab_sc)
+    panel = ExecutingPanel(planning_tab_sc)
+    qtbot.addWidget(panel)
+    mock_ds = MagicMock(spec=SonicConcepts)
+    mock_ds.is_connected.return_value = True
+    monkeypatch.setattr(planning_tab_sc.builder, 'create_control_instance', lambda: mock_ds)
+    monkeypatch.setattr(QMessageBox, 'question',
+                        lambda *a, **kw: QMessageBox.StandardButton.Ok)
+    panel.connection_panel.com_port_combo.setEditText('  ')
+
+    panel.connection_panel.connect_button.click()
+    qtbot.waitUntil(
+        lambda: panel.connection_panel.status_label.text() == "Connected", timeout=2000)
+
+    mock_ds.connect.assert_called_once_with('COM1')
+    panel.connection_panel.disconnect_button.click()
+    qtbot.waitUntil(lambda: panel._worker is None, timeout=2000)

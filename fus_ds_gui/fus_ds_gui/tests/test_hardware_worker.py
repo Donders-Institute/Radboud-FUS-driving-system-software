@@ -53,6 +53,16 @@ def test_do_disconnect_emits_disconnected_on_success(qtbot, worker, mock_ds):
     mock_ds.disconnect.assert_called_once()
 
 
+def test_do_disconnect_still_reports_disconnected_when_the_backend_raises_something_else(
+        qtbot, worker, mock_ds):
+    """The IGT SDK raises its own exception once the cable is gone. Without this the slot ended
+    with neither signal, and the GUI stayed on Connected."""
+    mock_ds.disconnect.side_effect = RuntimeError("Communication layer not connected")
+
+    with qtbot.waitSignal(worker.disconnected, timeout=1000):
+        worker.do_disconnect()
+
+
 def test_do_disconnect_emits_error_on_fdserror(qtbot, worker, mock_ds):
     exc = FDSHardwareError("disconnect failed")
     mock_ds.disconnect.side_effect = exc

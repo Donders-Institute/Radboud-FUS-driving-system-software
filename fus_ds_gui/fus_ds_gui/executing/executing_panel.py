@@ -25,6 +25,13 @@ from fus_ds_gui.workers.hardware_worker import DrivingSystemWorker
 
 _COUNTDOWN_INTERVAL_MS = 1000
 
+
+def _is_serial_port(connect_info):
+    """True for a driving system that connects through a COM port (Sonic Concepts)."""
+
+    return str(connect_info).upper().startswith('COM')
+
+
 # How long a worker error is still attributed to an abort that just succeeded (see
 # _on_worker_error()'s own docstring), rather than treated as a new, unrelated problem.
 _ABORT_ERROR_GRACE_MS = 1000
@@ -62,6 +69,9 @@ class ExecutingPanel(QWidget):
         self._sent_protocol = None
         self._busy = False
         self._abort_pending = False
+        # Set when the last error was a lost connection: the next IGT connect then waits longer
+        # between attempts (see IGT.after_connection_loss).
+        self._connect_after_loss = False
         self._triggered_run = False
         self._countdown_remaining_s = 0
         self._countdown_timer = QTimer(self)
@@ -70,6 +80,7 @@ class ExecutingPanel(QWidget):
         self._wait_timer = QTimer(self)
         self._wait_timer.timeout.connect(self._on_wait_tick)
 
+        self._com_port_for = None
         self.connection_panel = ConnectionPanel()
         self.connection_panel.connect_clicked.connect(self._on_connect_clicked)
         self.connection_panel.disconnect_clicked.connect(self._on_disconnect_clicked)
@@ -143,10 +154,27 @@ class ExecutingPanel(QWidget):
         if builder is None:
             self.connection_panel.driving_system_label.setText("No driving system selected")
             self.connection_panel.connect_button.setEnabled(False)
+            self.connection_panel.set_com_port_visible(False)
+            self._com_port_for = None
         else:
             self.connection_panel.driving_system_label.setText(
                 f"Driving system: {builder.driving_system.name}")
             self.connection_panel.connect_button.setEnabled(self._worker is None)
+            self._refresh_com_port(builder.driving_system)
+
+    def _refresh_com_port(self, driving_system):
+        """The COM port field for a driving system on a serial port, filled with the configured
+        port once per driving system (so a port typed in stays while connecting/disconnecting),
+        and locked while connected."""
+
+        if not _is_serial_port(driving_system.connect_info):
+            self.connection_panel.set_com_port_visible(False)
+            self._com_port_for = None
+            return
+        if self._com_port_for != driving_system.serial:
+            self.connection_panel.show_com_port(driving_system.connect_info)
+            self._com_port_for = driving_system.serial
+        self.connection_panel.com_port_combo.setEnabled(self._worker is None)
 
     def _refresh_send_enabled(self):
         locked = self._planning_tab.is_locked()
@@ -175,6 +203,8 @@ class ExecutingPanel(QWidget):
     def _on_connect_clicked(self):
         builder = self._planning_tab.builder
         ds_instance = builder.create_control_instance()
+        if self._connect_after_loss and isinstance(ds_instance, IGT):
+            ds_instance.after_connection_loss = True
         self._worker = DrivingSystemWorker(ds_instance)
         self._thread = QThread(self)
         self._worker.moveToThread(self._thread)
@@ -190,8 +220,12 @@ class ExecutingPanel(QWidget):
 
         self.connection_panel.status_label.setText("Connecting...")
         self.connection_panel.connect_button.setEnabled(False)
+        self.connection_panel.com_port_combo.setEnabled(False)
         self.connection_panel.igt_hint_label.setVisible(isinstance(ds_instance, IGT))
-        self._connect_requested.emit(builder.driving_system.connect_info)
+        connect_info = builder.driving_system.connect_info
+        if _is_serial_port(connect_info):
+            connect_info = self.connection_panel.com_port() or connect_info
+        self._connect_requested.emit(connect_info)
 
     def _connect_worker_signals(self):
         """Wires this connection's own workers to both directions: their own success signals
@@ -204,6 +238,9 @@ class ExecutingPanel(QWidget):
         self._worker.sent.connect(self._on_sent)
         self._worker.executed.connect(self._on_executed)
         self._worker.armed.connect(self._on_armed)
+        self._worker.connection_attempt.connect(self._on_connection_attempt)
+        if isinstance(self._worker.ds_instance, IGT):
+            self._worker.ds_instance.on_connect_attempt = self._worker.connection_attempt.emit
         self._worker.error.connect(self._on_worker_error)
         self._abort_worker.aborted.connect(self._on_aborted)
         self._abort_worker.error.connect(self._on_abort_command_failed)
@@ -218,6 +255,14 @@ class ExecutingPanel(QWidget):
     def _on_disconnect_clicked(self):
         self._disconnect_requested.emit()
 
+    def _on_connection_attempt(self, attempt, max_attempts):
+        """Shows which attempt an IGT is on after the first one failed. The first attempt keeps
+        the "Connecting..." shown at the click."""
+
+        if attempt > 1:
+            self.connection_panel.status_label.setText(
+                f"Connecting ({attempt}/{max_attempts})...")
+
     def _on_connected(self, is_connected):
         if is_connected and isinstance(self._worker.ds_instance, SonicConcepts):
             if not self._confirm_sonic_concepts_transducer_selection():
@@ -229,6 +274,8 @@ class ExecutingPanel(QWidget):
 
         self.connection_panel.status_label.setText(
             "Connected" if is_connected else "Not connected")
+        if is_connected:
+            self._connect_after_loss = False
         self.connection_panel.disconnect_button.setEnabled(is_connected)
         self.connection_panel.igt_hint_label.setVisible(False)
         self._refresh_send_enabled()
@@ -262,6 +309,20 @@ class ExecutingPanel(QWidget):
         self._refresh_driving_system_label()
         self._refresh_send_enabled()
 
+    def _release_connection(self):
+        """Closes the driving system's connection after an error. Dropping the worker alone
+        leaves the COM port (Sonic Concepts) or the connection (IGT) open inside this process,
+        which then blocks the next Connect until the cable is replugged or the GUI restarted.
+        Best effort: a failing disconnect, whatever its type (the IGT SDK raises its own), must
+        not turn the error that was just shown into a second, unhandled one."""
+
+        if self._worker is None:
+            return
+        try:
+            self._worker.ds_instance.disconnect()
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            get_logger().warning("Could not close the connection after an error: %s", e)
+
     def _teardown_connection(self):
         if self._thread is not None:
             self._thread.quit()
@@ -278,6 +339,10 @@ class ExecutingPanel(QWidget):
     def _on_send_clicked(self):
         protocol = self._planning_tab.current_protocol()
         self._sent_protocol = protocol
+        # Sonic Concepts can take a few seconds to accept a protocol; without this the panel
+        # looks idle in the meantime.
+        self.execution_panel.sent_protocol_label.setText("Sending protocol...")
+        self.execution_panel.send_button.setEnabled(False)
         self._send_requested.emit(protocol)
 
     def _on_sent(self):
@@ -306,6 +371,8 @@ class ExecutingPanel(QWidget):
 
     def _start_wait_for_trigger(self):
         self._wait_elapsed_s = 0
+        # An earlier untriggered run's result would otherwise stay on screen next to this one.
+        self.execution_panel.countdown_label.setVisible(False)
         self.trigger_panel.waiting_label.setText("Arming...")
         self.trigger_panel.waiting_label.setVisible(True)
         self._wait_timer.start(_COUNTDOWN_INTERVAL_MS)
@@ -356,6 +423,7 @@ class ExecutingPanel(QWidget):
         else:
             total_ms = protocol.pulse_train_dur
         self._countdown_remaining_s = round(total_ms / 1000.0)
+        self.trigger_panel.waiting_label.setVisible(False)  # see _start_wait_for_trigger()
         self.execution_panel.countdown_label.setVisible(True)
         self._update_countdown_label()
         self._countdown_timer.start(_COUNTDOWN_INTERVAL_MS)
@@ -416,8 +484,15 @@ class ExecutingPanel(QWidget):
             self._abort_pending = False
             return
         self._reset_execution_state()
-        show_fds_error(self, exc)
+        self._connect_after_loss = (
+            getattr(self._worker.ds_instance, 'after_connection_loss', False) is True)
+        if self.execution_panel.sent_protocol_label.text() == "Sending protocol...":
+            self.execution_panel.sent_protocol_label.setText("Nothing sent yet.")
+            self._sent_protocol = None
+        self._release_connection()
         self._teardown_connection()
         self.connection_panel.status_label.setText("Not connected")
         self._refresh_driving_system_label()
         self._refresh_send_enabled()
+        # Last: the dialog waits for the researcher, and the connection is already closed.
+        show_fds_error(self, exc)
