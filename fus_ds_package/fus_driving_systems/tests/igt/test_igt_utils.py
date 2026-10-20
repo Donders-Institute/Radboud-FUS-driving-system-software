@@ -106,6 +106,29 @@ class TestConnectionCallbacks:
 
         assert listener._running is False
 
+    def test_on_disconnect_during_a_run_records_that_the_connection_was_lost(self):
+        listener = ExecListener()
+        listener.onSequenceStart(1, 0, 1, 0.0, 0)
+
+        listener.onDisconnect(next(iter(unifus.DisconnectReason.__members__.values())))
+
+        assert listener.connection_lost_reason is not None
+
+    def test_on_disconnect_without_a_run_does_not_record_a_loss(self):
+        listener = ExecListener()
+
+        listener.onDisconnect(next(iter(unifus.DisconnectReason.__members__.values())))
+
+        assert listener.connection_lost_reason is None
+
+    def test_a_new_run_clears_an_earlier_connection_loss(self):
+        listener = ExecListener()
+        listener.connection_lost_reason = 'earlier'
+
+        listener.onSequenceStart(2, 0, 1, 0.0, 0)
+
+        assert listener.connection_lost_reason is None
+
 
 class TestSequenceCallbacks:
 
@@ -172,6 +195,21 @@ class TestSequenceCallbacks:
 
         assert listener._running is False
         assert listener.exec_error_code is None
+
+    def test_on_sequence_result_records_where_the_execution_failed(self):
+        listener = ExecListener()
+
+        listener.onSequenceResult(exec_id=1, exec_index=24, pulse_index=0, error_code=16643)
+
+        assert (listener.exec_error_index, listener.exec_error_pulse_index) == (24, 0)
+
+    def test_a_later_success_clears_where_the_execution_failed(self):
+        listener = ExecListener()
+        listener.onSequenceResult(exec_id=1, exec_index=24, pulse_index=0, error_code=16643)
+
+        listener.onSequenceResult(exec_id=2, exec_index=0, pulse_index=0, error_code=0)
+
+        assert listener.exec_error_index is None and listener.exec_error_pulse_index is None
 
     def test_on_sequence_result_clears_running_flag_on_error(self):
         listener = ExecListener()
@@ -351,6 +389,33 @@ class TestVoltageFeedbackTracker:
         assert caplog.text.count('Voltage feedback (group') == 2
         assert 'TRAN-A' in caplog.text
 
+    def test_finish_reports_the_last_partly_filled_group(self, caplog):
+        """10 pulses in 3 groups gives groups of 4: the last 2 pulses would never be reported."""
+        ranges = [_channel_range('TRAN-A', 0, 2, expected_volt=10.0)]
+        tracker = VoltageFeedbackTracker(ranges, total_pulses=10, num_groups=3, margin_v=1.0,
+                                         consecutive_for_warning=2)
+
+        with caplog.at_level('INFO'):
+            for _ in range(10):
+                tracker.add_pulse(_FakeVoltageMeasures([10.0, 10.0]))
+            assert caplog.text.count('Voltage feedback (group') == 2
+            tracker.finish()
+
+        assert caplog.text.count('Voltage feedback (group') == 3
+        assert 'group 3' in caplog.text
+
+    def test_finish_reports_nothing_extra_after_a_full_group(self, caplog):
+        ranges = [_channel_range('TRAN-A', 0, 2, expected_volt=10.0)]
+        tracker = VoltageFeedbackTracker(ranges, total_pulses=4, num_groups=2, margin_v=1.0,
+                                         consecutive_for_warning=2)
+
+        with caplog.at_level('INFO'):
+            for _ in range(4):
+                tracker.add_pulse(_FakeVoltageMeasures([10.0, 10.0]))
+            tracker.finish()
+
+        assert caplog.text.count('Voltage feedback (group') == 2
+
     def test_does_not_warn_on_a_single_over_margin_group(self, caplog):
         ranges = [_channel_range('TRAN-A', 0, 1, expected_volt=10.0)]
         tracker = VoltageFeedbackTracker(ranges, total_pulses=2, num_groups=2, margin_v=1.0,
@@ -501,6 +566,14 @@ class TestExecListenerVoltageFeedback:
         listener.onPulseResult(_fake_pulse_result(shared_measurements=measures))
 
         assert tracker._pulse_count == 1  # pylint: disable=protected-access
+
+    def test_on_sequence_result_reports_the_last_group(self, mocker):
+        listener = ExecListener()
+        listener.voltage_feedback = mocker.Mock()
+
+        listener.onSequenceResult(1, 0, 0, 0)
+
+        listener.voltage_feedback.finish.assert_called_once_with()
 
     def test_on_pulse_result_does_not_touch_voltage_feedback_when_none(self):
         """The default (see ExecListener.__init__) -- must not raise just because no tracker

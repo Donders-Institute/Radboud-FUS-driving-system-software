@@ -157,6 +157,9 @@ class TestRegisterSentProtocol:
         assert stored['pulse_train_delay'] == 5.0
         assert stored['phases'] == [10.0, 20.0]
         assert stored['total_protocol_duration_ms'] == pytest.approx(250.0)  # 200 + 50
+        # What was entered: the 200 ms plus the 5 ms delay after the last train, without the
+        # 50 ms wait time
+        assert stored['nominal_duration_ms'] == pytest.approx(205.0)
 
     def test_intensity_lines_are_a_frozen_snapshot_not_a_live_reference(self, igt_instance,
                                                                         mocker):
@@ -337,6 +340,116 @@ class TestConnect:
             instance.connect('igt/config/gen_test.json', log_dir=str(tmp_path))
 
         assert mock_fus_system.connect.call_count == 3  # every attempt genuinely retried
+
+    def test_connect_reports_every_attempt_to_the_hook(self, mocker, mock_fus_system, tmp_path,
+                                                       patch_config):
+        """A host application (the GUI) shows "reconnecting (2/3)..." from this."""
+        patch_config.set('General', 'Maximum reconnection attempts', '3')
+        mocker.patch("fus_driving_systems.igt.igt_ds.time.sleep")
+        mock_fus_system.isConnected.return_value = False
+        instance = IGT(log_dir=str(tmp_path))
+        instance.on_connect_attempt = mocker.Mock()
+
+        with pytest.raises(FDSHardwareError):
+            instance.connect('igt/config/gen_test.json', log_dir=str(tmp_path))
+
+        assert instance.on_connect_attempt.call_args_list == [
+            mocker.call(1, 3), mocker.call(2, 3), mocker.call(3, 3)]
+
+    def test_connect_logs_the_attempt_number_of_every_try(
+            self, mocker, mock_fus_system, tmp_path, patch_config, caplog):
+        patch_config.set('General', 'Maximum reconnection attempts', '3')
+        mocker.patch("fus_driving_systems.igt.igt_ds.time.sleep")
+        mock_fus_system.isConnected.return_value = False
+        instance = IGT(log_dir=str(tmp_path))
+
+        with caplog.at_level('WARNING'), pytest.raises(FDSHardwareError):
+            instance.connect('igt/config/gen_test.json', log_dir=str(tmp_path))
+
+        assert 'connection attempt 1/3 failed' in caplog.text
+        assert 'Try to reconnect (attempt 2/3)' in caplog.text
+        assert 'connection attempt 3/3 failed' in caplog.text
+        # Two waits between three attempts: nothing is announced after the last one.
+        assert caplog.text.count('Try to reconnect') == 2
+
+    def test_connect_uses_the_given_delay_instead_of_the_configured_one(
+            self, mocker, mock_fus_system, tmp_path, patch_config):
+        patch_config.set('General', 'Maximum reconnection attempts', '2')
+        patch_config.set('General', 'Delay before reconnecting [s]', '2')
+        sleep_mock = mocker.patch("fus_driving_systems.igt.igt_ds.time.sleep")
+        mock_fus_system.isConnected.return_value = False
+        instance = IGT(log_dir=str(tmp_path))
+
+        with pytest.raises(FDSHardwareError):
+            instance.connect('igt/config/gen_test.json', log_dir=str(tmp_path),
+                             reconnect_delay_s=12.0)
+
+        assert sleep_mock.call_args_list.count(mocker.call(12.0)) == 1
+
+    def test_connect_uses_the_given_number_of_attempts_instead_of_the_configured_one(
+            self, mocker, mock_fus_system, tmp_path, patch_config):
+        patch_config.set('General', 'Maximum reconnection attempts', '5')
+        mocker.patch("fus_driving_systems.igt.igt_ds.time.sleep")
+        mock_fus_system.isConnected.return_value = False
+        instance = IGT(log_dir=str(tmp_path))
+
+        with pytest.raises(FDSHardwareError):
+            instance.connect('igt/config/gen_test.json', log_dir=str(tmp_path), max_attempts=2)
+
+        assert mock_fus_system.connect.call_count == 2
+
+    def test_connect_after_a_connection_loss_waits_longer_between_attempts(
+            self, mocker, mock_fus_system, tmp_path, patch_config):
+        """After a dropped connection the driving system can need a minute or more before it
+        accepts one again, so connect() uses the 'after connection loss' settings."""
+        patch_config.set('General', 'Maximum reconnection attempts', '5')
+        patch_config.set('General', 'Maximum reconnection attempts after connection loss', '3')
+        patch_config.set('General', 'Delay before reconnecting after connection loss [s]', '12')
+        sleep_mock = mocker.patch("fus_driving_systems.igt.igt_ds.time.sleep")
+        mock_fus_system.isConnected.return_value = False
+        instance = IGT(log_dir=str(tmp_path))
+        instance.after_connection_loss = True
+
+        with pytest.raises(FDSHardwareError):
+            instance.connect('igt/config/gen_test.json', log_dir=str(tmp_path))
+
+        assert mock_fus_system.connect.call_count == 3
+        assert sleep_mock.call_args_list.count(mocker.call(12.0)) == 2
+
+    def test_connect_after_losing_the_connection_during_a_call_is_patient(
+            self, mocker, mock_fus_system, tmp_path, patch_config):
+        """The whole chain: a call finds the connection gone, then connect() on the same
+        instance waits longer between attempts."""
+        patch_config.set('General', 'Maximum reconnection attempts', '5')
+        patch_config.set('General', 'Maximum reconnection attempts after connection loss', '3')
+        patch_config.set('General', 'Delay before reconnecting after connection loss [s]', '12')
+        sleep_mock = mocker.patch("fus_driving_systems.igt.igt_ds.time.sleep")
+        mock_fus_system.isConnected.return_value = False
+        instance = IGT(log_dir=str(tmp_path))
+        instance._was_connected = True
+        instance.sent_protocols[0] = {'n_pulse_train_rep': 1, 'pulse_train_delay': 0.0,
+                                      'total_protocol_duration_ms': 10.0}
+        fake_protocol = SimpleNamespace(
+            buffer_num=0, driving_sys=SimpleNamespace(connect_info='igt/config/gen_test.json'),
+            pulse_dur=0.5, pulse_ramp_dur=0, pulse_ramp_shape='Rectangular - no ramping',
+            slots=[])
+
+        with pytest.raises(FDSHardwareError, match='Not connected'):
+            instance.execute_protocol([fake_protocol])
+        with pytest.raises(FDSHardwareError):
+            instance.connect('igt/config/gen_test.json', log_dir=str(tmp_path))
+
+        assert mock_fus_system.connect.call_count == 3
+        assert sleep_mock.call_args_list.count(mocker.call(12.0)) == 2
+
+    def test_a_successful_connect_clears_the_connection_loss(self, mock_fus_system, tmp_path):
+        mock_fus_system.isConnected.return_value = True
+        instance = IGT(log_dir=str(tmp_path))
+        instance.after_connection_loss = True
+
+        instance.connect('igt/config/gen_test.json', log_dir=str(tmp_path))
+
+        assert instance.after_connection_loss is False
 
     def test_connect_returns_true_after_a_successful_retry(self, mocker, mock_fus_system,
                                                            tmp_path, patch_config):
@@ -1129,32 +1242,22 @@ class TestSendProtocol:
         with pytest.raises(FDSValidationError):
             connected_instance.send_protocol([fake_protocol])
 
-    def test_reconnects_and_retries_when_not_connected(self, mocker, tmp_path):
+    def test_raises_instead_of_reconnecting_when_not_connected(self, mocker, tmp_path):
+        """send_protocol() does not reconnect by itself (GitHub #163): connecting is a separate,
+        visible step the caller takes."""
         instance = IGT(log_dir=str(tmp_path))
-
-        def fake_connect(connect_info):
-            instance.fus = mocker.Mock()
-            instance.fus.isConnected.return_value = True
-            instance.gen = mocker.Mock()
-        mock_connect = mocker.patch.object(instance, 'connect', side_effect=fake_connect)
+        mock_connect = mocker.patch.object(instance, 'connect')
         mocker.patch.object(instance, 'validate_protocol', return_value=[])
-        mocker.patch.object(instance, '_define_pulse_group', return_value=(mocker.Mock(), [1.0]))
-        mocker.patch.object(instance, '_define_pulse_train',
-                            return_value=([mocker.Mock()], 5.0))
-        mocker.patch('fus_driving_systems.igt.igt_ds.unifus.sequenceDurationMs',
-                     return_value=100.0)
-
         fake_protocol = SimpleNamespace(
-            buffer_num=0,
-            driving_sys=SimpleNamespace(connect_info='igt/config/gen_test.json', available_ch=1,
-                                        max_buffers=2),
+            buffer_num=0, driving_sys=SimpleNamespace(connect_info='igt/config/gen_test.json',
+                                                      available_ch=1, max_buffers=2),
             slots=[_slot()], pulse_dur=1.0, pulse_rep_int=2.0, pulse_train_rep_dur=20,
             pulse_train_rep_int=10, pulse_ramp_shape='Rectangular - no ramping')
 
-        instance.send_protocol([fake_protocol])
+        with pytest.raises(FDSHardwareError, match='Not connected.*send_protocol'):
+            instance.send_protocol([fake_protocol])
 
-        mock_connect.assert_called_once_with('igt/config/gen_test.json')
-        assert instance.is_protocol_sent(0) is True
+        mock_connect.assert_not_called()
 
     def test_interleaves_two_protocols_with_combined_pulse_train(self, mocker, connected_instance,
                                                                  patch_config):
@@ -1373,6 +1476,7 @@ class TestExecuteProtocol:
                                         pulse_ramp_shape='Rectangular - no ramping', slots=[])
         connected_instance.listener.wait_protocol.return_value = False
         connected_instance.listener.exec_error_code = None
+        connected_instance.listener.connection_lost_reason = None
 
         with pytest.raises(FDSHardwareError):
             connected_instance.execute_protocol([fake_protocol])
@@ -1466,75 +1570,40 @@ class TestExecuteProtocol:
         mock_connect.assert_not_called()
         mock_send.assert_not_called()
 
-    def test_reconnects_sends_and_executes_when_not_connected(self, mocker, tmp_path):
-        """Mirrors TestSendProtocol's reconnect test -- execute_protocol
-        has the identical 'not connected -> connect(), then retry' shape.
-
-        This reconnect-and-resend path is only reached once a protocol is already known to
-        have been sent (buffer 0 pre-populated in sent_protocols below) -- it recovers a
-        dropped connection after a real send, it doesn't fill in for a caller who never sent
-        anything at all (see test_raises_when_never_sent_regardless_of_connection_state for
-        that case, which must not reconnect or send)."""
+    def test_raises_instead_of_reconnecting_when_not_connected(self, mocker, tmp_path):
+        """GitHub #163: no hidden connect()-send-execute chain. A connection that was never made
+        is plainly "not connected"; nothing is connected or sent on the caller's behalf."""
         instance = IGT(log_dir=str(tmp_path))
         instance.sent_protocols[0] = {'n_pulse_train_rep': 1, 'pulse_train_delay': 0.0,
                                       'total_protocol_duration_ms': 10.0}
-
-        def fake_connect(connect_info):
-            instance.fus = mocker.Mock()
-            instance.fus.isConnected.return_value = True
-            instance.gen = mocker.Mock()
-            instance.listener = mocker.Mock()
-            instance.listener.exec_error_code = None
-        mock_connect = mocker.patch.object(instance, 'connect', side_effect=fake_connect)
-
-        def fake_send_protocol(*args, **kwargs):
-            instance.sent_protocols[0] = {'n_pulse_train_rep': 1, 'pulse_train_delay': 0.0,
-                                          'total_protocol_duration_ms': 10.0}
-        mock_send = mocker.patch.object(instance, 'send_protocol', side_effect=fake_send_protocol)
-
+        mock_connect = mocker.patch.object(instance, 'connect')
+        mock_send = mocker.patch.object(instance, 'send_protocol')
         fake_protocol = SimpleNamespace(
             buffer_num=0, driving_sys=SimpleNamespace(connect_info='igt/config/gen_test.json'),
             pulse_dur=0.5, pulse_ramp_dur=0, pulse_ramp_shape='Rectangular - no ramping',
             slots=[])
 
-        instance.execute_protocol([fake_protocol])
+        with pytest.raises(FDSHardwareError, match='Not connected.*execute_protocol'):
+            instance.execute_protocol([fake_protocol])
 
-        mock_connect.assert_called_once_with('igt/config/gen_test.json')
-        mock_send.assert_called_once()
-        instance.gen.startSequence.assert_called_once()
+        mock_connect.assert_not_called()
+        mock_send.assert_not_called()
+        assert instance.after_connection_loss is False
 
-    def test_reconnect_resends_with_this_calls_own_duration(self, mocker, tmp_path):
-        """The reconnect-and-resend path passes total_alternating_duration_ms straight through,
-        unmodified -- safe because _assert_ready_to_run() (specifically
-        _assert_duration_matches_sent()) already guarantees it matches what this buffer was
-        actually sent with whenever that distinction matters (interleaving); for a single
-        protocol like this one, the value is never used for anything physical either way, so it
-        being un-reconciled here is harmless by construction, not merely untested."""
+    def test_a_lost_connection_is_remembered_for_the_next_connect(self, mocker, tmp_path):
         instance = IGT(log_dir=str(tmp_path))
         instance.sent_protocols[0] = {'n_pulse_train_rep': 1, 'pulse_train_delay': 0.0,
                                       'total_protocol_duration_ms': 10.0}
-
-        def fake_connect(connect_info):
-            instance.fus = mocker.Mock()
-            instance.fus.isConnected.return_value = True
-            instance.gen = mocker.Mock()
-            instance.listener = mocker.Mock()
-            instance.listener.exec_error_code = None
-        mocker.patch.object(instance, 'connect', side_effect=fake_connect)
-
-        def fake_send_protocol(*args, **kwargs):
-            instance.sent_protocols[0] = {'n_pulse_train_rep': 1, 'pulse_train_delay': 0.0,
-                                          'total_protocol_duration_ms': 10.0}
-        mock_send = mocker.patch.object(instance, 'send_protocol', side_effect=fake_send_protocol)
-
+        instance._was_connected = True
         fake_protocol = SimpleNamespace(
             buffer_num=0, driving_sys=SimpleNamespace(connect_info='igt/config/gen_test.json'),
             pulse_dur=0.5, pulse_ramp_dur=0, pulse_ramp_shape='Rectangular - no ramping',
             slots=[])
 
-        instance.execute_protocol([fake_protocol], total_alternating_duration_ms=5000)
+        with pytest.raises(FDSHardwareError, match='connection was lost'):
+            instance.execute_protocol([fake_protocol])
 
-        mock_send.assert_called_once_with([fake_protocol], 5000, 0)
+        assert instance.after_connection_loss is True
 
     def test_raises_on_exception_during_execution(self, connected_instance):
         """The broad 'except Exception: raise FDSHardwareError' wrapper around the
@@ -1569,6 +1638,19 @@ class TestExecuteProtocol:
         with pytest.raises(FDSHardwareError):
             connected_instance.execute_protocol([fake_protocol])
 
+    def test_raises_when_the_connection_dropped_during_the_run(self, connected_instance):
+        """Unplugging the cable makes wait_protocol() return as if the run had finished, with no
+        error code: without checking the listener's connection_lost_reason this was logged as
+        'Protocol executed successfully.'"""
+        connected_instance.sent_protocols = {0: {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
+                                                 'total_protocol_duration_ms': 500.0}}
+        connected_instance.listener.connection_lost_reason = 'ConnectionLost'
+        fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=0.5, pulse_ramp_dur=0,
+                                        pulse_ramp_shape='Rectangular - no ramping', slots=[])
+
+        with pytest.raises(FDSHardwareError, match='Lost the connection.*ConnectionLost'):
+            connected_instance.execute_protocol([fake_protocol])
+
     def test_does_not_raise_when_listener_reports_no_error(self, connected_instance):
         """Mirrors the test above: a successful execution (exec_error_code left at None by
         ExecListener.onSequenceResult()) must not raise."""
@@ -1590,13 +1672,13 @@ class TestExecuteProtocol:
                                         slots=[_slot(serial='TRAN-A')])
         connected_instance.sent_protocols = {0: {
             'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
-            'total_protocol_duration_ms': 500.0,
+            'total_protocol_duration_ms': 600.0, 'nominal_duration_ms': 505.0,
             'intensity_lines': connected_instance._build_intensity_lines([fake_protocol], 0)}}
 
         with caplog.at_level('INFO'):
             connected_instance.execute_protocol([fake_protocol])
 
-        assert 'Executing (expected duration: 500.00 ms)...' in caplog.text
+        assert 'Executing (expected duration: 505.00 ms)...' in caplog.text
         assert 'Protocol executed successfully.' in caplog.text
 
     def test_raises_when_given_protocol_does_not_match_sent(self, connected_instance):
@@ -1802,6 +1884,24 @@ class TestConfigureVoltageFeedback:
         # 10 pulses / 5 groups = 2 pulses per group.
         # pylint: disable-next=protected-access
         assert connected_instance.listener.voltage_feedback._trackers[0]._pulses_per_group == 2
+
+    def test_a_train_of_several_pulses_still_gives_the_configured_number_of_groups(
+            self, connected_instance, patch_config):
+        """One result arrives per pulse, so 10 repetitions of a 5-pulse train are 50 results:
+        counting only the 10 repetitions made 25 groups out of the configured 5."""
+        patch_config.set('Equipment.Manufacturer.IGT', 'Voltage feedback groups', '5')
+        connected_instance.sent_protocols = {0: {
+            'n_pulse_train_rep': 10, 'pulse_train_delay': 400.0,
+            'pulse_train_seq': ['pulse'] * 5,
+            'total_protocol_duration_ms': 1000.0}}
+        fake_protocol = SimpleNamespace(buffer_num=0, pulse_dur=0.5, pulse_ramp_dur=0,
+                                        pulse_ramp_shape='Rectangular - no ramping', slots=[])
+
+        connected_instance.execute_protocol([fake_protocol])
+
+        # 50 results / 5 groups = 10 per group.
+        # pylint: disable-next=protected-access
+        assert connected_instance.listener.voltage_feedback._trackers[0]._pulses_per_group == 10
 
     def test_num_groups_is_raised_to_stay_within_the_one_minute_floor_for_a_long_protocol(
             self, connected_instance, patch_config):
@@ -2021,75 +2121,38 @@ class TestWaitForTrigger:
         mock_connect.assert_not_called()
         mock_send.assert_not_called()
 
-    def test_reconnects_sends_and_waits_when_not_connected(self, mocker, tmp_path, patch_config):
-        """Mirrors execute_protocol's reconnect test -- wait_for_trigger has the identical 'not
-        connected -> connect(), then retry' shape.
-
-        This reconnect-and-resend path is only reached once a protocol is already known to have
-        been sent (pre-populated here) -- it recovers a dropped connection after a real send, it
-        doesn't fill in for a caller who never sent anything at all (see
-        test_raises_when_never_sent_regardless_of_connection_state for that case, which must
-        not reconnect or send)."""
-        patch_config.set('Trigger', 'Option.pulse_train', 'TriggerOnePulseTrain')
-        patch_config.set('Trigger', 'Option.whole_protocol', 'TriggerWholeProtocol')
+    def test_raises_instead_of_reconnecting_when_not_connected(self, mocker, tmp_path):
+        """GitHub #163: no hidden connect()-send-execute chain. A connection that was never made
+        is plainly "not connected"; nothing is connected or sent on the caller's behalf."""
         instance = IGT(log_dir=str(tmp_path))
         instance.sent_protocols[0] = {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0}
-
-        def fake_connect(connect_info):
-            instance.fus = mocker.Mock()
-            instance.fus.isConnected.return_value = True
-            instance.gen = mocker.Mock()
-            instance.listener = mocker.Mock()
-            instance.listener.exec_error_code = None
-        mock_connect = mocker.patch.object(instance, 'connect', side_effect=fake_connect)
-
-        def fake_send_protocol(*args, **kwargs):
-            instance.sent_protocols[0] = {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0}
-        mock_send = mocker.patch.object(instance, 'send_protocol', side_effect=fake_send_protocol)
-
+        mock_connect = mocker.patch.object(instance, 'connect')
+        mock_send = mocker.patch.object(instance, 'send_protocol')
         fake_protocol = SimpleNamespace(
             buffer_num=0, driving_sys=SimpleNamespace(connect_info='igt/config/gen_test.json'),
-            pulse_dur=0.5, pulse_ramp_dur=0, pulse_ramp_shape='Rectangular - no ramping', slots=[])
+            pulse_dur=0.5, pulse_ramp_dur=0, pulse_ramp_shape='Rectangular - no ramping',
+            slots=[])
 
-        instance.wait_for_trigger([fake_protocol], 'TriggerOnePulseTrain', n_triggers=3)
+        with pytest.raises(FDSHardwareError, match='Not connected.*wait_for_trigger'):
+            instance.wait_for_trigger([fake_protocol], 'None')
 
-        mock_connect.assert_called_once_with('igt/config/gen_test.json')
-        mock_send.assert_called_once()
-        instance.gen.startSequence.assert_called_once()
+        mock_connect.assert_not_called()
+        mock_send.assert_not_called()
+        assert instance.after_connection_loss is False
 
-    def test_reconnect_resends_with_this_calls_own_duration(
-            self, mocker, tmp_path, patch_config):
-        """The reconnect-and-resend path passes total_alternating_duration_ms straight through,
-        unmodified -- safe because _assert_ready_to_run() (specifically
-        _assert_duration_matches_sent()) already guarantees it matches what this buffer was
-        actually sent with whenever that distinction matters (interleaving); for a single
-        protocol like this one, the value is never used for anything physical either way, so it
-        being un-reconciled here is harmless by construction, not merely untested."""
-        patch_config.set('Trigger', 'Option.pulse_train', 'TriggerOnePulseTrain')
-        patch_config.set('Trigger', 'Option.whole_protocol', 'TriggerWholeProtocol')
+    def test_a_lost_connection_is_remembered_for_the_next_connect(self, mocker, tmp_path):
         instance = IGT(log_dir=str(tmp_path))
         instance.sent_protocols[0] = {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0}
-
-        def fake_connect(connect_info):
-            instance.fus = mocker.Mock()
-            instance.fus.isConnected.return_value = True
-            instance.gen = mocker.Mock()
-            instance.listener = mocker.Mock()
-            instance.listener.exec_error_code = None
-        mocker.patch.object(instance, 'connect', side_effect=fake_connect)
-
-        def fake_send_protocol(*args, **kwargs):
-            instance.sent_protocols[0] = {'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0}
-        mock_send = mocker.patch.object(instance, 'send_protocol', side_effect=fake_send_protocol)
-
+        instance._was_connected = True
         fake_protocol = SimpleNamespace(
             buffer_num=0, driving_sys=SimpleNamespace(connect_info='igt/config/gen_test.json'),
-            pulse_dur=0.5, pulse_ramp_dur=0, pulse_ramp_shape='Rectangular - no ramping', slots=[])
+            pulse_dur=0.5, pulse_ramp_dur=0, pulse_ramp_shape='Rectangular - no ramping',
+            slots=[])
 
-        instance.wait_for_trigger([fake_protocol], 'TriggerOnePulseTrain', n_triggers=3,
-                                  total_alternating_duration_ms=5000)
+        with pytest.raises(FDSHardwareError, match='connection was lost'):
+            instance.wait_for_trigger([fake_protocol], 'None')
 
-        mock_send.assert_called_once_with([fake_protocol], 5000, 0)
+        assert instance.after_connection_loss is True
 
     def test_raises_on_exception_during_trigger_wait(self, connected_instance, patch_config):
         """The broad 'except Exception: raise FDSHardwareError' wrapper around the
@@ -2116,14 +2179,14 @@ class TestWaitForTrigger:
                                         slots=[_slot(serial='TRAN-A')])
         connected_instance.sent_protocols = {0: {
             'n_pulse_train_rep': 2, 'pulse_train_delay': 5.0,
-            'total_protocol_duration_ms': 500.0,
+            'total_protocol_duration_ms': 600.0, 'nominal_duration_ms': 505.0,
             'intensity_lines': connected_instance._build_intensity_lines([fake_protocol], 0)}}
 
         with caplog.at_level('INFO'):
             connected_instance.wait_for_trigger([fake_protocol], 'TriggerOnePulseTrain',
                                                 n_triggers=3)
 
-        assert 'Waiting for a total of 3 trigger(s) (expected duration: 500.00 ms)...' \
+        assert 'Waiting for a total of 3 trigger(s) (expected duration: 505.00 ms)...' \
             in caplog.text
 
     def test_raises_when_given_protocol_does_not_match_sent(self, connected_instance,
@@ -2205,6 +2268,23 @@ class TestWaitForTriggerResult:
 
         connected_instance.listener.wait_protocol.assert_called_once_with(5.0)
 
+    def test_execution_failure_message_gives_the_code_and_where_it_failed(
+            self, connected_instance):
+        """The driving system can fail part-way through a run, so the message neither claims that
+        nothing was emitted nor leaves out where it stopped."""
+        connected_instance.sent_protocols[0] = {'armed': True}
+        connected_instance.listener.exec_error_code = 16643
+        connected_instance.listener.exec_error_index = 24
+        connected_instance.listener.exec_error_pulse_index = 0
+
+        with pytest.raises(FDSHardwareError) as info:
+            connected_instance.wait_for_trigger_result(0)
+
+        message = str(info.value)
+        assert '16643 (0x4103)' in message
+        assert 'pulse train 24, pulse 0' in message
+        assert 'No ultrasound was emitted' not in message
+
     def test_raises_when_wait_protocol_times_out_without_a_result(self, connected_instance):
         """GitHub #78: wait_protocol() returns False specifically on timeout (see its own
         docstring) -- distinct from exec_error_code, which is only ever set once
@@ -2214,6 +2294,7 @@ class TestWaitForTriggerResult:
         connected_instance.sent_protocols[0] = {'armed': True}
         connected_instance.listener.wait_protocol.return_value = False
         connected_instance.listener.exec_error_code = None
+        connected_instance.listener.connection_lost_reason = None
 
         with pytest.raises(FDSHardwareError):
             connected_instance.wait_for_trigger_result(0, timeout_s=10.0)
@@ -2338,6 +2419,19 @@ class TestDisconnect:
         connected_instance.fus.disconnect.assert_called_once()
         assert connected_instance.is_connected() is False
 
+    def test_disconnect_continues_when_the_stop_command_fails(self, mocker, connected_instance):
+        """After a lost connection stopSequence() raises; disconnect() must still call
+        fus.disconnect(), and the error must not reach the caller."""
+        mocker.patch("fus_driving_systems.igt.igt_ds.time.sleep")
+        connected_instance.gen.stopSequence.side_effect = RuntimeError(
+            'Communication layer not connected')
+        connected_instance.fus.isConnected.return_value = False
+
+        connected_instance.disconnect()
+
+        connected_instance.fus.disconnect.assert_called_once()
+        assert connected_instance.is_connected() is False
+
     def test_marks_still_connected_when_fus_still_reports_connected(self, mocker,
                                                                     connected_instance):
         mocker.patch("fus_driving_systems.igt.igt_ds.time.sleep")
@@ -2351,3 +2445,28 @@ class TestDisconnect:
         instance = IGT(log_dir=str(tmp_path))
 
         instance.disconnect()  # gen and fus both None; must not raise
+
+
+class TestInterleavedDurationIsWholeRounds:
+
+    @staticmethod
+    def _protocols(*pulse_rep_ints):
+        return [SimpleNamespace(pulse_rep_int=interval) for interval in pulse_rep_ints]
+
+    def test_rejects_a_duration_that_is_not_a_whole_number_of_rounds(self, tmp_path):
+        instance = IGT(log_dir=str(tmp_path))
+
+        with pytest.raises(FDSValidationError, match='266.67.*79800 ms or 80100 ms'):
+            instance._assert_alternating_duration_is_whole_rounds(
+                self._protocols(100, 200), 80000)
+
+    def test_accepts_a_whole_number_of_rounds(self, tmp_path):
+        instance = IGT(log_dir=str(tmp_path))
+
+        instance._assert_alternating_duration_is_whole_rounds(
+            self._protocols(100, 200), 79800)
+
+    def test_a_single_protocol_is_not_checked_here(self, tmp_path):
+        instance = IGT(log_dir=str(tmp_path))
+
+        instance._assert_alternating_duration_is_whole_rounds(self._protocols(300), 80000)

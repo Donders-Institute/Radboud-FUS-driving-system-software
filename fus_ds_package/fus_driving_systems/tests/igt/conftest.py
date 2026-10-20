@@ -39,6 +39,7 @@ def connected_instance(tmp_path, mocker):
     # auto-create a truthy attribute here, which execute_protocol() now checks for a failed
     # protocol execution (see TestExecuteProtocol's exec_error_code tests).
     instance.listener.exec_error_code = None
+    instance.listener.connection_lost_reason = None
     instance.n_channels = 2
     return instance
 

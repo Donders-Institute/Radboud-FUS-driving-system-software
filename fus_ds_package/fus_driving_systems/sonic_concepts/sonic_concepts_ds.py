@@ -19,6 +19,7 @@ import tkinter
 from CTkMessagebox import CTkMessagebox
 
 import serial
+from serial.tools import list_ports
 
 # Own packages
 from fus_driving_systems import control_driving_system as ds
@@ -41,17 +42,22 @@ class SonicConcepts(ds.ControlDrivingSystem):
 
     def __init__(self):
         super().__init__()
-        # Stored at send_protocol() time (not read from execute_protocol()/wait_for_trigger()'s
-        # own protocol argument, which the success path never otherwise touches, see those
-        # methods' own docstrings on reconnecting from a dropped connection instead).
+        # Stored at send_protocol() time: execute_protocol()/wait_for_trigger() never read
+        # their own protocol argument.
         self._sent_pulse_train_dur = None
 
     def connect(self, connect_info):
         """
         Connects to the Sonic Concepts ultrasound driving system.
 
+        Tries once: there is no retrying. A COM port that does not exist or is in use raises
+        FDSHardwareError at once; an existing port gets 1 s to send its startup message.
+
         Parameters:
             connect_info (str): COM port information.
+
+        Raises:
+            FDSHardwareError: If the COM port cannot be opened, or the driving system answers E2.
         """
 
         get_logger().info('Connecting...')
@@ -59,9 +65,25 @@ class SonicConcepts(ds.ControlDrivingSystem):
         # When no connection, it is assumed that sent protocol isn't available (anymore)
         self.protocol_sent = False
 
-        self.gen = serial.Serial(connect_info, 115200, timeout=1)
-        startup_message = self.gen.readline().decode("ascii").strip()
+        try:
+            self.gen = serial.Serial(connect_info, 115200, timeout=1)
+            startup_message = self.gen.readline().decode("ascii").strip()
+        except serial.SerialException as e:
+            # pyserial puts the Windows error in its message as text, e.g. FileNotFoundError(...)
+            reason = str(e)
+            if 'FileNotFoundError' in reason:
+                reason = 'this port does not exist on this computer'
+            elif 'PermissionError' in reason:
+                reason = 'the port is in use by another program'
+            found = ', '.join(port.device for port in list_ports.comports()) or 'none'
+            message = (f'Cannot open {connect_info}: {reason}. COM ports on this computer: '
+                       f'{found}. The driving system may be on a different one.')
+            raise_logged(FDSHardwareError, message, cause=e)
         get_logger().debug("Driving system: %s", startup_message)
+        if not startup_message:
+            get_logger().warning("No startup message from %s within 1 s; continuing as "
+                                 "connected. If nothing responds later, check the COM port.",
+                                 connect_info)
 
         if startup_message == 'E2':
             self._connected = False
@@ -113,6 +135,15 @@ class SonicConcepts(ds.ControlDrivingSystem):
 
         return error_messages
 
+    def _raise_not_connected(self, action):
+        """Called when send_protocol()/wait_for_trigger()/execute_protocol() find no connection.
+        They do not reconnect by themselves: connecting (and sending again) is the caller's
+        decision."""
+
+        message = (f'Not connected to the driving system, so {action} cannot run. Call connect() '
+                   'first.')
+        raise_logged(FDSHardwareError, message)
+
     def send_protocol(self, protocol):
         """
         Sends an ultrasound protocol to the Sonic Concepts ultrasound driving system.
@@ -158,22 +189,15 @@ class SonicConcepts(ds.ControlDrivingSystem):
             self._log_non_default_settings(protocol)
 
         else:
-            get_logger().error("No connection with driving system.")
-            get_logger().error("Reconnecting with driving system...")
+            self._raise_not_connected('send_protocol()')
 
-            # if no connection can be made, program stops preventing infinite loop
-            self.connect(protocol.driving_sys.connect_info)
-            self.send_protocol(protocol)
-
-    def wait_for_trigger(self, protocol):
+    def wait_for_trigger(self, protocol):  # pylint: disable=unused-argument
         """
         Arms the previously sent protocol to fire on an external trigger, instead of firing
         immediately via execute_protocol().
 
-        Raises FDSValidationError with a clear message if send_protocol() hasn't been called
-        yet -- unlike a dropped connection (which reconnects and resends automatically, since
-        that's an external failure rather than a caller mistake), this method never sends on
-        the caller's behalf.
+        Raises FDSValidationError if send_protocol() hasn't been called yet (this method never
+        sends), and FDSHardwareError if not connected (it never reconnects either).
 
         Parameters:
             protocol(Object): Same protocol already passed to send_protocol().
@@ -187,10 +211,8 @@ class SonicConcepts(ds.ControlDrivingSystem):
                        'wait_for_trigger().')
             raise_logged(FDSValidationError, message)
 
-        # self._sent_pulse_train_dur, not protocol.pulse_train_dur: the protocol argument here
-        # is otherwise only used for the reconnect-fallback below, never on this, the normal
-        # success path (see this method's own docstring). None only when send_protocol() itself
-        # was bypassed (e.g. a test setting protocol_sent directly).
+        # The duration is the one stored by send_protocol(); when it is unknown (e.g. unit
+        # tests that skip send_protocol()), no duration is logged.
         if self._sent_pulse_train_dur is None:
             get_logger().info('Waiting for trigger...')
         else:
@@ -200,22 +222,14 @@ class SonicConcepts(ds.ControlDrivingSystem):
         if self.is_connected():
             self._send_command('TRIGGERMODE=1\r\n')
         else:
-            get_logger().warning("No connection with driving system.")
-            get_logger().warning("Reconnecting with driving system...")
-
-            # if no connection can be made, program stops preventing infinite loop
-            self.connect(protocol.driving_sys.connect_info)
-            self.send_protocol(protocol)
-            self.wait_for_trigger(protocol)
+            self._raise_not_connected('wait_for_trigger()')
 
     def execute_protocol(self, protocol):
         """
         Executes the previously sent protocol on the Sonic Concepts ultrasound driving system.
 
-        Raises FDSValidationError with a clear message if send_protocol() hasn't been called
-        yet -- unlike a dropped connection (which reconnects and resends automatically, since
-        that's an external failure rather than a caller mistake), this method never sends on
-        the caller's behalf.
+        Raises FDSValidationError if send_protocol() hasn't been called yet (this method never
+        sends), and FDSHardwareError if not connected (it never reconnects either).
         """
 
         # Checked regardless of connection state, and before it: a protocol that was never
@@ -226,10 +240,9 @@ class SonicConcepts(ds.ControlDrivingSystem):
                        'execute_protocol().')
             raise_logged(FDSValidationError, message)
 
-        # Not "Executing protocol...": the START command below returns almost instantly, so
-        # there's nothing left "in progress" to report. self._sent_pulse_train_dur, not
-        # protocol.pulse_train_dur, since protocol is otherwise unused on this path; None only
-        # when send_protocol() itself was bypassed (e.g. a test setting protocol_sent directly).
+        # START returns almost instantly, so this only announces the run. The duration is the
+        # one stored by send_protocol(); when it is unknown (e.g. unit tests that skip
+        # send_protocol()), no duration is logged.
         if self._sent_pulse_train_dur is None:
             get_logger().info('Executing...')
         else:
@@ -251,13 +264,7 @@ class SonicConcepts(ds.ControlDrivingSystem):
             get_logger().info('Protocol execution started.')
 
         else:
-            get_logger().warning("No connection with driving system.")
-            get_logger().warning("Reconnecting with driving system...")
-
-            # if no connection can be made, program stops preventing infinite loop
-            self.connect(protocol.driving_sys.connect_info)
-            self.send_protocol(protocol)
-            self.execute_protocol(protocol)
+            self._raise_not_connected('execute_protocol()')
 
     def abort(self):
         """
@@ -330,7 +337,12 @@ class SonicConcepts(ds.ControlDrivingSystem):
 
         if response in self._ERROR_RESPONSES:
             message = (f"Error {response} ({self._ERROR_RESPONSES[response]}) for command: " +
-                       f"{command.strip()}")
+                       f"{command.strip()}.")
+            if response == 'E2':
+                message += (" The driving system does not accept this value for the transducer "
+                            "selected on it. Try a slightly higher or lower value (e.g. a focus "
+                            "at the very edge of its range), and check that this is the same "
+                            "transducer as chosen in the software.")
             raise_logged(FDSHardwareError, message)
 
         if not response:

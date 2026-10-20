@@ -184,6 +184,8 @@ config['General'] = {}
 config['General']['Configuration file folder'] = CONFIG_FOLDER
 config['General']['Delay before reconnecting [s]'] = str(2)
 config['General']['Maximum reconnection attempts'] = str(5)
+config['General']['Maximum reconnection attempts after connection loss'] = str(10)
+config['General']['Delay before reconnecting after connection loss [s]'] = str(12)
 config['General']['Package name'] = 'fus_driving_systems'
 config['General']['Speed of sound water [m/s]'] = str(1500)
 

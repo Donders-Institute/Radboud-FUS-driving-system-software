@@ -102,6 +102,16 @@ class VoltageFeedbackTracker:
         except Exception as e:  # pylint: disable=broad-exception-caught
             get_logger().debug(f"Voltage feedback tracking failed for this pulse: {e}")
 
+    def finish(self):
+        """Reports the last, partly filled group at the end of an execution. Never raises, as
+        it runs in a listener callback (see add_pulse())."""
+
+        try:
+            if any(self._group_n.values()):
+                self._finalize_group()
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            get_logger().debug(f"Voltage feedback tracking failed at the end: {e}")
+
     def _add_pulse(self, measures):
         if self._channel_ranges and measures is not None:
             channel_count = measures.channelCount()
@@ -196,6 +206,10 @@ class VoltageFeedbackDispatcher:
         self._pulse_count += 1
         tracker.add_pulse(measures)
 
+    def finish(self):
+        for tracker in self._trackers:
+            tracker.finish()
+
 
 class ExecListener(unifus.FUSListener):
     """
@@ -221,6 +235,13 @@ class ExecListener(unifus.FUSListener):
         # back and acted on (raising FDSHardwareError) by the caller on the main thread, after
         # wait_protocol() returns, rather than raised here.
         self.exec_error_code = None
+        # Where that execution failed: which repetition and pulse, counting from 0.
+        self.exec_error_index = None
+        self.exec_error_pulse_index = None
+        # Set by onDisconnect() when the connection drops while a sequence is running.
+        # wait_protocol() then returns as if the run had finished and onSequenceResult() never
+        # fires, so without this a dropped cable would be reported as a successful execution.
+        self.connection_lost_reason = None
         # for mechanics
         self._finding_origin = False
         self._moving = False
@@ -238,12 +259,15 @@ class ExecListener(unifus.FUSListener):
             get_logger().error(f"Listener: CONNECTION FAILED ({result})")
 
     def onDisconnect(self, reason):  # pylint: disable=invalid-name
+        if self._running:
+            self.connection_lost_reason = str(reason)
         self._running = False
         get_logger().debug(f"Listener: DISCONNECTED ({reason})")
 
     # pylint: disable-next=invalid-name
     def onSequenceStart(self, exec_id, buffer, count, delay, flags):
         self._running = True
+        self.connection_lost_reason = None
         self.pulse_results = []
         get_logger().debug(f"Listener: EXEC START (buff: {buffer}, count: {count}, "
                            f"delay: {delay:g})")
@@ -291,12 +315,18 @@ class ExecListener(unifus.FUSListener):
 
     # pylint: disable-next=invalid-name
     def onSequenceResult(self, exec_id, exec_index, pulse_index, error_code):
+        # Clearing _running releases execute_protocol() and may start disconnecting. Voltage
+        # feedback has to be wrapped up before that.
+        if self.voltage_feedback is not None:
+            self.voltage_feedback.finish()
         self._running = False
         if error_code == 0:
             self.exec_error_code = None
+            self.exec_error_index = self.exec_error_pulse_index = None
             get_logger().debug(f"Listener: EXEC RESULT SUCCESS (exec: {exec_index})")
         else:
             self.exec_error_code = error_code
+            self.exec_error_index, self.exec_error_pulse_index = exec_index, pulse_index
             get_logger().error(f"Listener: EXEC RESULT ERROR (code: {error_code}, "
                                f"on exec: {exec_index}, pulse: {pulse_index})")
 

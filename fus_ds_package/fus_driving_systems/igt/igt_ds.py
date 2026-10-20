@@ -114,6 +114,29 @@ class IGT(ds.ControlDrivingSystem):
         self.fus = None
         self.listener = None
         self.n_channels = 0
+        # Optional callable(attempt, max_attempts), called before every connection attempt, for
+        # a host application (e.g. the GUI) to show that connecting or reconnecting is going on.
+        self.on_connect_attempt = None
+        # Set when a connection was lost; connect() then waits longer between attempts, until
+        # one succeeds.
+        self.after_connection_loss = False
+        self._was_connected = False
+
+    def _raise_not_connected(self, action):
+        """Called when send_protocol()/wait_for_trigger()/execute_protocol() find no connection.
+        These methods do not reconnect by themselves: reconnecting (and then sending again) is
+        the caller's decision. A connection that was there before counts as lost, which makes
+        the next connect() wait longer between attempts (see connect())."""
+
+        if self._was_connected:
+            self.after_connection_loss = True
+        message = (f'Not connected to the driving system, so {action} cannot run. Call connect() '
+                   'first.')
+        if self.after_connection_loss:
+            message += (' The connection was lost: connect() then waits longer between '
+                        'attempts, because the driving system can need a minute or more before '
+                        'it accepts a connection again.')
+        raise_logged(FDSHardwareError, message)
 
     def is_protocol_sent(self, buffer_num):
         """
@@ -207,6 +230,10 @@ class IGT(ds.ControlDrivingSystem):
                                               'Wait time before responsive [ms]', 100))
         self.sent_protocols[buffer_num]['total_protocol_duration_ms'] = (
             total_protocol_duration_ms + wait_time_ms)
+        # The duration as entered: every repetition takes a full interval, including the delay
+        # after the last one. The wait time above only extends the time-out, so it is left out.
+        self.sent_protocols[buffer_num]['nominal_duration_ms'] = (
+            total_protocol_duration_ms + pulse_train_delay)
 
         # The dict this stores also holds a few internal bookkeeping fields (source_protocols,
         # intensity_lines, protocol_fingerprints, phases) purely for later drift-detection/
@@ -222,7 +249,8 @@ class IGT(ds.ControlDrivingSystem):
             f'{self.sent_protocols[buffer_num]["total_protocol_duration_ms"]:.2f} ms total ' +
             'protocol duration.')
 
-    def connect(self, connect_info, log_dir=None, log_name=None):
+    def connect(self, connect_info, log_dir=None, log_name=None, max_attempts=None,
+                reconnect_delay_s=None):
         """
         Connects to the IGT ultrasound driving system.
 
@@ -238,6 +266,12 @@ class IGT(ds.ControlDrivingSystem):
 
         Parameters:
             connect_info (str): Path with IGT driving system-specific configuration file.
+            max_attempts (int): How many times to try before giving up. Defaults to 'Maximum
+                reconnection attempts' in the configuration, or 'Maximum reconnection attempts
+                after connection loss' once the connection was lost (after_connection_loss).
+            reconnect_delay_s (float): Seconds to wait between attempts. Defaults to 'Delay
+                before reconnecting [s]' in the configuration, or 'Delay before reconnecting
+                after connection loss [s]' once the connection was lost.
 
         Returns:
             bool: True once connected (whether newly connected or already connected).
@@ -251,8 +285,14 @@ class IGT(ds.ControlDrivingSystem):
 
         get_logger().info('Connecting...')
 
-        reconnect_delay_s = float(get_config_value(get_logger(), config, 'General',
-                                                   'Delay before reconnecting [s]', 2))
+        if reconnect_delay_s is None:
+            if self.after_connection_loss:
+                reconnect_delay_s = float(get_config_value(
+                    get_logger(), config, 'General',
+                    'Delay before reconnecting after connection loss [s]', 12))
+            else:
+                reconnect_delay_s = float(get_config_value(
+                    get_logger(), config, 'General', 'Delay before reconnecting [s]', 2))
 
         if log_dir is None:
             log_dir = get_config_value(get_logger(), config, 'Logging', 'Temporary logging path',
@@ -278,8 +318,14 @@ class IGT(ds.ControlDrivingSystem):
 
         # When no connection, it is assumed that all sent protocols aren't available (anymore)
         self.sent_protocols = {}
-        max_attempts = int(get_config_value(get_logger(), config, 'General',
-                                            'Maximum reconnection attempts', 5))
+        if max_attempts is None:
+            if self.after_connection_loss:
+                max_attempts = int(get_config_value(
+                    get_logger(), config, 'General',
+                    'Maximum reconnection attempts after connection loss', 10))
+            else:
+                max_attempts = int(get_config_value(get_logger(), config, 'General',
+                                                    'Maximum reconnection attempts', 5))
 
         if self.fus is None:
             try:
@@ -323,6 +369,8 @@ class IGT(ds.ControlDrivingSystem):
             raise_logged(FDSConfigError, message, cause=e)
 
         for cur_attempt in range(max_attempts):
+            if self.on_connect_attempt is not None:
+                self.on_connect_attempt(cur_attempt + 1, max_attempts)
             try:
                 self.fus.connect()
                 self.listener.wait_connection()
@@ -333,13 +381,17 @@ class IGT(ds.ControlDrivingSystem):
                     self.n_channels = self.gen.getParam(unifus.GenParam.ChannelCount)
                     get_logger().info("Driving system is connected. Generator: %s channels",
                                       self.n_channels)
+                    self._was_connected = True
+                    self.after_connection_loss = False
                     return True
             except Exception as e:
                 get_logger().error(f"Exception during connection: {e}")
 
-            get_logger().warning("Error: connection failed.")
+            get_logger().warning(f"Error: connection attempt {cur_attempt + 1}/{max_attempts} "
+                                 "failed.")
             if cur_attempt + 1 < max_attempts:
-                get_logger().warning('Try to reconnect...')
+                get_logger().warning(f'Try to reconnect (attempt {cur_attempt + 2}/'
+                                     f'{max_attempts}) in {reconnect_delay_s:g} s...')
                 time.sleep(reconnect_delay_s)
 
         message = f'Maximum amount of {max_attempts} for reconnecting is reached.'
@@ -470,6 +522,30 @@ class IGT(ds.ControlDrivingSystem):
                        'when interleaving more than one protocol.')
             raise_logged(FDSValidationError, message)
 
+    def _assert_alternating_duration_is_whole_rounds(self, protocols,
+                                                     total_alternating_duration_ms):
+        """
+        Only whole rounds run (a round is every protocol's pulse_rep_int added up), so a
+        total_alternating_duration_ms that is not a multiple of it would run shorter than asked.
+        Only checked when sending, as execute_protocol()/wait_for_trigger() must match that.
+        """
+
+        if len(protocols) < 2:
+            return
+        round_ms = sum(protocol.pulse_rep_int for protocol in protocols)
+        n_rounds = math.floor(total_alternating_duration_ms / round_ms)
+        if abs(total_alternating_duration_ms - round(total_alternating_duration_ms / round_ms)
+               * round_ms) > 1e-6:
+            message = (
+                f'total_alternating_duration_ms of {total_alternating_duration_ms:g} ms is not '
+                'a whole number of rounds: one round of the interleaved protocols takes '
+                f'{round_ms:g} ms (their pulse repetition intervals added up), so '
+                f'{total_alternating_duration_ms:g} / {round_ms:g} = '
+                f'{total_alternating_duration_ms / round_ms:.2f}. Use a multiple of '
+                f'{round_ms:g} ms, for example {n_rounds * round_ms:g} ms or '
+                f'{(n_rounds + 1) * round_ms:g} ms.')
+            raise_logged(FDSValidationError, message)
+
     def _assert_valid_buffer_num(self, driving_sys, buffer_num):
         """
         Raises FDSValidationError with a clear message unless buffer_num is a valid buffer for
@@ -564,10 +640,7 @@ class IGT(ds.ControlDrivingSystem):
         send_protocol() would have it silently discarded rather than honored: execute_protocol()/
         wait_for_trigger() never use their own total_alternating_duration_ms argument for
         anything physical themselves -- it's only ever used (indirectly) via what's already
-        stored in sent_protocols. This check is what makes it safe for their own
-        reconnect-and-resend path to simply pass this call's value straight through: a mismatch
-        would already have exited here, before that path is ever reached, so there's nothing
-        left for it to reconcile.
+        stored in sent_protocols.
 
         Only checked when interleaving: a single protocol computes its own repetition count from
         its own pulse_train_rep_dur/pulse_train_rep_int, so total_alternating_duration_ms is
@@ -765,6 +838,7 @@ class IGT(ds.ControlDrivingSystem):
             protocols = [protocols]
 
         self._assert_duration_given_when_interleaving(protocols, total_alternating_duration_ms)
+        self._assert_alternating_duration_is_whole_rounds(protocols, total_alternating_duration_ms)
         self._assert_valid_buffer_num(protocols[0].driving_sys, buffer_num)
 
         for protocol in protocols:
@@ -893,17 +967,12 @@ class IGT(ds.ControlDrivingSystem):
                 f'{len(sent_protocol_info["pulse_train_seq"])} pulse(s) per pulse train, '
                 f'{sent_protocol_info["n_pulse_train_rep"]} pulse train(s) with '
                 f'{sent_protocol_info["pulse_train_delay"]:.2f} ms delay between, '
-                f'{sent_protocol_info["total_protocol_duration_ms"]:.2f} ms total duration.')
+                f'{sent_protocol_info["nominal_duration_ms"]:.2f} ms total duration.')
             for protocol in protocols:
                 self._log_non_default_settings(protocol)
 
         else:
-            get_logger().warning("No connection with driving system.")
-            get_logger().warning("Reconnecting with driving system...")
-
-            # if no connection can be made, program stops preventing infinite loop
-            self.connect(protocols[0].driving_sys.connect_info)
-            self.send_protocol(protocols, total_alternating_duration_ms, buffer_num)
+            self._raise_not_connected('send_protocol()')
 
     def _define_pulse_group(self, protocol):
         """
@@ -1086,24 +1155,32 @@ class IGT(ds.ControlDrivingSystem):
     def _configure_voltage_feedback(self, protocols, sent_protocol_info):
         """
         Builds and attaches a fresh VoltageFeedbackDispatcher to self.listener for the
-        execution about to start (GitHub #137) -- called right before startSequence() by both
-        wait_for_trigger() and execute_protocol(). One VoltageFeedbackTracker per protocol (see
-        VoltageFeedbackDispatcher's own docstring for why -- each interleaved protocol's own
-        grouping/reporting must stay independent of how the others' pulses interleave with it),
-        each with its own channel ranges/expected voltages (see
-        _build_transducer_channel_ranges()) but otherwise identically configured: every protocol
-        in the group shares the same wall-clock duration and fires exactly once per round, so
-        total_pulses/num_groups/margin/consecutive_for_warning are the same for all of them.
+        execution about to start (GitHub #137). Called right before startSequence() by both
+        wait_for_trigger() and execute_protocol(). One VoltageFeedbackTracker per protocol: each
+        interleaved protocol's own grouping/reporting must stay independent of how the others'
+        pulses interleave with it (see VoltageFeedbackDispatcher). Each has its own channel
+        ranges/expected voltages (see _build_transducer_channel_ranges()) but is otherwise
+        identically configured: every protocol in the group shares the same wall-clock duration
+        and fires exactly once per round, so total_pulses/num_groups/margin/
+        consecutive_for_warning are the same for all of them.
 
         Parameters:
             protocols (list(TUSProtocol)): Every protocol passed to send_protocol().
             sent_protocol_info (dict): send_protocol()'s own bookkeeping for this buffer (see
-                register_sent_protocol()) -- 'n_pulse_train_rep' (how many pulses *each*
-                protocol in the group contributes -- one per round) and
-                'total_protocol_duration_ms' size every tracker's groups identically.
+                register_sent_protocol()). 'n_pulse_train_rep' (the repetitions: for an
+                interleaved group one pulse per protocol per round, for a single protocol
+                len('pulse_train_seq') pulses each) and 'total_protocol_duration_ms' size every
+                tracker's groups identically.
         """
 
-        total_pulses = sent_protocol_info.get('n_pulse_train_rep') or 0
+        # One result arrives per pulse, so a single protocol's train of several pulses gives
+        # that many results per repetition; an interleaved group has one pulse per protocol
+        # per round, which the dispatcher already splits per protocol.
+        if len(protocols) == 1:
+            pulses_per_repetition = len(sent_protocol_info.get('pulse_train_seq') or []) or 1
+        else:
+            pulses_per_repetition = 1
+        total_pulses = (sent_protocol_info.get('n_pulse_train_rep') or 0) * pulses_per_repetition
         total_duration_s = (sent_protocol_info.get('total_protocol_duration_ms') or 0) / 1000.0
 
         config_groups = int(get_config_value(get_logger(), config, 'Equipment.Manufacturer.IGT',
@@ -1149,10 +1226,8 @@ class IGT(ds.ControlDrivingSystem):
         exactly one trigger event and one hardware buffer, whether it's a single protocol or
         several interleaved ones.
 
-        Raises FDSValidationError with a clear message if send_protocol() hasn't been called for
-        this buffer yet -- unlike a dropped connection (which reconnects and resends
-        automatically, since that's an external failure rather than a caller mistake), this
-        method never sends on the caller's behalf.
+        Raises FDSValidationError if send_protocol() hasn't been called for this buffer yet (this
+        method never sends), and FDSHardwareError if not connected (it never reconnects either).
 
         Parameters:
             protocols (TUSProtocol or list(TUSProtocol)): Same protocol(s) already passed to
@@ -1174,7 +1249,6 @@ class IGT(ds.ControlDrivingSystem):
 
         if isinstance(protocols, TUSProtocol):
             protocols = [protocols]
-        protocol0 = protocols[0]
 
         self._assert_duration_given_when_interleaving(protocols, total_alternating_duration_ms)
 
@@ -1257,7 +1331,7 @@ class IGT(ds.ControlDrivingSystem):
             # wait would otherwise have to scroll back for it.
             get_logger().info(
                 'Waiting for a total of %s trigger(s) (expected duration: %.2f ms)...',
-                n_triggers, sent_protocol_info.get('total_protocol_duration_ms') or 0)
+                n_triggers, sent_protocol_info.get('nominal_duration_ms') or 0)
 
             # Pure computation, not an SDK call -- kept outside the try below so a bug in it
             # isn't mislabeled as a hardware failure.
@@ -1277,20 +1351,7 @@ class IGT(ds.ControlDrivingSystem):
             # for a buffer that's genuinely armed, not merely sent.
             self.sent_protocols[buffer_num]['armed'] = True
         else:
-            # Reached only once a protocol is confirmed sent (above) -- reconnecting and
-            # resending here is recovering the driving system's own state after losing the
-            # connection, not guessing at values for a first-time send. Safe to just pass
-            # protocols/total_alternating_duration_ms through as given: _assert_ready_to_run()
-            # above already guarantees both match what this buffer was actually sent with --
-            # a mismatch in either would have exited before ever reaching this branch.
-            get_logger().warning("No connection with driving system.")
-            get_logger().warning("Reconnecting with driving system...")
-
-            # if no connection can be made, program stops preventing infinite loop
-            self.connect(protocol0.driving_sys.connect_info)
-            self.send_protocol(protocols, total_alternating_duration_ms, buffer_num)
-            self.wait_for_trigger(protocols, trigger_option, n_triggers,
-                                  total_alternating_duration_ms, buffer_num)
+            self._raise_not_connected('wait_for_trigger()')
 
     def wait_for_trigger_result(self, buffer_num=0, timeout_s=5.0):
         """
@@ -1340,13 +1401,33 @@ class IGT(ds.ControlDrivingSystem):
                        'that anything was emitted.')
             raise_logged(FDSHardwareError, message)
 
-        if self.listener.exec_error_code is not None:
-            message = ('Protocol execution failed on the driving system (error ' +
-                       f'code: {self.listener.exec_error_code}). No ultrasound was ' +
-                       'emitted.')
-            raise_logged(FDSHardwareError, message)
+        self._raise_if_run_failed()
 
         get_logger().info('Triggered protocol executed successfully.')
+
+    def _raise_if_run_failed(self):
+        """Raises FDSHardwareError if the run that just ended reported an error, or if the
+        connection dropped before it finished (the sequence result never arrives then)."""
+
+        if self.listener.exec_error_code is not None:
+            raise_logged(FDSHardwareError, self._execution_failure_message())
+        if self.listener.connection_lost_reason is not None:
+            self.after_connection_loss = True
+            message = ('Lost the connection to the driving system before the protocol finished '
+                       f'(reason: {self.listener.connection_lost_reason}). Ultrasound may have '
+                       'been emitted until then. The protocol is not run again automatically.')
+            raise_logged(FDSHardwareError, message)
+
+    def _execution_failure_message(self):
+        """Describes the failure the listener recorded: its code and where in the run it
+        happened."""
+
+        code = self.listener.exec_error_code
+        hex_code = f' ({code:#x})' if isinstance(code, int) else ''
+        return (f'Protocol execution failed on the driving system (error code: {code}{hex_code}, '
+                f'at pulse train {self.listener.exec_error_index}, pulse '
+                f'{self.listener.exec_error_pulse_index}, counting from 0). Ultrasound may have '
+                'been emitted before the failure.')
 
     def has_execution_error(self):
         """
@@ -1379,10 +1460,8 @@ class IGT(ds.ControlDrivingSystem):
         explicit timeout check this would otherwise silently report success on a protocol that
         never actually fired.
 
-        Raises FDSValidationError with a clear message if send_protocol() hasn't been called for
-        this buffer yet -- unlike a dropped connection (which reconnects and resends
-        automatically, since that's an external failure rather than a caller mistake), this
-        method never sends on the caller's behalf.
+        Raises FDSValidationError if send_protocol() hasn't been called for this buffer yet (this
+        method never sends), and FDSHardwareError if not connected (it never reconnects either).
 
         Parameters:
             protocols (TUSProtocol or list(TUSProtocol)): Same protocol(s) already passed to
@@ -1394,7 +1473,6 @@ class IGT(ds.ControlDrivingSystem):
 
         if isinstance(protocols, TUSProtocol):
             protocols = [protocols]
-        protocol0 = protocols[0]
 
         self._assert_duration_given_when_interleaving(protocols, total_alternating_duration_ms)
 
@@ -1433,7 +1511,7 @@ class IGT(ds.ControlDrivingSystem):
                 # Logged right before the (potentially long) blocking wait below, so a
                 # researcher watching the log knows how long to expect it to take.
                 get_logger().info('Executing (expected duration: %.2f ms)...',
-                                  sent_protocol_info.get('total_protocol_duration_ms') or 0)
+                                  sent_protocol_info.get('nominal_duration_ms') or 0)
 
                 self.gen.startSequence()
                 # wait_protocol() returns False specifically on timeout (see its own docstring
@@ -1449,11 +1527,7 @@ class IGT(ds.ControlDrivingSystem):
                         'confirmation that anything was emitted.')
                     raise_logged(FDSHardwareError, message)
 
-                if self.listener.exec_error_code is not None:
-                    message = ('Protocol execution failed on the driving system (error ' +
-                               f'code: {self.listener.exec_error_code}). Potentially no ' +
-                               'ultrasound emitted.')
-                    raise_logged(FDSHardwareError, message)
+                self._raise_if_run_failed()
 
             except FDSHardwareError:
                 # The two raises above must propagate as-is, not get caught and rewrapped (with
@@ -1467,19 +1541,7 @@ class IGT(ds.ControlDrivingSystem):
             get_logger().info('Protocol executed successfully.')
 
         else:
-            # Reached only once a protocol is confirmed sent (above) -- reconnecting and
-            # resending here is recovering the driving system's own state after losing the
-            # connection, not guessing at values for a first-time send. Safe to just pass
-            # protocols/total_alternating_duration_ms through as given: _assert_ready_to_run()
-            # above already guarantees both match what this buffer was actually sent with --
-            # a mismatch in either would have exited before ever reaching this branch.
-            get_logger().warning("No connection with driving system.")
-            get_logger().warning("Reconnecting with driving system...")
-
-            # if no connection can be made, program stops preventing infinite loop
-            self.connect(protocol0.driving_sys.connect_info)
-            self.send_protocol(protocols, total_alternating_duration_ms, buffer_num)
-            self.execute_protocol(protocols, total_alternating_duration_ms, buffer_num)
+            self._raise_not_connected('execute_protocol()')
 
     def abort(self):
         """
@@ -1503,18 +1565,25 @@ class IGT(ds.ControlDrivingSystem):
 
     def disconnect(self):
         """
-        Disconnects from the IGT ultrasound driving system.
+        Disconnects from the IGT ultrasound driving system. Also works after the connection was
+        lost: the commands that stop the sequence and reset the modulation then cannot reach the
+        driving system, so they are skipped with a warning and the local connection is still
+        closed.
         """
 
         get_logger().info('Disconnecting...')
 
         if self.gen is not None:
-            # disabling any old modulation
-            self.gen.stopSequence()
+            try:
+                # disabling any old modulation
+                self.gen.stopSequence()
 
-            time.sleep(2)
+                time.sleep(2)
 
-            self.gen.setPulseModulation([], 0, [], 0)  # disable any modulation
+                self.gen.setPulseModulation([], 0, [], 0)  # disable any modulation
+            except Exception as e:
+                get_logger().warning("Could not stop the sequence or reset the modulation, "
+                                     "the connection was probably lost: %s", e)
 
         if self.fus is not None:
             self.fus.disconnect()

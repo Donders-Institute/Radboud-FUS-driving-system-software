@@ -50,6 +50,8 @@ The configuration file is organized into these main sections:
 [General]
 configuration file folder = config
 maximum reconnection attempts = 5
+maximum reconnection attempts after connection loss = 10
+delay before reconnecting after connection loss [s] = 12
 package name = fus_driving_systems
 speed of sound water [m/s] = 1500
 ```
@@ -57,6 +59,7 @@ speed of sound water [m/s] = 1500
 These parameters control basic system behavior. 
 - **configuration file folder**: Location of additional configuration files
 - **maximum reconnection attempts**: Number of times the system tries to reconnect to hardware
+- **maximum reconnection attempts after connection loss** and **delay before reconnecting after connection loss [s]**: The same two settings, used by the next connect() of an IGT whose connection was lost (for example during Send or Execute). After a dropped connection (for example an unplugged cable) the driving system can take a minute or more before it accepts a connection again, so there is more time between the attempts instead of more attempts: with the 5 s connection time-out, 10 attempts 12 s apart last about three minutes
 - **package name**: The software package identifier
 - **speed of sound water**: The speed of sound value (1500 m/s by default) is particularly important for phase calculations in certain systems like IGT-Imasonic combinations.
 

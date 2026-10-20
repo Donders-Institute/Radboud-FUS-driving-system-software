@@ -35,6 +35,54 @@ def test_connect_raises_on_e2_response(mock_serial):
     assert instance._connected is False
 
 
+def test_connect_raises_a_clear_error_when_the_com_port_cannot_be_opened(mocker):
+    """serial.SerialException is not an FDSError, so the GUI worker would never report it:
+    connecting would just hang on "Connecting..."."""
+    from fus_driving_systems.sonic_concepts.sonic_concepts_ds import SonicConcepts
+    mocker.patch("fus_driving_systems.sonic_concepts.sonic_concepts_ds.serial.Serial",
+                 side_effect=serial.SerialException("could not open port 'COM9'"))
+    instance = SonicConcepts()
+
+    with pytest.raises(FDSHardwareError, match='Cannot open COM9'):
+        instance.connect('COM9')
+    assert instance._connected is False
+
+
+@pytest.mark.parametrize('pyserial_message, expected', [
+    ("could not open port '9': FileNotFoundError(2, 'The system cannot find the file specified.')",
+     'this port does not exist on this computer'),
+    ("could not open port 'COM9': PermissionError(13, 'Access is denied.')",
+     'the port is in use by another program'),
+])
+def test_connect_says_in_words_why_the_port_cannot_be_opened(mocker, pyserial_message, expected):
+    """pyserial reports the Windows error as text; the message should not show it, and lists
+    the ports that do exist."""
+    from fus_driving_systems.sonic_concepts.sonic_concepts_ds import SonicConcepts
+    mocker.patch("fus_driving_systems.sonic_concepts.sonic_concepts_ds.list_ports.comports",
+                 return_value=[mocker.Mock(device='COM3'), mocker.Mock(device='COM6')])
+    mocker.patch("fus_driving_systems.sonic_concepts.sonic_concepts_ds.serial.Serial",
+                 side_effect=serial.SerialException(pyserial_message))
+    instance = SonicConcepts()
+
+    with pytest.raises(FDSHardwareError) as info:
+        instance.connect('9')
+
+    assert expected in str(info.value)
+    assert 'COM ports on this computer: COM3, COM6' in str(info.value)
+    assert 'FileNotFoundError' not in str(info.value)
+
+
+def test_connect_warns_when_the_port_sends_no_startup_message(mock_serial, caplog):
+    from fus_driving_systems.sonic_concepts.sonic_concepts_ds import SonicConcepts
+    mock_serial.readline.return_value = b''
+    instance = SonicConcepts()
+
+    with caplog.at_level('WARNING'):
+        instance.connect('COM3')
+
+    assert 'No startup message from COM3' in caplog.text
+
+
 def test_send_command_writes_and_returns_response(connected_instance):
     connected_instance.gen.readline.return_value = b'OK\n'
 
@@ -509,36 +557,6 @@ def test_send_protocol_raises_when_validation_produces_errors(mocker, connected_
         connected_instance.send_protocol(fake_protocol)
 
 
-def test_send_protocol_reconnects_when_not_connected(mocker):
-    """Documents the reconnect-and-retry pattern shared with igt_ds.py:
-    if not connected, connect() then retry the same call."""
-    from fus_driving_systems.sonic_concepts.sonic_concepts_ds import SonicConcepts
-    instance = SonicConcepts()
-    instance._connected = False
-
-    def fake_connect(connect_info):
-        instance._connected = True
-    mock_connect = mocker.patch.object(instance, 'connect', side_effect=fake_connect)
-    for name in ['_reset_parameters', '_set_operating_freq', '_set_focus',
-                 '_set_global_power', '_set_burst_and_period', '_set_timer',
-                 '_set_ramping']:
-        mocker.patch.object(instance, name)
-
-    fake_protocol = mocker.Mock()
-    fake_protocol.driving_sys.connect_info = 'COM7'
-    fake_protocol.slots = [mocker.Mock()]
-    fake_protocol.pulse_dur = 1
-    fake_protocol.pulse_rep_int = 2
-    fake_protocol.pulse_train_dur = 10
-    fake_protocol.pulse_train_rep_int = 10
-    fake_protocol.pulse_train_rep_dur = 10
-
-    instance.send_protocol(fake_protocol)
-
-    mock_connect.assert_called_once_with('COM7')
-    assert instance.protocol_sent is True
-
-
 def test_wait_for_trigger_sends_triggermode_when_protocol_sent(mocker, connected_instance):
     connected_instance.protocol_sent = True
     mock_send_command = mocker.patch.object(connected_instance, '_send_command')
@@ -569,37 +587,6 @@ def test_wait_for_trigger_raises_when_not_yet_sent(mocker, connected_instance):
 
     mock_send_protocol.assert_not_called()
     mock_send_command.assert_not_called()
-
-
-def test_wait_for_trigger_reconnects_when_not_connected(mocker):
-    """wait_for_trigger() has its own reconnect-and-retry branch, separate from
-    send_protocol()'s (test_send_protocol_reconnects_when_not_connected above) -- not connected
-    here means connect() + send_protocol() + wait_for_trigger() all get retried. Only reached
-    once a protocol is already known to have been sent -- it recovers a dropped connection
-    after a real send, it doesn't fill in for a caller who never sent anything at all (see
-    test_wait_for_trigger_raises_when_not_yet_sent above)."""
-    from fus_driving_systems.sonic_concepts.sonic_concepts_ds import SonicConcepts
-    instance = SonicConcepts()
-    instance._connected = False
-    instance.protocol_sent = True
-    mock_send_command = mocker.patch.object(instance, '_send_command')
-
-    def fake_connect(connect_info):
-        instance._connected = True
-    mock_connect = mocker.patch.object(instance, 'connect', side_effect=fake_connect)
-    mock_send_protocol = mocker.patch.object(instance, 'send_protocol')
-
-    def fake_send_protocol(protocol):
-        instance.protocol_sent = True
-    mock_send_protocol.side_effect = fake_send_protocol
-
-    fake_protocol = mocker.Mock()
-    fake_protocol.driving_sys.connect_info = 'COM7'
-
-    instance.wait_for_trigger(fake_protocol)
-
-    mock_connect.assert_called_once_with('COM7')
-    mock_send_command.assert_called_once_with('TRIGGERMODE=1\r\n')
 
 
 def test_execute_protocol_writes_start_command_when_protocol_sent(connected_instance):
@@ -649,35 +636,33 @@ def test_execute_protocol_raises_when_not_yet_sent(mocker, connected_instance):
     connected_instance.gen.write.assert_not_called()
 
 
-def test_execute_protocol_reconnects_when_not_connected(mocker):
-    """execute_protocol() has its own reconnect-and-retry branch, separate
-    from send_protocol()'s (test_send_protocol_reconnects_when_not_connected
-    above) -- not connected here means connect() + send_protocol() +
-    execute_protocol() all get retried. Only reached once a protocol is already known to have
-    been sent -- it recovers a dropped connection after a real send, it doesn't fill in for a
-    caller who never sent anything at all (see test_execute_protocol_raises_when_not_yet_sent
-    above)."""
+def test_send_protocol_raises_instead_of_reconnecting_when_not_connected(mocker):
+    """No hidden connect()-send chain (GitHub #163): connecting is the caller's own step."""
+    from fus_driving_systems.sonic_concepts.sonic_concepts_ds import SonicConcepts
+    instance = SonicConcepts()
+    instance._connected = False
+    mock_connect = mocker.patch.object(instance, 'connect')
+    mocker.patch.object(instance, '_validate_or_raise')
+    fake_protocol = mocker.Mock()
+    fake_protocol.slots = [mocker.Mock()]
+
+    with pytest.raises(FDSHardwareError, match='Not connected.*send_protocol'):
+        instance.send_protocol(fake_protocol)
+
+    mock_connect.assert_not_called()
+
+
+@pytest.mark.parametrize('method', ['wait_for_trigger', 'execute_protocol'])
+def test_a_sent_protocol_is_not_resent_after_a_connection_loss(mocker, method):
     from fus_driving_systems.sonic_concepts.sonic_concepts_ds import SonicConcepts
     instance = SonicConcepts()
     instance._connected = False
     instance.protocol_sent = True
-    instance.gen = mocker.Mock()
-    instance.gen.readline.return_value = b'OK\n'
+    mock_connect = mocker.patch.object(instance, 'connect')
+    mock_send = mocker.patch.object(instance, 'send_protocol')
 
-    def fake_connect(connect_info):
-        instance._connected = True
-    mock_connect = mocker.patch.object(instance, 'connect', side_effect=fake_connect)
-    mock_send_protocol = mocker.patch.object(instance, 'send_protocol')
+    with pytest.raises(FDSHardwareError, match=f'Not connected.*{method}'):
+        getattr(instance, method)(mocker.Mock())
 
-    def fake_send_protocol(protocol):
-        instance.protocol_sent = True
-    mock_send_protocol.side_effect = fake_send_protocol
-
-    fake_protocol = mocker.Mock()
-    fake_protocol.driving_sys.connect_info = 'COM7'
-
-    instance.execute_protocol(fake_protocol)
-
-    mock_connect.assert_called_once_with('COM7')
-    mock_send_protocol.assert_called_once_with(fake_protocol)
-    instance.gen.write.assert_called_once_with(b'START\r')
+    mock_connect.assert_not_called()
+    mock_send.assert_not_called()
