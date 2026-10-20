@@ -16,7 +16,7 @@
 # you ever change one. trigger_option, by contrast, is whole-file (a parameter of
 # IGT.wait_for_trigger() itself, not of any one protocol), so it's declared only once, below.
 
-driving_sys_serial: IGT-32-ch_comb_2x10-ch  # print(driving_system.get_ds_serials()) for options
+driving_sys_serial: IGT-32-ch_comb_2x10-ch  # options: from fus_driving_systems import driving_system; print(driving_system.get_ds_serials())
 
 # Fires the entire, already fully-timed alternating group at once with a single external
 # trigger -- see wait_for_trigger.yaml (single_transducer/igt/) for more on the available options.
@@ -25,7 +25,7 @@ trigger_option: TriggerWholeProtocol
 protocols:
   # -- protocol A: transducer 1 active, transducer 2 off --
   - slots:
-      - transducer_serial: IS_PCD15287_01001  # print(transducer.get_tran_serials()) for options
+      - transducer_serial: IS_PCD15287_01001  # options: from fus_driving_systems import transducer; print(transducer.get_tran_serials())
         focus_option: Focus wrt exit plane [mm]
         focus_value: 40  # [mm], focal depth w.r.t. the exit plane and FWHM middle
         power_option: Max. pressure in free water [MPa]

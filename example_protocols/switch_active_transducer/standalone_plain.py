@@ -118,7 +118,7 @@ try:
     ACTIVE_PRESS = 0.5  # [MPa], maximum pressure in free water for whichever transducer is active
     INACTIVE_PRESS = 0  # [MPa], off: physically connected, but not firing
 
-    protocol = tus_protocol.TUSProtocol('IGT-32-ch_comb_2x10-ch')
+    protocol = tus_protocol.TUSProtocol(ds_info.serial)
     slot1 = protocol.add_slot(
         TRANSDUCER_1,
         FOCUS_OPTION, 40,  # [mm], focal depth w.r.t. the exit plane and FWHM middle

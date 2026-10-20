@@ -138,7 +138,7 @@ try:
     TRIGGER_OPTION = 'TriggerWholeProtocol'
     N_TRIGGERS = None  # only applies (and is required) when TRIGGER_OPTION == 'TriggerOnePulseTrain'
 
-    protocol_a = tus_protocol.TUSProtocol('IGT-32-ch_comb_2x10-ch')
+    protocol_a = tus_protocol.TUSProtocol(ds_info.serial)
     slot_a1 = protocol_a.add_slot(
         TRANSDUCER_1,
         FOCUS_OPTION, 40,  # [mm], focal depth w.r.t. the exit plane and FWHM middle
@@ -161,7 +161,7 @@ try:
     # Ramping must match protocol_a's exactly (send_protocol() enforces this): reusing the same
     # RAMP_SHAPE/RAMP_DUR constants above, rather than repeating the values, makes that impossible to
     # get wrong by accident.
-    protocol_b = tus_protocol.TUSProtocol('IGT-32-ch_comb_2x10-ch')
+    protocol_b = tus_protocol.TUSProtocol(ds_info.serial)
     slot_b1 = protocol_b.add_slot(
         TRANSDUCER_1,
         FOCUS_OPTION, 40,  # [mm], focal depth w.r.t. the exit plane and FWHM middle

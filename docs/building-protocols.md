@@ -22,7 +22,7 @@ interleaved file (more than one `protocols` entry).
 A `protocol.yaml` might look like this:
 
 ```yaml
-driving_sys_serial: IGT-32-ch_comb_1x10-ch  # print(driving_system.get_ds_serials()) for options
+driving_sys_serial: IGT-32-ch_comb_1x10-ch  # options: from fus_driving_systems import driving_system; print(driving_system.get_ds_serials())
 
 # 'None' means no trigger at all -- the protocol is executed directly via execute_protocol(),
 # which is exactly what this file is for. trigger_option is whole-file, not per-protocol -- it's a
@@ -32,7 +32,7 @@ trigger_option: None
 
 protocols:
   - slots:
-      - transducer_serial: IS_PCD15287_01001  # print(transducer.get_tran_serials()) for options
+      - transducer_serial: IS_PCD15287_01001  # options: from fus_driving_systems import transducer; print(transducer.get_tran_serials())
 
         focus_option: Focus wrt exit plane [mm]
         focus_value: 80  # [mm], focal depth w.r.t. the exit plane and FWHM middle

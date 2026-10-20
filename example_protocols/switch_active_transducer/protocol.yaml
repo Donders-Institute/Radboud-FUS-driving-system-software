@@ -6,7 +6,7 @@
 # See standalone_plain.py (also in this folder) if you want the full, manually-written Python
 # equivalent instead, or need something this file's fields don't cover.
 
-driving_sys_serial: IGT-32-ch_comb_2x10-ch  # print(driving_system.get_ds_serials()) for options
+driving_sys_serial: IGT-32-ch_comb_2x10-ch  # options: from fus_driving_systems import driving_system; print(driving_system.get_ds_serials())
 
 # 'None' (used here) means no trigger at all -- executed directly. 'TriggerOnePulseTrain' fires
 # one pulse train per trigger received (also requires n_triggers); 'TriggerWholeProtocol' fires
@@ -17,7 +17,7 @@ protocols:
   - slots:
       # Both transducers are physically connected for the whole session -- slot 0 starts
       # active, slot 1 starts off.
-      - transducer_serial: IS_PCD15287_01001  # print(transducer.get_tran_serials()) for options
+      - transducer_serial: IS_PCD15287_01001  # options: from fus_driving_systems import transducer; print(transducer.get_tran_serials())
         focus_option: Focus wrt exit plane [mm]
         focus_value: 40  # [mm], focal depth w.r.t. the exit plane and FWHM middle
         power_option: Max. pressure in free water [MPa]

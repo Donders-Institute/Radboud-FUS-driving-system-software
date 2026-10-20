@@ -90,13 +90,6 @@ try:
     # equipment: same driving system already used to connect() above
     protocol = tus_protocol.TUSProtocol(ds_info.serial)
 
-    # send_protocol()/execute_protocol() automatically reconnect using
-    # protocol.driving_sys.connect_info if the connection ever drops: propagate this machine's
-    # actual COM port onto the protocol's own driving system too (ds_info above is a separate
-    # object), so that automatic reconnect uses the right port instead of falling back to whatever
-    # ds_config.ini happens to default to.
-    protocol.driving_sys.connect_info = ds_info.connect_info
-
     # add_slot() fully configures one transducer: serial, focus, and power all at once (no
     # partial/half-configured slot). This driving system currently supports only one transducer slot
     # (see ds_info.max_tran_slots): add another add_slot() call for each additional transducer if a

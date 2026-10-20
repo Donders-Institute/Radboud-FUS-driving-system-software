@@ -6,7 +6,7 @@
 # See standalone_plain.py (also in this folder) if you want the full, manually-written Python
 # equivalent instead, or need something this file's fields don't cover.
 
-driving_sys_serial: IGT-32-ch_comb_1x10-ch  # print(driving_system.get_ds_serials()) for options
+driving_sys_serial: IGT-32-ch_comb_1x10-ch  # options: from fus_driving_systems import driving_system; print(driving_system.get_ds_serials())
 
 # Fires the entire, already fully-timed protocol at once with a single external trigger --
 # equivalent to execute_protocol(), just gated behind that one trigger. Use 'TriggerOnePulseTrain'
@@ -17,7 +17,7 @@ trigger_option: TriggerWholeProtocol
 
 protocols:
   - slots:
-      - transducer_serial: IS_PCD15287_01001  # print(transducer.get_tran_serials()) for options
+      - transducer_serial: IS_PCD15287_01001  # options: from fus_driving_systems import transducer; print(transducer.get_tran_serials())
 
         focus_option: Focus wrt exit plane [mm]
         focus_value: 80  # [mm], focal depth w.r.t. the exit plane and FWHM middle

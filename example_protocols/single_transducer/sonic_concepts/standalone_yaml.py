@@ -65,8 +65,7 @@ try:
     # The driving system serial only needs to live in protocol.yaml: load_protocol() already
     # resolved it into a real DrivingSystem, reachable via the protocol's own driving_sys. The COM
     # port is machine-specific, though, and not something ds_config.ini can know in advance:
-    # override it here so send_protocol()/execute_protocol()'s automatic reconnect (if the
-    # connection ever drops) also uses the right port.
+    # override it here, it is the port connect() below opens.
     protocol.driving_sys.connect_info = 'COM5'  # COM port the driving system is connected to here
 
     sc_ds = sonic_concepts_ds.SonicConcepts()
