@@ -204,7 +204,8 @@ def _verify_hash(yaml_path, raw_bytes, require_hash):
         if require_hash:
             message = (f'{yaml_path} has not been approved yet ({sidecar_path} is missing), but '
                        f'this script requires an approved protocol (require_hash=True). Run: '
-                       f'python -m fus_driving_systems.approve_protocol {yaml_path}')
+                       f'python -m fus_driving_systems.approve_protocol {yaml_path} '
+                       "(or load it in the Planning tab of the GUI and click 'Approve protocol').")
             raise_logged(FDSSafetyError, message)
         return
 
@@ -213,7 +214,8 @@ def _verify_hash(yaml_path, raw_bytes, require_hash):
         message = (f'{yaml_path} does not match its approved hash ({sidecar_path}): it has '
                    f'been edited since it was last approved. If this edit is intentional, '
                    f'review it, then run: python -m fus_driving_systems.approve_protocol '
-                   f'{yaml_path}')
+                   f'{yaml_path} (or load it in the Planning tab of the GUI and click '
+                   "'Approve protocol').")
         raise_logged(FDSSafetyError, message)
 
 
