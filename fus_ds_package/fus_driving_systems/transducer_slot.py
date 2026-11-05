@@ -85,6 +85,14 @@ def _enforce_max_pressure(press_mpa):
         raise_logged(FDSSafetyError, message)
 
 
+def _highest_usable_x(pp):
+    """The highest x a request may have: the end of the curve, or where the curve reaches 100%
+    amplitude if that comes first (anything above that is rejected as exceeding 100%)."""
+
+    x_at_100, found = find_x_for_y_in_pp(pp, 100)
+    return min(pp.x[-1], x_at_100) if found else pp.x[-1]
+
+
 class TransducerSlot:
     """
     Class representing a single transducer, and everything about how it's driven, within a
@@ -1795,7 +1803,7 @@ class TransducerSlot:
 
         if range_status in ("above_range", "below_range"):
             x_min_mpa = self._conv_param['power_curve_pp'].x[0] / 1e6
-            x_max_mpa = self._conv_param['power_curve_pp'].x[-1] / 1e6
+            x_max_mpa = _highest_usable_x(self._conv_param['power_curve_pp']) / 1e6
             # Converted back to press-MPa (dividing the curve's own Pa-based limits by
             # eq_factor) -- the user sets press, not the internal "equalized pressure" this
             # curve is actually fit against, so the bounds shown must be in the units they
@@ -1879,7 +1887,7 @@ class TransducerSlot:
                 # spill slightly past 0/100, not for a voltage the curve was never fit to
                 # describe at all).
                 x_min = self._conv_param['volt_curve_pp'].x[0]
-                x_max = self._conv_param['volt_curve_pp'].x[-1]
+                x_max = _highest_usable_x(self._conv_param['volt_curve_pp'])
                 message = (f'Voltage of {v} [V] is outside of pp limits ({x_min:.2f} - ' +
                            f'{x_max:.2f} [V]). Change input value.')
                 raise_logged(FDSValidationError, message)

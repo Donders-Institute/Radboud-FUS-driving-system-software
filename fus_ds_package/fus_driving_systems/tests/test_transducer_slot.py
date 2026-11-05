@@ -124,6 +124,29 @@ def test_convert_press_to_ampl_exits_when_x_value_above_pp_range():
         slot._convert_press_to_ampl(2000e-6, 1.0)  # x_value = 2000, above the pp's max of 1000
 
 
+def _linear_pp(slope, end):
+    """A piecewise polynomial with pp(x) == slope * x over the domain [0, end]."""
+    return PPoly(c=[[slope], [0.0]], x=[0.0, end], extrapolate=False)
+
+
+def test_convert_press_to_ampl_above_range_names_the_pressure_for_100_percent():
+    """The curve runs on past the 100% point, so the range in the message must stop there:
+    the end of the curve (3 MPa) cannot be requested, 100% is reached at 1 MPa."""
+    slot = _bare_slot()
+    slot._conv_param = {'power_curve_pp': _linear_pp(1e-4, 3e6)}  # 100% at 1e6 Pa
+
+    with pytest.raises(FDSValidationError, match=r'between 0\.00 and 1\.00 \[MPa\]'):
+        slot._convert_press_to_ampl(5.0, 1.0)
+
+
+def test_convert_press_to_ampl_above_range_names_the_end_of_a_curve_that_stays_below_100():
+    slot = _bare_slot()
+    slot._conv_param = {'power_curve_pp': _linear_pp(1e-8, 3e6)}  # 0.03% at the end
+
+    with pytest.raises(FDSValidationError, match=r'between 0\.00 and 3\.00 \[MPa\]'):
+        slot._convert_press_to_ampl(5.0, 1.0)
+
+
 def test_convert_press_to_ampl_exits_when_x_value_below_pp_range():
     slot = _bare_slot()
     slot._conv_param = {'power_curve_pp': _identity_pp(-10.0, 1000.0)}
@@ -211,6 +234,14 @@ def test_convert_volt_to_ampl_exits_when_volt_is_above_pp_range():
 
     with pytest.raises(FDSValidationError):
         slot._convert_volt_to_ampl([300], 1.0)  # above the pp's max of 200
+
+
+def test_convert_volt_to_ampl_above_range_names_the_voltage_for_100_percent():
+    slot = _bare_slot()
+    slot._conv_param = {'volt_curve_pp': _identity_pp(0.0, 200.0)}  # 100% at 100 V
+
+    with pytest.raises(FDSValidationError, match=r'\(0\.00 - 100\.00 \[V\]\)'):
+        slot._convert_volt_to_ampl([500.0], 1.0)
 
 
 def test_convert_volt_to_ampl_clamps_to_100_and_exits_when_calculated_above_100():
