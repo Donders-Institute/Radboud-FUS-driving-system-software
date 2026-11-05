@@ -14,10 +14,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python 3.10
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: '3.11'
           cache: 'pip'
 
       - name: Install flake8
@@ -34,13 +34,24 @@ jobs:
   security:
     runs-on: ubuntu-latest
 
+    # Python 3.10 is end of life: some dependencies (pillow) have fixes only for 3.11 and up. That
+    # run stays visible but does not fail the workflow.
+    continue-on-error: ${{ matrix.python-version == '3.10' }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # pip-audit reads the requirement files for the Python that runs it, and what it
+        # resolves besides the pins (pillow, for one) differs per version.
+        python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python 3.10
+      - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: ${{ matrix.python-version }}
           cache: 'pip'
 
       - name: Install pip-audit
@@ -63,15 +74,22 @@ jobs:
     # findings that have nothing to do with real code quality. fus_ds_gui runs
     # here too since it depends on fus_driving_systems, for the same reason;
     # it has no display, so its own tests default to QT_QPA_PLATFORM=offscreen.
+    # The tests run on every supported Python version; pylint and the duplication check once,
+    # on 3.11, the version recommended for new installations.
     runs-on: windows-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python 3.10
+      - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: ${{ matrix.python-version }}
           cache: 'pip'
           cache-dependency-path: |
             requirements-ci.txt
@@ -83,6 +101,7 @@ jobs:
         run: pip install -r requirements-dev.txt
 
       - name: Install pylint
+        if: matrix.python-version == '3.11'
         # Pinned: an unpinned install picked up pylint 4.0.8 on this runner (nothing here
         # constrains its version the way spyder's own <4 dependency does in a full dev
         # environment), and pylint 4's changed introspection of PySide6's compiled Qt bindings
@@ -90,14 +109,17 @@ jobs:
         run: pip install pylint==3.3.9
 
       - name: Run pylint (fus_ds_package)
+        if: matrix.python-version == '3.11'
         working-directory: fus_ds_package
         run: pylint fus_driving_systems --fail-under=9.5
 
       - name: Run pylint (fus_ds_gui)
+        if: matrix.python-version == '3.11'
         working-directory: fus_ds_gui
         run: pylint fus_ds_gui --fail-under=9.5
 
       - name: Check duplicated code stays under 3%
+        if: matrix.python-version == '3.11'
         working-directory: fus_ds_package
         run: python dev_tools/check_duplication.py
 
@@ -117,7 +139,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-html-report-fus-ds-package
+          name: coverage-html-report-fus-ds-package-${{ matrix.python-version }}
           path: fus_ds_package/htmlcov/
           retention-days: 30
 
@@ -125,6 +147,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-html-report-fus-ds-gui
+          name: coverage-html-report-fus-ds-gui-${{ matrix.python-version }}
           path: fus_ds_gui/htmlcov/
           retention-days: 30

@@ -13,13 +13,14 @@ https://github.com/Donders-Institute/Radboud-FUS-driving-system-software.
 from setuptools import setup, find_packages
 
 setup(name='fus_ds_gui',
-      version='0.1.0',
+      version='0.9.0',
       description='Radboud FUS Driving System GUI: a PySide6 GUI for building, loading, and '
                   'running fus_driving_systems protocols',
       url='https://github.com/Donders-Institute/Radboud-FUS-driving-system-software',
       author='Margely Cornelissen',
       author_email='margely.cornelissen@ru.nl',
       packages=find_packages(),
+      python_requires='>=3.10',
       package_data={'fus_ds_gui': ['resources/*.png']},
       install_requires=['PySide6'],
       zip_safe=False)

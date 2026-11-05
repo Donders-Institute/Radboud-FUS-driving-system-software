@@ -15,13 +15,24 @@ jobs:
   audit:
     runs-on: ubuntu-latest
 
+    # Python 3.10 is end of life: some dependencies (pillow) have fixes only for 3.11 and up. That
+    # run stays visible but does not fail the workflow.
+    continue-on-error: ${{ matrix.python-version == '3.10' }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # pip-audit reads the requirement files for the Python that runs it, and what it
+        # resolves besides the pins (pillow, for one) differs per version.
+        python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python 3.10
+      - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: ${{ matrix.python-version }}
           cache: 'pip'
 
       - name: Install pip-audit

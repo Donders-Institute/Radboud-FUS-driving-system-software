@@ -16,10 +16,20 @@ Python version you'll need.
 | GUI version | FDS (`fus_driving_systems`) version | Required Python version |
 |---|---|---|
 | - | 2.2.x and earlier (no GUI yet) | [3.10](https://www.python.org/downloads/release/python-31021/) |
-| 0.1.x | 3.0.x | [3.10](https://www.python.org/downloads/release/python-31021/) |
+| 0.9.x | 3.0.x | 3.10 (bug fixes only) and 3.11 to 3.14 |
 
-The required Python version is tied to each release, not something you can mix and match freely:
-upgrading Python on your own requires a matching `unifus` build from IGT first.
+Python 3.10 is end of life. After the 3.0 release it only gets bug fixes, no new features, so that
+you have time to move to 3.11 or higher. Some dependencies already have security fixes only for
+3.11 and up.
+
+On Python 3.13 and 3.14 the dependencies are newer than on 3.10 to 3.12: numpy 2.5 (3.14 only),
+pandas 3.1 instead of 2.2, PyYAML 6.0.3 and scipy 1.18 (3.14 only), because the older versions
+have no wheel for them. The tests pass on every supported version.
+
+The package includes one `unifus` build (IGT's native extension) for each Python version in the
+table, and Python picks the one that matches. A Python version outside that range has no build, so
+the IGT driving systems cannot be used with it. For an older Python version python.org may offer
+only the source for its newest patch release; use the newest release that has a Windows installer.
 
 Clone it wherever's convenient; this folder doesn't need to live inside, or anywhere near, your
 own project folder. Nothing later depends on its location relative to your own work.
@@ -51,9 +61,8 @@ own project folder. Nothing later depends on its location relative to your own w
 #### Already Have a Virtual Environment or Experiment Script?
 
 You don't need a new environment made by this repo's own tooling, as long as it's already on the
-Python version from the table in Step 1: `unifus.pyd` is a compiled native extension tied to one
-specific Python version, so installing into a mismatched environment fails, or worse, imports but
-then fails confusingly later. Activate your existing one and install from the root folder of
+Python version from the table in Step 1: `unifus` is a compiled native extension with one build per
+Python version, so on a version without a build it fails to import. Activate your existing one and install from the root folder of
 your clone of this repository. Choose what you need:
 
 - **Option 1: only the package** (scripts and protocol files, no GUI):
@@ -96,14 +105,14 @@ cd your_directory_with_cloned_repository
 create_venv.bat "[PYTHON_INTERPRETER_PATH]" [VENV_NAME] "[VENV_DIR]" [INSTALL_GUI]
 ```
 
-- PYTHON_INTERPRETER_PATH: Specify the path to the Python interpreter required for your release (see the table in Step 1 above) if it's not in the default location. For example, C:\Path\To\Python310\python.exe.
+- PYTHON_INTERPRETER_PATH: Specify the path to the Python interpreter required for your release (see the table in Step 1 above) if it's not in the default location, which is where the python.org installer puts Python 3.11 when you choose Install Now (install Python first). For example, C:\Path\To\Python311\python.exe.
 - VENV_NAME: Specify the name for the virtual environment (e.g., MyEnv). If not provided, it defaults to FUS_DS_PACKAGE.
 - VENV_DIR: Specify the directory for the virtual environment (e.g., C:/Users/Me/Envs). If not provided, it defaults to C:/Users/{USERPROFILE}/Envs.
 - INSTALL_GUI: `y` or `n` to install the GUI (`fus_ds_gui`) without being asked. If not provided, the batch file asks. The GUI is optional because it needs PySide6, a large download that scripts don't use.
 
 Example:
 ```
-create_venv.bat "C:\Path\To\Python310\python.exe" FUS_DS_PACKAGE "C:/Users/Me/Envs" y
+create_venv.bat "C:\Path\To\Python311\python.exe" FUS_DS_PACKAGE "C:/Users/Me/Envs" y
 ```
 The batch file will create a virtual environment and install the required Python packages; no
 IDE is included, see "Step 2: Install an IDE" under Usage below.

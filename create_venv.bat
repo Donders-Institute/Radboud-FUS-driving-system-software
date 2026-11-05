@@ -1,9 +1,11 @@
 @echo off
 
-:: Download and install Python 3.10 from https://www.python.org/downloads/release/python-31011/
+:: Install one Python version from 3.10 to 3.14, 3.11 or higher recommended, from
+:: https://www.python.org/downloads/. Only the one you use is needed, not all of them.
 
-:: Set the Python executable path (ensure Python 3.10 is correctly installed and specify the correct path)
-set "DEFAULT_PYTHON_PATH=C:\Program Files\Python310\python.exe"
+:: Set the path of the python.exe to use. It must be Python 3.10 to 3.14. The default is where
+:: the python.org installer puts Python 3.11 when you choose Install Now (for the current user).
+set "DEFAULT_PYTHON_PATH=%LOCALAPPDATA%\Programs\Python\Python311\python.exe"
 
 :: Set a default virtual environment name
 set "DEFAULT_VENV_NAME=FUS_DS_PACKAGE"
@@ -27,14 +29,14 @@ if not exist "%VENV_DIR%" (
     echo Created directory "%VENV_DIR%"
 )
 
-:: Check if Python 3.10 is installed at the specified path
+:: Check that the python.exe at the specified path is one of 3.10 to 3.14
 for /f "delims=" %%a in ('"%PYTHON_PATH%" --version 2^>nul') do set "PYTHON_VERSION=%%a"
 
 :: Extract the major and minor version numbers
 for /f "tokens=2 delims= " %%b in ("%PYTHON_VERSION%") do set "PYTHON_VERSION=%%b"
-echo %PYTHON_VERSION% | findstr /r "^3\.10" >nul
+echo %PYTHON_VERSION% | findstr /r "^3\.1[0-4]\." >nul
 if errorlevel 1 (
-    echo Python 3.10 is not installed at the specified path or the version is not correct. Please check the path or install Python 3.10.
+    echo The Python at the specified path is not one of 3.10 to 3.14, or it was not found. Give the path of a python.exe of one of these versions, for example: create_venv.bat "C:\Path\To\Python311\python.exe"
     exit /b 1
 )
 

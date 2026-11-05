@@ -1,15 +1,21 @@
 # Dependencies for running the tests, used by the CI workflow (.github/workflows/tests.yml).
 # fus_ds_package is deliberately installed editable (-e): pytest and coverage must see the
 # checked-out source, not a copy in site-packages.
+# Python 3.13 and 3.14 need newer numpy, pandas, pyyaml and scipy: the older pins have no
+# wheel for them.
 CTkMessagebox==2.7
-numpy==2.1.0
-pandas==2.2.2
+numpy==2.1.0; python_version < "3.14"
+numpy==2.5.4; python_version >= "3.14"
+pandas==2.2.2; python_version < "3.13"
+pandas==3.1.0; python_version >= "3.13"
 pyserial==3.5
 tk==0.1.0
 openpyxl==3.1.5
-pyyaml==6.0.1
-scipy==1.14.1
-pytest
-pytest-cov
-pytest-mock
+pyyaml==6.0.1; python_version < "3.13"
+pyyaml==6.0.3; python_version >= "3.13"
+scipy==1.14.1; python_version < "3.14"
+scipy==1.18.1; python_version >= "3.14"
+pytest==9.2.0
+pytest-cov==7.1.0
+pytest-mock==3.17.0
 -e ./fus_ds_package
