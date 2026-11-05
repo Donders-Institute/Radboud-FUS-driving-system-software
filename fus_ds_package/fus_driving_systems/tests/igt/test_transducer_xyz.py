@@ -163,10 +163,8 @@ class TestLoadFromString:
 
         assert result is True
         assert trans.channel_count() == 2
-        assert trans.elements == pytest.approx([
-            (0.0, 0.0, 0.01),
-            (0.005, 0.005, 0.02),
-        ])
+        assert trans.elements == [pytest.approx((0.0, 0.0, 0.01)),
+                                  pytest.approx((0.005, 0.005, 0.02))]
 
     def test_raises_when_focal_length_key_is_missing(self):
         """focalLength is required, not merely defaulted to 0 -- a missing/invalid value would
@@ -260,7 +258,7 @@ class TestLoad:
         result = trans.load(str(def_file))
 
         assert result is True
-        assert trans.elements == pytest.approx([(0.001, 0.002, 0.003)])
+        assert trans.elements == [pytest.approx((0.001, 0.002, 0.003))]
 
     def test_load_raises_when_file_does_not_exist(self, tmp_path):
         trans = transducer_xyz.Transducer()
