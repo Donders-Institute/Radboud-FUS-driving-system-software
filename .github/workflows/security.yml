@@ -1,0 +1,34 @@
+name: Security audit
+
+# tests.yml already audits on every push and pull request. This one runs the same audit on a
+# schedule, because a pinned version can be reported as vulnerable long after it was pinned.
+# It can also be started by hand from the Actions tab.
+"on":
+  schedule:
+    - cron: '0 6 * * 1'  # every Monday at 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install pip-audit
+        run: pip install pip-audit
+
+      - name: Audit dependencies for known vulnerabilities (fus_ds_package)
+        run: pip-audit -r requirements-ci.txt
+
+      - name: Audit dependencies for known vulnerabilities (fus_ds_gui)
+        run: pip-audit -r fus_ds_gui/requirements-gui.txt
