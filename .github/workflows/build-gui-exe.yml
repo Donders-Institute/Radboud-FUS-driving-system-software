@@ -33,13 +33,30 @@ jobs:
           "BUILD_NAME=$name" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Install GUI and build dependencies
+        # requirements.txt holds the pins of numpy, pandas, scipy and the rest that the package
+        # imports; neither package declares them itself, so PyInstaller only bundles them when
+        # they are installed here.
         run: |
+          pip install -r requirements.txt
           pip install -r fus_ds_gui/requirements-gui.txt
           pip install -r fus_ds_gui/requirements-build.txt
 
       - name: Build the executable
         working-directory: fus_ds_gui
         run: pyinstaller fus_ds_gui.spec --noconfirm
+
+      - name: Check the build contains its libraries
+        # The build succeeds even when a library is missing; the program then fails at startup.
+        # Libraries with compiled parts get a folder; pure Python ones are listed in PyInstaller's
+        # warnings when they are missing.
+        working-directory: fus_ds_gui
+        run: |
+          $missing = @('numpy', 'pandas', 'scipy', 'fus_driving_systems/igt/unifus.cp311-win_amd64.pyd') |
+            Where-Object { -not (Test-Path "dist/FDS_GUI/_internal/$_") }
+          if ($missing) { throw "Missing from the build: $($missing -join ', ')" }
+          $unresolved = Select-String -Path build/fus_ds_gui/warn-fus_ds_gui.txt `
+            -Pattern 'missing module named (yaml|serial|openpyxl|CTkMessagebox|tkinter)\b.*top-level'
+          if ($unresolved) { $unresolved | ForEach-Object { $_.Line }; throw 'Unresolved imports in the build' }
 
       - name: Zip the build
         # Zips FDS_GUI/*, not the FDS_GUI folder itself: FDS_GUI.exe ends up right at the top
