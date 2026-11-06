@@ -65,7 +65,7 @@ This project is facilitated by the Radboud FUS Centre. For more information, ple
 If you use this package in your research or project, please cite it as follows (see also [`CITATION.cff`](CITATION.cff)):
 
 ```
-Cornelissen, M., Fekkes, S., Dumont, E., & Verhagen, L. (2024-2026). Radboud FUS Driving System Software (version 2.2.3) [Computer software]. https://github.com/Donders-Institute/Radboud-FUS-driving-system-software
+Cornelissen, M., Fekkes, S., Dumont, E., & Verhagen, L. (2024-2026). Radboud FUS Driving System Software (version 3.0.0) [Computer software]. https://github.com/Donders-Institute/Radboud-FUS-driving-system-software
 ```
 
 If you used a different version than the one currently listed above, replace the version number with the one you actually used (see the [releases page](https://github.com/Donders-Institute/Radboud-FUS-driving-system-software/releases) for the full list). There is no DOI for this software yet; the repository URL above is the citable reference in the meantime.
@@ -89,6 +89,10 @@ A standalone Windows application for building, loading, and running protocols th
 1. Visit the [Latest Release](https://github.com/Donders-Institute/Radboud-FUS-driving-system-software/releases/latest).
 2. Download `FDS_GUI-*-windows.zip`.
 3. Extract it anywhere, then double-click `FDS_GUI.exe` inside the extracted folder.
+
+The program includes its own Python (3.11), so you do not need to install Python for it. It is not
+code-signed, so Windows may warn that the publisher is unknown ("Windows protected your PC"): choose
+"More info", then "Run anyway".
 
 To launch it from your desktop instead of digging into the extracted folder each time,
 right-click `FDS_GUI.exe` and choose "Send to > Desktop (create shortcut)". Don't move or copy
@@ -119,6 +123,10 @@ cd fus_ds_gui
 pyinstaller fus_ds_gui.spec --noconfirm
 ```
 The build appears in `fus_ds_gui/dist/FDS_GUI/` (run `FDS_GUI.exe` inside it).
+
+The build uses the Python of the virtual environment you run it in (3.10 to 3.14) and includes the
+matching `unifus` build. For an executable with another Python version, run the same steps in a
+virtual environment of that version.
 
 Developing or testing an unreleased version, but don't need an `.exe`? Set up a virtual
 environment with `create_venv.bat` and answer `y` when it asks about the GUI (see the
