@@ -90,6 +90,10 @@ A standalone Windows application for building, loading, and running protocols th
 2. Download `FDS_GUI-*-windows.zip`.
 3. Extract it anywhere, then double-click `FDS_GUI.exe` inside the extracted folder.
 
+The program includes its own Python (3.11), so you do not need to install Python for it. It is not
+code-signed, so Windows may warn that the publisher is unknown ("Windows protected your PC"): choose
+"More info", then "Run anyway".
+
 To launch it from your desktop instead of digging into the extracted folder each time,
 right-click `FDS_GUI.exe` and choose "Send to > Desktop (create shortcut)". Don't move or copy
 the `.exe` on its own; it needs the `_internal` folder
@@ -119,6 +123,10 @@ cd fus_ds_gui
 pyinstaller fus_ds_gui.spec --noconfirm
 ```
 The build appears in `fus_ds_gui/dist/FDS_GUI/` (run `FDS_GUI.exe` inside it).
+
+The build uses the Python of the virtual environment you run it in (3.10 to 3.14) and includes the
+matching `unifus` build. For an executable with another Python version, run the same steps in a
+virtual environment of that version.
 
 Developing or testing an unreleased version, but don't need an `.exe`? Set up a virtual
 environment with `create_venv.bat` and answer `y` when it asks about the GUI (see the
