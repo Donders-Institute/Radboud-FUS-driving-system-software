@@ -2,8 +2,8 @@ cff-version: 1.2.0
 message: "If you use this software in your research or project, please cite it as below."
 type: software
 title: "Radboud FUS Driving System Software"
-version: 2.2.3
-date-released: "2026-07-29"
+version: 3.0.0
+date-released: "2026-11-06"
 repository-code: "https://github.com/Donders-Institute/Radboud-FUS-driving-system-software"
 license: MIT
 authors:

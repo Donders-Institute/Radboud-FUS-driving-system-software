@@ -13,7 +13,7 @@ https://github.com/Donders-Institute/Radboud-FUS-driving-system-software.
 from setuptools import setup, find_packages
 
 setup(name='fus_driving_systems',
-      version='2.2.3',
+      version='3.0.0',
       description='Abstract structure to communicate with different FUS driving systems',
       url='https://github.com/Donders-Institute/Radboud-FUS-driving-system-software',
       author='Margely Cornelissen',

@@ -65,7 +65,7 @@ This project is facilitated by the Radboud FUS Centre. For more information, ple
 If you use this package in your research or project, please cite it as follows (see also [`CITATION.cff`](CITATION.cff)):
 
 ```
-Cornelissen, M., Fekkes, S., Dumont, E., & Verhagen, L. (2024-2026). Radboud FUS Driving System Software (version 2.2.3) [Computer software]. https://github.com/Donders-Institute/Radboud-FUS-driving-system-software
+Cornelissen, M., Fekkes, S., Dumont, E., & Verhagen, L. (2024-2026). Radboud FUS Driving System Software (version 3.0.0) [Computer software]. https://github.com/Donders-Institute/Radboud-FUS-driving-system-software
 ```
 
 If you used a different version than the one currently listed above, replace the version number with the one you actually used (see the [releases page](https://github.com/Donders-Institute/Radboud-FUS-driving-system-software/releases) for the full list). There is no DOI for this software yet; the repository URL above is the citable reference in the meantime.
