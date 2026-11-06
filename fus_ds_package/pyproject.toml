@@ -26,6 +26,7 @@ commit = true
 tag = true
 tag_name = "v{new_version}"
 message = "Bump version: {current_version} -> {new_version}"
+tag_message = "Bump version: {current_version} -> {new_version}"
 allow_dirty = false
 
 [[tool.bumpversion.files]]
