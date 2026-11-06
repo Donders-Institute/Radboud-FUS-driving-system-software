@@ -5,8 +5,9 @@ below, which are additionally copyright Image Guided Therapy (IGT). They are inc
 under the same MIT license as the rest of the repository.
 
 **Provided by IGT and used as-is (unmodified):**
-- `fus_ds_package/fus_driving_systems/igt/unifus.pyd`: compiled Python extension module
-  provided by IGT for communicating with their driving systems.
+- `fus_ds_package/fus_driving_systems/igt/unifus.cp*-win_amd64.pyd`: compiled Python extension
+  modules (one per supported Python version) provided by IGT for communicating with their driving
+  systems.
 - `fus_ds_package/fus_driving_systems/igt/config/gen_*.json` and
   `fus_ds_package/fus_driving_systems/igt/config/deprecated/gen_*.json`: generator
   configuration files.

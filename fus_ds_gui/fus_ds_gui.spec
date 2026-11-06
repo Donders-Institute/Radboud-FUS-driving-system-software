@@ -8,12 +8,13 @@ See the LICENSE file for full license text.
 Builds the standalone GUI executable:
     pyinstaller fus_ds_gui.spec
 Produces dist/FDS_GUI/ (run FDS_GUI.exe inside it). onedir, not onefile: faster startup,
-and an unpacked folder is far easier to inspect if unifus.pyd (see below) fails to load on a
-real driving system's PC than a single opaque binary would be.
+and an unpacked folder is far easier to inspect if the unifus extension (see below) fails to load
+on a real driving system's PC than a single opaque binary would be.
 """
 
 import glob
 import os
+import sys
 
 from PyInstaller.utils.hooks import copy_metadata
 
@@ -54,8 +55,11 @@ datas = (
 )
 
 # The IGT native extension: a compiled .pyd, not something Analysis can trace through imports.
+# There is one build per Python version, named after it; the build of the Python that runs
+# PyInstaller is the one the executable ships with.
+_UNIFUS = f'unifus.cp{sys.version_info.major}{sys.version_info.minor}-win_amd64.pyd'
 binaries = [
-    (os.path.join(_DS_PACKAGE, 'igt', 'unifus.pyd'), os.path.join('fus_driving_systems', 'igt')),
+    (os.path.join(_DS_PACKAGE, 'igt', _UNIFUS), os.path.join('fus_driving_systems', 'igt')),
 ]
 
 a = Analysis(
