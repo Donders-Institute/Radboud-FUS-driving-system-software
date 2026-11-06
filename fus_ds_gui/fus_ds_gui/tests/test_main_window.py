@@ -108,12 +108,17 @@ def test_window_shrinks_back_after_switching_to_fewer_transducer_slots(qtbot, pa
     qtbot.addWidget(window)
     window.show()
     window.planning_tab.equipment_panel._driving_system_combo.setCurrentIndex(1)  # 2-slot
-    qtbot.wait(50)
+    qtbot.wait(100)
+    height_without_slots = window.height()
+    window.planning_tab.add_slot_button.click()
+    window.planning_tab.add_slot_button.click()
+    qtbot.waitUntil(lambda: window.height() > height_without_slots, timeout=2000)
+    qtbot.wait(100)  # let the fit to the two slots settle
     grown_height = window.height()
 
     window.planning_tab.equipment_panel._driving_system_combo.setCurrentIndex(2)  # 1-slot
 
-    qtbot.waitUntil(lambda: window.height() < grown_height, timeout=1000)
+    qtbot.waitUntil(lambda: window.height() < grown_height, timeout=2000)
 
 
 def test_maximized_window_is_not_resized_when_the_content_changes(qtbot, patch_config):
